@@ -26,11 +26,14 @@ jobs:
     # Bước 3: Tải các thư viện (NuGet packages, Entity Framework...)
     - name: Khôi phục thư viện (Restore dependencies)
       run: dotnet restore
+      working-directory: ./Backend
 
     # Bước 4: Biên dịch dự án xem có lỗi cú pháp không
     - name: Biên dịch dự án (Build)
       run: dotnet build --no-restore --configuration Release
+      working-directory: ./Backend
 
     # Bước 5: Chạy test tự động 
     - name: Chạy Unit Tests
       run: dotnet test --no-build --verbosity normal --configuration Release
+      working-directory: ./Backend
