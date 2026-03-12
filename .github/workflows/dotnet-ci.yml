@@ -1,0 +1,36 @@
+name: .NET Backend CI
+
+# 1. Kích hoạt khi có thay đổi ở nhánh main và develop
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  build-and-test:
+    # 2. Chạy trên môi trường máy chủ Linux ảo của GitHub (nhẹ và nhanh nhất)
+    runs-on: ubuntu-latest
+
+    steps:
+    # Bước 1: Lấy mã nguồn từ kho chứa về máy ảo
+    - name: Lấy mã nguồn (Checkout Code)
+      uses: actions/checkout@v4
+
+    # Bước 2: Cài đặt môi trường .NET Core
+    - name: Cài đặt .NET Core
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    # Bước 3: Tải các thư viện (NuGet packages, Entity Framework...)
+    - name: Khôi phục thư viện (Restore dependencies)
+      run: dotnet restore
+
+    # Bước 4: Biên dịch dự án xem có lỗi cú pháp không
+    - name: Biên dịch dự án (Build)
+      run: dotnet build --no-restore --configuration Release
+
+    # Bước 5: Chạy test tự động 
+    - name: Chạy Unit Tests
+      run: dotnet test --no-build --verbosity normal --configuration Release
