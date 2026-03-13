@@ -1,5 +1,9 @@
 // Nhớ thêm thư viện này để dùng DbContext và SQL Server
-using Microsoft.EntityFrameworkCore; 
+using Microsoft.EntityFrameworkCore;
+
+
+using TaskManagement.Infrastructure.Data;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,7 +20,7 @@ builder.Services.AddCors(options =>
                       policy =>
                       {
                           // Cho phép Vue.js gọi vào
-                          policy.WithOrigins("http://localhost:5173") 
+                          policy.WithOrigins("http://localhost:5173")
                                 .AllowAnyHeader()
                                 .AllowAnyMethod();
                       });
@@ -25,10 +29,10 @@ builder.Services.AddCors(options =>
 // 3. CẤU HÌNH CODE-FIRST (ENTITY FRAMEWORK CORE)
 // Lưu ý cho PM: Tôi đang comment đoạn này lại để không bị báo lỗi đỏ. 
 // Chiều nay Dev 1 tạo xong file 'ApplicationDbContext' bên thư mục Infrastructure thì mới mở comment ra!
-/*
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-*/
+   options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
 
 var app = builder.Build();
 
