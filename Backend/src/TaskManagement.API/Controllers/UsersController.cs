@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using System.Linq;
 using System.Text.Json;
 using TaskManagement.Domain.Entities;
+using TaskManagement.API.Security;
 
 namespace TaskManagement.API.Controllers
 {
@@ -513,8 +514,10 @@ namespace TaskManagement.API.Controllers
             if (string.IsNullOrEmpty(request.OtpCode))
                 return BadRequest(new { statusCode = 400, message = "Vui lòng nhập mã OTP." });
 
-            var isValidOtp = _otpService.ValidateOtp(user.Email, request.OtpCode.Trim());
-            if (!isValidOtp)
+            var otpValidation = _otpService.ValidateOtp(user.Email, request.OtpCode.Trim());
+            if (otpValidation.Status == OtpValidationStatus.Locked)
+                return StatusCode(StatusCodes.Status429TooManyRequests, new { statusCode = 429, message = "Quá nhiều lần thử OTP.", retryAfterSeconds = otpValidation.RetryAfterSeconds });
+            if (!otpValidation.IsValid)
                 return BadRequest(new { statusCode = 400, message = "Mã OTP không hợp lệ hoặc đã hết hạn." });
 
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
@@ -558,7 +561,9 @@ namespace TaskManagement.API.Controllers
             }
 
             var otpCode = _otpService.GenerateOtp();
-            _otpService.StoreOtp(user.Email, otpCode);
+            var issueResult = _otpService.StoreOtp(user.Email, otpCode);
+            if (!issueResult.Issued)
+                return StatusCode(StatusCodes.Status429TooManyRequests, new { statusCode = 429, message = "Vui lòng thử lại sau.", retryAfterSeconds = issueResult.RetryAfterSeconds });
             await _emailService.SendOtpEmailAsync(user.Email, otpCode);
 
             return Ok(new { statusCode = 200, message = "Đã gửi mã OTP đến email của bạn." });
@@ -629,7 +634,9 @@ namespace TaskManagement.API.Controllers
                 return BadRequest(new { message = "Tài khoản đã có mật khẩu." });
 
             var otpCode = _otpService.GenerateOtp();
-            _otpService.StoreOtp(user.Email, otpCode);
+            var issueResult = _otpService.StoreOtp(user.Email, otpCode);
+            if (!issueResult.Issued)
+                return StatusCode(StatusCodes.Status429TooManyRequests, new { statusCode = 429, message = "Vui lòng thử lại sau.", retryAfterSeconds = issueResult.RetryAfterSeconds });
             await _emailService.SendOtpEmailAsync(user.Email, otpCode);
 
             return Ok(new { statusCode = 200, message = "Đã gửi mã OTP đến email của bạn." });
@@ -654,8 +661,10 @@ namespace TaskManagement.API.Controllers
             if (!string.IsNullOrEmpty(user.PasswordHash))
                 return BadRequest(new { message = "Tài khoản đã có mật khẩu." });
 
-            var isValid = _otpService.ValidateOtp(user.Email, request.OtpCode.Trim());
-            if (!isValid)
+            var otpValidation = _otpService.ValidateOtp(user.Email, request.OtpCode.Trim());
+            if (otpValidation.Status == OtpValidationStatus.Locked)
+                return StatusCode(StatusCodes.Status429TooManyRequests, new { statusCode = 429, message = "Quá nhiều lần thử OTP.", retryAfterSeconds = otpValidation.RetryAfterSeconds });
+            if (!otpValidation.IsValid)
                 return BadRequest(new { statusCode = 400, message = "Mã OTP không hợp lệ hoặc đã hết hạn." });
 
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
@@ -745,15 +754,9 @@ namespace TaskManagement.API.Controllers
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
                 return Unauthorized();
 
-            if (file == null || file.Length == 0)
-                return BadRequest(new { message = "Chưa chọn file." });
-
-            if (file.Length > 5 * 1024 * 1024)
-                return BadRequest(new { message = "File quá lớn (tối đa 5MB)." });
-
-            var allowedTypes = new[] { "image/jpeg", "image/png", "image/gif", "image/webp" };
-            if (!allowedTypes.Contains(file.ContentType))
-                return BadRequest(new { message = "Chỉ chấp nhận file ảnh (JPEG, PNG, GIF, WebP)." });
+            ValidatedUpload validated;
+            try { validated = await UploadSecurity.ReadPublicImageAsync(file); }
+            catch (InvalidDataException exception) { return BadRequest(new { message = exception.Message }); }
 
             var user = await _context.Users.FindAsync(userId);
             if (user == null) return NotFound();
@@ -761,14 +764,9 @@ namespace TaskManagement.API.Controllers
             var uploadsDir = Path.Combine(env.ContentRootPath, "uploads", "avatars");
             if (!Directory.Exists(uploadsDir)) Directory.CreateDirectory(uploadsDir);
 
-            var ext = Path.GetExtension(file.FileName);
-            var uniqueName = $"{userId}{ext}";
-            var filePath = Path.Combine(uploadsDir, uniqueName);
-
-            using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await file.CopyToAsync(stream);
-            }
+            var uniqueName = $"{Guid.NewGuid():N}{validated.Extension}";
+            var filePath = UploadSecurity.ResolveUnderRoot(uploadsDir, uniqueName);
+            await System.IO.File.WriteAllBytesAsync(filePath, validated.Bytes);
 
             user.AvatarUrl = $"/uploads/avatars/{uniqueName}";
             user.UpdatedAt = DateTime.UtcNow;
@@ -787,15 +785,9 @@ namespace TaskManagement.API.Controllers
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
                 return Unauthorized();
 
-            if (file == null || file.Length == 0)
-                return BadRequest(new { message = "Chưa chọn file." });
-
-            if (file.Length > 5 * 1024 * 1024)
-                return BadRequest(new { message = "File quá lớn (tối đa 5MB)." });
-
-            var allowedTypes = new[] { "image/jpeg", "image/png", "image/gif", "image/webp" };
-            if (!allowedTypes.Contains(file.ContentType))
-                return BadRequest(new { message = "Chỉ chấp nhận file ảnh (JPEG, PNG, GIF, WebP)." });
+            ValidatedUpload validated;
+            try { validated = await UploadSecurity.ReadPublicImageAsync(file); }
+            catch (InvalidDataException exception) { return BadRequest(new { message = exception.Message }); }
 
             var user = await _context.Users.FindAsync(userId);
             if (user == null) return NotFound();
@@ -803,14 +795,9 @@ namespace TaskManagement.API.Controllers
             var uploadsDir = Path.Combine(env.ContentRootPath, "uploads", "covers");
             if (!Directory.Exists(uploadsDir)) Directory.CreateDirectory(uploadsDir);
 
-            var ext = Path.GetExtension(file.FileName);
-            var uniqueName = $"{userId}_cover{ext}";
-            var filePath = Path.Combine(uploadsDir, uniqueName);
-
-            using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await file.CopyToAsync(stream);
-            }
+            var uniqueName = $"{Guid.NewGuid():N}{validated.Extension}";
+            var filePath = UploadSecurity.ResolveUnderRoot(uploadsDir, uniqueName);
+            await System.IO.File.WriteAllBytesAsync(filePath, validated.Bytes);
 
             user.CoverUrl = $"/uploads/covers/{uniqueName}";
             user.UpdatedAt = DateTime.UtcNow;

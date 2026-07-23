@@ -1,10 +1,9 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using System;
-using System.Linq;
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Configuration;
 using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.Project;
 using TaskManagement.Application.Interfaces;
@@ -19,214 +18,324 @@ namespace TaskManagement.Infrastructure.Services
         private readonly IEmailService _emailService;
         private readonly IConfiguration _configuration;
 
-        public ProjectMemberService(ApplicationDbContext context, IEmailService emailService, IConfiguration configuration)
+        public ProjectMemberService(
+            ApplicationDbContext context,
+            IEmailService emailService,
+            IConfiguration configuration)
         {
             _context = context;
             _emailService = emailService;
             _configuration = configuration;
         }
 
-        public async Task InviteMemberAsync(Guid projectId, ProjectMemberRequestDto request, string inviterName)
+        public async Task<ProjectInvitationOutcome> InviteMemberAsync(
+            Guid projectId,
+            ProjectMemberRequestDto request,
+            string inviterName)
         {
-            var normalizedEmail = request.Email?.Trim().ToLowerInvariant();
+            var normalizedEmail = EmailCanonicalizer.Normalize(request.Email);
             if (string.IsNullOrWhiteSpace(normalizedEmail))
             {
-                throw new ArgumentException("Email thanh vien khong duoc de trong.");
+                throw new ArgumentException("Member email is required.");
             }
 
-            var project = await _context.Projects
-                .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.Id == projectId && !p.IsDeleted);
-
-            if (project == null)
+            IDbContextTransaction? transaction = null;
+            if (_context.Database.IsRelational())
             {
-                throw new ArgumentException("Du an khong ton tai.");
+                transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             }
 
-            var user = await _context.Users
-                .Include(u => u.UserRoles)
-                .FirstOrDefaultAsync(u => u.Email == normalizedEmail);
+            string? rawInviteToken = null;
+            User? invitedUser = null;
+            Project? invitedProject = null;
 
-            if (user?.IsDeleted == true)
+            try
             {
-                throw new ArgumentException("Email nay thuoc ve mot tai khoan da bi xoa.");
-            }
+                if (_context.Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    var lockKey = Convert.ToHexString(SHA256.HashData(
+                        Encoding.UTF8.GetBytes($"project-invite:{projectId:N}:{normalizedEmail}")));
+                    await _context.Database.ExecuteSqlInterpolatedAsync(
+                        $"EXEC sys.sp_getapplock @Resource={lockKey}, @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=10000;");
+                }
 
-            var resolvedProjectRole = await ResolveProjectRoleAsync(request.Role);
-            var now = DateTime.UtcNow;
+                invitedProject = await _context.Projects
+                    .SingleOrDefaultAsync(project => project.Id == projectId && !project.IsDeleted);
+                if (invitedProject == null)
+                {
+                    throw new ArgumentException("Project does not exist.");
+                }
 
-            if (user == null)
-            {
-                user = new User
+                var resolvedProjectRole = await ResolveProjectRoleAsync(request.Role);
+                var now = DateTime.UtcNow;
+                invitedUser = await _context.Users
+                    .SingleOrDefaultAsync(user => user.Email == normalizedEmail);
+
+                if (invitedUser?.IsDeleted == true)
+                {
+                    throw new ArgumentException("This email belongs to a deleted account.");
+                }
+
+                if (invitedUser == null)
+                {
+                    invitedUser = new User
+                    {
+                        Id = Guid.NewGuid(),
+                        Email = normalizedEmail,
+                        FullName = BuildNameFromEmail(normalizedEmail),
+                        PasswordHash = string.Empty,
+                        IsActive = false,
+                        IsDeleted = false,
+                        CreatedAt = now,
+                        UpdatedAt = now
+                    };
+                    _context.Users.Add(invitedUser);
+                }
+                else
+                {
+                    invitedUser.UpdatedAt = now;
+                }
+
+                var membership = await _context.ProjectMembers
+                    .SingleOrDefaultAsync(member => member.ProjectId == projectId && member.UserId == invitedUser.Id);
+
+                if (membership?.Status == true)
+                {
+                    if (transaction != null) await transaction.CommitAsync();
+                    return ProjectInvitationOutcome.AlreadyActiveMember;
+                }
+
+                if (membership is { Status: false, LeftAt: null })
+                {
+                    if (transaction != null) await transaction.CommitAsync();
+                    return ProjectInvitationOutcome.InvitationAlreadyPending;
+                }
+
+                if (membership == null)
+                {
+                    membership = new ProjectMember
+                    {
+                        ProjectId = projectId,
+                        UserId = invitedUser.Id,
+                        ProjectRole = resolvedProjectRole,
+                        JoinedAt = now,
+                        Status = false
+                    };
+                    _context.ProjectMembers.Add(membership);
+                }
+                else
+                {
+                    membership.ProjectRole = resolvedProjectRole;
+                    membership.JoinedAt = now;
+                    membership.LeftAt = null;
+                    membership.Status = false;
+                }
+
+                var workspaceMembership = await _context.WorkspaceMembers.SingleOrDefaultAsync(member =>
+                    member.WorkspaceId == invitedProject.WorkspaceId && member.UserId == invitedUser.Id);
+                if (workspaceMembership == null)
+                {
+                    _context.WorkspaceMembers.Add(new WorkspaceMember
+                    {
+                        WorkspaceId = invitedProject.WorkspaceId,
+                        UserId = invitedUser.Id,
+                        WorkspaceRole = "MEMBER",
+                        JoinedAt = now,
+                        IsActive = false
+                    });
+                }
+
+                var inviteDeviceId = BuildInviteDeviceId(projectId);
+                var previousTokens = await _context.RefreshTokens
+                    .Where(token => token.UserId == invitedUser.Id &&
+                                    token.DeviceId == inviteDeviceId &&
+                                    !token.IsRevoked)
+                    .ToListAsync();
+                foreach (var token in previousTokens)
+                {
+                    token.IsRevoked = true;
+                }
+
+                rawInviteToken = GenerateInviteToken();
+                _context.RefreshTokens.Add(new RefreshToken
                 {
                     Id = Guid.NewGuid(),
-                    Email = normalizedEmail,
-                    FullName = BuildNameFromEmail(normalizedEmail),
-                    PasswordHash = string.Empty,
-                    IsActive = false,
-                    IsDeleted = false,
-                    CreatedAt = now,
-                    UpdatedAt = now
-                };
+                    UserId = invitedUser.Id,
+                    Token = HashToken(rawInviteToken),
+                    DeviceId = inviteDeviceId,
+                    ExpiryTime = now.AddDays(7),
+                    IsRevoked = false
+                });
 
-                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
+                if (transaction != null) await transaction.CommitAsync();
             }
-            else
+            catch (DbUpdateException ex)
             {
-                user.UpdatedAt = now;
+                if (transaction != null) await transaction.RollbackAsync();
+                throw new InvalidOperationException(
+                    "A membership or invitation for this email already exists.", ex);
             }
-
-            bool isAlreadyMember = await _context.ProjectMembers
-                .AnyAsync(pm => pm.ProjectId == projectId && pm.UserId == user.Id && pm.Status);
-
-            if (isAlreadyMember)
+            catch
             {
-                throw new InvalidOperationException("Thanh vien nay da ton tai trong du an.");
+                if (transaction != null) await transaction.RollbackAsync();
+                throw;
             }
-
-            var softDeletedMember = await _context.ProjectMembers
-                .FirstOrDefaultAsync(pm => pm.ProjectId == projectId && pm.UserId == user.Id && !pm.Status);
-
-            if (softDeletedMember != null)
+            finally
             {
-                softDeletedMember.Status = false;
-                softDeletedMember.ProjectRole = resolvedProjectRole;
-                softDeletedMember.JoinedAt = now;
-                softDeletedMember.LeftAt = null;
-            }
-            else
-            {
-                var newMember = new ProjectMember
-                {
-                    ProjectId = projectId,
-                    UserId = user.Id,
-                    ProjectRole = resolvedProjectRole,
-                    JoinedAt = now,
-                    Status = false
-                };
-                _context.ProjectMembers.Add(newMember);
+                if (transaction != null) await transaction.DisposeAsync();
             }
 
-            var activeInviteTokens = await _context.RefreshTokens
-                .Where(token => token.UserId == user.Id &&
-                                token.DeviceId == "Invite" &&
-                                !token.IsRevoked)
-                .ToListAsync();
-
-            foreach (var inviteToken in activeInviteTokens)
-            {
-                inviteToken.IsRevoked = true;
-            }
-
-            var rawInviteToken = GenerateInviteToken();
-            var inviteTokenHash = HashToken(rawInviteToken);
-            _context.RefreshTokens.Add(new RefreshToken
-            {
-                Id = Guid.NewGuid(),
-                UserId = user.Id,
-                Token = inviteTokenHash,
-                DeviceId = "Invite",
-                ExpiryTime = now.AddDays(7),
-                IsRevoked = false
-            });
-
-            await _context.SaveChangesAsync();
-
-            var acceptUrl = BuildInviteUrl(rawInviteToken);
             await _emailService.SendInviteEmailAsync(
                 normalizedEmail,
-                user.FullName,
+                invitedUser!.FullName,
                 inviterName,
                 "SprintA",
-                project.Name,
-                acceptUrl,
+                invitedProject!.Name,
+                BuildInviteUrl(rawInviteToken!),
                 request.InviteMessage);
+
+            return ProjectInvitationOutcome.InvitationCreated;
         }
 
-        public async Task RemoveMemberAsync(Guid projectId, Guid userId)
+        public async Task RemoveMemberAsync(
+            Guid projectId,
+            Guid userId,
+            Guid removedBy,
+            string? removalReason = null)
         {
-            using var transaction = await _context.Database.BeginTransactionAsync();
+            if (removedBy == Guid.Empty)
+            {
+                throw new UnauthorizedAccessException("Authenticated removal actor is required.");
+            }
+
+            IDbContextTransaction? transaction = null;
+            if (_context.Database.IsRelational())
+            {
+                transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+            }
+
             try
             {
                 var member = await _context.ProjectMembers
-                    .FirstOrDefaultAsync(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status);
-
+                    .SingleOrDefaultAsync(item => item.ProjectId == projectId && item.UserId == userId && item.Status);
                 if (member == null)
                 {
-                    throw new ArgumentException("Thanh vien khong ton tai hoac da roi du an.");
+                    throw new ArgumentException("Member does not exist or has already left the project.");
                 }
 
+                var now = DateTime.UtcNow;
+                var reason = string.IsNullOrWhiteSpace(removalReason)
+                    ? "Removed from project"
+                    : removalReason.Trim();
                 member.Status = false;
-                member.LeftAt = DateTime.UtcNow;
+                member.LeftAt = now;
 
-                var orphans = await _context.TaskAssignments
-                    .Include(ta => ta.WorkTask)
-                    .Where(ta => ta.UserId == userId && ta.WorkTask.ProjectId == projectId)
+                var activeAssignments = await _context.TaskAssignments
+                    .Include(assignment => assignment.WorkTask)
+                    .Where(assignment => assignment.UserId == userId &&
+                                         assignment.Status &&
+                                         assignment.WorkTask.ProjectId == projectId)
                     .ToListAsync();
 
-                if (orphans.Any())
+                foreach (var assignment in activeAssignments)
                 {
-                    _context.TaskAssignments.RemoveRange(orphans);
+                    assignment.Remove(removedBy, now, reason);
 
-                    var pm = await _context.ProjectMembers
-                        .FirstOrDefaultAsync(pm => pm.ProjectId == projectId && pm.ProjectRole == "PM" && pm.Status);
-
-                    if (pm != null)
+                    _context.AuditLogs.Add(new AuditLog
                     {
-                        var notification = new Notification
+                        Id = Guid.NewGuid(),
+                        WorkTaskId = assignment.WorkTaskId,
+                        UserId = removedBy,
+                        FieldChanged = "ASSIGNEE_REMOVED_FROM_PROJECT",
+                        OldValue = userId.ToString(),
+                        NewValue = reason,
+                        CreatedAt = now
+                    });
+                }
+
+                var legacyPrimaryAssignments = await _context.WorkTasks
+                    .Where(task => task.ProjectId == projectId && task.AssignedUserId == userId)
+                    .ToListAsync();
+                foreach (var task in legacyPrimaryAssignments)
+                {
+                    task.AssignedUserId = null;
+                    task.UpdatedAt = now;
+                }
+
+                var inviteDeviceId = BuildInviteDeviceId(projectId);
+                var pendingInviteTokens = await _context.RefreshTokens
+                    .Where(token => token.UserId == userId &&
+                                    token.DeviceId == inviteDeviceId &&
+                                    !token.IsRevoked)
+                    .ToListAsync();
+                foreach (var token in pendingInviteTokens)
+                {
+                    token.IsRevoked = true;
+                }
+
+                if (activeAssignments.Count > 0)
+                {
+                    var manager = await _context.ProjectMembers
+                        .FirstOrDefaultAsync(item => item.ProjectId == projectId &&
+                                                     item.UserId != userId &&
+                                                     item.Status &&
+                                                     (item.ProjectRole == "PM" || item.ProjectRole == "PROJECT_MANAGER"));
+                    if (manager != null)
+                    {
+                        _context.Notifications.Add(new Notification
                         {
                             Id = Guid.NewGuid(),
-                            UserId = pm.UserId,
-                            Title = "Task mo coi - thanh vien roi du an",
-                            Content = $"Mot thanh vien vua bi xoa khoi du an. Co {orphans.Count} task dang bi mo coi can duoc phan cong lai.",
-                            CreatedAt = DateTime.UtcNow,
+                            UserId = manager.UserId,
+                            Title = "Assignments require review",
+                            Content = $"A member left the project. {activeAssignments.Count} active assignment(s) were deactivated and retained in history.",
+                            CreatedAt = now,
                             IsRead = false
-                        };
-                        _context.Notifications.Add(notification);
+                        });
                     }
                 }
 
                 await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
+                if (transaction != null) await transaction.CommitAsync();
             }
             catch
             {
-                await transaction.RollbackAsync();
+                if (transaction != null) await transaction.RollbackAsync();
                 throw;
+            }
+            finally
+            {
+                if (transaction != null) await transaction.DisposeAsync();
             }
         }
 
         public async Task UpdateMemberRoleAsync(Guid projectId, Guid userId, string newRole)
         {
             var member = await _context.ProjectMembers
-                .FirstOrDefaultAsync(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status);
-
+                .FirstOrDefaultAsync(item => item.ProjectId == projectId && item.UserId == userId && item.Status);
             if (member == null)
             {
-                throw new ArgumentException("Thanh vien khong ton tai trong du an.");
+                throw new ArgumentException("Member does not exist in this project.");
             }
 
             member.ProjectRole = await ResolveProjectRoleAsync(newRole);
             await _context.SaveChangesAsync();
         }
 
-        public async Task<System.Collections.Generic.IEnumerable<ProjectMemberResponseDto>> GetProjectMembersAsync(Guid projectId)
+        public async Task<IEnumerable<ProjectMemberResponseDto>> GetProjectMembersAsync(Guid projectId)
         {
-            var members = await _context.ProjectMembers
+            return await _context.ProjectMembers
                 .AsNoTracking()
-                .Include(pm => pm.User)
-                .Where(pm => pm.ProjectId == projectId && pm.Status && !pm.User.IsDeleted)
-                .Select(pm => new ProjectMemberResponseDto
+                .Where(member => member.ProjectId == projectId && member.Status && !member.User.IsDeleted)
+                .Select(member => new ProjectMemberResponseDto
                 {
-                    UserId = pm.UserId,
-                    Email = pm.User.Email,
-                    FullName = pm.User.FullName,
-                    ProjectRole = pm.ProjectRole,
-                    JoinedAt = pm.JoinedAt
+                    UserId = member.UserId,
+                    Email = member.User.Email,
+                    FullName = member.User.FullName,
+                    ProjectRole = member.ProjectRole,
+                    JoinedAt = member.JoinedAt
                 })
                 .ToListAsync();
-
-            return members;
         }
 
         private async Task<string> ResolveProjectRoleAsync(string? requestedRole)
@@ -247,10 +356,7 @@ namespace TaskManagement.Infrastructure.Services
                 .ToListAsync();
 
             var exactMatch = availableRoles.FirstOrDefault(role => role.Normalized == normalizedRequestedRole);
-            if (exactMatch != null)
-            {
-                return exactMatch.Name;
-            }
+            if (exactMatch != null) return exactMatch.Name;
 
             var aliasMatch = normalizedRequestedRole switch
             {
@@ -259,13 +365,9 @@ namespace TaskManagement.Infrastructure.Services
                 "scrum_master" => availableRoles.FirstOrDefault(role => role.Normalized == "sm"),
                 _ => null
             };
+            if (aliasMatch != null) return aliasMatch.Name;
 
-            if (aliasMatch != null)
-            {
-                return aliasMatch.Name;
-            }
-
-            throw new ArgumentException($"Vai tro '{requestedRole}' khong hop le cho du an.");
+            throw new ArgumentException($"Project role '{requestedRole}' is invalid.");
         }
 
         private string BuildInviteUrl(string rawInviteToken)
@@ -273,6 +375,8 @@ namespace TaskManagement.Infrastructure.Services
             var frontendBaseUrl = _configuration["Frontend:BaseUrl"] ?? "http://localhost:5173";
             return $"{frontendBaseUrl.TrimEnd('/')}/accept-invite?token={Uri.EscapeDataString(rawInviteToken)}";
         }
+
+        private static string BuildInviteDeviceId(Guid projectId) => $"Invite:{projectId:N}";
 
         private static string GenerateInviteToken()
         {
@@ -283,22 +387,17 @@ namespace TaskManagement.Infrastructure.Services
                 .TrimEnd('=');
         }
 
-        private static string HashToken(string token)
-        {
-            var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(token));
-            return Convert.ToHexString(hashBytes);
-        }
+        private static string HashToken(string token) =>
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
         private static string BuildNameFromEmail(string email)
         {
-            var localPart = email.Split('@')[0];
-            var words = localPart
+            var words = email.Split('@')[0]
                 .Split(new[] { '.', '_', '-' }, StringSplitOptions.RemoveEmptyEntries)
                 .Where(word => !string.IsNullOrWhiteSpace(word))
                 .Select(word => word.Length == 1
                     ? char.ToUpperInvariant(word[0]).ToString()
                     : char.ToUpperInvariant(word[0]) + word[1..]);
-
             return string.Join(' ', words);
         }
     }

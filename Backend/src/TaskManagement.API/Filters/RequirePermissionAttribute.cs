@@ -17,14 +17,6 @@ namespace TaskManagement.API.Filters
 
     public class RequirePermissionFilter : IAsyncActionFilter
     {
-        private static readonly string[] SystemOverrideRoles =
-        {
-            "superadmin",
-            "admin",
-            "system admin",
-            "organization admin"
-        };
-
         private readonly string _permissionCode;
         private readonly ApplicationDbContext _dbContext;
 
@@ -44,29 +36,33 @@ namespace TaskManagement.API.Filters
                 return;
             }
 
-            // 2. Check System Override (Admin skips permission checks)
-            var claimRoles = context.HttpContext.User
-                .FindAll(ClaimTypes.Role)
-                .Select(claim => claim.Value?.Trim().ToLower())
-                .Where(role => !string.IsNullOrWhiteSpace(role))
-                .ToHashSet();
+            // System roles are permission inputs, never an implicit bypass.
+            var isActiveUser = await _dbContext.Users
+                .AsNoTracking()
+                .AnyAsync(user => user.Id == userId && user.IsActive && !user.IsDeleted);
 
-            if (claimRoles.Any(role => SystemOverrideRoles.Contains(role!)))
+            if (!isActiveUser)
             {
-                await next();
+                context.Result = new ObjectResult(new { statusCode = 403, message = "Forbidden." }) { StatusCode = 403 };
                 return;
             }
 
-            var hasSystemOverrideFromDatabase = await _dbContext.Users
-                .AsNoTracking()
-                .Where(user => user.Id == userId && user.IsActive && !user.IsDeleted)
-                .SelectMany(user => user.UserRoles.Select(ur => ur.Role.Name))
-                .AnyAsync(role => SystemOverrideRoles.Contains(role.Trim().ToLower()));
-
-            if (hasSystemOverrideFromDatabase)
+            // Workspace-scoped endpoints require an active membership in addition
+            // to the assigned role permission.
+            var workspaceIdString = context.RouteData.Values["workspaceId"]?.ToString();
+            if (Guid.TryParse(workspaceIdString, out var workspaceId))
             {
-                await next();
-                return;
+                var isActiveWorkspaceMember = await _dbContext.WorkspaceMembers
+                    .AsNoTracking()
+                    .AnyAsync(member => member.WorkspaceId == workspaceId &&
+                                        member.UserId == userId &&
+                                        member.IsActive);
+
+                if (!isActiveWorkspaceMember)
+                {
+                    context.Result = new ObjectResult(new { statusCode = 403, message = "Forbidden." }) { StatusCode = 403 };
+                    return;
+                }
             }
 
             // 3. Gather User's Role Names

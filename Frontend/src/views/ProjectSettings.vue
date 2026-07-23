@@ -1105,7 +1105,7 @@
               <button class="secondary-btn" type="button" @click="goToCyclesWorkspace">Open cycles workspace</button>
             </div>
 
-            <div class="inline-form cycle-grid">
+            <div v-if="canManageSprint" class="inline-form cycle-grid">
               <label>
                 <span>Name</span>
                 <input v-model="newCycle.name" type="text" placeholder="Cycle 12" />
@@ -1151,13 +1151,13 @@
                   </div>
                 </div>
                 <div class="row-actions">
-                  <button class="secondary-btn" type="button" @click="saveCycle(sprint)">Save</button>
+                  <button v-if="canManageSprint" class="secondary-btn" type="button" @click="saveCycle(sprint)">Save</button>
                   <button class="secondary-btn" type="button" @click="toggleFavoriteCycle(sprint)">
                     {{ sprint.isFavorite ? 'Unfavorite' : 'Favorite' }}
                   </button>
-                  <button v-if="sprint.state !== 'Active'" class="secondary-btn" type="button" @click="startCycle(sprint)">Start</button>
-                  <button v-if="sprint.state === 'Active'" class="secondary-btn" type="button" @click="closeCycleToBacklog(sprint)">Close to backlog</button>
-                  <button class="secondary-btn" type="button" @click="openCycleCarryOver(sprint)">Carry-over</button>
+                  <button v-if="canManageSprint && sprint.state !== 'Active'" class="secondary-btn" type="button" @click="startCycle(sprint)">Start</button>
+                  <button v-if="canManageSprint && sprint.state === 'Active'" class="secondary-btn" type="button" @click="closeCycleToBacklog(sprint)">Close to backlog</button>
+                  <button v-if="canManageSprint" class="secondary-btn" type="button" @click="openCycleCarryOver(sprint)">Carry-over</button>
                 </div>
               </div>
             </div>
@@ -1396,6 +1396,8 @@ import { signalRService } from '@/api/signalrService'
 
 import { getStoredUserSession } from '@/utils/authSession'
 import { getDefaultPermissionMatrix, normalizeRole } from '@/utils/permissionGuard'
+import { hasProjectWritePermission } from '@/utils/permissions'
+import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
 
 const route = useRoute()
 const router = useRouter()
@@ -1558,6 +1560,10 @@ const savingMatrix = ref(false)
 const currentUserProjectRole = computed(() => {
   const me = members.value.find(m => m.userId === currentUser.value?.id)
   return me?.projectRole || 'Member'
+})
+
+const canManageSprint = computed(() => {
+  return hasProjectWritePermission(currentUserProjectRole.value)
 })
 
 const canEditPermissions = computed(() => {
@@ -2051,6 +2057,7 @@ const loadIntegrations = async () => {
     integrations.value = (response.data?.data || [])
       .map(normalizeIntegration)
       .filter(integration => integration.provider === 'github')
+      .map(integration => ({ ...integration, secret: '' }))
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Could not load project integrations')
   }
@@ -2620,6 +2627,7 @@ const restoreModule = async (module) => {
 }
 
 const createCycle = async () => {
+  if (!canManageSprint.value) return
   if (!newCycle.value.name.trim() || !newCycle.value.startDate || !newCycle.value.endDate) {
     ElMessage.warning('Cycle name, start date, and end date are required')
     return
@@ -2653,6 +2661,7 @@ const createCycle = async () => {
 }
 
 const saveCycle = async (sprint) => {
+  if (!canManageSprint.value) return
   if (isPastDate(sprint.startDate) || isPastDate(sprint.endDate)) {
     ElMessage.warning('Past dates are not allowed for cycles')
     return
@@ -2676,6 +2685,7 @@ const saveCycle = async (sprint) => {
 }
 
 const startCycle = async (sprint) => {
+  if (!canManageSprint.value) return
   try {
     await axiosClient.post(`/projects/${projectId}/sprints/${sprint.id}/start`)
     ElMessage.success('Cycle started')
@@ -2687,6 +2697,7 @@ const startCycle = async (sprint) => {
 }
 
 const closeCycleToBacklog = async (sprint) => {
+  if (!canManageSprint.value) return
   try {
     await ElMessageBox.confirm(
       `Close "${sprint.name}" and move unfinished work items to backlog?`,
@@ -2747,6 +2758,10 @@ const saveIntegrations = async () => {
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Could not update project integrations')
   } finally {
+    integrations.value.forEach(integration => {
+      integration.secret = ''
+    })
+    clearLegacyGitHubCredentialStorage()
     savingIntegrations.value = false
   }
 }
@@ -2760,11 +2775,12 @@ const analyzeIntegration = async (integration) => {
 
   analyzingIntegration.value = integration.provider
   try {
-    const response = await axiosClient.post('/ai/repo-analysis', {
-      repoUrl,
-      gitHubToken: integration.secret?.trim() || null,
-      focus: `Project ${project.value.name || projectId} planning, backlog, risks, and task breakdown`
-    })
+    const response = await runWithEphemeralGitHubToken(integration, gitHubToken =>
+      axiosClient.post('/ai/repo-analysis', {
+        repoUrl,
+        gitHubToken,
+        focus: `Project ${project.value.name || projectId} planning, backlog, risks, and task breakdown`
+      }))
 
     integrationAnalysis.value = response.data?.data || null
     stashAiPlannerPayload({
@@ -2776,6 +2792,8 @@ const analyzeIntegration = async (integration) => {
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Could not analyze the connected repository')
   } finally {
+    integration.secret = ''
+    clearLegacyGitHubCredentialStorage()
     analyzingIntegration.value = ''
   }
 }
@@ -2967,6 +2985,7 @@ let unsubscribeAdminRealtime = null
 let projectRealtimeHandler = null
 
 onMounted(async () => {
+  clearLegacyGitHubCredentialStorage()
   await loadProjectSettings()
   await loadPermissionMatrix()
   await signalRService.startConnection(`${projectId}`)

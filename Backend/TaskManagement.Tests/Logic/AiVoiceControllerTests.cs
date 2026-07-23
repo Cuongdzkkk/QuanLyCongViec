@@ -7,6 +7,7 @@ using Moq;
 using TaskManagement.API.Controllers;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.Infrastructure.Services;
 
 namespace TaskManagement.Tests.Logic
 {
@@ -91,7 +92,8 @@ namespace TaskManagement.Tests.Logic
                 Mock.Of<IWorkTaskService>(),
                 Mock.Of<IProjectService>(),
                 Mock.Of<IGoalService>(),
-                _context);
+                _context,
+                new ResourceAuthorizationService(_context));
             controller.ControllerContext = new ControllerContext
             {
                 HttpContext = new DefaultHttpContext

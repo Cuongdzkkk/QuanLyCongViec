@@ -1,3 +1,5 @@
+import { clearLegacyGitHubCredentialStorage } from '@/utils/githubCredentials'
+
 const ACCESS_TOKEN_KEY = 'accessToken'
 const USER_KEY = 'user'
 
@@ -44,6 +46,7 @@ export const saveAuthSession = ({ accessToken, fullName, email, systemRoles, id,
 export const clearAuthSession = () => {
   if (typeof window === 'undefined') return
 
+  clearLegacyGitHubCredentialStorage()
   window.sessionStorage.removeItem(ACCESS_TOKEN_KEY)
   window.sessionStorage.removeItem(USER_KEY)
   window.localStorage.removeItem(ACCESS_TOKEN_KEY)

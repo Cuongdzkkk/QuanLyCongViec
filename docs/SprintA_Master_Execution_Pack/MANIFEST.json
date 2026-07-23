@@ -1,0 +1,114 @@
+{
+  "generated_at": "2026-07-17",
+  "file_count": 18,
+  "files": [
+    {
+      "name": "README.md",
+      "bytes": 1761,
+      "lines": 53,
+      "sha256": "50462d3c3743fd4aa19babc6f68b7fc43b3acbfada90ad03f79b322548e9d1d6"
+    },
+    {
+      "name": "SPRINTA_ADVANCED_FEATURE_ROADMAP.md",
+      "bytes": 6407,
+      "lines": 413,
+      "sha256": "d096f6b2c1c3a672ea40bfb64950da4905cb3e612e6edb5eba29eff8648417a7"
+    },
+    {
+      "name": "SPRINTA_AI_CREDITS_BILLING_SPEC.md",
+      "bytes": 10237,
+      "lines": 517,
+      "sha256": "34524c5c95b40ba00c4a8c4223e4a782cd9035631836982eeaaadb5d6d206052"
+    },
+    {
+      "name": "SPRINTA_AI_SPEC.md",
+      "bytes": 12629,
+      "lines": 710,
+      "sha256": "bb4b5a2e163fa4ee590f89d1f92b3eee5a52bd2385e4861aab09e605210f4156"
+    },
+    {
+      "name": "SPRINTA_CORE_STABILIZATION_PLAN.md",
+      "bytes": 7968,
+      "lines": 445,
+      "sha256": "b91d3411d3cdfbba47de62455f711ba94252b5ab4a3f86b8d54bb6bf5b58cdb2"
+    },
+    {
+      "name": "SPRINTA_CURRENT_REPO_AUDIT.md",
+      "bytes": 4575,
+      "lines": 190,
+      "sha256": "d005971a9709acba4a00337823138d28bada2e12765d22834dce369a51a252f8"
+    },
+    {
+      "name": "SPRINTA_EXECUTION_PROMPTS.md",
+      "bytes": 11133,
+      "lines": 506,
+      "sha256": "577f9de88904f48c28e77f00c804f6691e3e98f7cf72ad70e18625dea47efa8c"
+    },
+    {
+      "name": "SPRINTA_FEATURE_STATUS.md",
+      "bytes": 9677,
+      "lines": 312,
+      "sha256": "9b967a35138e6bc8b00add7736a56b40691b2f564a00b6f3c413f8a1340a7bd0"
+    },
+    {
+      "name": "SPRINTA_INTEGRATION_GUIDE.md",
+      "bytes": 10066,
+      "lines": 552,
+      "sha256": "146abb9074b7aff0657725884d9f21238f872969249dda102e0a7e8a57da7622"
+    },
+    {
+      "name": "SPRINTA_MASTER_BACKLOG.md",
+      "bytes": 4999,
+      "lines": 114,
+      "sha256": "7b0851925c01b2871ae9c43440c16482f070998718a467dbeddba1f9fb7a6369"
+    },
+    {
+      "name": "SPRINTA_MASTER_CONTEXT.md",
+      "bytes": 13557,
+      "lines": 480,
+      "sha256": "4610f2fde82687c4170f3225f10caa3bb954eded18cf1497650ea3899e0fea7e"
+    },
+    {
+      "name": "SPRINTA_OPEN_SOURCE_USAGE_GUIDE.md",
+      "bytes": 7722,
+      "lines": 282,
+      "sha256": "880ffa3c7ac9a234e10ac058ad14c1402a81174054d8eddc9f3ed82c21c3cca8"
+    },
+    {
+      "name": "SPRINTA_P0_FIX_PLAN.md",
+      "bytes": 5412,
+      "lines": 231,
+      "sha256": "3fefceaebd314ac6caf1fc99ea9e1004ae595e4534453dc3ddfb75069372dc5b"
+    },
+    {
+      "name": "SPRINTA_PROJECT_MEMORY.md",
+      "bytes": 13396,
+      "lines": 412,
+      "sha256": "edba211955a6cd457a51e0b0f23534bba1e159829b3774cb1501166e352bc07b"
+    },
+    {
+      "name": "SPRINTA_RELEASE_ACCEPTANCE_CHECKLIST.md",
+      "bytes": 3049,
+      "lines": 138,
+      "sha256": "621e198a7e575ec95dbeafc494161538ae944d636156d07075631a002fdffd3e"
+    },
+    {
+      "name": "SPRINTA_ROADMAP.md",
+      "bytes": 12654,
+      "lines": 616,
+      "sha256": "d39fd8ad63abb646c3f994a80e67ef3fa8cfab2fa8c73e2bbdfdb7a5b5c3f8d3"
+    },
+    {
+      "name": "SPRINTA_TEST_TRUTH_MATRIX.md",
+      "bytes": 21076,
+      "lines": 279,
+      "sha256": "73732c0932a35ecdadd103db68b1df9bc925edd18dbe9ec9f8e39d66e00e41f1"
+    },
+    {
+      "name": "SPRINTA_UI_UX_GUIDELINES.md",
+      "bytes": 9861,
+      "lines": 490,
+      "sha256": "cbdbe803ac816d1971ad768f72e1d14a7a504c8f24ed34932db1d28d51f61cb7"
+    }
+  ]
+}

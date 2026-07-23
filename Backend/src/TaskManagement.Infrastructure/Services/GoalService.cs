@@ -128,45 +128,29 @@ namespace TaskManagement.Infrastructure.Services
 
         private async Task<Guid> ResolveWorkspaceIdAsync(Guid requestedWorkspaceId, Guid userId)
         {
-            if (requestedWorkspaceId != Guid.Empty &&
-                await _context.Workspaces.AnyAsync(w => w.Id == requestedWorkspaceId && !w.IsDeleted))
+            if (userId == Guid.Empty)
             {
-                return requestedWorkspaceId;
+                throw new UnauthorizedAccessException("Authenticated user context is required.");
             }
 
-            var membership = await _context.WorkspaceMembers
+            if (requestedWorkspaceId == Guid.Empty)
+            {
+                throw new ArgumentException("An explicit workspace context is required.");
+            }
+
+            var hasActiveMembership = await _context.WorkspaceMembers
                 .AsNoTracking()
-                .Where(wm => wm.UserId == userId && wm.IsActive)
-                .OrderBy(wm => wm.JoinedAt)
-                .FirstOrDefaultAsync();
+                .AnyAsync(member => member.WorkspaceId == requestedWorkspaceId &&
+                                    member.UserId == userId &&
+                                    member.IsActive &&
+                                    !member.Workspace.IsDeleted);
 
-            if (membership != null)
+            if (!hasActiveMembership)
             {
-                return membership.WorkspaceId;
+                throw new UnauthorizedAccessException("Active membership in the selected workspace is required.");
             }
 
-            var workspace = new Workspace
-            {
-                Id = Guid.NewGuid(),
-                Slug = "workspace-" + Guid.NewGuid().ToString("N")[..8],
-                Name = "Default Workspace",
-                OwnerId = userId,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-
-            _context.Workspaces.Add(workspace);
-            _context.WorkspaceMembers.Add(new WorkspaceMember
-            {
-                WorkspaceId = workspace.Id,
-                UserId = userId,
-                WorkspaceRole = "OWNER",
-                JoinedAt = DateTime.UtcNow,
-                IsActive = true
-            });
-            await _context.SaveChangesAsync();
-
-            return workspace.Id;
+            return requestedWorkspaceId;
         }
 
         private async Task<object> MapGoalAsync(Goal goal, Guid? userId)

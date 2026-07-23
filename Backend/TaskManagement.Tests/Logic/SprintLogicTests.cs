@@ -197,6 +197,7 @@ namespace TaskManagement.Tests.Logic
         {
             // Arrange
             var projectId = await SeedProjectAsync();
+            var workspaceId = (await _context.Projects.FindAsync(projectId))!.WorkspaceId;
             var sprintId = await SeedSprintAsync(projectId, isActive: true);
             var actorUserId = Guid.NewGuid();
 
@@ -213,6 +214,7 @@ namespace TaskManagement.Tests.Logic
             {
                 Id = taskId,
                 ProjectId = projectId,
+                WorkspaceId = workspaceId,
                 SprintId = sprintId,
                 TaskStatusId = inProgressStatus.Id,
                 Title = "Task Còn Dang Dở",
@@ -279,6 +281,7 @@ namespace TaskManagement.Tests.Logic
         {
             // Arrange
             var projectId = await SeedProjectAsync();
+            var workspaceId = (await _context.Projects.FindAsync(projectId))!.WorkspaceId;
             var sprint1Id = await SeedSprintAsync(projectId, isActive: true, name: "Sprint 1");
             var sprint2Id = await SeedSprintAsync(projectId, isActive: false, name: "Sprint 2");
             var actorUserId = Guid.NewGuid();
@@ -292,7 +295,7 @@ namespace TaskManagement.Tests.Logic
             var taskId = Guid.NewGuid();
             _context.WorkTasks.Add(new WorkTask
             {
-                Id = taskId, ProjectId = projectId, SprintId = sprint1Id,
+                Id = taskId, ProjectId = projectId, WorkspaceId = workspaceId, SprintId = sprint1Id,
                 TaskStatusId = inProgressStatus.Id, Title = "Task Cần Chuyển",
                 CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
                 SequenceId = "TC-002", ReporterId = actorUserId

@@ -130,6 +130,19 @@ namespace TaskManagement.Application.Interfaces
         public Dictionary<string, object?> Payload { get; set; } = new();
     }
 
+    public class AiActionStateDto
+    {
+        public Guid ActionId { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public string State { get; set; } = string.Empty;
+        public Guid WorkspaceId { get; set; }
+        public Guid? ProjectId { get; set; }
+        public DateTime ExpiresAt { get; set; }
+        public object? Preview { get; set; }
+        public object? Result { get; set; }
+        public string? ErrorCode { get; set; }
+    }
+
     public class AiExecuteActionResponseDto
     {
         public string Type { get; set; } = string.Empty;

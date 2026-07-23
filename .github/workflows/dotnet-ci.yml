@@ -54,5 +54,5 @@ jobs:
 
     # Bước 6: Test
     - name: Chạy Unit Tests
-      run: dotnet test --no-build --verbosity normal --configuration Release
+      run: dotnet test --no-build --verbosity normal --configuration Release --filter "Database!=SqlServer"
       working-directory: ./Backend

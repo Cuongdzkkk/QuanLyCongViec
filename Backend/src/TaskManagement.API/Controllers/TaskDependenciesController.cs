@@ -2,49 +2,56 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.API.Filters;
+using TaskManagement.Application.Common;
+using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
-using TaskManagement.Domain.Entities;
 
 namespace TaskManagement.API.Controllers
 {
     [ApiController]
     [Route("api/projects/{projectId}/WorkTasks/{taskId}/dependencies")]
     [Authorize]
-    [ProjectAuthorize("")]
+    [ProjectAuthorize(ResourcePermissionCodes.ProjectRead)]
     public class TaskDependenciesController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly ITaskDependencyService _dependencyService;
 
-        public TaskDependenciesController(ApplicationDbContext context)
+        public TaskDependenciesController(
+            ApplicationDbContext context,
+            ITaskDependencyService dependencyService)
         {
             _context = context;
+            _dependencyService = dependencyService;
         }
 
         [HttpGet]
         public async Task<IActionResult> GetDependencies(Guid projectId, Guid taskId)
         {
-            var taskExists = await _context.WorkTasks.AnyAsync(wt => wt.Id == taskId && wt.ProjectId == projectId && !wt.IsDeleted);
+            var taskExists = await _context.WorkTasks
+                .AnyAsync(task => task.Id == taskId && task.ProjectId == projectId && !task.IsDeleted);
             if (!taskExists)
             {
-                return NotFound(new { statusCode = 404, message = "Cong viec khong ton tai trong du an nay." });
+                return NotFound(new { statusCode = 404, message = "Task does not exist in this project." });
             }
 
             var relations = await _context.TaskDependencies
-                .Include(td => td.PredecessorTask)
-                .ThenInclude(pt => pt.TaskStatus)
-                .Include(td => td.SuccessorTask)
-                .ThenInclude(st => st.TaskStatus)
-                .Where(td => td.PredecessorTaskId == taskId || td.SuccessorTaskId == taskId)
-                .Select(td => new {
-                    td.PredecessorTaskId,
-                    td.SuccessorTaskId,
-                    td.DependencyType,
-                    PredecessorTitle = td.PredecessorTask.Title,
-                    PredecessorSequenceId = td.PredecessorTask.SequenceId,
-                    PredecessorStatus = td.PredecessorTask.TaskStatus.Name,
-                    SuccessorTitle = td.SuccessorTask.Title,
-                    SuccessorSequenceId = td.SuccessorTask.SequenceId,
-                    SuccessorStatus = td.SuccessorTask.TaskStatus.Name
+                .Include(edge => edge.PredecessorTask)
+                    .ThenInclude(task => task.TaskStatus)
+                .Include(edge => edge.SuccessorTask)
+                    .ThenInclude(task => task.TaskStatus)
+                .Where(edge => edge.PredecessorTaskId == taskId || edge.SuccessorTaskId == taskId)
+                .Select(edge => new
+                {
+                    edge.PredecessorTaskId,
+                    edge.SuccessorTaskId,
+                    edge.DependencyType,
+                    PredecessorTitle = edge.PredecessorTask.Title,
+                    PredecessorSequenceId = edge.PredecessorTask.SequenceId,
+                    PredecessorStatus = edge.PredecessorTask.TaskStatus.Name,
+                    SuccessorTitle = edge.SuccessorTask.Title,
+                    SuccessorSequenceId = edge.SuccessorTask.SequenceId,
+                    SuccessorStatus = edge.SuccessorTask.TaskStatus.Name
                 })
                 .ToListAsync();
 
@@ -52,104 +59,74 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> CreateDependency(Guid projectId, Guid taskId, [FromBody] CreateDependencyRequest request)
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectWrite)]
+        public async Task<IActionResult> CreateDependency(
+            Guid projectId,
+            Guid taskId,
+            [FromBody] CreateDependencyRequest request)
         {
-            var taskExists = await _context.WorkTasks.AnyAsync(wt => wt.Id == taskId && wt.ProjectId == projectId && !wt.IsDeleted);
-            var relatedTaskExists = await _context.WorkTasks.AnyAsync(wt => wt.Id == request.RelatedTaskId && wt.ProjectId == projectId && !wt.IsDeleted);
-
-            if (!taskExists || !relatedTaskExists)
-                return BadRequest(new { statusCode = 400, message = "Công việc không tồn tại." });
-
-            if (taskId == request.RelatedTaskId)
-                return BadRequest(new { statusCode = 400, message = "Không thể tự phụ thuộc vào chính mình." });
-
-            Guid predecessorId = taskId;
-            Guid successorId = request.RelatedTaskId;
-            int depType = 1; // 1 = Blocks (Predecessor blocks Successor)
-
-            if (request.RelationType == "blocked_by")
+            try
             {
-                predecessorId = request.RelatedTaskId;
-                successorId = taskId;
-                depType = 1;
+                var mutation = await _dependencyService.AddOrUpdateAsync(
+                    projectId,
+                    taskId,
+                    request.RelatedTaskId,
+                    request.RelationType,
+                    HttpContext.RequestAborted);
+
+                var statusCode = mutation == TaskDependencyMutation.Created ? 201 : 200;
+                return Ok(new
+                {
+                    statusCode,
+                    message = mutation switch
+                    {
+                        TaskDependencyMutation.Created => "Dependency created.",
+                        TaskDependencyMutation.Updated => "Dependency updated.",
+                        _ => "Dependency already exists."
+                    }
+                });
             }
-            else if (request.RelationType == "blocks")
+            catch (ArgumentException ex)
             {
-                predecessorId = taskId;
-                successorId = request.RelatedTaskId;
-                depType = 1;
+                return Problem(statusCode: 400, title: "Invalid dependency", detail: ex.Message);
             }
-            else if (request.RelationType == "relates_to")
+            catch (InvalidOperationException ex)
             {
-                depType = 2; // 2 = Relates To
+                return Problem(statusCode: 409, title: "Dependency conflict", detail: ex.Message);
             }
-            else if (request.RelationType == "duplicate")
-            {
-                depType = 3; // 3 = Duplicate
-            }
-
-            var existing = await _context.TaskDependencies
-                .FirstOrDefaultAsync(td => td.PredecessorTaskId == predecessorId && td.SuccessorTaskId == successorId);
-
-            if (existing != null)
-            {
-                existing.DependencyType = depType;
-                await _context.SaveChangesAsync();
-                return Ok(new { statusCode = 200, message = "Cập nhật quan hệ thành công." });
-            }
-
-            // Dò tìm vòng lặp phụ thuộc (circular dependency chặn đơn giản)
-            if (depType == 1)
-            {
-                var reverse = await _context.TaskDependencies
-                    .FirstOrDefaultAsync(td => td.PredecessorTaskId == successorId && td.SuccessorTaskId == predecessorId && td.DependencyType == 1);
-                if (reverse != null)
-                    return BadRequest(new { statusCode = 400, message = "Gặp vòng lặp chặn (Circular dependency)." });
-            }
-
-            var dependency = new TaskDependency
-            {
-                PredecessorTaskId = predecessorId,
-                SuccessorTaskId = successorId,
-                DependencyType = depType
-            };
-
-            _context.TaskDependencies.Add(dependency);
-            await _context.SaveChangesAsync();
-
-            return Ok(new { statusCode = 201, message = "Thêm quan hệ thành công." });
         }
 
         [HttpDelete("{relatedTaskId}")]
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectWrite)]
         public async Task<IActionResult> RemoveDependency(Guid projectId, Guid taskId, Guid relatedTaskId)
         {
-            var taskExists = await _context.WorkTasks.AnyAsync(wt => wt.Id == taskId && wt.ProjectId == projectId && !wt.IsDeleted);
-            var relatedTaskExists = await _context.WorkTasks.AnyAsync(wt => wt.Id == relatedTaskId && wt.ProjectId == projectId && !wt.IsDeleted);
-            if (!taskExists || !relatedTaskExists)
+            var taskCount = await _context.WorkTasks.CountAsync(task =>
+                (task.Id == taskId || task.Id == relatedTaskId) &&
+                task.ProjectId == projectId &&
+                !task.IsDeleted);
+            if (taskCount != 2)
             {
-                return NotFound(new { statusCode = 404, message = "Cong viec khong ton tai trong du an nay." });
+                return NotFound(new { statusCode = 404, message = "Task does not exist in this project." });
             }
 
-            var dep = await _context.TaskDependencies
-                .FirstOrDefaultAsync(td => 
-                    (td.PredecessorTaskId == taskId && td.SuccessorTaskId == relatedTaskId) ||
-                    (td.SuccessorTaskId == taskId && td.PredecessorTaskId == relatedTaskId)
-                );
+            var dependency = await _context.TaskDependencies.FirstOrDefaultAsync(edge =>
+                (edge.PredecessorTaskId == taskId && edge.SuccessorTaskId == relatedTaskId) ||
+                (edge.SuccessorTaskId == taskId && edge.PredecessorTaskId == relatedTaskId));
 
-            if (dep == null)
-                return NotFound(new { statusCode = 404, message = "Không tìm thấy quan hệ." });
+            if (dependency == null)
+            {
+                return NotFound(new { statusCode = 404, message = "Dependency was not found." });
+            }
 
-            _context.TaskDependencies.Remove(dep);
+            _context.TaskDependencies.Remove(dependency);
             await _context.SaveChangesAsync();
-
-            return Ok(new { statusCode = 200, message = "Xóa quan hệ thành công." });
+            return Ok(new { statusCode = 200, message = "Dependency removed." });
         }
     }
 
     public class CreateDependencyRequest
     {
         public Guid RelatedTaskId { get; set; }
-        /// <summary> "blocks", "blocked_by", "relates_to", "duplicate" </summary>
         public string RelationType { get; set; } = "relates_to";
     }
 }

@@ -19,6 +19,7 @@
   import { useRouter, useRoute } from 'vue-router'
   import axiosClient from '../api/axiosClient'
   import { saveAuthSession } from '@/utils/authSession'
+  import { clearLegacyGitHubCredentialStorage } from '@/utils/githubCredentials'
   import { Loading, CircleCloseFilled } from '@element-plus/icons-vue'
   import { ElMessage } from 'element-plus'
 
@@ -28,6 +29,7 @@ const isLoading = ref(true)
 const errorMsg = ref('')
 
 onMounted(async () => {
+  clearLegacyGitHubCredentialStorage()
   const code = route.query.code
 
   if (!code) {
@@ -44,7 +46,6 @@ onMounted(async () => {
     ElMessage.success('Đăng nhập bằng GitHub thành công!')
     router.push('/site-selection')
   } catch (error) {
-    console.error('GitHub login error:', error)
     errorMsg.value = error.response?.data?.message || 'Không thể đăng nhập bằng GitHub.'
   } finally {
     isLoading.value = false

@@ -4,7 +4,7 @@ echo KHOI TAO LAI TOAN BO DATABASE (FORCE RESET)
 echo =======================================
 echo.
 echo 1. Xoa Database hien tai bang SQLCMD (ngat toan bo ket noi)...
-sqlcmd -S "DESKTOP-V2KP2ES" -Q "IF DB_ID('TaskManagementDB') IS NOT NULL BEGIN ALTER DATABASE [TaskManagementDB] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [TaskManagementDB]; END" -E -C
+sqlcmd -S "KHOI\SQLEXPRESS" -Q "IF DB_ID('TaskManagementDB') IS NOT NULL BEGIN ALTER DATABASE [TaskManagementDB] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [TaskManagementDB]; END" -E -C
 
 echo.
 echo 2. Xoa cac file Migrations cu trong code...

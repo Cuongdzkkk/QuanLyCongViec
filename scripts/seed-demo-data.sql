@@ -50,6 +50,40 @@ IF NOT EXISTS (SELECT 1 FROM Roles WHERE Name = 'QA')
 IF NOT EXISTS (SELECT 1 FROM Roles WHERE Name = 'Accountant')
     INSERT INTO Roles (Id, Name, [Description]) VALUES (@RoleAccountant, 'Accountant', 'Accounting access');
 
+DECLARE @AdminConfigPermissions TABLE (Module NVARCHAR(128), Code NVARCHAR(256), Description NVARCHAR(512));
+INSERT INTO @AdminConfigPermissions (Module, Code, Description) VALUES
+('admin.roles', 'admin.roles.can_view', 'View admin roles'),
+('admin.roles', 'admin.roles.create', 'Create admin roles'),
+('admin.roles', 'admin.roles.edit', 'Edit admin roles'),
+('admin.roles', 'admin.roles.delete', 'Delete admin roles'),
+('admin.roles', 'admin.roles.manage_permissions', 'Manage permissions admin roles'),
+('teams.dashboard', 'teams.dashboard.can_view', 'View teams dashboard'),
+('teams.dashboard', 'teams.dashboard.create', 'Create teams dashboard'),
+('teams.dashboard', 'teams.dashboard.edit', 'Edit teams dashboard'),
+('teams.dashboard', 'teams.dashboard.delete', 'Delete teams dashboard');
+
+INSERT INTO Permissions (Id, Module, Code, Description)
+SELECT NEWID(), seed.Module, seed.Code, seed.Description
+FROM @AdminConfigPermissions seed
+WHERE NOT EXISTS (SELECT 1 FROM Permissions permission WHERE permission.Code = seed.Code);
+
+UPDATE permission
+SET Module = seed.Module,
+    Description = seed.Description
+FROM Permissions permission
+JOIN @AdminConfigPermissions seed ON seed.Code = permission.Code;
+
+INSERT INTO RolePermissions (RoleId, PermissionId)
+SELECT role.Id, permission.Id
+FROM Roles role
+JOIN Permissions permission ON permission.Code IN (SELECT Code FROM @AdminConfigPermissions)
+WHERE role.Name IN ('Admin', 'SuperAdmin', 'System Admin', 'Organization Admin', 'AccessAdmin', 'Access Admin')
+  AND NOT EXISTS (
+      SELECT 1
+      FROM RolePermissions existing
+      WHERE existing.RoleId = role.Id AND existing.PermissionId = permission.Id
+  );
+
 -- BCrypt hash for password "Demo@123" (cost=11)
 DECLARE @PwdHash NVARCHAR(200) = '$2a$11$ycr0ueY4j/IfTPLoc43RbeokkEUNw0hXP6D3hOxZH5xuM2v7BzvTa';
 DECLARE @Now DATETIME2 = GETUTCDATE();

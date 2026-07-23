@@ -14,6 +14,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using TaskManagement.API.Hubs;
 using TaskManagement.API.Filters;
+using TaskManagement.API.Security;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 
@@ -170,7 +171,7 @@ namespace TaskManagement.API.Controllers
                 {
                     a.Id,
                     a.FileName,
-                    a.FileUrl,
+                    FileUrl = $"/api/private-attachments/comments/{a.Id}",
                     a.ContentType,
                     a.FileSize,
                     a.CreatedAt
@@ -267,24 +268,22 @@ namespace TaskManagement.API.Controllers
 
                 foreach (var file in files)
                 {
-                    if (file.Length > 10 * 1024 * 1024) continue;
-                    var uniqueName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
-                    var filePath = Path.Combine(uploadsDir, uniqueName);
-
-                    using (var stream = new FileStream(filePath, FileMode.Create))
-                    {
-                        await file.CopyToAsync(stream);
-                    }
+                    ValidatedUpload validated;
+                    try { validated = await UploadSecurity.ReadPrivateFileAsync(file); }
+                    catch (InvalidDataException exception) { return BadRequest(new { message = exception.Message }); }
+                    var uniqueName = $"{Guid.NewGuid():N}{validated.Extension}";
+                    var filePath = UploadSecurity.ResolveUnderRoot(uploadsDir, uniqueName);
+                    await System.IO.File.WriteAllBytesAsync(filePath, validated.Bytes);
 
                     _context.CommentAttachments.Add(new CommentAttachment
                     {
                         Id = Guid.NewGuid(),
                         CommentId = comment.Id,
                         UploadedByUserId = userId.Value,
-                        FileName = file.FileName,
+                        FileName = validated.OriginalFileName,
                         FileUrl = $"/uploads/comments/{uniqueName}",
-                        ContentType = file.ContentType,
-                        FileSize = file.Length,
+                        ContentType = validated.MimeType,
+                        FileSize = validated.Bytes.LongLength,
                         CreatedAt = DateTime.UtcNow
                     });
                 }
@@ -378,28 +377,22 @@ namespace TaskManagement.API.Controllers
 
                 foreach (var file in files)
                 {
-                    if (file.Length > 10 * 1024 * 1024)
-                    {
-                        continue;
-                    }
-
-                    var uniqueName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
-                    var filePath = Path.Combine(uploadsDir, uniqueName);
-
-                    using (var stream = new FileStream(filePath, FileMode.Create))
-                    {
-                        await file.CopyToAsync(stream);
-                    }
+                    ValidatedUpload validated;
+                    try { validated = await UploadSecurity.ReadPrivateFileAsync(file); }
+                    catch (InvalidDataException exception) { return BadRequest(new { message = exception.Message }); }
+                    var uniqueName = $"{Guid.NewGuid():N}{validated.Extension}";
+                    var filePath = UploadSecurity.ResolveUnderRoot(uploadsDir, uniqueName);
+                    await System.IO.File.WriteAllBytesAsync(filePath, validated.Bytes);
 
                     _context.CommentAttachments.Add(new CommentAttachment
                     {
                         Id = Guid.NewGuid(),
                         CommentId = comment.Id,
                         UploadedByUserId = userId.Value,
-                        FileName = file.FileName,
+                        FileName = validated.OriginalFileName,
                         FileUrl = $"/uploads/comments/{uniqueName}",
-                        ContentType = file.ContentType,
-                        FileSize = file.Length,
+                        ContentType = validated.MimeType,
+                        FileSize = validated.Bytes.LongLength,
                         CreatedAt = DateTime.UtcNow
                     });
                 }
@@ -562,8 +555,8 @@ namespace TaskManagement.API.Controllers
             _context.CommentAttachments.Remove(attachment);
             await _context.SaveChangesAsync();
 
-            var relativePath = (attachment.FileUrl ?? string.Empty).TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
-            var absolutePath = Path.Combine(_env.ContentRootPath, relativePath);
+            var attachmentRoot = Path.Combine(_env.ContentRootPath, "uploads", "comments");
+            var absolutePath = UploadSecurity.ResolveUnderRoot(attachmentRoot, Path.GetFileName(attachment.FileUrl));
             if (System.IO.File.Exists(absolutePath))
             {
                 System.IO.File.Delete(absolutePath);
@@ -592,37 +585,10 @@ namespace TaskManagement.API.Controllers
         [HttpPost("upload")]
         public async Task<IActionResult> Upload([FromForm] IFormFile file, [FromForm] string? folder)
         {
-            var userId = GetUserId();
-            if (userId == null) return Unauthorized();
-            if (file == null || file.Length == 0) return BadRequest(new { message = "No file." });
-            if (file.Length > 10 * 1024 * 1024) return BadRequest(new { message = "File qua lon (max 10MB)." });
-
-            var targetFolder = folder ?? "general";
-            var uploadsDir = Path.Combine(_env.ContentRootPath, "uploads", targetFolder);
-            if (!Directory.Exists(uploadsDir))
+            await Task.CompletedTask;
+            return BadRequest(new
             {
-                Directory.CreateDirectory(uploadsDir);
-            }
-
-            var uniqueName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
-            var filePath = Path.Combine(uploadsDir, uniqueName);
-
-            using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await file.CopyToAsync(stream);
-            }
-
-            var fileUrl = $"/uploads/{targetFolder}/{uniqueName}";
-            return Ok(new
-            {
-                statusCode = 200,
-                data = new
-                {
-                    fileUrl,
-                    fileName = file.FileName,
-                    contentType = file.ContentType,
-                    fileSize = file.Length
-                }
+                message = "Unscoped comment uploads are disabled. Use the scoped comment attachment endpoint or /api/Uploads/file."
             });
         }
     }

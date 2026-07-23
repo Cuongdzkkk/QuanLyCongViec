@@ -44,8 +44,14 @@ namespace TaskManagement.API.Controllers
                     ?? User.FindFirstValue(ClaimTypes.Email)
                     ?? "SprintA admin";
 
-                await _projectMemberService.InviteMemberAsync(projectId, request, inviterName);
-                return Ok(new { statusCode = 200, message = "Success", data = "Da gui loi moi tham gia du an qua email." });
+                var outcome = await _projectMemberService.InviteMemberAsync(projectId, request, inviterName);
+                var message = outcome switch
+                {
+                    ProjectInvitationOutcome.InvitationCreated => "Invitation email sent.",
+                    ProjectInvitationOutcome.InvitationAlreadyPending => "An invitation is already pending for this member.",
+                    _ => "This user is already an active project member."
+                };
+                return Ok(new { statusCode = 200, message = "Success", data = message, outcome = outcome.ToString() });
             }
             catch (InvalidOperationException ex)
             {
@@ -67,8 +73,14 @@ namespace TaskManagement.API.Controllers
         {
             try
             {
-                await _projectMemberService.RemoveMemberAsync(projectId, userId);
-                return Ok(new { statusCode = 200, message = "Success", data = "Xoa thanh vien thanh cong va da xu ly task mo coi." });
+                var actorValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (!Guid.TryParse(actorValue, out var removedBy) || removedBy == Guid.Empty)
+                {
+                    return Unauthorized(new { statusCode = 401, message = "Authenticated removal actor is required." });
+                }
+
+                await _projectMemberService.RemoveMemberAsync(projectId, userId, removedBy);
+                return Ok(new { statusCode = 200, message = "Success", data = "Member access revoked; assignment history was preserved." });
             }
             catch (ArgumentException ex)
             {

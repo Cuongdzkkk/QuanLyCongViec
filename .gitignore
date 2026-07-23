@@ -27,6 +27,7 @@ bld/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+.kombai/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
@@ -35,7 +36,9 @@ ScaffoldingReadMe.txt
 backend-run.out
 backend-run.err
 Backend/src/TaskManagement.API/uploads/
+Backend/src/TaskManagement.API/wwwroot/uploads/
 Backend/src/TaskManagement.API/private-uploads/
+Backend/src/TaskManagement.API/data-protection-keys/
 .codex-test/
 
 # NuGet Packages
@@ -63,6 +66,9 @@ TestResult.xml
 nunit-*.xml
 
 **/appsettings.Development.json
+**/.env
+**/auto-imports.d.ts
+**/components.d.ts
 node_modules/
 
 # Local SDK/runtime caches accidentally created inside the repo

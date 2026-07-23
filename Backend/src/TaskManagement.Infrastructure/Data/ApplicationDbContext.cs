@@ -78,6 +78,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<AITrainingDataset> AITrainingDatasets { get; set; }
         public DbSet<TaskVectorEmbedding> TaskVectorEmbeddings { get; set; }
         public DbSet<AiConversation> AiConversations { get; set; }
+        public DbSet<AiActionExecution> AiActionExecutions { get; set; }
         public DbSet<AiAttachment> AiAttachments { get; set; }
         public DbSet<AiAttachmentChunk> AiAttachmentChunks { get; set; }
         public DbSet<IntegrationAccount> IntegrationAccounts { get; set; }
@@ -406,6 +407,12 @@ namespace TaskManagement.Infrastructure.Data
                 .OnDelete(DeleteBehavior.NoAction);
 
             modelBuilder.Entity<TaskAssignment>()
+                .HasOne(ta => ta.RemovedByUser)
+                .WithMany()
+                .HasForeignKey(ta => ta.RemovedBy)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<TaskAssignment>()
                 .Property(ta => ta.ContributionWeight)
                 .HasDefaultValue(1.0);
 
@@ -566,6 +573,30 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<PointTransaction>()
                 .HasIndex(pt => new { pt.UserWalletUserId, pt.WorkTaskId, pt.TransactionType });
 
+            modelBuilder.Entity<PointTransaction>()
+                .Property(pt => pt.IdempotencyKey)
+                .HasMaxLength(200);
+
+            modelBuilder.Entity<PointTransaction>()
+                .Property(pt => pt.RewardRuleVersion)
+                .HasMaxLength(40);
+
+            modelBuilder.Entity<PointTransaction>()
+                .HasIndex(pt => pt.IdempotencyKey)
+                .IsUnique()
+                .HasFilter("[IdempotencyKey] IS NOT NULL");
+
+            modelBuilder.Entity<PointTransaction>()
+                .HasIndex(pt => pt.ReversalOfTransactionId)
+                .IsUnique()
+                .HasFilter("[ReversalOfTransactionId] IS NOT NULL");
+
+            modelBuilder.Entity<PointTransaction>()
+                .HasOne(pt => pt.ReversalOfTransaction)
+                .WithMany()
+                .HasForeignKey(pt => pt.ReversalOfTransactionId)
+                .OnDelete(DeleteBehavior.NoAction);
+
             modelBuilder.Entity<CommentMention>()
                 .HasOne(cm => cm.Comment)
                 .WithMany()
@@ -633,6 +664,14 @@ namespace TaskManagement.Infrastructure.Data
                 .HasOne(x => x.Workspace).WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<AiUsageLedger>()
                 .HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.SetNull);
+            modelBuilder.Entity<AiActionExecution>().HasIndex(x => new { x.UserId, x.IdempotencyKey }).IsUnique();
+            modelBuilder.Entity<AiActionExecution>().HasIndex(x => new { x.UserId, x.State, x.UpdatedAt });
+            modelBuilder.Entity<AiActionExecution>().Property(x => x.ActionType).HasMaxLength(128);
+            modelBuilder.Entity<AiActionExecution>().Property(x => x.IdempotencyKey).HasMaxLength(200);
+            modelBuilder.Entity<AiActionExecution>().Property(x => x.PayloadHash).HasMaxLength(64);
+            modelBuilder.Entity<AiActionExecution>().Property(x => x.State).HasMaxLength(32);
+            modelBuilder.Entity<AiActionExecution>().Property(x => x.ErrorCode).HasMaxLength(64);
+            modelBuilder.Entity<AiActionExecution>().Property(x => x.RowVersion).IsRowVersion();
             modelBuilder.Entity<NotificationPreference>().HasIndex(x => new { x.UserId, x.Category }).IsUnique();
             modelBuilder.Entity<NotificationPreference>()
                 .HasOne(x => x.User).WithMany(x => x.NotificationPreferences).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);

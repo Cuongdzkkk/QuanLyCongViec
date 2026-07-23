@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Json;
+using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.Auth;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
@@ -35,39 +36,56 @@ namespace TaskManagement.API.Controllers
         {
             try
             {
-                var email = request.Email?.Trim();
+                var email = EmailCanonicalizer.Normalize(request.Email);
                 if (string.IsNullOrWhiteSpace(email))
                 {
                     return BadRequest(new { statusCode = 400, message = "Email là bắt buộc." });
                 }
 
                 var purpose = (request.Purpose ?? "register").Trim().ToLowerInvariant();
-                var userExists = await _context.Users.AnyAsync(u => u.Email == email && !u.IsDeleted);
-
-                if (purpose == "register")
-                {
-                    if (userExists)
-                    {
-                        return Conflict(new { statusCode = 409, message = "Email đã tồn tại trong hệ thống." });
-                    }
-                }
-                else if (purpose == "login" || purpose == "reset" || purpose == "forgot-password")
-                {
-                    if (!userExists)
-                    {
-                        return NotFound(new { statusCode = 404, message = "Email không tồn tại trong hệ thống." });
-                    }
-                }
-                else if (purpose != "invite")
+                if (purpose is not ("register" or "login" or "reset" or "forgot-password" or "invite"))
                 {
                     return BadRequest(new { statusCode = 400, message = "Mục đích gửi OTP không hợp lệ." });
                 }
 
-                var otpCode = _otpService.GenerateOtp();
-                _otpService.StoreOtp(email, otpCode);
-                await _emailService.SendOtpEmailAsync(email, otpCode);
+                var account = await _context.Users
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(user => user.Email.ToLower() == email);
+                var shouldSend = purpose switch
+                {
+                    "register" => account == null,
+                    "login" or "reset" or "forgot-password" => account is { IsActive: true, IsDeleted: false },
+                    "invite" => true,
+                    _ => false
+                };
 
-                return Ok(new { statusCode = 200, message = "Đã gửi mã OTP đến email của bạn." });
+                var otpCode = _otpService.GenerateOtp();
+                var issueResult = _otpService.StoreOtp(email, otpCode, GetOtpFingerprint());
+                if (!issueResult.Issued)
+                {
+                    return StatusCode(StatusCodes.Status429TooManyRequests, new
+                    {
+                        statusCode = StatusCodes.Status429TooManyRequests,
+                        message = issueResult.Locked
+                            ? "Quá nhiều yêu cầu hoặc lần thử. Vui lòng thử lại sau."
+                            : "Vui lòng chờ trước khi yêu cầu mã OTP mới.",
+                        retryAfterSeconds = issueResult.RetryAfterSeconds
+                    });
+                }
+
+                if (shouldSend)
+                {
+                    try
+                    {
+                        await _emailService.SendOtpEmailAsync(email, otpCode);
+                    }
+                    catch
+                    {
+                        _otpService.InvalidateOtp(email);
+                    }
+                }
+
+                return Ok(new { statusCode = 200, message = "Nếu email hợp lệ, mã OTP sẽ được gửi đến hộp thư của bạn." });
             }
             catch (Exception ex)
             {
@@ -78,17 +96,42 @@ namespace TaskManagement.API.Controllers
         [HttpPost("verify-otp")]
         public IActionResult VerifyOtp([FromBody] VerifyOtpRequestDto request)
         {
-            var isValid = _otpService.ValidateOtp(request.Email, request.OtpCode);
+            var validation = _otpService.ValidateOtp(request.Email, request.OtpCode, GetOtpFingerprint());
 
-            if (!isValid)
+            if (validation.Status == OtpValidationStatus.Locked)
+            {
+                return StatusCode(StatusCodes.Status429TooManyRequests, new
+                {
+                    statusCode = StatusCodes.Status429TooManyRequests,
+                    message = "Quá nhiều lần thử OTP không hợp lệ. Vui lòng thử lại sau.",
+                    verified = false,
+                    retryAfterSeconds = validation.RetryAfterSeconds
+                });
+            }
+
+            if (!validation.IsValid)
             {
                 return BadRequest(new { statusCode = 400, message = "Mã OTP không hợp lệ hoặc đã hết hạn.", verified = false });
             }
 
-            var newOtp = _otpService.GenerateOtp();
-            _otpService.StoreOtp(request.Email, newOtp);
+            var verificationToken = _otpService.IssueVerificationToken(request.Email, GetOtpFingerprint());
 
-            return Ok(new { statusCode = 200, message = "Xác thực OTP thành công.", verified = true, otpToken = newOtp });
+            return Ok(new { statusCode = 200, message = "Xác thực OTP thành công.", verified = true, otpToken = verificationToken });
+        }
+
+        private string GetOtpFingerprint()
+        {
+            return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        }
+
+        private ObjectResult OtpRateLimited(OtpRateLimitException exception)
+        {
+            return StatusCode(StatusCodes.Status429TooManyRequests, new
+            {
+                statusCode = StatusCodes.Status429TooManyRequests,
+                message = "Quá nhiều yêu cầu hoặc lần thử OTP. Vui lòng thử lại sau.",
+                retryAfterSeconds = exception.RetryAfterSeconds
+            });
         }
 
         /// <summary>
@@ -101,6 +144,10 @@ namespace TaskManagement.API.Controllers
             {
                 await _authService.ResetPasswordAsync(request);
                 return Ok(new { statusCode = 200, message = "Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới." });
+            }
+            catch (OtpRateLimitException ex)
+            {
+                return OtpRateLimited(ex);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -139,6 +186,10 @@ namespace TaskManagement.API.Controllers
 
                 await RecordLoginActivityAsync(result.response!.Id, "Password");
                 return Ok(new { statusCode = 200, message = "Success", data = result.response });
+            }
+            catch (OtpRateLimitException ex)
+            {
+                return OtpRateLimited(ex);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -281,6 +332,10 @@ namespace TaskManagement.API.Controllers
                 await RecordLoginActivityAsync(response.Id, "Password+2FA");
                 return Ok(new { statusCode = 200, message = "Success", data = response });
             }
+            catch (OtpRateLimitException ex)
+            {
+                return OtpRateLimited(ex);
+            }
             catch (UnauthorizedAccessException ex)
             {
                 return Unauthorized(new { statusCode = 401, message = ex.Message });
@@ -345,6 +400,10 @@ namespace TaskManagement.API.Controllers
             {
                 await _authService.RegisterAsync(request);
                 return Ok(new { statusCode = 200, message = "Đăng ký thành công" });
+            }
+            catch (OtpRateLimitException ex)
+            {
+                return OtpRateLimited(ex);
             }
             catch (InvalidOperationException ex)
             {
@@ -448,6 +507,11 @@ namespace TaskManagement.API.Controllers
                     user.UserRoles = new List<TaskManagement.Domain.Entities.UserRole> { ur };
 
                     await context.SaveChangesAsync();
+                }
+
+                if (!user.IsActive || user.IsDeleted)
+                {
+                    return Unauthorized(new { statusCode = 401, message = "Unable to authenticate this account." });
                 }
 
                 var allProjects = await context.Projects.ToListAsync();

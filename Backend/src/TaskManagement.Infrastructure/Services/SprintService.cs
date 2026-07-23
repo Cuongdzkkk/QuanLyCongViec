@@ -186,6 +186,11 @@ namespace TaskManagement.Infrastructure.Services
             // Validate target sprint nếu có
             if (dto.TargetSprintId.HasValue)
             {
+                await SprintScopeValidator.ValidateTargetSprintAsync(
+                    _context,
+                    sprint.ProjectId,
+                    dto.TargetSprintId.Value);
+
                 var targetSprint = await _context.Sprints
                     .FirstOrDefaultAsync(s => s.Id == dto.TargetSprintId.Value && s.ProjectId == sprint.ProjectId);
                 if (targetSprint == null)
@@ -207,6 +212,11 @@ namespace TaskManagement.Infrastructure.Services
                 var unfinishedTasks = await _context.WorkTasks
                     .Where(wt => wt.SprintId == sprintId && !doneStatusIds.Contains(wt.TaskStatusId))
                     .ToListAsync();
+
+                await SprintScopeValidator.EnsureTasksBelongToProjectAsync(
+                    _context,
+                    sprint.ProjectId,
+                    unfinishedTasks.Select(task => (task.Id, task.ProjectId, task.WorkspaceId)));
 
                 foreach (var task in unfinishedTasks)
                 {

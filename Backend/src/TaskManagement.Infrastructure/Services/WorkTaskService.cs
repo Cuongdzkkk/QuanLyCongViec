@@ -8,6 +8,7 @@ using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.Project;
 using TaskManagement.Application.DTOs.WorkTask;
 using TaskManagement.Application.Interfaces;
+using TaskManagement.Domain.Rules;
 using TaskManagement.Infrastructure.Data;
 
 namespace TaskManagement.Infrastructure.Services
@@ -16,9 +17,7 @@ namespace TaskManagement.Infrastructure.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly IGamificationService _gamificationService;
-        private static readonly string[] ManagerRoles = { "PM", "PO", "SM", "Project Lead", "PROJECT_MANAGER", "PROJECT_LEAD", "SCRUM_MASTER", "Admin" };
         private static readonly string[] VisibilityOverrideRoles = { "PM", "PO", "Project Lead", "PROJECT_MANAGER", "PROJECT_LEAD", "Admin" };
-        private static readonly string[] SystemOverrideRoles = { "superadmin", "admin", "system admin", "organization admin", "accessadmin", "access admin" };
         private const string TaskVisibilitySettingGroup = "TaskVisibility";
 
         public WorkTaskService(ApplicationDbContext context, IGamificationService gamificationService)
@@ -29,25 +28,18 @@ namespace TaskManagement.Infrastructure.Services
 
         public async Task<List<WorkTaskResponseDto>> GetByProjectAsync(Guid projectId, Guid userId)
         {
-            var hasSystemOverride = await _context.Users
-                .AsNoTracking()
-                .Where(user => user.Id == userId && user.IsActive && !user.IsDeleted)
-                .SelectMany(user => user.UserRoles.Select(ur => ur.Role.Name))
-                .AnyAsync(role => SystemOverrideRoles.Contains(role.Trim().ToLower()));
-
             var membership = await _context.ProjectMembers
                 .AsNoTracking()
                 .FirstOrDefaultAsync(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status);
 
-            if (!hasSystemOverride && membership == null)
+            if (membership == null)
             {
                 throw new UnauthorizedAccessException("Ban khong phai thanh vien active cua du an nay.");
             }
 
             var executionRules = await LoadExecutionRulesAsync(projectId);
             var normalizedProjectRole = ProjectExecutionRuleHelper.NormalizeProjectRole(membership?.ProjectRole);
-            var canSeeAllTasks = hasSystemOverride
-                || (executionRules.ManagerAlwaysSeeAllTasks && IsVisibilityOverrideRole(normalizedProjectRole));
+            var canSeeAllTasks = executionRules.ManagerAlwaysSeeAllTasks && IsVisibilityOverrideRole(normalizedProjectRole);
 
             var query = _context.WorkTasks
                 .Include(wt => wt.TaskStatus)
@@ -171,6 +163,35 @@ namespace TaskManagement.Infrastructure.Services
 
         public async Task<WorkTaskResponseDto> CreateAsync(Guid reporterId, CreateWorkTaskDto request)
         {
+            if (reporterId == Guid.Empty)
+            {
+                throw new UnauthorizedAccessException("Authenticated reporter context is required.");
+            }
+
+            var isActiveReporter = await _context.Users
+                .AsNoTracking()
+                .AnyAsync(user => user.Id == reporterId && user.IsActive && !user.IsDeleted);
+            if (!isActiveReporter)
+            {
+                throw new UnauthorizedAccessException("Authenticated reporter is not active.");
+            }
+
+            var hasActiveResourceMembership = await _context.ProjectMembers
+                .AsNoTracking()
+                .AnyAsync(member => member.ProjectId == request.ProjectId &&
+                                    member.UserId == reporterId &&
+                                    member.Status &&
+                                    member.LeftAt == null &&
+                                    member.Project.Status &&
+                                    !member.Project.IsDeleted &&
+                                    !member.Project.Workspace.IsDeleted &&
+                                    member.Project.Workspace.Members.Any(workspaceMember =>
+                                        workspaceMember.UserId == reporterId && workspaceMember.IsActive));
+            if (!hasActiveResourceMembership)
+            {
+                throw new UnauthorizedAccessException("Reporter must be an active member of the project and workspace.");
+            }
+
             // 1. Kiểm tra user là member của project
             if (reporterId != Guid.Empty)
             {
@@ -189,12 +210,6 @@ namespace TaskManagement.Infrastructure.Services
             var resolvedTaskTypeId = await ResolveTaskTypeIdAsync(request.TaskTypeId, request.TypeName, request.ProjectId);
 
             // 4. Fallback reporter
-            if (reporterId == Guid.Empty)
-            {
-                var firstUser = await _context.Users.FirstOrDefaultAsync();
-                if (firstUser != null) reporterId = firstUser.Id;
-            }
-
             // 5. Generate SortOrder (LexoRank-style: max current + 65536)
             double maxSort = 0;
             var existingMax = await _context.WorkTasks
@@ -226,11 +241,15 @@ namespace TaskManagement.Infrastructure.Services
 
             if (request.SprintId.HasValue)
             {
-                var sprintExists = await _context.Sprints
-                    .AnyAsync(s => s.Id == request.SprintId.Value && s.ProjectId == request.ProjectId);
-                if (!sprintExists)
+                var sprint = await _context.Sprints
+                    .FirstOrDefaultAsync(s => s.Id == request.SprintId.Value && s.ProjectId == request.ProjectId);
+                if (sprint == null)
                 {
                     throw new InvalidOperationException("Cycle khong thuoc du an nay.");
+                }
+                if (SprintStatePolicy.IsTaskMutationLocked(sprint, DateTime.UtcNow))
+                {
+                    throw new InvalidOperationException("Khong the them Task vao mot Sprint da dong.");
                 }
             }
 
@@ -373,6 +392,9 @@ namespace TaskManagement.Infrastructure.Services
 
         public async Task<WorkTaskResponseDto> UpdateAsync(Guid taskId, Guid userId, UpdateWorkTaskDto dto)
         {
+            if (dto.RowVersion == null || dto.RowVersion.Length == 0)
+                throw new ArgumentException("RowVersion is required for task updates.");
+
             var taskToUpdate = await _context.WorkTasks
                 .Include(wt => wt.TaskStatus)
                 .Include(wt => wt.Sprint)
@@ -409,11 +431,15 @@ namespace TaskManagement.Infrastructure.Services
 
             if (dto.SprintId.HasValue)
             {
-                var sprintExists = await _context.Sprints
-                    .AnyAsync(s => s.Id == dto.SprintId.Value && s.ProjectId == taskToUpdate.ProjectId);
-                if (!sprintExists)
+                var targetSprint = await _context.Sprints
+                    .FirstOrDefaultAsync(s => s.Id == dto.SprintId.Value && s.ProjectId == taskToUpdate.ProjectId);
+                if (targetSprint == null)
                 {
                     throw new InvalidOperationException("Cycle khong thuoc du an nay.");
+                }
+                if (SprintStatePolicy.IsTaskMutationLocked(targetSprint, DateTime.UtcNow))
+                {
+                    throw new InvalidOperationException("Khong the chuyen Task vao mot Sprint da dong.");
                 }
             }
 
@@ -428,7 +454,7 @@ namespace TaskManagement.Infrastructure.Services
             }
 
             // 2. Sprint Lock
-            if (taskToUpdate.Sprint != null && !taskToUpdate.Sprint.Status)
+            if (SprintStatePolicy.IsTaskMutationLocked(taskToUpdate.Sprint, DateTime.UtcNow))
             {
                 throw new InvalidOperationException("Không thể chỉnh sửa Task của một Sprint đã đóng.");
             }
@@ -452,10 +478,7 @@ namespace TaskManagement.Infrastructure.Services
             taskToUpdate.UpdatedAt = DateTime.UtcNow;
 
 
-            if (dto.RowVersion != null && dto.RowVersion.Length > 0)
-            {
-                _context.Entry(taskToUpdate).Property(nameof(taskToUpdate.RowVersion)).OriginalValue = dto.RowVersion;
-            }
+            _context.Entry(taskToUpdate).Property(nameof(taskToUpdate.RowVersion)).OriginalValue = dto.RowVersion;
 
             await _context.SaveChangesAsync();
             if (dto.VisibilityMode != null || dto.VisibleToRoles != null)
@@ -475,6 +498,9 @@ namespace TaskManagement.Infrastructure.Services
 
         public async Task UpdateTaskStatusAsync(Guid taskId, Guid userId, UpdateTaskStatusRequestDto request)
         {
+            if (request.RowVersion == null || request.RowVersion.Length == 0)
+                throw new ArgumentException("RowVersion is required for task status updates.");
+
             var taskToUpdate = await _context.WorkTasks
                 .Include(wt => wt.TaskStatus)
                 .Include(wt => wt.Sprint)
@@ -496,7 +522,7 @@ namespace TaskManagement.Infrastructure.Services
                 throw new UnauthorizedAccessException("Ban khong co quyen sua tac vu nay.");
 
             // Sprint Lock
-            if (taskToUpdate.Sprint != null && !taskToUpdate.Sprint.Status)
+            if (SprintStatePolicy.IsTaskMutationLocked(taskToUpdate.Sprint, DateTime.UtcNow))
                 throw new InvalidOperationException("Không thể chỉnh sửa Task của một Sprint đã đóng.");
 
             var oldStatus = taskToUpdate.TaskStatus;
@@ -558,10 +584,7 @@ namespace TaskManagement.Infrastructure.Services
             taskToUpdate.TaskStatusId = newStatus.Id;
             taskToUpdate.UpdatedAt = DateTime.UtcNow;
 
-            if (request.RowVersion != null && request.RowVersion.Length > 0)
-            {
-                _context.Entry(taskToUpdate).Property(nameof(taskToUpdate.RowVersion)).OriginalValue = request.RowVersion;
-            }
+            _context.Entry(taskToUpdate).Property(nameof(taskToUpdate.RowVersion)).OriginalValue = request.RowVersion;
 
             try
             {
@@ -1006,9 +1029,9 @@ namespace TaskManagement.Infrastructure.Services
 
         private static bool IsManagerRole(string? normalizedProjectRole)
         {
-            return !string.IsNullOrWhiteSpace(normalizedProjectRole)
-                && ManagerRoles.Any(role =>
-                    ProjectExecutionRuleHelper.NormalizeProjectRole(role) == normalizedProjectRole);
+            return ResourcePermissionPolicy.ProjectRoleHasPermission(
+                normalizedProjectRole,
+                ResourcePermissionCodes.ProjectWrite);
         }
 
         private static bool IsVisibilityOverrideRole(string? normalizedProjectRole)

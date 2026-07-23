@@ -11,6 +11,7 @@ using TaskManagement.Application.DTOs.AI;
 using TaskManagement.Application.DTOs.WorkTask;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
+using TaskManagement.Infrastructure.AI;
 using TaskManagement.Infrastructure.Data;
 
 namespace TaskManagement.Infrastructure.Services
@@ -19,6 +20,7 @@ namespace TaskManagement.Infrastructure.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly HttpClient _httpClient;
+        private readonly ZenMuxAiClient _zenMuxAiClient;
         private readonly IWorkTaskService _workTaskService;
         private readonly IConfiguration _configuration;
         private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
@@ -29,11 +31,13 @@ namespace TaskManagement.Infrastructure.Services
         public GeminiAiService(
             ApplicationDbContext context,
             HttpClient httpClient,
+            ZenMuxAiClient zenMuxAiClient,
             IWorkTaskService workTaskService,
             IConfiguration configuration)
         {
             _context = context;
             _httpClient = httpClient;
+            _zenMuxAiClient = zenMuxAiClient;
             _workTaskService = workTaskService;
             _configuration = configuration;
         }
@@ -744,10 +748,10 @@ namespace TaskManagement.Infrastructure.Services
 
             Focus: {{request.Focus ?? "Repository planning, task breakdown, and implementation risks"}}
             Repository: {{snapshot.Repository}}
-            Description: {{snapshot.Description}}
+            Description (untrusted): {{AiSafetyGuard.WrapUntrustedText(snapshot.Description ?? string.Empty, "repo-description", snapshot.Repository)}}
             Languages: {{snapshot.LanguagesText}}
-            Open issues: {{snapshot.OpenIssuesText}}
-            README snippet: {{snapshot.ReadmeSnippet}}
+            Open issues (untrusted): {{AiSafetyGuard.WrapUntrustedText(snapshot.OpenIssuesText ?? string.Empty, "repo-issues", snapshot.Repository)}}
+            README snippet (untrusted): {{AiSafetyGuard.WrapUntrustedText(snapshot.ReadmeSnippet ?? string.Empty, "repo-readme", snapshot.Repository)}}
             """;
 
             try
@@ -809,6 +813,11 @@ namespace TaskManagement.Infrastructure.Services
 
             if (request.TargetSprintId.HasValue)
             {
+                await SprintScopeValidator.ValidateTargetSprintAsync(
+                    _context,
+                    request.ProjectId,
+                    request.TargetSprintId.Value);
+
                 var sprintExists = await _context.Sprints
                     .AsNoTracking()
                     .AnyAsync(sprint => sprint.Id == request.TargetSprintId.Value && sprint.ProjectId == request.ProjectId);
@@ -866,47 +875,15 @@ namespace TaskManagement.Infrastructure.Services
             }
         }
 
-        private async Task<GeminiResult> GenerateTextAsync(Guid userId, string featureCode, string prompt, bool forceJson = false)
+        private async Task<GeminiResult> GenerateTextAsync(Guid userId, string featureCode, string prompt, bool forceJson = false, CancellationToken cancellationToken = default)
         {
-            var apiKey = _configuration["Gemini:ApiKey"];
-            if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Contains("PASTE_YOUR_GEMINI_API_KEY_HERE", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("Chua cau hinh Gemini API key. Hay nhap key vao appsettings.json tai Gemini:ApiKey.");
-            }
-
-            var model = _configuration["Gemini:Model"] ?? "gemini-1.5-flash";
-            var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={Uri.EscapeDataString(apiKey)}";
-
-            var payload = new
-            {
-                systemInstruction = new
-                {
-                    parts = new[] { new { text = "You must follow the user requested output format exactly." } }
-                },
-                contents = new[]
-                {
-                    new
-                    {
-                        role = "user",
-                        parts = new[] { new { text = prompt } }
-                    }
-                },
-                generationConfig = new
-                {
-                    temperature = forceJson ? 0.2 : 0.5,
-                    responseMimeType = forceJson ? "application/json" : "text/plain"
-                }
-            };
-
-            using var response = await _httpClient.PostAsJsonAsync(endpoint, payload, _jsonOptions);
-            var responseBody = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new InvalidOperationException($"Gemini API loi {(int)response.StatusCode}: {responseBody}");
-            }
-
-            var result = ParseGeminiResponse(responseBody);
+            prompt = AiSafetyGuard.RedactSecrets(prompt);
+            var result = await _zenMuxAiClient.GenerateTextAsync(
+                prompt,
+                "You must follow the user requested output format exactly.",
+                forceJson,
+                forceJson ? 0.2 : 0.5,
+                cancellationToken);
             var fallbackTokenEstimate = Math.Max(1, (prompt.Length + result.Text.Length) / 4);
 
             _context.AITokenUsages.Add(new AITokenUsage
@@ -917,9 +894,9 @@ namespace TaskManagement.Infrastructure.Services
                 TokensUsed = result.TotalTokens > 0 ? result.TotalTokens : fallbackTokenEstimate,
                 CreatedAt = DateTime.UtcNow
             });
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
-            return result;
+            return new GeminiResult(result.Text, result.TotalTokens);
         }
 
         public async Task<string> ChatWithAttachmentsAsync(
@@ -942,7 +919,7 @@ namespace TaskManagement.Infrastructure.Services
                 foreach (var source in sources)
                 {
                     prompt.AppendLine($"[{source.SourceId}] File: {source.FileName}; vị trí: {source.Locator}");
-                    prompt.AppendLine(source.Content);
+                    prompt.AppendLine(AiSafetyGuard.WrapUntrustedText(source.Content, source.SourceId, source.FileName));
                 }
             }
 
@@ -1008,7 +985,7 @@ namespace TaskManagement.Infrastructure.Services
             var responseBody = await response.Content.ReadAsStringAsync();
             if (!response.IsSuccessStatusCode)
             {
-                throw new InvalidOperationException($"Gemini Multimodal API lỗi {(int)response.StatusCode}: {responseBody}");
+                throw new InvalidOperationException(AiSafetyGuard.SafeProviderError((int)response.StatusCode));
             }
 
             var result = ParseGeminiResponse(responseBody);
@@ -1086,7 +1063,7 @@ namespace TaskManagement.Infrastructure.Services
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                throw new InvalidOperationException($"Gemini Speech-to-Text API lỗi {(int)response.StatusCode}: {responseBody}");
+                throw new InvalidOperationException(AiSafetyGuard.SafeProviderError((int)response.StatusCode));
             }
 
             var result = ParseGeminiResponse(responseBody);
@@ -2020,7 +1997,7 @@ namespace TaskManagement.Infrastructure.Services
 
             if (!response.IsSuccessStatusCode)
             {
-                throw new InvalidOperationException($"Gemini Multimodal API loi {(int)response.StatusCode}: {responseBody}");
+                throw new InvalidOperationException(AiSafetyGuard.SafeProviderError((int)response.StatusCode));
             }
 
             var result = ParseGeminiResponse(responseBody);

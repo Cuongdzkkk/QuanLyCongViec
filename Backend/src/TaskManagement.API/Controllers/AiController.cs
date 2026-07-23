@@ -17,6 +17,7 @@ using TaskManagement.Application.DTOs.Project;
 using TaskManagement.Application.DTOs.WorkTask;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
+using TaskManagement.Domain.Rules;
 using TaskManagement.Infrastructure.Data;
 
 namespace TaskManagement.API.Controllers
@@ -24,7 +25,6 @@ namespace TaskManagement.API.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
-    [EnableRateLimiting("FixedWindow")]
     public class AiController : ControllerBase
     {
         private readonly IAiService _aiService;
@@ -44,9 +44,7 @@ namespace TaskManagement.API.Controllers
                 [".docx"] = ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
                 [".pdf"] = ["application/pdf"]
             };
-        private static readonly string[] AiAssigneeAllowedProjectRoles = { "PM", "PO", "SM", "PROJECT_MANAGER", "SCRUM_MASTER", "Admin" };
-        private static readonly string[] AiSystemOverrideRoles = { "SuperAdmin", "Admin", "System Admin", "Organization Admin", "AccessAdmin", "Access Admin" };
-        private static readonly string[] AiProjectWriteRoles = { "pm", "po", "sm", "project_lead", "admin" };
+        private readonly IResourceAuthorizationService _authorizationService;
 
         public AiController(
             IAiService aiService,
@@ -54,7 +52,8 @@ namespace TaskManagement.API.Controllers
             IWorkTaskService workTaskService,
             IProjectService projectService,
             IGoalService goalService,
-            ApplicationDbContext dbContext)
+            ApplicationDbContext dbContext,
+            IResourceAuthorizationService authorizationService)
         {
             _aiService = aiService;
             _aiAttachmentService = aiAttachmentService;
@@ -62,6 +61,7 @@ namespace TaskManagement.API.Controllers
             _projectService = projectService;
             _goalService = goalService;
             _dbContext = dbContext;
+            _authorizationService = authorizationService;
         }
 
         [HttpGet("usage")]
@@ -365,6 +365,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("attachment-chat")]
+        [EnableRateLimiting("FixedWindow")]
         public async Task<IActionResult> ChatWithAttachments(
             [FromBody] AiAttachmentChatRequest request,
             CancellationToken cancellationToken)
@@ -402,6 +403,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("transcribe-audio")]
+        [EnableRateLimiting("FixedWindow")]
         [RequestSizeLimit(VoiceAudioMaxBytes + 128 * 1024)]
         public async Task<IActionResult> TranscribeAudio(
             [FromForm] IFormFile audio,
@@ -464,6 +466,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("analyze-file")]
+        [EnableRateLimiting("FixedWindow")]
         [RequestSizeLimit(15 * 1024 * 1024)]
         public async Task<IActionResult> AnalyzeFile(
             [FromForm] IFormFile file,
@@ -535,6 +538,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("chat")]
+        [EnableRateLimiting("FixedWindow")]
         public async Task<IActionResult> Chat([FromBody] AiChatRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.Message))
@@ -573,6 +577,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("project-assistant")]
+        [EnableRateLimiting("FixedWindow")]
         public async Task<IActionResult> ProjectAssistant([FromBody] AiProjectAssistantRequestDto request)
         {
             if (request == null)
@@ -622,6 +627,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("context-chat")]
+        [EnableRateLimiting("FixedWindow")]
         public async Task<IActionResult> ContextChat([FromBody] AiContextChatRequestDto request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.Message))
@@ -689,7 +695,174 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("actions/execute")]
-        public async Task<IActionResult> ExecuteAction([FromBody] AiExecuteActionRequestDto request)
+        [EnableRateLimiting("FixedWindow")]
+        public Task<IActionResult> ExecuteAction([FromBody] AiExecuteActionRequestDto request)
+        {
+            return Task.FromResult<IActionResult>(BadRequest(new
+            {
+                success = false,
+                message = "Create a server preview and confirm that action before execution.",
+                data = new { code = "AI_ACTION_CONFIRMATION_REQUIRED" }
+            }));
+        }
+
+        [HttpPost("actions/preview")]
+        [EnableRateLimiting("FixedWindow")]
+        public async Task<IActionResult> PreviewAction([FromBody] AiExecuteActionRequestDto request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.Type))
+                return BadRequest(ApiResponse<object>.Error("Action type is required."));
+
+            var actionType = NormalizeActionType(request.Type);
+            if (!AiActionRegistry.ContainsKey(actionType))
+                return BadRequest(ApiResponse<object>.Error("Action is not allowed."));
+
+            var userId = GetUserId();
+            if (!request.WorkspaceId.HasValue || request.WorkspaceId == Guid.Empty)
+                return BadRequest(ApiResponse<object>.Error("WorkspaceId is required for an AI action preview."));
+
+            try
+            {
+                await ValidateActionPermissionAsync(userId, actionType, request);
+                var destinationProjectId = await ResolveActionDestinationProjectAsync(actionType, request);
+                var idempotencyKey = BuildIdempotencyKey(userId, actionType, request.IdempotencyKey, request.Payload);
+                var existing = await _dbContext.AiActionExecutions
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(item => item.UserId == userId && item.IdempotencyKey == idempotencyKey);
+                if (existing != null) return Ok(ApiResponse<AiActionStateDto>.Success(ToActionState(existing), "Existing action state."));
+
+                var payloadJson = JsonSerializer.Serialize(request.Payload, AiActionJsonOptions);
+                var now = DateTime.UtcNow;
+                var action = new AiActionExecution
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    WorkspaceId = request.WorkspaceId.Value,
+                    ProjectId = destinationProjectId,
+                    ConversationId = GetPayloadGuid(request.Payload, "conversationId"),
+                    ActionType = actionType,
+                    IdempotencyKey = idempotencyKey,
+                    PayloadJson = payloadJson,
+                    PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson))),
+                    PreviewJson = JsonSerializer.Serialize(new
+                    {
+                        type = actionType,
+                        destination = new { workspaceId = request.WorkspaceId, projectId = destinationProjectId },
+                        payload = request.Payload,
+                        requiresConfirmation = AiActionRegistry[actionType].RequiresConfirmation
+                    }, AiActionJsonOptions),
+                    State = "AWAITING_CONFIRMATION",
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                    ExpiresAt = now.AddMinutes(15)
+                };
+                _dbContext.AiActionExecutions.Add(action);
+                await _dbContext.SaveChangesAsync();
+                return Ok(ApiResponse<AiActionStateDto>.Success(ToActionState(action), "Preview ready; no mutation has occurred."));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "You do not have permission for this AI action.", data = new { code = "AI_ACTION_PERMISSION_DENIED" } });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ApiResponse<object>.Error(ex.Message));
+            }
+        }
+
+        [HttpGet("actions/{actionId:guid}")]
+        public async Task<IActionResult> GetAction(Guid actionId)
+        {
+            var action = await _dbContext.AiActionExecutions.AsNoTracking()
+                .FirstOrDefaultAsync(item => item.Id == actionId && item.UserId == GetUserId());
+            return action == null ? NotFound() : Ok(ApiResponse<AiActionStateDto>.Success(ToActionState(action)));
+        }
+
+        [HttpPost("actions/{actionId:guid}/cancel")]
+        public async Task<IActionResult> CancelAction(Guid actionId)
+        {
+            var action = await _dbContext.AiActionExecutions
+                .FirstOrDefaultAsync(item => item.Id == actionId && item.UserId == GetUserId());
+            if (action == null) return NotFound();
+            if (action.State is "EXECUTING" or "SUCCEEDED" or "PARTIAL_FAILURE")
+                return Conflict(new { success = false, message = "An executing or completed action cannot be cancelled.", data = new { code = "AI_ACTION_NOT_CANCELLABLE" } });
+            action.State = "CANCELLED";
+            action.UpdatedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync();
+            return Ok(ApiResponse<AiActionStateDto>.Success(ToActionState(action), "Action cancelled; no mutation occurred."));
+        }
+
+        [HttpPost("actions/{actionId:guid}/confirm")]
+        [EnableRateLimiting("FixedWindow")]
+        public async Task<IActionResult> ConfirmAction(Guid actionId)
+        {
+            var userId = GetUserId();
+            using var executionLock = await AcquireAiActionLockAsync($"action:{actionId:N}");
+            var action = await _dbContext.AiActionExecutions.FirstOrDefaultAsync(item => item.Id == actionId && item.UserId == userId);
+            if (action == null) return NotFound();
+            if (action.State == "SUCCEEDED") return Ok(ApiResponse<AiActionStateDto>.Success(ToActionState(action), "Idempotent replay."));
+            if (action.State == "CANCELLED") return Conflict(new { success = false, message = "Cancelled action cannot be confirmed.", data = new { code = "AI_ACTION_CANCELLED" } });
+            if (action.ExpiresAt <= DateTime.UtcNow)
+            {
+                action.State = "EXPIRED";
+                action.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+                return Conflict(new { success = false, message = "Action preview expired.", data = new { code = "AI_ACTION_EXPIRED" } });
+            }
+
+            var payload = JsonSerializer.Deserialize<Dictionary<string, object?>>(action.PayloadJson, AiActionJsonOptions) ?? new();
+            var request = new AiExecuteActionRequestDto { Type = action.ActionType, IdempotencyKey = action.IdempotencyKey, WorkspaceId = action.WorkspaceId, ProjectId = action.ProjectId, Payload = payload };
+            try
+            {
+                await ValidateActionPermissionAsync(userId, action.ActionType, request);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                action.State = "PERMISSION_DENIED";
+                action.ErrorCode = "AI_ACTION_PERMISSION_DENIED";
+                action.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "You do not have permission for this AI action.", data = new { code = action.ErrorCode } });
+            }
+            catch (ArgumentException ex)
+            {
+                action.State = "VALIDATION_FAILED";
+                action.ErrorCode = "AI_ACTION_VALIDATION_FAILED";
+                action.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+                return BadRequest(new { success = false, message = ex.Message, data = new { code = action.ErrorCode } });
+            }
+            action.State = "EXECUTING";
+            action.ConfirmedAt = DateTime.UtcNow;
+            action.UpdatedAt = DateTime.UtcNow;
+            try
+            {
+                await _dbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return Conflict(new { success = false, message = "This action is already being confirmed.", data = new { code = "AI_ACTION_CONFIRM_CONFLICT" } });
+            }
+
+            var result = await ExecuteConfirmedActionCoreAsync(request);
+            if (result is OkObjectResult okResult)
+            {
+                action.State = "SUCCEEDED";
+                action.ResultJson = JsonSerializer.Serialize(okResult.Value, AiActionJsonOptions);
+                action.ExecutedAt = DateTime.UtcNow;
+                action.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+                return Ok(ApiResponse<AiActionStateDto>.Success(ToActionState(action)));
+            }
+
+            action.State = "EXECUTION_FAILED";
+            action.ErrorCode = result is ConflictObjectResult ? "AI_ACTION_CONFLICT" : "AI_ACTION_EXECUTION_FAILED";
+            action.UpdatedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync();
+            return result;
+        }
+
+        private async Task<IActionResult> ExecuteConfirmedActionCoreAsync(AiExecuteActionRequestDto request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.Type))
             {
@@ -776,6 +949,40 @@ namespace TaskManagement.API.Controllers
                     }
                 });
             }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                await WriteAiActionAuditAsync(userId, idempotencyKey, actionType, "Conflict", null, ex.Message);
+                var taskId = GetPayloadGuid(request.Payload, "taskId", "workTaskId");
+                var current = taskId.HasValue
+                    ? await _dbContext.WorkTasks
+                        .AsNoTracking()
+                        .Where(task => task.Id == taskId.Value && !task.IsDeleted)
+                        .Select(task => new
+                        {
+                            task.Id,
+                            task.ProjectId,
+                            task.Title,
+                            task.Priority,
+                            task.DueDate,
+                            task.TaskStatusId,
+                            task.AssignedUserId,
+                            task.RowVersion
+                        })
+                        .FirstOrDefaultAsync()
+                    : null;
+                return Conflict(new
+                {
+                    statusCode = StatusCodes.Status409Conflict,
+                    success = false,
+                    message = "Task was changed by another request. Reload before applying the AI action.",
+                    data = new
+                    {
+                        code = "TASK_VERSION_CONFLICT",
+                        currentVersion = current?.RowVersion,
+                        currentData = current
+                    }
+                });
+            }
             catch (ArgumentException ex)
             {
                 await WriteAiActionAuditAsync(userId, idempotencyKey, actionType, "ValidationFailed", null, ex.Message);
@@ -789,6 +996,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("command")]
+        [EnableRateLimiting("FixedWindow")]
         public async Task<IActionResult> Command([FromBody] AiCommandRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Prompt))
@@ -890,6 +1098,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("generate-description")]
+        [EnableRateLimiting("FixedWindow")]
         public async Task<IActionResult> GenerateDescription([FromBody] AiGenerateDescriptionRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.Prompt))
@@ -910,6 +1119,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("breakdown-task")]
+        [EnableRateLimiting("FixedWindow")]
         public async Task<IActionResult> BreakdownTask([FromBody] AiBreakdownRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.Title))
@@ -963,6 +1173,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("create-subtasks-from-preview")]
+        [EnableRateLimiting("FixedWindow")]
         public async Task<IActionResult> CreateSubtasksFromPreview([FromBody] AiCreateSubtasksFromPreviewRequestDto request)
         {
             if (request.ProjectId == Guid.Empty || request.ParentTaskId == Guid.Empty)
@@ -987,6 +1198,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("suggest-estimate")]
+        [EnableRateLimiting("FixedWindow")]
         public async Task<IActionResult> SuggestEstimate([FromBody] AiEstimateSuggestionRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.Title))
@@ -1028,6 +1240,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("suggest-assignees")]
+        [EnableRateLimiting("FixedWindow")]
         public async Task<IActionResult> SuggestAssignees([FromBody] AiAssigneeSuggestionRequestDto request)
         {
             if (request.ProjectId == Guid.Empty)
@@ -1062,6 +1275,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("repo-analysis")]
+        [EnableRateLimiting("FixedWindow")]
         public async Task<IActionResult> AnalyzeRepository([FromBody] AiRepositoryAnalysisRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.RepoUrl))
@@ -1104,6 +1318,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("repo-analysis/create-work-items")]
+        [EnableRateLimiting("FixedWindow")]
         public async Task<IActionResult> CreateBacklogItemsFromAnalysis([FromBody] AiCreateBacklogFromAnalysisRequestDto request)
         {
             if (request.ProjectId == Guid.Empty)
@@ -1167,8 +1382,10 @@ namespace TaskManagement.API.Controllers
                 || message.Contains("gemini unavailable")
                 || message.Contains("service unavailable")
                 || message.Contains("temporarily unavailable")
+                || message.Contains("rate limit")
                 || message.Contains("quota")
-                || message.Contains("timeout");
+                || message.Contains("timeout")
+                || message.Contains("timed out");
         }
 
         private static bool IsGeminiQuotaFailure(Exception ex)
@@ -1177,6 +1394,7 @@ namespace TaskManagement.API.Controllers
 
             return message.Contains("Gemini API loi 429", StringComparison.OrdinalIgnoreCase)
                 || message.Contains("429", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("rate limit", StringComparison.OrdinalIgnoreCase)
                 || message.Contains("Gemini Multimodal API loi 429", StringComparison.OrdinalIgnoreCase)
                 || message.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase)
                 || message.Contains("GenerateRequestsPerDayPerProjectPerModel-FreeTier", StringComparison.OrdinalIgnoreCase)
@@ -1480,49 +1698,106 @@ namespace TaskManagement.API.Controllers
 
         private async Task<bool> UserHasProjectAccessAsync(Guid userId, Guid projectId)
         {
-            var workspaceMember = await _dbContext.WorkspaceMembers
-                .AsNoTracking()
-                .FirstOrDefaultAsync(wm => wm.UserId == userId && wm.IsActive);
-
-            if (workspaceMember != null)
-            {
-                var wsRole = workspaceMember.WorkspaceRole.Trim().ToUpperInvariant();
-                if (wsRole == "OWNER" || wsRole == "ADMIN")
-                {
-                    return true;
-                }
-            }
-
-            return await _dbContext.ProjectMembers
-                .AsNoTracking()
-                .AnyAsync(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status);
+            var authorization = await _authorizationService.AuthorizeProjectAsync(
+                userId,
+                projectId,
+                ResourcePermissionCodes.ProjectRead);
+            return authorization.Succeeded;
         }
 
         private async Task<bool> UserHasProjectContextAccessAsync(Guid userId, Guid workspaceId, Guid projectId)
         {
-            var workspaceRole = await _dbContext.WorkspaceMembers
+            var projectWorkspaceId = await _dbContext.Projects
                 .AsNoTracking()
-                .Where(wm => wm.UserId == userId && wm.WorkspaceId == workspaceId && wm.IsActive)
-                .Select(wm => wm.WorkspaceRole)
+                .Where(project => project.Id == projectId && !project.IsDeleted)
+                .Select(project => (Guid?)project.WorkspaceId)
                 .FirstOrDefaultAsync();
-
-            if (string.Equals(workspaceRole, "OWNER", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(workspaceRole, "ADMIN", StringComparison.OrdinalIgnoreCase))
+            if (projectWorkspaceId != workspaceId)
             {
-                return true;
+                return false;
             }
 
-            return await _dbContext.ProjectMembers
-                .AsNoTracking()
-                .AnyAsync(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status);
+            return await UserHasProjectAccessAsync(userId, projectId);
         }
 
-        private Task<bool> UserHasWorkspaceAccessAsync(Guid userId, Guid workspaceId)
+        private async Task<bool> UserHasWorkspaceAccessAsync(Guid userId, Guid workspaceId)
         {
-            return _dbContext.WorkspaceMembers
-                .AsNoTracking()
-                .AnyAsync(wm => wm.UserId == userId && wm.WorkspaceId == workspaceId && wm.IsActive);
+            var authorization = await _authorizationService.AuthorizeWorkspaceAsync(
+                userId,
+                workspaceId,
+                ResourcePermissionCodes.WorkspaceRead);
+            return authorization.Succeeded;
         }
+
+        private async Task ValidateActionPermissionAsync(Guid userId, string actionType, AiExecuteActionRequestDto request)
+        {
+            if (!request.WorkspaceId.HasValue || request.WorkspaceId == Guid.Empty)
+                throw new ArgumentException("WorkspaceId is required.");
+            if (!await UserHasWorkspaceAccessAsync(userId, request.WorkspaceId.Value))
+                throw new UnauthorizedAccessException();
+
+            if (actionType is "create_project" or "create_goal")
+            {
+                await EnsureWorkspaceWriteAccessAsync(userId, request.WorkspaceId.Value);
+                return;
+            }
+            if (actionType == "summarize_dashboard") return;
+
+            Guid projectId;
+            if (actionType is "update_task_status" or "update_task_priority" or "update_task_due_date" or "assign_task")
+            {
+                projectId = await ResolveTaskProjectIdAsync(RequirePayloadGuid(request.Payload, "taskId", "workTaskId"));
+            }
+            else if (actionType == "add_comment")
+            {
+                var entityId = RequirePayloadGuid(request.Payload, "entityId", "taskId", "workTaskId");
+                var entityType = NormalizeCommentEntityType(GetPayloadString(request.Payload, "entityType") ?? "WorkTask");
+                await EnsureCommentEntityAccessAsync(userId, entityType, entityId);
+                projectId = entityType == "WorkTask"
+                    ? await ResolveTaskProjectIdAsync(entityId)
+                    : ResolveProjectId(request);
+            }
+            else
+            {
+                projectId = ResolveProjectId(request);
+            }
+
+            var workspaceId = await _dbContext.Projects.AsNoTracking()
+                .Where(project => project.Id == projectId && !project.IsDeleted)
+                .Select(project => (Guid?)project.WorkspaceId)
+                .FirstOrDefaultAsync() ?? throw new ArgumentException("Project does not exist.");
+            if (workspaceId != request.WorkspaceId.Value)
+                throw new ArgumentException("AI action destination does not belong to the selected workspace.");
+
+            if (AiActionRegistry[actionType].RequiresConfirmation)
+                await EnsureProjectWriteAccessAsync(userId, projectId);
+            else
+                await EnsureProjectActionAccessAsync(userId, projectId);
+        }
+
+        private async Task<Guid?> ResolveActionDestinationProjectAsync(string actionType, AiExecuteActionRequestDto request)
+        {
+            if (actionType is "create_project" or "create_goal" or "summarize_dashboard") return null;
+            if (actionType is "update_task_status" or "update_task_priority" or "update_task_due_date" or "assign_task")
+                return await ResolveTaskProjectIdAsync(RequirePayloadGuid(request.Payload, "taskId", "workTaskId"));
+            if (actionType == "add_comment" &&
+                string.Equals(NormalizeCommentEntityType(GetPayloadString(request.Payload, "entityType") ?? "WorkTask"), "WorkTask", StringComparison.Ordinal))
+                return await ResolveTaskProjectIdAsync(RequirePayloadGuid(request.Payload, "entityId", "taskId", "workTaskId"));
+            return ResolveProjectId(request);
+        }
+
+        private static AiActionStateDto ToActionState(AiActionExecution action) => new()
+        {
+            ActionId = action.Id,
+            Type = action.ActionType,
+            State = action.State,
+            WorkspaceId = action.WorkspaceId,
+            ProjectId = action.ProjectId,
+            ExpiresAt = action.ExpiresAt,
+            Preview = JsonSerializer.Deserialize<object>(action.PreviewJson, AiActionJsonOptions),
+            Result = string.IsNullOrWhiteSpace(action.ResultJson) ? null : JsonSerializer.Deserialize<object>(action.ResultJson, AiActionJsonOptions),
+            ErrorCode = action.ErrorCode
+        };
 
         private static readonly IReadOnlyDictionary<string, AiActionDefinition> AiActionRegistry =
             new Dictionary<string, AiActionDefinition>(StringComparer.OrdinalIgnoreCase)
@@ -1736,7 +2011,7 @@ namespace TaskManagement.API.Controllers
         private async Task<AiExecuteActionResponseDto> ExecuteCreateCycleAsync(Guid userId, AiExecuteActionRequestDto request)
         {
             var projectId = ResolveProjectId(request);
-            await EnsureProjectWriteAccessAsync(userId, projectId);
+            await EnsureProjectWriteAccessAsync(userId, projectId, ResourcePermissionCodes.SprintManage);
 
             var name = GetPayloadString(request.Payload, "name", "title");
             if (string.IsNullOrWhiteSpace(name))
@@ -1954,12 +2229,17 @@ namespace TaskManagement.API.Controllers
 
             var projectId = await ResolveTaskProjectIdAsync(taskId);
             await EnsureProjectWriteAccessAsync(userId, projectId);
+            var currentRowVersion = await _dbContext.WorkTasks
+                .AsNoTracking()
+                .Where(task => task.Id == taskId && !task.IsDeleted)
+                .Select(task => task.RowVersion)
+                .SingleAsync();
 
             await _workTaskService.UpdateTaskStatusAsync(taskId, userId, new UpdateTaskStatusRequestDto
             {
                 TaskStatusId = statusId,
                 StatusName = statusName,
-                RowVersion = Array.Empty<byte>()
+                RowVersion = ResolvePayloadRowVersion(request.Payload, currentRowVersion)
             });
 
             var task = await _dbContext.WorkTasks
@@ -1971,7 +2251,8 @@ namespace TaskManagement.API.Controllers
                     item.Id,
                     item.Title,
                     item.ProjectId,
-                    StatusName = item.TaskStatus.Name
+                    StatusName = item.TaskStatus.Name,
+                    item.RowVersion
                 })
                 .FirstAsync();
 
@@ -1995,6 +2276,7 @@ namespace TaskManagement.API.Controllers
             }
 
             var task = await LoadWritableTaskAsync(userId, taskId);
+            _dbContext.Entry(task).Property(item => item.RowVersion).OriginalValue = ResolvePayloadRowVersion(request.Payload, task.RowVersion);
             task.Priority = Math.Clamp(priority.Value, 1, 4);
             task.UpdatedAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync();
@@ -2004,7 +2286,7 @@ namespace TaskManagement.API.Controllers
                 Type = "update_task_priority",
                 EntityType = "WorkTask",
                 EntityId = task.Id,
-                Entity = new { task.Id, task.ProjectId, task.Title, task.Priority },
+                Entity = new { task.Id, task.ProjectId, task.Title, task.Priority, task.RowVersion },
                 Message = $"Updated task priority to P{task.Priority}."
             };
         }
@@ -2018,6 +2300,7 @@ namespace TaskManagement.API.Controllers
             }
 
             var task = await LoadWritableTaskAsync(userId, taskId);
+            _dbContext.Entry(task).Property(item => item.RowVersion).OriginalValue = ResolvePayloadRowVersion(request.Payload, task.RowVersion);
             task.DueDate = GetPayloadDate(request.Payload, "dueDate");
             task.UpdatedAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync();
@@ -2027,7 +2310,7 @@ namespace TaskManagement.API.Controllers
                 Type = "update_task_due_date",
                 EntityType = "WorkTask",
                 EntityId = task.Id,
-                Entity = new { task.Id, task.ProjectId, task.Title, task.DueDate },
+                Entity = new { task.Id, task.ProjectId, task.Title, task.DueDate, task.RowVersion },
                 Message = task.DueDate.HasValue
                     ? $"Updated task due date to {task.DueDate.Value:yyyy-MM-dd}."
                     : "Cleared task due date."
@@ -2040,14 +2323,20 @@ namespace TaskManagement.API.Controllers
             var assigneeId = RequirePayloadGuid(request.Payload, "assigneeId", "userId", "assignedUserId");
             var task = await _dbContext.WorkTasks
                 .Include(item => item.TaskAssignments)
+                .Include(item => item.Sprint)
                 .FirstOrDefaultAsync(item => item.Id == taskId && !item.IsDeleted);
 
             if (task == null)
             {
                 throw new ArgumentException("Task does not exist.");
             }
+            if (SprintStatePolicy.IsTaskMutationLocked(task.Sprint, DateTime.UtcNow))
+            {
+                throw new InvalidOperationException("Cannot modify a task in a closed Sprint.");
+            }
 
-            await EnsureProjectManagerOrReporterAsync(userId, task.ProjectId, task.ReporterId);
+            await EnsureProjectWriteAccessAsync(userId, task.ProjectId);
+            _dbContext.Entry(task).Property(item => item.RowVersion).OriginalValue = ResolvePayloadRowVersion(request.Payload, task.RowVersion);
             var assigneeIsMember = await _dbContext.ProjectMembers
                 .AnyAsync(member => member.ProjectId == task.ProjectId && member.UserId == assigneeId && member.Status);
 
@@ -2071,7 +2360,7 @@ namespace TaskManagement.API.Controllers
             }
             else
             {
-                assignment.Status = true;
+                assignment.Activate();
             }
 
             await _dbContext.SaveChangesAsync();
@@ -2086,6 +2375,7 @@ namespace TaskManagement.API.Controllers
                     item.Title,
                     item.ProjectId,
                     item.AssignedUserId,
+                    item.RowVersion,
                     AssigneeName = item.AssignedUser != null ? item.AssignedUser.FullName ?? item.AssignedUser.Email : null
                 })
                 .FirstAsync();
@@ -2477,11 +2767,16 @@ namespace TaskManagement.API.Controllers
         private async Task<WorkTask> LoadWritableTaskAsync(Guid userId, Guid taskId)
         {
             var task = await _dbContext.WorkTasks
+                .Include(item => item.Sprint)
                 .FirstOrDefaultAsync(item => item.Id == taskId && !item.IsDeleted);
 
             if (task == null)
             {
                 throw new ArgumentException("Task does not exist.");
+            }
+            if (SprintStatePolicy.IsTaskMutationLocked(task.Sprint, DateTime.UtcNow))
+            {
+                throw new InvalidOperationException("Cannot modify a task in a closed Sprint.");
             }
 
             await EnsureProjectWriteAccessAsync(userId, task.ProjectId);
@@ -2566,20 +2861,9 @@ namespace TaskManagement.API.Controllers
 
         private async Task<List<Guid>> GetAccessibleProjectIdsAsync(Guid userId, Guid workspaceId)
         {
-            var workspaceRole = await _dbContext.WorkspaceMembers
-                .AsNoTracking()
-                .Where(member => member.WorkspaceId == workspaceId && member.UserId == userId && member.IsActive)
-                .Select(member => member.WorkspaceRole)
-                .FirstOrDefaultAsync();
-
-            if (string.Equals(workspaceRole, "OWNER", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(workspaceRole, "ADMIN", StringComparison.OrdinalIgnoreCase))
+            if (!await UserHasWorkspaceAccessAsync(userId, workspaceId))
             {
-                return await _dbContext.Projects
-                    .AsNoTracking()
-                    .Where(project => project.WorkspaceId == workspaceId && !project.IsDeleted)
-                    .Select(project => project.Id)
-                    .ToListAsync();
+                return new List<Guid>();
             }
 
             return await _dbContext.ProjectMembers
@@ -2619,44 +2903,26 @@ namespace TaskManagement.API.Controllers
 
         private async Task EnsureProjectActionAccessAsync(Guid userId, Guid projectId)
         {
-            var project = await _dbContext.Projects
-                .AsNoTracking()
-                .Where(item => item.Id == projectId && !item.IsDeleted)
-                .Select(item => new { item.Id, item.WorkspaceId })
-                .FirstOrDefaultAsync();
-
-            if (project == null || !await UserHasProjectContextAccessAsync(userId, project.WorkspaceId, project.Id))
+            var authorization = await _authorizationService.AuthorizeProjectAsync(
+                userId,
+                projectId,
+                ResourcePermissionCodes.ProjectRead);
+            if (!authorization.Succeeded)
             {
                 throw new UnauthorizedAccessException("You do not have permission for this project.");
             }
         }
 
-        private async Task EnsureProjectWriteAccessAsync(Guid userId, Guid projectId)
+        private async Task EnsureProjectWriteAccessAsync(
+            Guid userId,
+            Guid projectId,
+            string permissionCode = ResourcePermissionCodes.ProjectWrite)
         {
-            var project = await _dbContext.Projects
-                .AsNoTracking()
-                .Where(item => item.Id == projectId && !item.IsDeleted)
-                .Select(item => new { item.Id, item.WorkspaceId })
-                .FirstOrDefaultAsync();
-
-            if (project == null)
-            {
-                throw new UnauthorizedAccessException("You do not have permission to modify this project.");
-            }
-
-            if (await UserHasWorkspaceWriteAccessAsync(userId, project.WorkspaceId))
-            {
-                return;
-            }
-
-            var projectRole = await _dbContext.ProjectMembers
-                .AsNoTracking()
-                .Where(member => member.ProjectId == project.Id && member.UserId == userId && member.Status)
-                .Select(member => member.ProjectRole)
-                .FirstOrDefaultAsync();
-
-            var normalizedRole = ProjectExecutionRuleHelper.NormalizeProjectRole(projectRole);
-            if (!AiProjectWriteRoles.Contains(normalizedRole, StringComparer.OrdinalIgnoreCase))
+            var authorization = await _authorizationService.AuthorizeProjectAsync(
+                userId,
+                projectId,
+                permissionCode);
+            if (!authorization.Succeeded)
             {
                 throw new UnauthorizedAccessException("You do not have permission to modify this project.");
             }
@@ -2672,33 +2938,11 @@ namespace TaskManagement.API.Controllers
 
         private async Task<bool> UserHasWorkspaceWriteAccessAsync(Guid userId, Guid workspaceId)
         {
-            var workspaceRole = await _dbContext.WorkspaceMembers
-                .AsNoTracking()
-                .Where(member => member.WorkspaceId == workspaceId && member.UserId == userId && member.IsActive)
-                .Select(member => member.WorkspaceRole)
-                .FirstOrDefaultAsync();
-
-            return string.Equals(workspaceRole, "OWNER", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(workspaceRole, "ADMIN", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private async Task EnsureProjectManagerOrReporterAsync(Guid userId, Guid projectId, Guid reporterId)
-        {
-            if (reporterId == userId)
-            {
-                return;
-            }
-
-            var role = await _dbContext.ProjectMembers
-                .AsNoTracking()
-                .Where(member => member.ProjectId == projectId && member.UserId == userId && member.Status)
-                .Select(member => member.ProjectRole)
-                .FirstOrDefaultAsync();
-
-            if (!AiAssigneeAllowedProjectRoles.Contains(role ?? string.Empty, StringComparer.OrdinalIgnoreCase))
-            {
-                throw new UnauthorizedAccessException("You do not have permission to assign this task.");
-            }
+            var authorization = await _authorizationService.AuthorizeWorkspaceAsync(
+                userId,
+                workspaceId,
+                ResourcePermissionCodes.WorkspaceManage);
+            return authorization.Succeeded;
         }
 
         private async Task<Guid> ResolveActionWorkspaceAsync(Guid userId, Guid? requestedWorkspaceId)
@@ -2924,6 +3168,32 @@ namespace TaskManagement.API.Controllers
             return GetPayloadGuid(payload, keys) ?? throw new ArgumentException($"{keys[0]} is required.");
         }
 
+        private static byte[] ResolvePayloadRowVersion(Dictionary<string, object?> payload, byte[]? currentVersion)
+        {
+            var encoded = GetPayloadString(payload, "rowVersion");
+            if (string.IsNullOrWhiteSpace(encoded))
+            {
+                return currentVersion is { Length: > 0 }
+                    ? currentVersion
+                    : throw new ArgumentException("A current rowVersion could not be resolved for the AI task mutation.");
+            }
+
+            try
+            {
+                var version = Convert.FromBase64String(encoded);
+                if (version.Length == 0)
+                {
+                    throw new FormatException();
+                }
+
+                return version;
+            }
+            catch (FormatException)
+            {
+                throw new ArgumentException("rowVersion must be a valid base64 value.");
+            }
+        }
+
         private static Guid? GetPayloadGuid(Dictionary<string, object?> payload, params string[] keys)
         {
             var value = GetPayloadString(payload, keys);
@@ -3027,32 +3297,11 @@ namespace TaskManagement.API.Controllers
 
         private async Task EnsureAiAssigneeAccessAsync(Guid userId, Guid projectId)
         {
-            var user = await _dbContext.Users
-                .AsNoTracking()
-                .Include(item => item.UserRoles)
-                .ThenInclude(link => link.Role)
-                .FirstOrDefaultAsync(item => item.Id == userId);
-
-            var hasSystemOverride = user != null
-                && user.IsActive
-                && !user.IsDeleted
-                && user.UserRoles.Any(ur =>
-                    ur.Role != null &&
-                    AiSystemOverrideRoles.Contains(ur.Role.Name, StringComparer.OrdinalIgnoreCase));
-
-            if (hasSystemOverride)
-            {
-                return;
-            }
-
-            var projectRole = await _dbContext.ProjectMembers
-                .AsNoTracking()
-                .Where(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status)
-                .Select(pm => pm.ProjectRole)
-                .FirstOrDefaultAsync();
-
-            if (string.IsNullOrWhiteSpace(projectRole) ||
-                !AiAssigneeAllowedProjectRoles.Contains(projectRole, StringComparer.OrdinalIgnoreCase))
+            var authorization = await _authorizationService.AuthorizeProjectAsync(
+                userId,
+                projectId,
+                ResourcePermissionCodes.ProjectWrite);
+            if (!authorization.Succeeded)
             {
                 throw new UnauthorizedAccessException("Ban khong co quyen dung AI goi y assignee cho project nay.");
             }

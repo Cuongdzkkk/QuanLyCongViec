@@ -137,6 +137,90 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.ToTable("AITrainingDatasets");
                 });
 
+            modelBuilder.Entity("TaskManagement.Domain.Entities.AiActionExecution", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ActionType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ConversationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("ExecutedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PreviewJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "State", "UpdatedAt");
+
+                    b.ToTable("AiActionExecutions");
+                });
+
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiAttachment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1738,9 +1822,23 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("ReversalOfTransactionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("RewardEventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RewardRuleVersion")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
 
                     b.Property<string>("TransactionType")
                         .IsRequired()
@@ -1753,6 +1851,14 @@ namespace TaskManagement.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("[IdempotencyKey] IS NOT NULL");
+
+                    b.HasIndex("ReversalOfTransactionId")
+                        .IsUnique()
+                        .HasFilter("[ReversalOfTransactionId] IS NOT NULL");
 
                     b.HasIndex("WorkTaskId");
 
@@ -2610,6 +2716,15 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Property<DateTime?>("ProgressUpdatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("RemovalReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("RemovedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("RemovedBy")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<bool>("Status")
                         .HasColumnType("bit");
 
@@ -2619,6 +2734,8 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasKey("WorkTaskId", "UserId");
 
                     b.HasIndex("BlockedByUserId");
+
+                    b.HasIndex("RemovedBy");
 
                     b.HasIndex("UserId");
 
@@ -3916,6 +4033,11 @@ namespace TaskManagement.Infrastructure.Migrations
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.PointTransaction", b =>
                 {
+                    b.HasOne("TaskManagement.Domain.Entities.PointTransaction", "ReversalOfTransaction")
+                        .WithMany()
+                        .HasForeignKey("ReversalOfTransactionId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("TaskManagement.Domain.Entities.UserWallet", "UserWallet")
                         .WithMany("PointTransactions")
                         .HasForeignKey("UserWalletUserId")
@@ -3926,6 +4048,8 @@ namespace TaskManagement.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("WorkTaskId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ReversalOfTransaction");
 
                     b.Navigation("UserWallet");
 
@@ -4244,6 +4368,11 @@ namespace TaskManagement.Infrastructure.Migrations
                         .HasForeignKey("BlockedByUserId")
                         .OnDelete(DeleteBehavior.NoAction);
 
+                    b.HasOne("TaskManagement.Domain.Entities.User", "RemovedByUser")
+                        .WithMany()
+                        .HasForeignKey("RemovedBy")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("TaskManagement.Domain.Entities.User", "User")
                         .WithMany("TaskAssignments")
                         .HasForeignKey("UserId")
@@ -4257,6 +4386,8 @@ namespace TaskManagement.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("BlockedByUser");
+
+                    b.Navigation("RemovedByUser");
 
                     b.Navigation("User");
 

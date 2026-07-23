@@ -23,5 +23,25 @@ namespace TaskManagement.Domain.Entities
         public string? Description { get; set; }
         public double EstimatedHours { get; set; }
         public double TotalActualHours { get; set; }
+        public DateTime? RemovedAt { get; set; }
+        public Guid? RemovedBy { get; set; }
+        public User? RemovedByUser { get; set; }
+        public string? RemovalReason { get; set; }
+
+        public void Activate()
+        {
+            Status = true;
+            RemovedAt = null;
+            RemovedBy = null;
+            RemovalReason = null;
+        }
+
+        public void Remove(Guid removedBy, DateTime removedAt, string reason)
+        {
+            Status = false;
+            RemovedAt = removedAt;
+            RemovedBy = removedBy;
+            RemovalReason = reason;
+        }
     }
 }

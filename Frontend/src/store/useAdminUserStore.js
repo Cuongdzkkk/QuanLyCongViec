@@ -90,7 +90,8 @@ export const useAdminUserStore = defineStore('adminUsers', () => {
       return departments.value;
     } catch (error) {
       console.error('Failed to load departments:', error);
-      throw error;
+      departments.value = [];
+      return departments.value;
     }
   };
 
@@ -128,7 +129,8 @@ export const useAdminUserStore = defineStore('adminUsers', () => {
       return projectRoleAssignments.value;
     } catch (error) {
       console.error('Failed to load project role assignments:', error);
-      throw error;
+      projectRoleAssignments.value = [];
+      return projectRoleAssignments.value;
     }
   };
 
@@ -149,7 +151,8 @@ export const useAdminUserStore = defineStore('adminUsers', () => {
       return availableProjects.value;
     } catch (error) {
       console.error('Failed to load accessible projects:', error);
-      throw error;
+      availableProjects.value = [];
+      return availableProjects.value;
     }
   };
 
@@ -164,7 +167,9 @@ export const useAdminUserStore = defineStore('adminUsers', () => {
       return roles.value;
     } catch (error) {
       console.error('Failed to load roles:', error);
-      throw error;
+      roles.value = [];
+      permissions.value = [];
+      return roles.value;
     }
   };
 

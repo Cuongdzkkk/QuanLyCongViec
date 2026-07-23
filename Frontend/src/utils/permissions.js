@@ -47,6 +47,14 @@ export const PROJECT_SETTINGS_ROLES = [
 
 export const MANAGER_PROJECT_ROLES = [...PROJECT_SETTINGS_ROLES]
 
+export const PROJECT_WRITE_ROLES = [
+  'pm',
+  'po',
+  'sm',
+  'project_lead',
+  'admin'
+]
+
 export const getStoredUser = () => {
   return getStoredUserSession()
 }
@@ -67,6 +75,10 @@ export const canAccessAdminUserDirectory = (user = getStoredUser()) => {
 }
 
 export const normalizeProjectRole = (role) => canonicalProjectRole(role)
+
+export const hasProjectWritePermission = (role) => {
+  return PROJECT_WRITE_ROLES.includes(canonicalProjectRole(role))
+}
 
 export const canAccessProjectSettings = (project, user = getStoredUser()) => {
   if (hasSystemAdminAccess(user)) {

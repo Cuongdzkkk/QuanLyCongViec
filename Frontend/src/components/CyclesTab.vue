@@ -2,6 +2,8 @@
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSprintStore } from '@/store/useSprintStore'
+import { useProjectStore } from '@/store/useProjectStore'
+import { hasProjectWritePermission, normalizeProjectRole } from '@/utils/permissions'
 import { useI18n } from '@/composables/useI18n'
 import axiosClient from '@/api/axiosClient'
 import { subscribeAdminRealtime } from '@/utils/adminRealtime'
@@ -26,6 +28,7 @@ const props = defineProps({
 const router = useRouter()
 const route = useRoute()
 const sprintStore = useSprintStore()
+const projectStore = useProjectStore()
 const { t } = useI18n()
 
 const chartTheme = computed(() => currentTheme.value === 'dark' ? 'dark' : 'light')
@@ -65,6 +68,21 @@ const monthNames = ['Thang 1', 'Thang 2', 'Thang 3', 'Thang 4', 'Thang 5', 'Than
 const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
 
 const allSprints = computed(() => sprintStore.sprints || [])
+const currentProject = computed(() => {
+  if (`${projectStore.currentProject?.id || ''}` === `${props.projectId}`) {
+    return projectStore.currentProject
+  }
+  return (projectStore.allProjects || []).find(project => `${project.id}` === `${props.projectId}`) || null
+})
+const canManageSprint = computed(() => {
+  const role = normalizeProjectRole(
+    currentProject.value?.myRole
+    || currentProject.value?.MyRole
+    || currentProject.value?.projectRole
+    || currentProject.value?.ProjectRole
+  )
+  return hasProjectWritePermission(role)
+})
 const filteredSprints = computed(() => {
   const keyword = cycleSearchQuery.value.trim().toLowerCase()
   return allSprints.value.filter(cycle => {
@@ -407,6 +425,7 @@ const fixDateOffset = (dt) => {
 }
 
 const createNewCycle = async () => {
+  if (!canManageSprint.value) return
   if (!newCycle.value.name?.trim() || !newCycle.value.startDate) return
 
   let finalEndDate = newCycle.value.endDate ? fixDateOffset(newCycle.value.endDate) : null
@@ -599,7 +618,7 @@ onUnmounted(() => {
         :description="t('cyclesTab.cyclesDesc', 'Manage project sprints and iterations')"
       >
         <template #actions>
-          <button class="nexus-btn-primary" type="button" @click="showCreateModal = true">
+          <button v-if="canManageSprint" class="nexus-btn-primary" type="button" @click="showCreateModal = true">
             <i class="fa-solid fa-plus"></i> {{ t('cyclesTab.addCycle', 'Add cycle') }}
           </button>
         </template>
@@ -885,7 +904,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="modal-overlay" v-if="showCreateModal" @click.self="showCreateModal = false; showCalendar = false">
+    <div class="modal-overlay" v-if="showCreateModal && canManageSprint" @click.self="showCreateModal = false; showCalendar = false">
       <div class="create-cycle-modal">
         <div class="cm-header">
           <div class="cm-badge"><i class="fa-solid fa-certificate text-orange"></i> CYBWF</div>

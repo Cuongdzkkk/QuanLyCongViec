@@ -1,5 +1,5 @@
 param(
-    [string]$Server = ".\SQLEXPRESS01",
+    [string]$Server = "KHOI\SQLEXPRESS",
     [string]$Database = "TaskManagementDB",
     [string]$InputFile = "",
     [string]$Query = ""

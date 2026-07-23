@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using TaskManagement.API.Infrastructure;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 
@@ -43,7 +42,6 @@ namespace TaskManagement.API.Controllers
         {
             var userId = GetUserId();
             if (userId == null) return Unauthorized();
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
 
             var accounts = await _context.IntegrationAccounts
                 .AsNoTracking()
@@ -236,7 +234,6 @@ namespace TaskManagement.API.Controllers
             }
 
             var userId = statePayload.UserId;
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
 
             var googleConfig = GetOAuthConfig(GoogleCalendarProvider);
             var clientId = googleConfig.ClientId;
@@ -341,7 +338,6 @@ namespace TaskManagement.API.Controllers
                 return Redirect(BuildFrontendRedirect(frontendUrl, SlackProvider, "error", "Slack OAuth chưa được cấu hình đầy đủ"));
             }
 
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
             var client = _httpClientFactory.CreateClient();
             var tokenResponse = await client.PostAsync("https://slack.com/api/oauth.v2.access", new FormUrlEncodedContent(new Dictionary<string, string>
             {
@@ -385,7 +381,6 @@ namespace TaskManagement.API.Controllers
         {
             var userId = GetUserId();
             if (userId == null) return Unauthorized();
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
 
             var account = await _context.IntegrationAccounts
                 .FirstOrDefaultAsync(item => item.UserId == userId.Value && item.Provider == GoogleCalendarProvider && item.IsActive);
@@ -488,7 +483,6 @@ namespace TaskManagement.API.Controllers
         {
             var userId = GetUserId();
             if (userId == null) return Unauthorized();
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
 
             var account = await _context.IntegrationAccounts
                 .FirstOrDefaultAsync(item => item.UserId == userId.Value && item.Provider == GmailProvider && item.IsActive);
@@ -575,7 +569,6 @@ namespace TaskManagement.API.Controllers
         {
             var userId = GetUserId();
             if (userId == null) return Unauthorized();
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
 
             var account = await _context.IntegrationAccounts
                 .FirstOrDefaultAsync(item => item.UserId == userId.Value && item.Provider == SlackProvider && item.IsActive);
@@ -657,7 +650,6 @@ namespace TaskManagement.API.Controllers
         {
             var userId = GetUserId();
             if (userId == null) return Unauthorized();
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
 
             var account = await _context.IntegrationAccounts
                 .FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId.Value);
@@ -754,7 +746,6 @@ namespace TaskManagement.API.Controllers
                 return Redirect(BuildFrontendRedirect(frontendUrl, provider, "error", $"{displayName} OAuth chưa được cấu hình đầy đủ"));
             }
 
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
             var client = _httpClientFactory.CreateClient();
             var tokenResponse = await client.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(new Dictionary<string, string>
             {

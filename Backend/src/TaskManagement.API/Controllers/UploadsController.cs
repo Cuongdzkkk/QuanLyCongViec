@@ -1,88 +1,86 @@
+using System.Security.Claims;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
-using System;
-using System.IO;
-using System.Threading.Tasks;
+using TaskManagement.API.Security;
 
+namespace TaskManagement.API.Controllers;
 
-namespace TaskManagement.API.Controllers
+[Route("api/[controller]")]
+[ApiController]
+[Authorize]
+public class UploadsController : ControllerBase
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    [Authorize]
-    public class UploadsController : ControllerBase
+    private readonly string _storageRoot;
+    private readonly IDataProtector _protector;
+
+    public UploadsController(IWebHostEnvironment environment, IDataProtectionProvider dataProtection)
     {
-        private readonly string _uploadFolder;
+        _storageRoot = Path.Combine(environment.ContentRootPath, "private-uploads", "general");
+        _protector = dataProtection.CreateProtector("SprintA.PrivateUpload.v1");
+    }
 
-        public UploadsController(Microsoft.AspNetCore.Hosting.IWebHostEnvironment env)
+    [HttpPost("image")]
+    [RequestSizeLimit(6 * 1024 * 1024)]
+    public async Task<IActionResult> UploadImage(IFormFile file, CancellationToken cancellationToken) =>
+        await StoreAsync(file, imageOnly: true, cancellationToken);
+
+    [HttpPost("file")]
+    [RequestSizeLimit(21 * 1024 * 1024)]
+    public async Task<IActionResult> UploadDocument(IFormFile file, CancellationToken cancellationToken) =>
+        await StoreAsync(file, imageOnly: false, cancellationToken);
+
+    [HttpGet("content/{token}")]
+    public IActionResult Download(string token)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        try
         {
-            _uploadFolder = Path.Combine(env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "uploads");
-            if (!Directory.Exists(_uploadFolder))
-            {
-                Directory.CreateDirectory(_uploadFolder);
-            }
+            var values = _protector.Unprotect(token).Split('|', 4);
+            if (values.Length != 4 || !Guid.TryParseExact(values[0], "N", out var ownerId) || ownerId != userId)
+                return Forbid();
+            var storedName = values[1];
+            var originalName = Encoding.UTF8.GetString(Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlDecode(values[2]));
+            var path = UploadSecurity.ResolveUnderRoot(_storageRoot, storedName);
+            if (!System.IO.File.Exists(path)) return NotFound();
+            Response.Headers.CacheControl = "private, no-store";
+            return PhysicalFile(path, values[3], originalName, enableRangeProcessing: true);
         }
-
-        [HttpPost("image")]
-        public async Task<IActionResult> UploadImage(IFormFile file)
+        catch
         {
-            if (file == null || file.Length == 0)
-            {
-                return BadRequest(new { message = "No file uploaded." });
-            }
-
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
-            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-
-            if (Array.IndexOf(allowedExtensions, extension) < 0)
-            {
-                return BadRequest(new { message = "Invalid file type. Only images are allowed." });
-            }
-
-            if (file.Length > 5 * 1024 * 1024) // 5MB limit
-            {
-                return BadRequest(new { message = "File size exceeds 5MB limit." });
-            }
-
-            var fileName = $"{Guid.NewGuid()}{extension}";
-            var filePath = Path.Combine(_uploadFolder, fileName);
-
-            using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await file.CopyToAsync(stream);
-            }
-
-            var url = $"/uploads/{fileName}";
-
-            return Ok(new { url });
-        }
-
-        [HttpPost("file")]
-        public async Task<IActionResult> UploadDocument(IFormFile file)
-        {
-            if (file == null || file.Length == 0)
-            {
-                return BadRequest(new { message = "No file uploaded." });
-            }
-
-            if (file.Length > 20 * 1024 * 1024) // 20MB limit
-            {
-                return BadRequest(new { message = "File size exceeds 20MB limit." });
-            }
-
-            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-            var fileName = $"{Guid.NewGuid()}{extension}";
-            var filePath = Path.Combine(_uploadFolder, fileName);
-
-            using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await file.CopyToAsync(stream);
-            }
-
-            var url = $"/uploads/{fileName}";
-
-            return Ok(new { url, name = file.FileName, size = file.Length });
+            return NotFound();
         }
     }
+
+    private async Task<IActionResult> StoreAsync(IFormFile file, bool imageOnly, CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        try
+        {
+            var upload = imageOnly
+                ? await UploadSecurity.ReadPublicImageAsync(file, cancellationToken)
+                : await UploadSecurity.ReadPrivateFileAsync(file, cancellationToken);
+            Directory.CreateDirectory(_storageRoot);
+            var storedName = $"{Guid.NewGuid():N}{upload.Extension}";
+            var path = UploadSecurity.ResolveUnderRoot(_storageRoot, storedName);
+            await System.IO.File.WriteAllBytesAsync(path, upload.Bytes, cancellationToken);
+            var encodedName = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(upload.OriginalFileName));
+            var token = _protector.Protect($"{userId:N}|{storedName}|{encodedName}|{upload.MimeType}");
+            return Ok(new
+            {
+                url = $"/api/uploads/content/{token}",
+                name = upload.OriginalFileName,
+                size = upload.Bytes.LongLength,
+                visibility = "private-owner"
+            });
+        }
+        catch (InvalidDataException exception)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
+    }
+
+    private bool TryGetUserId(out Guid userId) =>
+        Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out userId);
 }

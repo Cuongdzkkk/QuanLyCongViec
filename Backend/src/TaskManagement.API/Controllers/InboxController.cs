@@ -2,7 +2,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using TaskManagement.API.Infrastructure;
 using TaskManagement.Application.DTOs.WorkTask;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
@@ -34,7 +33,6 @@ namespace TaskManagement.API.Controllers
         {
             var userId = GetUserId();
             if (userId == null) return Unauthorized();
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
 
             var query = _context.InboxItems
                 .AsNoTracking()
@@ -84,7 +82,6 @@ namespace TaskManagement.API.Controllers
         {
             var userId = GetUserId();
             if (userId == null) return Unauthorized();
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
 
             var item = await _context.InboxItems
                 .AsNoTracking()
@@ -152,7 +149,6 @@ namespace TaskManagement.API.Controllers
         {
             var userId = GetUserId();
             if (userId == null) return Unauthorized();
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
 
             var item = await _context.InboxItems.FirstOrDefaultAsync(inboxItem => inboxItem.Id == id && inboxItem.UserId == userId.Value);
             if (item == null) return NotFound(new { message = "Không tìm thấy mục inbox" });
@@ -169,7 +165,6 @@ namespace TaskManagement.API.Controllers
         {
             var userId = GetUserId();
             if (userId == null) return Unauthorized();
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
 
             var item = await _context.InboxItems.FirstOrDefaultAsync(inboxItem => inboxItem.Id == id && inboxItem.UserId == userId.Value);
             if (item == null) return NotFound(new { message = "Không tìm thấy mục inbox" });
@@ -196,7 +191,6 @@ namespace TaskManagement.API.Controllers
         {
             var userId = GetUserId();
             if (userId == null) return Unauthorized();
-            await IntegrationSchemaGuard.EnsureCreatedAsync(_context);
 
             if (request?.ProjectId == null)
             {

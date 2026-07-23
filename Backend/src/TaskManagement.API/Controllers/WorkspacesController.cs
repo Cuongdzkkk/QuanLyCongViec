@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using TaskManagement.Application.Common;
+using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Domain.Entities;
 
@@ -13,10 +15,14 @@ namespace TaskManagement.API.Controllers
     public class WorkspacesController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IResourceAuthorizationService _authorizationService;
 
-        public WorkspacesController(ApplicationDbContext context)
+        public WorkspacesController(
+            ApplicationDbContext context,
+            IResourceAuthorizationService authorizationService)
         {
             _context = context;
+            _authorizationService = authorizationService;
         }
 
         /// <summary>
@@ -125,10 +131,12 @@ namespace TaskManagement.API.Controllers
                 return NotFound(new { statusCode = 404, message = "Workspace không tồn tại." });
 
             // Check membership
-            var isMember = await _context.WorkspaceMembers
-                .AnyAsync(wm => wm.WorkspaceId == workspace.Id && wm.UserId == parsedUserId && wm.IsActive);
+            var authorization = await _authorizationService.AuthorizeWorkspaceAsync(
+                parsedUserId,
+                workspace.Id,
+                ResourcePermissionCodes.WorkspaceRead);
 
-            if (!isMember)
+            if (!authorization.Succeeded)
                 return StatusCode(403, new { statusCode = 403, message = "Bạn không phải thành viên của workspace này." });
 
             return Ok(new { statusCode = 200, message = "Success", data = workspace });
@@ -145,10 +153,12 @@ namespace TaskManagement.API.Controllers
                 return Unauthorized(new { statusCode = 401, message = "Vui lòng đăng nhập." });
 
             // Check requester is OWNER or ADMIN
-            var requesterMembership = await _context.WorkspaceMembers
-                .FirstOrDefaultAsync(wm => wm.WorkspaceId == workspaceId && wm.UserId == parsedUserId);
+            var authorization = await _authorizationService.AuthorizeWorkspaceAsync(
+                parsedUserId,
+                workspaceId,
+                ResourcePermissionCodes.WorkspaceManage);
 
-            if (requesterMembership == null || (requesterMembership.WorkspaceRole != "OWNER" && requesterMembership.WorkspaceRole != "ADMIN"))
+            if (!authorization.Succeeded)
                 return StatusCode(403, new { statusCode = 403, message = "Bạn không có quyền thêm thành viên." });
 
             // Check user exists
@@ -190,6 +200,17 @@ namespace TaskManagement.API.Controllers
         [HttpGet("{workspaceId}/members")]
         public async Task<IActionResult> GetMembers(Guid workspaceId)
         {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userId, out var parsedUserId))
+                return Unauthorized(new { statusCode = 401, message = "Authentication is required." });
+
+            var authorization = await _authorizationService.AuthorizeWorkspaceAsync(
+                parsedUserId,
+                workspaceId,
+                ResourcePermissionCodes.WorkspaceRead);
+            if (!authorization.Succeeded)
+                return StatusCode(403, new { statusCode = 403, message = "Active workspace membership is required." });
+
             var members = await _context.WorkspaceMembers
                 .AsNoTracking()
                 .Where(wm => wm.WorkspaceId == workspaceId && wm.IsActive)
@@ -218,10 +239,12 @@ namespace TaskManagement.API.Controllers
             if (!Guid.TryParse(userId, out Guid parsedUserId))
                 return Unauthorized(new { statusCode = 401, message = "Vui lòng đăng nhập." });
 
-            var membership = await _context.WorkspaceMembers
-                .FirstOrDefaultAsync(wm => wm.WorkspaceId == workspaceId && wm.UserId == parsedUserId && wm.IsActive);
+            var authorization = await _authorizationService.AuthorizeWorkspaceAsync(
+                parsedUserId,
+                workspaceId,
+                ResourcePermissionCodes.WorkspaceManage);
 
-            if (membership == null || (membership.WorkspaceRole != "OWNER" && membership.WorkspaceRole != "ADMIN"))
+            if (!authorization.Succeeded)
                 return StatusCode(403, new { statusCode = 403, message = "Bạn không có quyền cập nhật workspace này." });
 
             var workspace = await _context.Workspaces.FindAsync(workspaceId);
@@ -255,10 +278,12 @@ namespace TaskManagement.API.Controllers
             if (!Guid.TryParse(userId, out Guid parsedUserId))
                 return Unauthorized(new { statusCode = 401, message = "Vui lòng đăng nhập." });
 
-            var membership = await _context.WorkspaceMembers
-                .FirstOrDefaultAsync(wm => wm.WorkspaceId == workspaceId && wm.UserId == parsedUserId && wm.IsActive);
+            var authorization = await _authorizationService.AuthorizeWorkspaceAsync(
+                parsedUserId,
+                workspaceId,
+                ResourcePermissionCodes.WorkspaceDelete);
 
-            if (membership == null || membership.WorkspaceRole != "OWNER")
+            if (!authorization.Succeeded)
                 return StatusCode(403, new { statusCode = 403, message = "Chỉ OWNER mới có thể xóa workspace." });
 
             var workspace = await _context.Workspaces.FindAsync(workspaceId);
@@ -282,10 +307,12 @@ namespace TaskManagement.API.Controllers
             if (!Guid.TryParse(userId, out Guid parsedUserId))
                 return Unauthorized(new { statusCode = 401, message = "Vui lòng đăng nhập." });
 
-            var requester = await _context.WorkspaceMembers
-                .FirstOrDefaultAsync(wm => wm.WorkspaceId == workspaceId && wm.UserId == parsedUserId && wm.IsActive);
+            var authorization = await _authorizationService.AuthorizeWorkspaceAsync(
+                parsedUserId,
+                workspaceId,
+                ResourcePermissionCodes.WorkspaceManage);
 
-            if (requester == null || (requester.WorkspaceRole != "OWNER" && requester.WorkspaceRole != "ADMIN"))
+            if (!authorization.Succeeded)
                 return StatusCode(403, new { statusCode = 403, message = "Bạn không có quyền." });
 
             var targetMember = await _context.WorkspaceMembers
@@ -295,7 +322,8 @@ namespace TaskManagement.API.Controllers
                 return NotFound(new { statusCode = 404, message = "Thành viên không tồn tại." });
             
             // Limit: ADMIN cannot modify OWNER
-            if (requester.WorkspaceRole == "ADMIN" && targetMember.WorkspaceRole == "OWNER")
+            if (ResourcePermissionPolicy.NormalizeWorkspaceRole(authorization.WorkspaceRole) == "admin" &&
+                ResourcePermissionPolicy.NormalizeWorkspaceRole(targetMember.WorkspaceRole) == "owner")
                 return StatusCode(403, new { statusCode = 403, message = "Admin không thể sửa quyền của Owner." });
 
             targetMember.WorkspaceRole = request.Role.ToUpper();
@@ -314,14 +342,17 @@ namespace TaskManagement.API.Controllers
             if (!Guid.TryParse(userId, out Guid parsedUserId))
                 return Unauthorized(new { statusCode = 401, message = "Vui lòng đăng nhập." });
 
-            var requester = await _context.WorkspaceMembers
-                .FirstOrDefaultAsync(wm => wm.WorkspaceId == workspaceId && wm.UserId == parsedUserId && wm.IsActive);
+            var authorization = await _authorizationService.AuthorizeWorkspaceAsync(
+                parsedUserId,
+                workspaceId,
+                ResourcePermissionCodes.WorkspaceRead);
 
-            if (requester == null)
+            if (!authorization.Succeeded)
                 return NotFound(new { statusCode = 404, message = "Workspace không tồn tại." });
 
             // People can remove themselves, or OWNER/ADMIN can remove others.
-            if (parsedUserId != memberId && requester.WorkspaceRole != "OWNER" && requester.WorkspaceRole != "ADMIN")
+            var requesterRole = ResourcePermissionPolicy.NormalizeWorkspaceRole(authorization.WorkspaceRole);
+            if (parsedUserId != memberId && requesterRole is not ("owner" or "admin"))
                 return StatusCode(403, new { statusCode = 403, message = "Bạn không có quyền xóa thành viên này." });
 
             var targetMember = await _context.WorkspaceMembers

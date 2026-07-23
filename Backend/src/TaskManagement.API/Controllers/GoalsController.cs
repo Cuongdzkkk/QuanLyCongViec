@@ -38,9 +38,30 @@ namespace TaskManagement.API.Controllers
         [RequirePermission("goals.dashboard.create")]
         public async Task<IActionResult> Create(Guid workspaceId, [FromBody] object dto)
         {
-            var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
-            var result = await _goalService.CreateAsync(userId, workspaceId, dto);
-            return Ok(result);
+            var userIdValue = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdValue, out var userId) || userId == Guid.Empty)
+            {
+                return Unauthorized(new ProblemDetails
+                {
+                    Status = StatusCodes.Status401Unauthorized,
+                    Title = "Authentication required",
+                    Detail = "A valid authenticated user context is required."
+                });
+            }
+
+            try
+            {
+                var result = await _goalService.CreateAsync(userId, workspaceId, dto);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Problem(statusCode: 403, title: "Workspace access denied", detail: ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                return Problem(statusCode: 400, title: "Invalid workspace context", detail: ex.Message);
+            }
         }
 
         [HttpPut("{id}")]

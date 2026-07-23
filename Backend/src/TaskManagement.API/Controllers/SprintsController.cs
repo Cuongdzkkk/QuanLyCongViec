@@ -2,17 +2,19 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.API.Filters;
+using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.Common;
 using TaskManagement.Application.DTOs.Sprint;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.Infrastructure.Services;
 
 namespace TaskManagement.API.Controllers
 {
     [ApiController]
     [Route("api/projects/{projectId}/sprints")]
     [Authorize]
-    [ProjectAuthorize("")]
+    [ProjectAuthorize(ResourcePermissionCodes.ProjectRead)]
     public class SprintsController : ControllerBase
     {
         private readonly ISprintService _sprintService;
@@ -42,6 +44,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost]
+        [ProjectAuthorize(ResourcePermissionCodes.SprintManage)]
         public async Task<IActionResult> Create(Guid projectId, [FromBody] CreateSprintDto dto)
         {
             try
@@ -56,7 +59,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPut("{id}")]
-        [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,Admin")]
+        [ProjectAuthorize(ResourcePermissionCodes.SprintManage)]
         public async Task<IActionResult> Update(Guid projectId, Guid id, [FromBody] UpdateSprintDto dto)
         {
             try
@@ -71,7 +74,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("{id}/start")]
-        [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,Admin")]
+        [ProjectAuthorize(ResourcePermissionCodes.SprintManage)]
         public async Task<IActionResult> Start(Guid projectId, Guid id)
         {
             try
@@ -90,7 +93,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("{id}/close")]
-        [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,Admin")]
+        [ProjectAuthorize(ResourcePermissionCodes.SprintManage)]
         public async Task<IActionResult> Close(Guid projectId, Guid id, [FromBody] CloseSprintDto dto)
         {
             try
@@ -104,6 +107,13 @@ namespace TaskManagement.API.Controllers
                 await _sprintService.CloseAsync(id, dto, actorUserId);
                 return Ok(ApiResponse<object>.Success(null!, "Cycle da duoc dong va task ton dong da duoc xu ly."));
             }
+            catch (ResourceScopeException ex)
+            {
+                return Problem(
+                    statusCode: 400,
+                    title: "Invalid sprint rollover scope",
+                    detail: ex.Message);
+            }
             catch (ArgumentException ex)
             {
                 return BadRequest(ApiResponse<object>.Error(ex.Message));
@@ -115,7 +125,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpGet("{id}/carry-over-tasks")]
-        [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,Admin")]
+        [ProjectAuthorize(ResourcePermissionCodes.SprintManage)]
         public async Task<IActionResult> GetCarryOverTasks(
             Guid projectId,
             Guid id,
@@ -195,7 +205,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("{id}/carry-over-tasks/move")]
-        [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,Admin")]
+        [ProjectAuthorize(ResourcePermissionCodes.SprintManage)]
         public async Task<IActionResult> BulkMoveCarryOverTasks(
             Guid projectId,
             Guid id,
@@ -217,6 +227,22 @@ namespace TaskManagement.API.Controllers
 
             if (dto.TargetSprintId.HasValue)
             {
+                try
+                {
+                    await SprintScopeValidator.ValidateTargetSprintAsync(
+                        context,
+                        projectId,
+                        dto.TargetSprintId.Value,
+                        HttpContext.RequestAborted);
+                }
+                catch (ResourceScopeException ex)
+                {
+                    return Problem(
+                        statusCode: 400,
+                        title: "Invalid sprint rollover scope",
+                        detail: ex.Message);
+                }
+
                 var targetExists = await context.Sprints.AnyAsync(s => s.Id == dto.TargetSprintId.Value && s.ProjectId == projectId);
                 if (!targetExists)
                 {
@@ -246,6 +272,21 @@ namespace TaskManagement.API.Controllers
                     task.AuditLogs.Any(log => log.FieldChanged == "SPRINT_CARRY_OVER" && log.OldValue == id.ToString()))
                 .ToListAsync();
 
+            var requestedTaskCount = dto.TaskIds.Distinct().Count();
+            if (tasks.Count != requestedTaskCount)
+            {
+                return Problem(
+                    statusCode: 400,
+                    title: "Invalid rollover tasks",
+                    detail: "Every requested task must be an eligible carry-over task in the source project.");
+            }
+
+            await SprintScopeValidator.EnsureTasksBelongToProjectAsync(
+                context,
+                projectId,
+                tasks.Select(task => (task.Id, task.ProjectId, task.WorkspaceId)),
+                HttpContext.RequestAborted);
+
             foreach (var task in tasks)
             {
                 task.SprintId = dto.TargetSprintId;
@@ -267,6 +308,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPatch("{id}/favorite")]
+        [ProjectAuthorize(ResourcePermissionCodes.SprintManage)]
         public async Task<IActionResult> ToggleFavorite(Guid projectId, Guid id, [FromServices] ApplicationDbContext context)
         {
             var sprint = await context.Sprints.FindAsync(id);

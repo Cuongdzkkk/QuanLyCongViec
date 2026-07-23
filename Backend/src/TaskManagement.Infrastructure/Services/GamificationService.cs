@@ -17,6 +17,7 @@ namespace TaskManagement.Infrastructure.Services
         private const string AccuracyBonusType = "EstimateAccuracyBonus";
         private const string LatePenaltyType = "LatePenalty";
         private const string CollaborationBonusType = "CollaborationBonus";
+        private const string RewardRuleVersion = "task-reward-v1";
         private readonly ApplicationDbContext _context;
 
         public GamificationService(ApplicationDbContext context)
@@ -40,6 +41,13 @@ namespace TaskManagement.Infrastructure.Services
                 await using var transaction = await _context.Database.BeginTransactionAsync();
                 try
                 {
+                    if ((_context.Database.ProviderName ?? string.Empty).Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var lockResource = $"reward-ledger:{workTaskId}";
+                        await _context.Database.ExecuteSqlInterpolatedAsync(
+                            $"EXEC sys.sp_getapplock @Resource={lockResource}, @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=10000");
+                    }
+
                     var task = await _context.WorkTasks
                         .AsNoTracking()
                         .Include(t => t.TaskAssignments)
@@ -57,12 +65,6 @@ namespace TaskManagement.Infrastructure.Services
                             "rewardRules"));
 
                     if (await HasChildTasksAsync(workTaskId))
-                    {
-                        await transaction.CommitAsync();
-                        return;
-                    }
-
-                    if (task.TaskAssignments.Any(ta => ta.Status))
                     {
                         await transaction.CommitAsync();
                         return;
@@ -87,121 +89,118 @@ namespace TaskManagement.Infrastructure.Services
     
                     if (!wasDone && isDone)
                     {
-                        var points = CalculateBaseRewardPoints(task, rewardRules);
-                        if (IsOverdue(task.DueDate))
+                        // Tasks with active assignment shares are rewarded by the assignment flow.
+                        // This guard must never run for Done -> non-Done, because that would skip reversal.
+                        if (task.TaskAssignments.Any(ta => ta.Status))
                         {
-                            await AddLatePenaltyIfNeededAsync(wallet, targetUserId, task, points, "task", rewardRules);
-                            await _context.SaveChangesAsync();
                             await transaction.CommitAsync();
                             return;
                         }
 
-                        var alreadyRewarded = await _context.PointTransactions.AnyAsync(pt =>
-                            pt.UserWalletUserId == targetUserId &&
-                            pt.WorkTaskId == workTaskId &&
-                            pt.TransactionType == RewardType);
-    
-                        if (!alreadyRewarded)
+                        var hasUnreversedReward = await _context.PointTransactions.AnyAsync(reward =>
+                            reward.UserWalletUserId == targetUserId &&
+                            reward.WorkTaskId == workTaskId &&
+                            reward.TransactionType == RewardType &&
+                            !_context.PointTransactions.Any(reversal => reversal.ReversalOfTransactionId == reward.Id));
+                        if (hasUnreversedReward)
                         {
-                            wallet.TotalPoints += points;
-                            wallet.Level = CalculateLevel(wallet.TotalPoints);
+                            await transaction.CommitAsync();
+                            return;
+                        }
 
+                        var rewardEventId = Guid.NewGuid();
+                        var points = CalculateBaseRewardPoints(task, rewardRules);
+                        void AddReward(int amount, string type, string reason)
+                        {
+                            if (amount == 0)
+                            {
+                                return;
+                            }
+
+                            var previousBalance = wallet.TotalPoints;
+                            wallet.TotalPoints = Math.Max(0, wallet.TotalPoints + amount);
+                            var appliedAmount = wallet.TotalPoints - previousBalance;
+                            if (appliedAmount == 0)
+                            {
+                                return;
+                            }
+
+                            wallet.Level = CalculateLevel(wallet.TotalPoints);
                             _context.PointTransactions.Add(new PointTransaction
                             {
                                 Id = Guid.NewGuid(),
                                 UserWalletUserId = targetUserId,
                                 WorkTaskId = workTaskId,
-                                Amount = points,
-                                TransactionType = RewardType,
-                                Reason = $"Cong diem hoan thanh task {task.SequenceId ?? task.Id.ToString()}",
+                                Amount = appliedAmount,
+                                TransactionType = type,
+                                Reason = reason,
+                                RewardEventId = rewardEventId,
+                                RewardRuleVersion = RewardRuleVersion,
+                                IdempotencyKey = $"task-reward:{rewardEventId:N}:{type}",
                                 CreatedAt = DateTime.UtcNow
                             });
-
-                            var earlyBonus = CalculateEarlyBonus(points, task.DueDate, rewardRules);
-                            if (earlyBonus > 0)
-                            {
-                                wallet.TotalPoints += earlyBonus;
-                                wallet.Level = CalculateLevel(wallet.TotalPoints);
-
-                                _context.PointTransactions.Add(new PointTransaction
-                                {
-                                    Id = Guid.NewGuid(),
-                                    UserWalletUserId = targetUserId,
-                                    WorkTaskId = workTaskId,
-                                    Amount = earlyBonus,
-                                    TransactionType = EarlyBonusType,
-                                    Reason = $"Thuong hoan thanh som task {task.SequenceId ?? task.Id.ToString()}",
-                                    CreatedAt = DateTime.UtcNow
-                                });
-                            }
-
-                            var accuracyBonus = CalculateAccuracyBonus(points, task.TotalEstimatedHours, task.TotalActualHours, rewardRules);
-                            if (accuracyBonus > 0)
-                            {
-                                wallet.TotalPoints += accuracyBonus;
-                                wallet.Level = CalculateLevel(wallet.TotalPoints);
-                                _context.PointTransactions.Add(new PointTransaction
-                                {
-                                    Id = Guid.NewGuid(),
-                                    UserWalletUserId = targetUserId,
-                                    WorkTaskId = workTaskId,
-                                    Amount = accuracyBonus,
-                                    TransactionType = AccuracyBonusType,
-                                    Reason = $"Thuong estimate sat thuc te cho task {task.SequenceId ?? task.Id.ToString()}",
-                                    CreatedAt = DateTime.UtcNow
-                                });
-                            }
-
-                            var latePenalty = CalculateLatePenalty(points, task.DueDate, rewardRules);
-                            if (latePenalty < 0)
-                            {
-                                wallet.TotalPoints = Math.Max(0, wallet.TotalPoints + latePenalty);
-                                wallet.Level = CalculateLevel(wallet.TotalPoints);
-                                _context.PointTransactions.Add(new PointTransaction
-                                {
-                                    Id = Guid.NewGuid(),
-                                    UserWalletUserId = targetUserId,
-                                    WorkTaskId = workTaskId,
-                                    Amount = latePenalty,
-                                    TransactionType = LatePenaltyType,
-                                    Reason = $"Giam diem do task {task.SequenceId ?? task.Id.ToString()} hoan thanh tre han",
-                                    CreatedAt = DateTime.UtcNow
-                                });
-                            }
                         }
+
+                        AddReward(points, RewardType, $"Cong diem hoan thanh task {task.SequenceId ?? task.Id.ToString()}");
+
+                        var earlyBonus = CalculateEarlyBonus(points, task.DueDate, rewardRules);
+                        AddReward(earlyBonus, EarlyBonusType, $"Thuong hoan thanh som task {task.SequenceId ?? task.Id.ToString()}");
+
+                        var accuracyBonus = CalculateAccuracyBonus(points, task.TotalEstimatedHours, task.TotalActualHours, rewardRules);
+                        AddReward(accuracyBonus, AccuracyBonusType, $"Thuong estimate sat thuc te cho task {task.SequenceId ?? task.Id.ToString()}");
+
+                        var latePenalty = CalculateLatePenalty(points, task.DueDate, rewardRules);
+                        AddReward(latePenalty, LatePenaltyType, $"Giam diem do task {task.SequenceId ?? task.Id.ToString()} hoan thanh tre han");
                     }
                     else if (wasDone && !isDone)
                     {
-                        var netPoints = await _context.PointTransactions
-                            .Where(pt =>
-                                pt.UserWalletUserId == targetUserId &&
-                                pt.WorkTaskId == workTaskId &&
-                                pt.TransactionType != RollbackType)
-                            .SumAsync(pt => (int?)pt.Amount) ?? 0;
+                        var originalBaseReward = await _context.PointTransactions
+                            .Where(reward =>
+                                reward.UserWalletUserId == targetUserId &&
+                                reward.WorkTaskId == workTaskId &&
+                                reward.TransactionType == RewardType &&
+                                !_context.PointTransactions.Any(reversal => reversal.ReversalOfTransactionId == reward.Id))
+                            .OrderByDescending(reward => reward.CreatedAt)
+                            .FirstOrDefaultAsync();
 
-                        var rollbackPoints = await _context.PointTransactions
-                            .Where(pt =>
-                                pt.UserWalletUserId == targetUserId &&
-                                pt.WorkTaskId == workTaskId &&
-                                pt.TransactionType == RollbackType)
-                            .SumAsync(pt => (int?)Math.Abs(pt.Amount)) ?? 0;
-
-                        var remainingRollback = Math.Max(0, netPoints - rollbackPoints);
-                        if (remainingRollback > 0)
+                        if (originalBaseReward != null)
                         {
-                            wallet.TotalPoints = Math.Max(0, wallet.TotalPoints - remainingRollback);
-                            wallet.Level = CalculateLevel(wallet.TotalPoints);
-    
-                            _context.PointTransactions.Add(new PointTransaction
+                            var originals = originalBaseReward.RewardEventId.HasValue
+                                ? await _context.PointTransactions
+                                    .Where(entry => entry.RewardEventId == originalBaseReward.RewardEventId && entry.TransactionType != RollbackType)
+                                    .ToListAsync()
+                                : new List<PointTransaction> { originalBaseReward };
+
+                            foreach (var original in originals)
                             {
-                                Id = Guid.NewGuid(),
-                                UserWalletUserId = targetUserId,
-                                WorkTaskId = workTaskId,
-                                Amount = -remainingRollback,
-                                TransactionType = RollbackType,
-                                Reason = $"Hoan tra diem do Task bi Reject boi user {actorUserId}",
-                                CreatedAt = DateTime.UtcNow
-                            });
+                                var alreadyReversed = await _context.PointTransactions
+                                    .AnyAsync(entry => entry.ReversalOfTransactionId == original.Id);
+                                if (alreadyReversed)
+                                {
+                                    continue;
+                                }
+
+                                var reversalAmount = -original.Amount;
+                                var previousBalance = wallet.TotalPoints;
+                                wallet.TotalPoints = Math.Max(0, wallet.TotalPoints + reversalAmount);
+                                var appliedReversal = wallet.TotalPoints - previousBalance;
+                                _context.PointTransactions.Add(new PointTransaction
+                                {
+                                    Id = Guid.NewGuid(),
+                                    UserWalletUserId = targetUserId,
+                                    WorkTaskId = workTaskId,
+                                    Amount = appliedReversal,
+                                    TransactionType = RollbackType,
+                                    Reason = $"Hoan tra diem do Task bi Reject boi user {actorUserId}",
+                                    RewardEventId = original.RewardEventId,
+                                    RewardRuleVersion = original.RewardRuleVersion ?? RewardRuleVersion,
+                                    ReversalOfTransactionId = original.Id,
+                                    IdempotencyKey = $"task-reward-reversal:{original.Id:N}",
+                                    CreatedAt = DateTime.UtcNow
+                                });
+                            }
+
+                            wallet.Level = CalculateLevel(wallet.TotalPoints);
                         }
                     }
     

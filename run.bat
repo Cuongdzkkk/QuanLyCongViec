@@ -2,6 +2,9 @@
 title Start Task Management System
 cd /d "%~dp0"
 
+set "DEV_SQL_SERVER=.\SQLEXPRESS01"
+set "DEV_SQL_DATABASE=TaskManagementDB_V4"
+set "DOTNET_EF_VERSION=10.0.9"
 set "RUN_LOCK=%TEMP%\sprinta-task-management-startup.lock"
 set "RUN_LOCK_OWNER=%RUN_LOCK%\owner.pid"
 
@@ -50,8 +53,13 @@ if /I "%resetDB%"=="Y" (
         pause
         goto :startup_failed
     )
+    call :ensure_dotnet_ef
+    if errorlevel 1 (
+        pause
+        goto :startup_failed
+    )
     echo 1. Drop Database cu...
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-sql.ps1" -Server ".\SQLEXPRESS01" -Database "master" -Query "IF DB_ID('TaskManagementDB_V4') IS NOT NULL BEGIN ALTER DATABASE [TaskManagementDB_V4] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [TaskManagementDB_V4]; END"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-sql.ps1" -Server "%DEV_SQL_SERVER%" -Database "master" -Query "IF DB_ID('%DEV_SQL_DATABASE%') IS NOT NULL BEGIN ALTER DATABASE [%DEV_SQL_DATABASE%] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [%DEV_SQL_DATABASE%]; END"
     if errorlevel 1 (
         echo Drop database that bai.
         pause
@@ -73,7 +81,7 @@ if /I "%resetDB%"=="Y" (
     
     echo 3. Dang nap demo data doanh nghiep cho admin dev@sprinta.local...
     if exist "%~dp0scripts\seed-demo-data.sql" (
-        powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-sql.ps1" -Server ".\SQLEXPRESS01" -Database "TaskManagementDB_V4" -InputFile "%~dp0scripts\seed-demo-data.sql"
+        powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-sql.ps1" -Server "%DEV_SQL_SERVER%" -Database "%DEV_SQL_DATABASE%" -InputFile "%~dp0scripts\seed-demo-data.sql"
         if errorlevel 1 (
             echo Seed demo data that bai.
             pause
@@ -97,6 +105,11 @@ if /I "%resetDB%"=="Y" (
         pause
         goto :startup_failed
     )
+    call :ensure_dotnet_ef
+    if errorlevel 1 (
+        pause
+        goto :startup_failed
+    )
     if not exist "..\TaskManagement.Infrastructure\Migrations" (
         echo Chua co Migrations, dang tao moi de chuan bi tao DB...
         dotnet ef migrations add InitialCreate --project ../TaskManagement.Infrastructure --startup-project .
@@ -117,7 +130,7 @@ if /I "%resetDB%"=="Y" (
 
     echo Dang nap demo data cho admin dev@sprinta.local...
     if exist "%~dp0scripts\seed-demo-data.sql" (
-        powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-sql.ps1" -Server ".\SQLEXPRESS01" -Database "TaskManagementDB_V4" -InputFile "%~dp0scripts\seed-demo-data.sql"
+        powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-sql.ps1" -Server "%DEV_SQL_SERVER%" -Database "%DEV_SQL_DATABASE%" -InputFile "%~dp0scripts\seed-demo-data.sql"
         if errorlevel 1 (
             echo Seed demo data that bai.
             pause
@@ -147,4 +160,15 @@ exit /b 1
 
 :startup_complete
 rd /s /q "%RUN_LOCK%" >nul 2>&1
+exit /b 0
+
+:ensure_dotnet_ef
+for /f "tokens=2" %%v in ('dotnet tool list -g ^| findstr /R /C:"^dotnet-ef " 2^>nul') do set "CURRENT_DOTNET_EF=%%v"
+if "%CURRENT_DOTNET_EF%"=="%DOTNET_EF_VERSION%" exit /b 0
+echo Dang cap nhat dotnet-ef len phien ban %DOTNET_EF_VERSION%...
+dotnet tool update --global dotnet-ef --version %DOTNET_EF_VERSION%
+if errorlevel 1 (
+    echo Khong the cap nhat dotnet-ef. Hay chay: dotnet tool update --global dotnet-ef --version %DOTNET_EF_VERSION%
+    exit /b 1
+)
 exit /b 0

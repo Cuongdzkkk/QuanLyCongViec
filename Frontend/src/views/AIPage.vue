@@ -279,8 +279,9 @@ import { useSprintStore } from '@/store/useSprintStore'
 import { useI18nStore } from '@/store/useI18nStore'
 import { broadcastAdminRealtime } from '@/utils/adminRealtime'
 import { signalRService } from '@/api/signalrService'
-import { hasSystemAdminAccess, normalizeProjectRole } from '@/utils/permissions'
+import { hasProjectWritePermission, normalizeProjectRole } from '@/utils/permissions'
 import { getScopedCurrentProjectId } from '@/utils/projectContext'
+import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -288,7 +289,6 @@ const workTaskStore = useWorkTaskStore()
 const sprintStore = useSprintStore()
 const i18nStore = useI18nStore()
 const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
-const aiManagerProjectRoles = ['pm', 'po', 'sm', 'admin', 'project_manager', 'project_lead', 'scrum_master']
 const showCustomizeModal = ref(false)
 const sidebarPreferences = ref({ audit: true, users: true })
 
@@ -302,7 +302,7 @@ const selectedBacklogKeys = ref([])
 const reviewTargetSprintId = ref('')
 const repoForm = ref({
   url: '',
-  token: localStorage.getItem('githubToken') || ''
+  token: ''
 })
 
 const chatHistory = ref([
@@ -360,11 +360,7 @@ const currentProjectRole = computed(() => normalizeProjectRole(
 ))
 
 const canManageProjectAi = computed(() => {
-  if (hasSystemAdminAccess(currentUser)) {
-    return true
-  }
-
-  return Boolean(currentProjectRole.value && aiManagerProjectRoles.includes(currentProjectRole.value))
+  return hasProjectWritePermission(currentProjectRole.value)
 })
 
 const canCreateIntoProject = computed(() => Boolean(currentProjectId.value && repoAnalysis.value && canManageProjectAi.value))
@@ -536,14 +532,12 @@ const analyzeRepository = async () => {
   repoStatus.value = 'Dang phan tich repo qua backend AI...'
 
   try {
-    if (repoForm.value.token?.trim()) {
-      localStorage.setItem('githubToken', repoForm.value.token.trim())
-    }
-    const response = await axiosClient.post('/ai/repo-analysis', {
-      repoUrl,
-      gitHubToken: repoForm.value.token?.trim() || null,
-      focus: 'Repository planning, backlog, risks, and test strategy'
-    })
+    const response = await runWithEphemeralGitHubToken(repoForm.value, gitHubToken =>
+      axiosClient.post('/ai/repo-analysis', {
+        repoUrl,
+        gitHubToken,
+        focus: 'Repository planning, backlog, risks, and test strategy'
+      }))
 
     const analysis = response.data?.data
     if (!analysis) {
@@ -701,6 +695,7 @@ const notifyProjectRealtime = (type, payload = {}) => {
 }
 
 onMounted(() => {
+  clearLegacyGitHubCredentialStorage()
   projectStore.fetchAllProjects().catch(() => [])
   if (currentProjectId.value) {
     sprintStore.fetchSprints(currentProjectId.value).catch(() => [])

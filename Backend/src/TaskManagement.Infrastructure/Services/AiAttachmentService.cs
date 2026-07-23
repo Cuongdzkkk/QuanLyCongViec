@@ -262,7 +262,7 @@ namespace TaskManagement.Infrastructure.Services
                     SourceId = sourceId,
                     FileName = attachment.FileName,
                     Locator = chunk.Locator,
-                    Content = chunk.Content
+                    Content = AiSafetyGuard.RedactSecrets(chunk.Content)
                 });
                 citations.Add(new AiAttachmentCitationDto
                 {
@@ -270,7 +270,7 @@ namespace TaskManagement.Infrastructure.Services
                     SourceId = sourceId,
                     FileName = attachment.FileName,
                     Locator = chunk.Locator,
-                    Excerpt = Limit(chunk.Content, 220)
+                    Excerpt = Limit(AiSafetyGuard.RedactSecrets(chunk.Content), 220)
                 });
             }
 

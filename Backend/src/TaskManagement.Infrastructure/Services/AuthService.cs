@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.Auth;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
@@ -32,10 +33,11 @@ namespace TaskManagement.Infrastructure.Services
 
         public async Task<(AuthResponseDto? response, string? refreshToken, bool requires2FA)> LoginAsync(LoginRequestDto request)
         {
+            var canonicalEmail = EmailCanonicalizer.Normalize(request.Email);
             var user = await _context.Users
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Email == request.Email && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == canonicalEmail && !u.IsDeleted);
 
             if (user == null || string.IsNullOrEmpty(user.PasswordHash) || !VerifyPassword(request.Password, user.PasswordHash))
             {
@@ -44,7 +46,7 @@ namespace TaskManagement.Infrastructure.Services
 
             if (!user.IsActive)
             {
-                throw new UnauthorizedAccessException("Account is not active.");
+                throw new UnauthorizedAccessException("Email hoặc mật khẩu không chính xác.");
             }
 
             var tenantConfig = await _context.TenantConfigs.FirstOrDefaultAsync() 
@@ -59,7 +61,11 @@ namespace TaskManagement.Infrastructure.Services
                 }
 
                 var otpCode = _otpService.GenerateOtp();
-                _otpService.StoreOtp(user.Email, otpCode);
+                var issueResult = _otpService.StoreOtp(user.Email, otpCode);
+                if (!issueResult.Issued)
+                {
+                    throw new OtpRateLimitException(issueResult.RetryAfterSeconds);
+                }
                 await _emailService.SendOtpEmailAsync(user.Email, otpCode);
                 return (null, null, true);
             }
@@ -69,18 +75,22 @@ namespace TaskManagement.Infrastructure.Services
 
         public async Task<(AuthResponseDto response, string refreshToken)> Login2FAAsync(string email, string password, string otp)
         {
+            var canonicalEmail = EmailCanonicalizer.Normalize(email);
             var user = await _context.Users
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Email == email && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == canonicalEmail && !u.IsDeleted);
 
             if (user == null || string.IsNullOrEmpty(user.PasswordHash) || !VerifyPassword(password, user.PasswordHash))
                 throw new UnauthorizedAccessException("Email hoặc mật khẩu không chính xác.");
 
             if (!user.IsActive)
-                throw new UnauthorizedAccessException("Account is not active.");
+                throw new UnauthorizedAccessException("Email hoặc mật khẩu không chính xác.");
 
-            if (!_otpService.ValidateOtp(email, otp))
+            var otpValidation = _otpService.ValidateOtp(canonicalEmail, otp);
+            if (otpValidation.Status == OtpValidationStatus.Locked)
+                throw new OtpRateLimitException(otpValidation.RetryAfterSeconds);
+            if (!otpValidation.IsValid)
                 throw new UnauthorizedAccessException("Mã OTP không hợp lệ hoặc đã hết hạn.");
 
             var tokens = await GenerateTokensForUser(user, "2FA-Verified-Device");
@@ -169,10 +179,16 @@ namespace TaskManagement.Infrastructure.Services
                     ?? throw new UnauthorizedAccessException("Không thể lấy email từ Google.");
                 name = userInfo.TryGetProperty("name", out var nameEl) ? nameEl.GetString() ?? email : email;
             }
+            email = EmailCanonicalizer.Normalize(email);
             var user = await _context.Users
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Email == email && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+
+            if (user?.IsDeleted == true)
+            {
+                throw new UnauthorizedAccessException("Unable to authenticate this account.");
+            }
 
             if (user == null)
             {
@@ -207,12 +223,7 @@ namespace TaskManagement.Infrastructure.Services
 
             if (!user.IsActive)
             {
-                if (!string.IsNullOrEmpty(user.PasswordHash))
-                    throw new UnauthorizedAccessException("Account is suspended.");
-
-                user.IsActive = true;
-                user.UpdatedAt = DateTime.UtcNow;
-                await ActivatePendingProjectInvitesAsync(user.Id);
+                throw new UnauthorizedAccessException("Unable to authenticate this account.");
             }
 
             var roles = user.UserRoles?.Select(ur => ur.Role.Name).ToList() ?? new List<string>();
@@ -333,10 +344,16 @@ namespace TaskManagement.Infrastructure.Services
                 : githubUser.GetProperty("login").GetString();
 
             // Bước 3: Tìm hoặc tạo User mới
+            githubEmail = EmailCanonicalizer.Normalize(githubEmail);
             var user = await _context.Users
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Email == githubEmail && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == githubEmail);
+
+            if (user?.IsDeleted == true)
+            {
+                throw new UnauthorizedAccessException("Unable to authenticate this account.");
+            }
 
             if (user == null)
             {
@@ -370,12 +387,7 @@ namespace TaskManagement.Infrastructure.Services
 
             if (!user.IsActive)
             {
-                if (!string.IsNullOrEmpty(user.PasswordHash))
-                    throw new UnauthorizedAccessException("Account is suspended.");
-
-                user.IsActive = true;
-                user.UpdatedAt = DateTime.UtcNow;
-                await ActivatePendingProjectInvitesAsync(user.Id);
+                throw new UnauthorizedAccessException("Unable to authenticate this account.");
             }
 
             var roles = user.UserRoles?.Select(ur => ur.Role.Name).ToList() ?? new List<string>();
@@ -423,9 +435,34 @@ namespace TaskManagement.Infrastructure.Services
             var user = await _context.Users
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.Id == userId);
 
-            if (user == null || user.RefreshToken != refreshToken || user.RefreshTokenExpiryTime <= DateTime.UtcNow)
+            if (user == null || user.IsDeleted || !user.IsActive)
+            {
+                if (user != null)
+                {
+                    user.RefreshToken = null;
+                    user.RefreshTokenExpiryTime = null;
+                    var sessions = await _context.RefreshTokens
+                        .Where(token => token.UserId == user.Id && !token.IsRevoked)
+                        .ToListAsync();
+                    foreach (var session in sessions)
+                    {
+                        session.IsRevoked = true;
+                    }
+                    await _context.SaveChangesAsync();
+                }
+
+                throw new UnauthorizedAccessException("Invalid access token or refresh token");
+            }
+
+            var activeSession = await _context.RefreshTokens.FirstOrDefaultAsync(token =>
+                token.UserId == userId &&
+                token.Token == refreshToken &&
+                !token.IsRevoked &&
+                token.ExpiryTime > DateTime.UtcNow);
+
+            if (user.RefreshToken != refreshToken || user.RefreshTokenExpiryTime <= DateTime.UtcNow || activeSession == null)
             {
                 throw new UnauthorizedAccessException("Invalid access token or refresh token");
             }
@@ -437,6 +474,16 @@ namespace TaskManagement.Infrastructure.Services
 
             user.RefreshToken = newRefreshToken;
             user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+            activeSession.IsRevoked = true;
+            _context.RefreshTokens.Add(new RefreshToken
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                Token = newRefreshToken,
+                DeviceId = activeSession.DeviceId,
+                ExpiryTime = user.RefreshTokenExpiryTime.Value,
+                IsRevoked = false
+            });
 
             await _context.SaveChangesAsync();
 
@@ -454,15 +501,30 @@ namespace TaskManagement.Infrastructure.Services
             await _context.SaveChangesAsync();
         }
 
-        private async Task ActivatePendingProjectInvitesAsync(Guid userId)
+        private async Task ActivatePendingProjectInvitesAsync(Guid userId, Guid? projectId = null)
         {
             var pendingProjects = await _context.ProjectMembers
-                .Where(pm => pm.UserId == userId && !pm.Status)
+                .Where(pm => pm.UserId == userId && !pm.Status && pm.LeftAt == null &&
+                    (!projectId.HasValue || pm.ProjectId == projectId.Value))
                 .ToListAsync();
 
             foreach (var projectMember in pendingProjects)
             {
                 projectMember.Status = true;
+            }
+
+            var projectIds = pendingProjects.Select(member => member.ProjectId).ToList();
+            var workspaceIds = await _context.Projects
+                .Where(project => projectIds.Contains(project.Id))
+                .Select(project => project.WorkspaceId)
+                .Distinct()
+                .ToListAsync();
+            var workspaceMemberships = await _context.WorkspaceMembers
+                .Where(member => member.UserId == userId && workspaceIds.Contains(member.WorkspaceId))
+                .ToListAsync();
+            foreach (var workspaceMember in workspaceMemberships)
+            {
+                workspaceMember.IsActive = true;
             }
         }
 
@@ -476,12 +538,16 @@ namespace TaskManagement.Infrastructure.Services
 
         public async Task RegisterAsync(RegisterRequestDto request)
         {
-            if (!_otpService.ValidateOtp(request.Email, request.OtpCode))
+            var canonicalEmail = EmailCanonicalizer.Normalize(request.Email);
+            var otpValidation = _otpService.ValidateOtp(canonicalEmail, request.OtpCode);
+            if (otpValidation.Status == OtpValidationStatus.Locked)
+                throw new OtpRateLimitException(otpValidation.RetryAfterSeconds);
+            if (!otpValidation.IsValid)
             {
                 throw new InvalidOperationException("Mã OTP không hợp lệ hoặc đã hết hạn.");
             }
 
-            var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email && !u.IsDeleted);
+            var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == canonicalEmail && !u.IsDeleted);
             if (existingUser != null && !string.IsNullOrEmpty(existingUser.PasswordHash))
             {
                 throw new InvalidOperationException("Email da duoc su dung.");
@@ -490,7 +556,7 @@ namespace TaskManagement.Infrastructure.Services
             var newUser = existingUser ?? new User
             {
                 Id = Guid.NewGuid(),
-                Email = request.Email,
+                Email = canonicalEmail,
                 CreatedAt = DateTime.UtcNow,
                 IsDeleted = false
             };
@@ -520,28 +586,24 @@ namespace TaskManagement.Infrastructure.Services
                 }
             }
 
-            var pendingProjects = await _context.ProjectMembers
-                .Where(pm => pm.UserId == newUser.Id && !pm.Status)
-                .ToListAsync();
-
-            foreach (var projectMember in pendingProjects)
-            {
-                projectMember.Status = true;
-            }
+            await ActivatePendingProjectInvitesAsync(newUser.Id);
 
             await _context.SaveChangesAsync();
         }
 
         public async Task ResetPasswordAsync(ResetPasswordRequestDto request)
         {
-            var email = request.Email?.Trim() ?? string.Empty;
+            var email = EmailCanonicalizer.Normalize(request.Email);
 
             // OTP dùng 1 lần: verify-otp đã cấp lại otpToken (OTP mới) cho chính email này.
             // ValidateOtp sẽ xoá token khỏi cache khi hợp lệ.
-            if (!_otpService.ValidateOtp(email, request.OtpToken?.Trim() ?? string.Empty))
+            var otpValidation = _otpService.ValidateOtp(email, request.OtpToken?.Trim() ?? string.Empty);
+            if (otpValidation.Status == OtpValidationStatus.Locked)
+                throw new OtpRateLimitException(otpValidation.RetryAfterSeconds);
+            if (!otpValidation.IsValid)
                 throw new UnauthorizedAccessException("Mã xác thực không hợp lệ hoặc đã hết hạn. Vui lòng thực hiện lại bước quên mật khẩu.");
 
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email && !u.IsDeleted);
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email && !u.IsDeleted && u.IsActive);
             if (user == null)
                 throw new ArgumentException("Không thể đặt lại mật khẩu cho tài khoản này.");
 
@@ -562,7 +624,7 @@ namespace TaskManagement.Infrastructure.Services
 
             // Kích hoạt Project Members (những dự án đã được mời nhưng đang pending)
             var pendingProjects = await _context.ProjectMembers
-                .Where(pm => pm.UserId == user.Id && pm.Status == false)
+                .Where(pm => pm.UserId == user.Id && !pm.Status && pm.LeftAt == null)
                 .ToListAsync();
 
             if (pendingProjects.Count == 0)
@@ -573,6 +635,20 @@ namespace TaskManagement.Infrastructure.Services
                 pm.Status = true;
             }
 
+            var pendingProjectIds = pendingProjects.Select(member => member.ProjectId).ToList();
+            var pendingWorkspaceIds = await _context.Projects
+                .Where(project => pendingProjectIds.Contains(project.Id))
+                .Select(project => project.WorkspaceId)
+                .Distinct()
+                .ToListAsync();
+            var workspaceMemberships = await _context.WorkspaceMembers
+                .Where(member => member.UserId == user.Id && pendingWorkspaceIds.Contains(member.WorkspaceId))
+                .ToListAsync();
+            foreach (var workspaceMember in workspaceMemberships)
+            {
+                workspaceMember.IsActive = true;
+            }
+
             await _context.SaveChangesAsync();
         }
 
@@ -580,9 +656,11 @@ namespace TaskManagement.Infrastructure.Services
         {
             var invite = await FindValidInviteTokenAsync(token);
             var user = invite.User;
+            var inviteProjectId = GetInviteProjectId(invite);
 
             var projectNames = await _context.ProjectMembers
-                .Where(pm => pm.UserId == user.Id && !pm.Status)
+                .Where(pm => pm.UserId == user.Id && !pm.Status && pm.LeftAt == null &&
+                    (!inviteProjectId.HasValue || pm.ProjectId == inviteProjectId.Value))
                 .Select(pm => pm.Project.Name)
                 .ToArrayAsync();
 
@@ -628,7 +706,7 @@ namespace TaskManagement.Infrastructure.Services
                 user.UpdatedAt = DateTime.UtcNow;
             }
 
-            await ActivatePendingProjectInvitesAsync(user.Id);
+            await ActivatePendingProjectInvitesAsync(user.Id, GetInviteProjectId(invite));
             invite.IsRevoked = true;
             await _context.SaveChangesAsync();
 
@@ -665,7 +743,7 @@ namespace TaskManagement.Infrastructure.Services
                     .ThenInclude(ur => ur.Role)
                 .FirstOrDefaultAsync(rt =>
                     rt.Token == tokenHash &&
-                    rt.DeviceId == "Invite" &&
+                    (rt.DeviceId == "Invite" || (rt.DeviceId != null && rt.DeviceId.StartsWith("Invite:"))) &&
                     !rt.IsRevoked &&
                     rt.ExpiryTime > DateTime.UtcNow);
 
@@ -673,6 +751,19 @@ namespace TaskManagement.Infrastructure.Services
                 throw new UnauthorizedAccessException("Invite link is invalid or expired.");
 
             return invite;
+        }
+
+        private static Guid? GetInviteProjectId(RefreshToken invite)
+        {
+            const string prefix = "Invite:";
+            if (invite.DeviceId?.StartsWith(prefix, StringComparison.Ordinal) != true)
+            {
+                return null;
+            }
+
+            return Guid.TryParseExact(invite.DeviceId[prefix.Length..], "N", out var projectId)
+                ? projectId
+                : null;
         }
 
         private static string HashToken(string token)

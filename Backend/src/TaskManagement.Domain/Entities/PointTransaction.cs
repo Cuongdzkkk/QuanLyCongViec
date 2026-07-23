@@ -12,6 +12,11 @@ namespace TaskManagement.Domain.Entities
         public int Amount { get; set; }
         public string Reason { get; set; } = string.Empty;
         public string TransactionType { get; set; } = "Reward";
+        public Guid? RewardEventId { get; set; }
+        public string? IdempotencyKey { get; set; }
+        public string? RewardRuleVersion { get; set; }
+        public Guid? ReversalOfTransactionId { get; set; }
+        public PointTransaction? ReversalOfTransaction { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

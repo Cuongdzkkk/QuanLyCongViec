@@ -61,16 +61,6 @@ namespace TaskManagement.Infrastructure.Data
 
             await SeedPermissionsAsync(context);
 
-            // Homesite must run on real user-entered data. Keep only system roles by default;
-            // demo users, workspaces, projects, tasks, and kudos require an explicit opt-in.
-            if (!string.Equals(
-                Environment.GetEnvironmentVariable("SPRINTA_SEED_DEMO_DATA"),
-                "true",
-                StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
             var owner = await context.Users.FirstOrDefaultAsync(u => u.Id == preferredOwnerId)
                 ?? await context.Users.FirstOrDefaultAsync(u => u.Email == "admin@example.com");
 
@@ -521,6 +511,7 @@ namespace TaskManagement.Infrastructure.Data
             var permissions = new[]
             {
                 new { Module = "admin.roles", Code = "admin.roles.view", Description = "View admin roles" },
+                new { Module = "admin.roles", Code = "admin.roles.can_view", Description = "View admin roles" },
                 new { Module = "admin.roles", Code = "admin.roles.create", Description = "Create admin roles" },
                 new { Module = "admin.roles", Code = "admin.roles.edit", Description = "Edit admin roles" },
                 new { Module = "admin.roles", Code = "admin.roles.delete", Description = "Delete admin roles" },
@@ -680,6 +671,10 @@ namespace TaskManagement.Infrastructure.Data
                 new { Module = "teams", Code = "teams.edit", Description = "Edit teams" },
                 new { Module = "teams", Code = "teams.delete", Description = "Delete teams" },
                 new { Module = "teams", Code = "teams.manage_members", Description = "Manage members teams" },
+                new { Module = "teams.dashboard", Code = "teams.dashboard.can_view", Description = "View teams dashboard" },
+                new { Module = "teams.dashboard", Code = "teams.dashboard.create", Description = "Create teams dashboard" },
+                new { Module = "teams.dashboard", Code = "teams.dashboard.edit", Description = "Edit teams dashboard" },
+                new { Module = "teams.dashboard", Code = "teams.dashboard.delete", Description = "Delete teams dashboard" },
 
                 new { Module = "views", Code = "views.view", Description = "View views" },
                 new { Module = "views", Code = "views.create", Description = "Create views" },

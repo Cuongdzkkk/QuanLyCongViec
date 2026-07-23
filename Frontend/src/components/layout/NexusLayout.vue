@@ -560,6 +560,154 @@ const defaultChatHistory = () => [
 ]
 
 const chatHistory = ref(defaultChatHistory())
+const conversations = ref([])
+const currentConversationId = ref(null)
+const currentConversationWorkspaceId = ref(null)
+const currentConversationTitle = ref('Cuộc trò chuyện mới')
+const conversationHistoryVisible = ref(false)
+const conversationSearch = ref('')
+const conversationLoading = ref(false)
+const conversationPage = ref(1)
+const conversationHasMore = ref(false)
+const filteredConversations = computed(() => {
+  const query = conversationSearch.value.trim().toLocaleLowerCase('vi-VN')
+  return query ? conversations.value.filter(item => item.title.toLocaleLowerCase('vi-VN').includes(query)) : conversations.value
+})
+
+const apiPayload = (response) => response?.data?.data ?? response?.data ?? response
+const formatConversationDate = (value) => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : ''
+
+const loadConversations = async (reset = true) => {
+  if (conversationLoading.value) return
+  conversationLoading.value = true
+  if (reset) {
+    conversationPage.value = 1
+    conversations.value = []
+  }
+  try {
+    const response = await axiosClient.get('/ai/conversations', { params: { workspaceId: currentWorkspaceId.value, page: conversationPage.value, pageSize: 20 } })
+    const payload = apiPayload(response)
+    const items = payload.items || []
+    conversations.value = reset ? items : [...conversations.value, ...items]
+    conversationHasMore.value = conversations.value.length < (payload.total || 0)
+    if (conversationHasMore.value) conversationPage.value += 1
+  } catch (error) {
+    const status = error?.response?.status
+    const message = status === 429
+      ? 'Lịch sử trò chuyện đang bị giới hạn tạm thời. Hãy thử lại sau vài giây.'
+      : status === 403
+        ? 'Bạn không có quyền xem lịch sử trò chuyện trong workspace này.'
+        : 'Không thể tải lịch sử trò chuyện.'
+    ElMessage.warning(message)
+    conversationHasMore.value = false
+  } finally {
+    conversationLoading.value = false
+  }
+}
+
+const toggleConversationHistory = async () => {
+  conversationHistoryVisible.value = !conversationHistoryVisible.value
+  if (conversationHistoryVisible.value) await loadConversations(true)
+}
+
+const startNewConversation = () => {
+  releaseMessageAttachmentUrls()
+  currentConversationId.value = null
+  currentConversationWorkspaceId.value = null
+  currentConversationTitle.value = 'Cuộc trò chuyện mới'
+  chatHistory.value = defaultChatHistory()
+  conversationHistoryVisible.value = false
+  clearPendingAttachments()
+}
+
+const ensureConversation = async (firstMessage) => {
+  if (currentConversationId.value) return currentConversationId.value
+  const title = firstMessage.trim().replace(/\s+/g, ' ').slice(0, 80) || 'Cuộc trò chuyện mới'
+  const response = await axiosClient.post('/ai/conversations', { workspaceId: currentWorkspaceId.value, title })
+  const conversation = apiPayload(response)
+  currentConversationId.value = conversation.id
+  currentConversationWorkspaceId.value = conversation.workspaceId
+  currentConversationTitle.value = conversation.title
+  return conversation.id
+}
+
+const releaseMessageAttachmentUrls = () => {
+  chatHistory.value.forEach(message => message.attachments?.forEach((attachment) => {
+    if (attachment.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(attachment.previewUrl)
+  }))
+}
+
+const serializableConversationMessages = () => chatHistory.value
+  .filter(message => !message.loading)
+  .map(message => ({
+    ...message,
+    attachments: message.attachments?.map(({ file, previewUrl, ...attachment }) => attachment)
+  }))
+
+const persistConversation = async () => {
+  if (!currentConversationId.value) return
+  try {
+    const messages = JSON.parse(JSON.stringify(serializableConversationMessages()))
+    await axiosClient.put(`/ai/conversations/${currentConversationId.value}`, { title: currentConversationTitle.value, messages })
+  } catch {
+    ElMessage.warning('Chưa thể lưu lịch sử trò chuyện. Hãy kiểm tra kết nối.')
+  }
+}
+
+const openConversation = async (id) => {
+  const response = await axiosClient.get(`/ai/conversations/${id}`)
+  const conversation = apiPayload(response)
+  releaseMessageAttachmentUrls()
+  currentConversationId.value = conversation.id
+  currentConversationWorkspaceId.value = conversation.workspaceId
+  currentConversationTitle.value = conversation.title
+  chatHistory.value = Array.isArray(conversation.messages) && conversation.messages.length ? conversation.messages : defaultChatHistory()
+  await hydrateConversationImages()
+  conversationHistoryVisible.value = false
+  await scrollAiToBottom()
+}
+
+const hydrateConversationImages = async () => {
+  const images = chatHistory.value.flatMap(message => message.attachments || []).filter(attachment => attachment.kind === 'image' && attachment.contentUrl)
+  await Promise.all(images.map(async (attachment) => {
+    try {
+      const response = await axiosClient.get(attachment.contentUrl, { responseType: 'blob' })
+      attachment.previewUrl = URL.createObjectURL(response.data)
+    } catch {
+      attachment.previewUrl = ''
+    }
+  }))
+}
+
+const openCitation = (citation) => {
+  const attachment = chatHistory.value
+    .flatMap(message => message.attachments || [])
+    .find(item => item.id === citation.attachmentId)
+  if (attachment) openAttachmentPreview(attachment)
+}
+
+const renameConversation = async (conversation) => {
+  try {
+    const result = await ElMessageBox.prompt('Nhập tên cuộc trò chuyện', 'Đổi tên', { inputValue: conversation.title, inputPattern: /\S+/, inputErrorMessage: 'Tên không được để trống' })
+    const response = await axiosClient.patch(`/ai/conversations/${conversation.id}/title`, { title: result.value })
+    const updated = apiPayload(response)
+    conversation.title = updated.title
+    if (currentConversationId.value === conversation.id) currentConversationTitle.value = updated.title
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error('Không thể đổi tên cuộc trò chuyện.')
+  }
+}
+
+const deleteConversation = async (conversation) => {
+  try {
+    await ElMessageBox.confirm(`Xóa "${conversation.title}"?`, 'Xóa cuộc trò chuyện', { type: 'warning' })
+    await axiosClient.delete(`/ai/conversations/${conversation.id}`)
+    conversations.value = conversations.value.filter(item => item.id !== conversation.id)
+    if (currentConversationId.value === conversation.id) startNewConversation()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error('Không thể xóa cuộc trò chuyện.')
+  }
+}
 
 const currentRouteLabel = computed(() => {
   const name = route.meta?.title || route.name || route.path
@@ -919,6 +1067,9 @@ const actionDetails = (action) => {
 
 const cancelAiAction = (action) => {
   if (action.loading || action.uiStatus === 'success') return
+  if (action.serverActionId) {
+    await axiosClient.post(`/ai/actions/${action.serverActionId}/cancel`)
+  }
   action.uiStatus = 'cancelled'
   action.error = ''
 }
@@ -957,6 +1108,7 @@ const executeAiAction = async (action) => {
   action.uiStatus = 'loading'
   action.error = ''
   try {
+<<<<<<< HEAD
     action.idempotencyKey ||= `${action.type}-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const response = await axiosClient.post('/ai/actions/execute', {
       type: action.type,
@@ -965,9 +1117,26 @@ const executeAiAction = async (action) => {
       projectId: currentProjectId.value || actionPayload(action).projectId || null,
       payload: actionPayload(action)
     })
+=======
+    action.idempotencyKey ||= `${action.type}-${crypto.randomUUID()}`
+    if (!action.serverActionId) {
+      const previewResponse = await axiosClient.post('/ai/actions/preview', {
+        type: action.type,
+        idempotencyKey: action.idempotencyKey,
+        workspaceId: currentWorkspaceId.value || null,
+        projectId: currentProjectId.value || actionPayload(action).projectId || null,
+        payload: actionPayload(action)
+      })
+      action.serverActionId = previewResponse.data?.data?.actionId
+      if (!action.serverActionId) throw new Error('Backend khÃ´ng táº¡o Ä‘Æ°á»£c action preview.')
+      await persistConversation()
+    }
+    const response = await axiosClient.post(`/ai/actions/${action.serverActionId}/confirm`)
+>>>>>>> 9c7eaac12b01586c5aa15e8da7a28c475185ecc9
     const root = response.data || {}
     const payload = root?.data ?? root
-    const result = payload?.data ?? payload?.result ?? payload
+    const actionResult = payload?.result ?? payload
+    const result = actionResult?.data ?? actionResult?.result ?? actionResult
     const failed = root?.success === false || root?.succeeded === false || payload?.success === false || payload?.succeeded === false || Boolean(root?.error || payload?.error)
     const hasResult = result && typeof result === 'object' && Object.keys(result).length > 0 && !result.error
     const confirmed = root?.success === true || root?.succeeded === true || payload?.success === true || payload?.succeeded === true

@@ -1,9 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
-using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using TaskManagement.Application.Common;
-using TaskManagement.Infrastructure.Data;
+using TaskManagement.Application.Interfaces;
 
 namespace TaskManagement.API.Filters
 {
@@ -18,27 +17,19 @@ namespace TaskManagement.API.Filters
 
     public class ProjectAuthorizeFilter : IAsyncActionFilter
     {
-        private static readonly string[] SystemOverrideRoles =
-        {
-            "superadmin",
-            "admin",
-            "system admin",
-            "organization admin",
-            "accessadmin",
-            "access admin"
-        };
-
+        private readonly string _authorizationRule;
         private readonly string[] _allowedRoles;
-        private readonly ApplicationDbContext _dbContext;
+        private readonly IResourceAuthorizationService _authorizationService;
 
-        public ProjectAuthorizeFilter(string roles, ApplicationDbContext dbContext)
+        public ProjectAuthorizeFilter(string roles, IResourceAuthorizationService authorizationService)
         {
+            _authorizationRule = roles.Trim();
             _allowedRoles = roles
                 .Split(',', StringSplitOptions.RemoveEmptyEntries)
                 .Select(ProjectExecutionRuleHelper.NormalizeProjectRole)
                 .Where(r => !string.IsNullOrWhiteSpace(r))
                 .ToArray();
-            _dbContext = dbContext;
+            _authorizationService = authorizationService;
         }
 
         public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
@@ -64,48 +55,26 @@ namespace TaskManagement.API.Filters
                 return;
             }
 
-            var claimRoles = context.HttpContext.User
-                .FindAll(ClaimTypes.Role)
-                .Select(claim => claim.Value?.Trim().ToLower())
-                .Where(role => !string.IsNullOrWhiteSpace(role))
-                .ToHashSet();
-
-            var hasSystemOverrideFromClaims = claimRoles.Any(role => SystemOverrideRoles.Contains(role!));
-
-            var hasSystemOverrideFromDatabase = await _dbContext.Users
-                .AsNoTracking()
-                .Where(user => user.Id == userId && user.IsActive && !user.IsDeleted)
-                .SelectMany(user => user.UserRoles.Select(ur => ur.Role.Name))
-                .AnyAsync(role => SystemOverrideRoles.Contains(role.Trim().ToLower()));
-
-            if (hasSystemOverrideFromClaims || hasSystemOverrideFromDatabase)
+            var permissionCode = ResourcePermissionPolicy.IsKnownPermission(_authorizationRule)
+                ? _authorizationRule
+                : ResourcePermissionCodes.ProjectRead;
+            var authorization = await _authorizationService.AuthorizeProjectAsync(userId, projectId, permissionCode);
+            if (!authorization.Succeeded)
             {
-                context.HttpContext.Items["ProjectRole"] = "SystemOverride";
-                await next();
-                return;
-            }
-
-            // 3. Query ProjectMember
-            var member = await _dbContext.ProjectMembers
-                .AsNoTracking() // Optimize since we only read
-                .FirstOrDefaultAsync(pm => pm.ProjectId == projectId && pm.UserId == userId);
-
-            // 4. Validate Membership & Soft Delete Status
-            if (member == null || !member.Status) // member.Status = false means soft-deleted based on BusinessLogic.md
-            {
-                context.Result = new ObjectResult(new { statusCode = 403, message = "Forbidden. You are not an active member of this project." })
+                context.Result = new ObjectResult(new { statusCode = 403, message = "Forbidden. Active workspace/project membership and permission are required." })
                 {
                     StatusCode = 403
                 };
                 return;
             }
 
-            // 5. Check Roles
-            var normalizedMemberRole = ProjectExecutionRuleHelper.NormalizeProjectRole(member.ProjectRole);
+            var normalizedMemberRole = ProjectExecutionRuleHelper.NormalizeProjectRole(authorization.ProjectRole);
 
-            if (_allowedRoles.Length > 0 && !_allowedRoles.Contains(normalizedMemberRole, StringComparer.OrdinalIgnoreCase))
+            if (!ResourcePermissionPolicy.IsKnownPermission(_authorizationRule) &&
+                _allowedRoles.Length > 0 &&
+                !_allowedRoles.Contains(normalizedMemberRole, StringComparer.OrdinalIgnoreCase))
             {
-                context.Result = new ObjectResult(new { statusCode = 403, message = $"Forbidden. Role '{member.ProjectRole}' is not allowed to perform this action." })
+                context.Result = new ObjectResult(new { statusCode = 403, message = "Forbidden. Project permission is required." })
                 {
                     StatusCode = 403
                 };
@@ -116,9 +85,10 @@ namespace TaskManagement.API.Filters
             var httpMethod = context.HttpContext.Request.Method;
             var isWriteMethod = httpMethod == HttpMethod.Post.Method || 
                                 httpMethod == HttpMethod.Put.Method || 
+                                httpMethod == HttpMethod.Patch.Method ||
                                 httpMethod == HttpMethod.Delete.Method;
 
-            if (isWriteMethod && (member.ProjectRole.Equals("Guest", StringComparison.OrdinalIgnoreCase) || member.ProjectRole.Equals("Stakeholder", StringComparison.OrdinalIgnoreCase)))
+            if (isWriteMethod && normalizedMemberRole is "guest" or "stakeholder")
             {
                 context.Result = new ObjectResult(new { statusCode = 403, message = "Forbidden. Guests and Stakeholders cannot modify project data." })
                 {
@@ -128,7 +98,7 @@ namespace TaskManagement.API.Filters
             }
 
             // Save project member info into HttpContext items for later usage in controllers if needed
-            context.HttpContext.Items["ProjectRole"] = member.ProjectRole;
+            context.HttpContext.Items["ProjectRole"] = authorization.ProjectRole;
 
             // Authorized, continue
             await next();

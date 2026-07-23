@@ -19,6 +19,7 @@ using TaskManagement.Application.DTOs.WorkTask;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Domain.Entities;
+using TaskManagement.Domain.Rules;
 
 namespace TaskManagement.API.Controllers
 {
@@ -29,7 +30,6 @@ namespace TaskManagement.API.Controllers
     {
         private readonly IWorkTaskService _workTaskService;
         private readonly IHubContext<KanbanHub> _kanbanHub;
-        private static readonly string[] ManagerRoles = { "PM", "PO", "SM", "PROJECT_MANAGER", "SCRUM_MASTER" };
         private static readonly string[] BaselineManagerRoles = { "PM", "PO", "SM", "PA", "PROJECT_MANAGER", "SCRUM_MASTER", "PROJECT_ADMIN" };
         private const string TaskVisibilitySettingGroup = "TaskVisibility";
 
@@ -721,7 +721,12 @@ namespace TaskManagement.API.Controllers
                 var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out Guid reporterId))
                 {
-                    reporterId = Guid.Empty;
+                    return Unauthorized(new ProblemDetails
+                    {
+                        Status = StatusCodes.Status401Unauthorized,
+                        Title = "Authentication required",
+                        Detail = "A valid authenticated reporter context is required."
+                    });
                 }
                 
                 var result = await _workTaskService.CreateAsync(reporterId, request);
@@ -752,6 +757,11 @@ namespace TaskManagement.API.Controllers
         {
             try
             {
+                if (request.RowVersion == null || request.RowVersion.Length == 0)
+                {
+                    return BadRequest(new { statusCode = 400, code = "TASK_VERSION_REQUIRED", message = "RowVersion is required. Reload the task before updating it." });
+                }
+
                 var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (!Guid.TryParse(userIdString, out Guid userId))
                 {
@@ -786,11 +796,19 @@ namespace TaskManagement.API.Controllers
                 }
                 var savedTask = await LoadTaskResponseAsync(context, projectId, id, userId);
                 await BroadcastTaskUpdatedAsync(projectId, savedTask);
-                return Ok(new { statusCode = 200, message = "Success", data = "Cập nhật trạng thái tác vụ thành công." });
+                return Ok(new { statusCode = 200, message = "Cập nhật trạng thái tác vụ thành công.", data = savedTask });
             }
             catch (DbUpdateConcurrencyException)
             {
-                return Conflict(new { statusCode = 409, message = "Dữ liệu đã bị người khác thay đổi. Vui lòng tải lại trang để tránh ghi đè (Anti-Overwrite)." });
+                var current = await LoadTaskResponseAsync(context, projectId, id, Guid.Empty);
+                return Conflict(new
+                {
+                    statusCode = 409,
+                    code = "TASK_VERSION_CONFLICT",
+                    message = "Task was changed by another request. Reload before applying your changes.",
+                    currentVersion = current?.RowVersion,
+                    currentData = current
+                });
             }
             catch (InvalidOperationException ex)
             {
@@ -887,7 +905,15 @@ namespace TaskManagement.API.Controllers
             }
             catch (DbUpdateConcurrencyException)
             {
-                return Conflict(new { statusCode = 409, message = "Dữ liệu đã bị người khác thay đổi. Vui lòng tải lại trang để tránh ghi đè (Anti-Overwrite)." });
+                var current = await LoadTaskResponseAsync(context, projectId, id, Guid.Empty);
+                return Conflict(new
+                {
+                    statusCode = 409,
+                    code = "TASK_VERSION_CONFLICT",
+                    message = "Task was changed by another request. Reload before applying your changes.",
+                    currentVersion = current?.RowVersion,
+                    currentData = current
+                });
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -957,7 +983,10 @@ namespace TaskManagement.API.Controllers
                     .Include(wt => wt.TaskAssignments)
                     .Include(wt => wt.IssueModules)
                     .Include(wt => wt.TaskStatus)
+                    .Include(wt => wt.Sprint)
                     .FirstOrDefaultAsync(wt => wt.Id == id && wt.ProjectId == projectId && !wt.IsDeleted);
+                if (task != null && SprintStatePolicy.IsTaskMutationLocked(task.Sprint, DateTime.UtcNow))
+                    return BadRequest(new { statusCode = 400, message = "Khong the chinh sua Task cua mot Sprint da dong." });
                 if (task == null) return NotFound(new { statusCode = 404, message = "Task không tồn tại." });
 
                 var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -973,7 +1002,9 @@ namespace TaskManagement.API.Controllers
                     return StatusCode(403, new { statusCode = 403, message = "Ban khong phai thanh vien cua du an nay." });
                 }
 
-                var canUpdateTask = ManagerRoles.Contains(membership.ProjectRole, StringComparer.OrdinalIgnoreCase)
+                var canUpdateTask = ResourcePermissionPolicy.ProjectRoleHasPermission(
+                        membership.ProjectRole,
+                        ResourcePermissionCodes.ProjectWrite)
                     || task.ReporterId == userId
                     || task.AssignedUserId == userId
                     || task.TaskAssignments.Any(ta => ta.UserId == userId && ta.Status);
@@ -1049,7 +1080,14 @@ namespace TaskManagement.API.Controllers
 
                     foreach (var assignment in existingAssignments)
                     {
-                        assignment.Status = parsedIds.Contains(assignment.UserId);
+                        if (parsedIds.Contains(assignment.UserId))
+                        {
+                            assignment.Activate();
+                        }
+                        else
+                        {
+                            assignment.Status = false;
+                        }
                     }
 
                     foreach (var assigneeId in parsedIds.Where(idValue => existingAssignments.All(ta => ta.UserId != idValue)))
@@ -1110,7 +1148,7 @@ namespace TaskManagement.API.Controllers
                             task.TaskAssignments.Add(assignment);
                         }
 
-                        assignment.Status = true;
+                        assignment.Activate();
 
                         var oldProgress = assignment.ProgressPercent;
                         if (item.TryGetProperty("progressPercent", out var progressProp) && progressProp.ValueKind != System.Text.Json.JsonValueKind.Null)
@@ -1170,10 +1208,14 @@ namespace TaskManagement.API.Controllers
                     if (sprintProp.ValueKind == System.Text.Json.JsonValueKind.Null) task.SprintId = null;
                     else if (Guid.TryParse(sprintProp.GetString(), out Guid sId))
                     {
-                        var sprintExists = await context.Sprints.AnyAsync(s => s.Id == sId && s.ProjectId == projectId);
-                        if (!sprintExists)
+                        var targetSprint = await context.Sprints.FirstOrDefaultAsync(s => s.Id == sId && s.ProjectId == projectId);
+                        if (targetSprint == null)
                         {
                             return BadRequest(new { statusCode = 400, message = "Cycle khong thuoc du an nay." });
+                        }
+                        if (SprintStatePolicy.IsTaskMutationLocked(targetSprint, DateTime.UtcNow))
+                        {
+                            return BadRequest(new { statusCode = 400, message = "Khong the chuyen Task vao mot Sprint da dong." });
                         }
 
                         task.SprintId = sId;
@@ -1532,7 +1574,10 @@ namespace TaskManagement.API.Controllers
                 var task = await context.WorkTasks
                     .Include(wt => wt.TaskStatus)
                     .Include(wt => wt.TaskAssignments)
+                    .Include(wt => wt.Sprint)
                     .FirstOrDefaultAsync(wt => wt.Id == id && wt.ProjectId == projectId && !wt.IsDeleted);
+                if (task != null && SprintStatePolicy.IsTaskMutationLocked(task.Sprint, DateTime.UtcNow))
+                    return BadRequest(new { statusCode = 400, message = "Khong the chinh sua Task cua mot Sprint da dong." });
                 if (task == null)
                     return NotFound(new { statusCode = 404, message = "Tác vụ không tồn tại." });
 
@@ -1546,7 +1591,9 @@ namespace TaskManagement.API.Controllers
                     return StatusCode(403, new { statusCode = 403, message = "Ban khong phai thanh vien cua du an nay." });
                 }
 
-                var canUpdateTask = ManagerRoles.Contains(membership.ProjectRole, StringComparer.OrdinalIgnoreCase)
+                var canUpdateTask = ResourcePermissionPolicy.ProjectRoleHasPermission(
+                        membership.ProjectRole,
+                        ResourcePermissionCodes.ProjectWrite)
                     || task.ReporterId == userId
                     || task.AssignedUserId == userId
                     || task.TaskAssignments.Any(ta => ta.UserId == userId && ta.Status);
