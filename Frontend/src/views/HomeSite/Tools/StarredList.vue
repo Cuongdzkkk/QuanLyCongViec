@@ -20,9 +20,13 @@
       </div>
 
       <div v-if="starredStore.loading" class="empty-state">{{ labels.loading }}</div>
+      <div v-else-if="starredStore.error" class="empty-state">
+        <p>{{ starredStore.error }}</p>
+        <button class="retry-btn" type="button" @click="loadPage(currentPage)">{{ labels.retry }}</button>
+      </div>
 
       <div class="starred-grid" v-else-if="filteredStarredItems.length > 0">
-        <div class="starred-card" v-for="item in filteredStarredItems" :key="item.id" @click="openItem(item)">
+        <div class="starred-card" v-for="item in filteredStarredItems" :key="`${item.itemType}:${item.itemId}`" @click="openItem(item)">
           <div class="card-icon" :class="normalizeType(item)">
             <i class="fa-solid" :class="getIcon(item)"></i>
           </div>
@@ -30,7 +34,14 @@
             <h3>{{ item.itemName || item.name || item.title || labels.untitled }}</h3>
             <p>{{ typeLabel(item) }}</p>
           </div>
-          <button class="unstar-btn" @click.stop="unstar(item)" :title="labels.unstar">
+          <button
+            class="unstar-btn"
+            type="button"
+            :disabled="starredStore.isPending(item.itemType, item.itemId)"
+            :aria-label="labels.unstar"
+            @click.stop="unstar(item)"
+            :title="labels.unstar"
+          >
             <i class="fa-solid fa-star"></i>
           </button>
         </div>
@@ -40,6 +51,11 @@
         <div class="empty-illustration"><i class="fa-regular fa-star"></i></div>
         <h2>{{ labels.emptyTitle }}</h2>
         <p>{{ labels.emptyDesc }}</p>
+      </div>
+      <div v-if="starredStore.starredPagination.totalCount > pageSize" class="pagination">
+        <button type="button" :disabled="currentPage <= 1 || starredStore.loading" @click="loadPage(currentPage - 1)">‹</button>
+        <span>{{ currentPage }} / {{ totalPages }}</span>
+        <button type="button" :disabled="currentPage >= totalPages || starredStore.loading" @click="loadPage(currentPage + 1)">›</button>
       </div>
     </div>
   </div>
@@ -56,6 +72,8 @@ const starredStore = useStarredStore()
 const i18nStore = useI18nStore()
 const searchQuery = ref('')
 const typeFilter = ref('')
+const currentPage = ref(1)
+const pageSize = 24
 
 const labels = computed(() => i18nStore.locale === 'vi'
   ? {
@@ -63,6 +81,7 @@ const labels = computed(() => i18nStore.locale === 'vi'
       search: 'Tìm kiếm theo tiêu đề',
       allTypes: 'Tất cả loại',
       loading: 'Đang tải dữ liệu...',
+      retry: 'Thử lại',
       project: 'Dự án',
       goal: 'Mục tiêu',
       team: 'Nhóm',
@@ -70,7 +89,7 @@ const labels = computed(() => i18nStore.locale === 'vi'
       item: 'Mục',
       untitled: 'Chưa có tiêu đề',
       unstar: 'Bỏ gắn sao',
-      emptyTitle: 'Chưa có mục nào được gắn sao',
+      emptyTitle: 'Bạn chưa đánh dấu sao mục nào.',
       emptyDesc: 'Những mục bạn gắn sao sẽ xuất hiện ở đây để truy cập nhanh.'
     }
   : {
@@ -78,6 +97,7 @@ const labels = computed(() => i18nStore.locale === 'vi'
       search: 'Search by title',
       allTypes: 'All types',
       loading: 'Loading data...',
+      retry: 'Retry',
       project: 'Project',
       goal: 'Goal',
       team: 'Team',
@@ -89,9 +109,12 @@ const labels = computed(() => i18nStore.locale === 'vi'
       emptyDesc: 'Items you star will appear here for quick access.'
     })
 
-onMounted(async () => {
-  await starredStore.fetchStarredItems()
-})
+const loadPage = async (page) => {
+  currentPage.value = page
+  await starredStore.fetchStarredItems({ page, pageSize }).catch(() => {})
+}
+
+onMounted(() => loadPage(1))
 
 const normalizeType = (item) => String(item?.itemType || item?.type || item?.entityType || 'item').toLowerCase()
 
@@ -106,6 +129,7 @@ const filteredStarredItems = computed(() => {
     return matchesType && matchesSearch
   })
 })
+const totalPages = computed(() => Math.max(1, Math.ceil(starredStore.starredPagination.totalCount / pageSize)))
 
 const getIcon = (item) => {
   const type = normalizeType(item)
@@ -126,6 +150,7 @@ const typeLabel = (item) => {
 }
 
 const openItem = (item) => {
+  if (item.url) return router.push(item.url)
   const id = getTargetId(item)
   const type = normalizeType(item)
   if (type === 'project') return router.push(id ? `/home/projects/${id}` : '/home/projects')
@@ -137,7 +162,10 @@ const openItem = (item) => {
 const unstar = async (item) => {
   const id = getTargetId(item)
   if (!id) return
-  await starredStore.toggleStar(item.itemType || item.type || item.entityType || 'Project', id)
+  await starredStore.setStarred(item.itemType || item.type || item.entityType || 'Project', id, false)
+  if (filteredStarredItems.value.length === 0 && currentPage.value > 1) {
+    await loadPage(currentPage.value - 1)
+  }
 }
 </script>
 
@@ -288,6 +316,33 @@ const unstar = async (item) => {
   cursor: pointer;
   padding: 9px;
   font-size: 16px;
+}
+
+.unstar-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.retry-btn,
+.pagination button {
+  border: 1px solid var(--home-border, #dfe1e6);
+  background: var(--home-panel, #ffffff);
+  color: var(--home-text, #172b4d);
+  cursor: pointer;
+  padding: 8px 12px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 1040px);
+  margin-top: 20px;
+}
+
+.pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .empty-state {

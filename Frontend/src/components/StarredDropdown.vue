@@ -5,8 +5,12 @@
     </div>
 
     <div class="jd-body">
-      <!-- Empty state: không có cả project lẫn task -->
-      <div v-if="starredProjects.length === 0 && starredTasks.length === 0" class="jd-empty-starred">
+      <div v-if="starredStore.loading" class="jd-empty-starred">Loading starred items...</div>
+      <div v-else-if="starredStore.error" class="jd-empty-starred">
+        <p>{{ starredStore.error }}</p>
+        <button type="button" @click="loadStarredItems">Retry</button>
+      </div>
+      <div v-else-if="starredProjects.length === 0 && starredTasks.length === 0" class="jd-empty-starred">
         <i class="fa-regular fa-star" style="font-size: 48px; color: var(--color-text-muted); margin-bottom: 16px;"></i>
         <h4>You haven't starred anything yet</h4>
         <p>Đánh dấu sao các mục quan trọng để truy cập nhanh tại đây.</p>
@@ -18,7 +22,7 @@
           <div class="jd-section-label">Spaces</div>
           <div
             v-for="project in starredProjects"
-            :key="`proj-${project.id}`"
+            :key="`proj-${project.itemId}`"
             class="jd-item"
             @click="goToProject(project)"
           >
@@ -32,9 +36,15 @@
               <div class="jd-item-title">{{ project.name || 'Space' }}</div>
               <div class="jd-item-subtitle">Space</div>
             </div>
-            <div class="jd-item-action" @click.stop="unstarProject(project)" title="Remove from starred">
+            <button
+              class="jd-item-action"
+              type="button"
+              :disabled="starredStore.isPending(project.itemType, project.itemId)"
+              @click.stop="unstarItem(project)"
+              title="Remove from starred"
+            >
               <i class="fa-solid fa-star text-yellow-400"></i>
-            </div>
+            </button>
           </div>
         </template>
 
@@ -43,7 +53,7 @@
           <div class="jd-section-label">Work items</div>
           <div
             v-for="item in starredTasks"
-            :key="`task-${item.id}`"
+            :key="`task-${item.itemId}`"
             class="jd-item"
             @click="goToTask(item)"
           >
@@ -54,9 +64,15 @@
               <div class="jd-item-title">{{ item.title || 'Task' }}</div>
               <div class="jd-item-subtitle">Task • {{ item.sequenceId || item.id?.substring(0, 8).toUpperCase() }} • {{ item.projectName || 'Project' }}</div>
             </div>
-            <div class="jd-item-action" @click.stop="unstarTask(item)" title="Remove from starred">
+            <button
+              class="jd-item-action"
+              type="button"
+              :disabled="starredStore.isPending(item.itemType, item.itemId)"
+              @click.stop="unstarItem(item)"
+              title="Remove from starred"
+            >
               <i class="fa-solid fa-star text-yellow-400"></i>
-            </div>
+            </button>
           </div>
         </template>
       </div>
@@ -71,59 +87,43 @@
 <script setup>
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useWorkTaskStore } from '@/store/useWorkTaskStore'
-import { useProjectStore } from '@/store/useProjectStore'
-import axiosClient from '@/api/axiosClient'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 
 const emit = defineEmits(['close'])
 const router = useRouter()
-const workTaskStore = useWorkTaskStore()
-const projectStore = useProjectStore()
+const starredStore = useStarredStore()
 
-// --- Starred Projects (reactive t\u1ef1 \u0111\u1ed9ng theo favoriteProjects getter) ---
-const starredProjects = computed(() => projectStore.favoriteProjects)
+const starredProjects = computed(() => starredStore.starredItems
+  .filter(item => item.itemType === STARRED_ENTITY_TYPES.PROJECT)
+  .map(item => ({ ...item, id: item.itemId, name: item.itemName || item.title })))
+const starredTasks = computed(() => starredStore.starredItems
+  .filter(item => item.itemType === STARRED_ENTITY_TYPES.WORK_TASK)
+  .map(item => ({
+    ...item,
+    id: item.itemId,
+    projectName: item.subtitle,
+    sequenceId: item.itemId?.substring(0, 8).toUpperCase()
+  })))
 
-// --- Starred Tasks (reactive t\u1ef1 \u0111\u1ed9ng theo Pinia state) ---
-const starredTasks = computed(() => [...workTaskStore.starredTasks].reverse())
-
-// Gi\u1eef expose \u0111\u1ec3 t\u01b0\u01a1ng th\u00edch v\u1edbi parent (NexusSidebar @show="onStarredShow")
-const loadStarredItems = async () => {
-  try {
-    await workTaskStore.fetchStarredTasks()
-  } catch (err) {
-    console.error('Failed to validate starred tasks:', err)
-  }
-}
+const loadStarredItems = () => starredStore.fetchStarredItems({ page: 1, pageSize: 20 }).catch(() => {})
 defineExpose({ loadStarredItems })
 
-// --- Actions ---
-const unstarProject = async (project) => {
-  try {
-    await projectStore.updateFavorite(project.id, false)
-  } catch {
-    // silent
-  }
-}
-
-const unstarTask = (item) => {
-  workTaskStore.toggleTaskStar(item)
-}
+const unstarItem = (item) => starredStore.setStarred(item.itemType, item.itemId, false).catch(() => {})
 
 const goToProject = (project) => {
   emit('close')
-  router.push(`/space/${project.id}`)
+  router.push(project.url || `/home/projects/${project.itemId}`)
 }
 
 const goToTask = (item) => {
   emit('close')
-  if (item.projectId) {
-    router.push(`/space/${item.projectId}/work-items`)
-  }
+  if (item.url) router.push(item.url)
 }
 
 const viewAllStarred = () => {
   emit('close')
-  router.push('/dashboard?tab=starred')
+  router.push('/home/starred')
 }
 
 const projectColor = (project) => {
@@ -301,4 +301,3 @@ const projectColor = (project) => {
     #0f172a;
 }
 </style>
-

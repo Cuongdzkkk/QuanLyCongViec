@@ -136,7 +136,14 @@
               <template v-for="task in group.items" :key="task.id">
                <div class="task-row" @click="openTaskDetail(task)">
                  <div class="tr-left">
-                   <button class="star-task-btn" :class="{ starred: isTaskStarred(task.id) }" @click.stop="toggleTaskStar(task)">
+                   <button
+                     class="star-task-btn"
+                     type="button"
+                     :class="{ starred: isTaskStarred(task.id) }"
+                     :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.WORK_TASK, task.id)"
+                     aria-label="Toggle starred work item"
+                     @click.stop="toggleTaskStar(task)"
+                   >
                      <i :class="isTaskStarred(task.id) ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'"></i>
                    </button>
                    <span class="task-id" style="margin-left: 8px;">{{ task.sequenceId || task.id.substring(0,8).toUpperCase() }}</span>
@@ -309,7 +316,13 @@
                         <i class="fa-regular fa-calendar"></i>
                         {{ new Date(element.dueDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) }}
                       </span>
-                      <button class="star-task-btn small" @click.stop="toggleTaskStar(element)">
+                      <button
+                        class="star-task-btn small"
+                        type="button"
+                        :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.WORK_TASK, element.id)"
+                        aria-label="Toggle starred work item"
+                        @click.stop="toggleTaskStar(element)"
+                      >
                         <i :class="isTaskStarred(element.id) ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'"></i>
                       </button>
                     </div>
@@ -626,6 +639,8 @@ import SpreadsheetTab from '@/components/SpreadsheetTab.vue'
 import FilterBar from '@/components/FilterBar.vue'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore';
 import { useProjectStore } from '@/store/useProjectStore';
+import { useStarredStore } from '@/store/useStarredStore';
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { useI18nStore } from '@/store/useI18nStore';
 import UserAvatar from '@/components/common/UserAvatar.vue'
 
@@ -681,6 +696,7 @@ const route = useRoute()
 const currentProjectId = computed(() => route.params.id || getScopedCurrentProjectId() || null)
 const store = useWorkTaskStore();
 const projectStore = useProjectStore()
+const starredStore = useStarredStore()
 const i18nStore = useI18nStore()
 const tr = (en, vi) => i18nStore.locale === 'vi' ? vi : en
 const t = (key) => {
@@ -1066,8 +1082,12 @@ const currentUserId = () => {
   return user?.id || user?.userId || null
 }
 
-const toggleTaskStar = (task) => {
-  store.toggleTaskStar(task.id)
+const toggleTaskStar = async (task) => {
+  try {
+    await starredStore.toggleStar(STARRED_ENTITY_TYPES.WORK_TASK, task.id)
+  } catch {
+    ElMessage.error(starredStore.error || tr('Could not update starred item.', 'Không thể cập nhật mục gắn sao.'))
+  }
 }
 
 const isTaskStarred = (taskId) => {
@@ -1735,29 +1755,10 @@ const fetchTasks = async (options = {}) => {
   }
 }
 
-const logViewedTask = (task) => {
-  if (!task || !task.id) return
-  let viewed = JSON.parse(localStorage.getItem('recently_viewed_tasks') || '[]')
-  viewed = viewed.filter(item => item.id !== task.id)
-  viewed.unshift({
-    id: task.id,
-    title: task.title,
-    sequenceId: task.sequenceId,
-    projectId: task.projectId || getProjectId(),
-    projectName: project.value?.name || 'Project',
-    projectColor: project.value?.cover || '#3b82f6',
-    updatedAt: new Date().toISOString(),
-    statusName: task.statusName,
-    priority: task.priority
-  })
-  viewed = viewed.slice(0, 15)
-  localStorage.setItem('recently_viewed_tasks', JSON.stringify(viewed))
-}
-
 const openTaskDetail = (task) => {
-  logViewedTask(task)
   taskDetailHistory.value = []
   selectedTask.value = task;
+  starredStore.recordViewed(STARRED_ENTITY_TYPES.WORK_TASK, task.id).catch(() => {})
 }
 
 const openTaskFromRouteQuery = () => {
@@ -1767,13 +1768,13 @@ const openTaskFromRouteQuery = () => {
   if (task) openTaskDetail(task)
 }
 const openTaskDetailFromModal = (task, options = {}) => {
-  logViewedTask(task)
   const previousTask = options?.fromTask || selectedTask.value
   if (previousTask?.id && previousTask.id !== task?.id) {
     const cachedPrevious = allTasks.value.find(item => item.id === previousTask.id) || previousTask
     taskDetailHistory.value = [...taskDetailHistory.value, cachedPrevious]
   }
   selectedTask.value = task
+  starredStore.recordViewed(STARRED_ENTITY_TYPES.WORK_TASK, task.id).catch(() => {})
 }
 const goBackTaskDetail = () => {
   const history = [...taskDetailHistory.value]

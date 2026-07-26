@@ -10,7 +10,12 @@
     </div>
 
     <div class="jd-body">
-      <div v-if="filteredGroups.length === 0" class="jd-empty">
+      <div v-if="starredStore.recentLoading" class="jd-empty">Loading recent work...</div>
+      <div v-else-if="starredStore.recentError" class="jd-empty">
+        <p>{{ starredStore.recentError }}</p>
+        <button type="button" @click="loadRecentItems">Retry</button>
+      </div>
+      <div v-else-if="filteredGroups.length === 0" class="jd-empty">
         <i class="fa-solid fa-box-open" style="font-size: 48px; color: var(--color-text-muted); margin-bottom: 16px;"></i>
         <p v-if="searchQuery">No matching items found</p>
         <p v-else>You haven't viewed any items recently</p>
@@ -27,11 +32,11 @@
             @click="goToItem(item)"
           >
             <div class="jd-item-icon">
-              <i :class="item.statusName?.toUpperCase().includes('DONE') ? 'fa-solid fa-square-check text-green-500' : 'fa-solid fa-square-check text-blue-500'"></i>
+              <i :class="item.icon || 'fa-regular fa-eye'"></i>
             </div>
             <div class="jd-item-content">
               <div class="jd-item-title">{{ item.title }}</div>
-              <div class="jd-item-subtitle">Task • {{ item.sequenceId || item.id?.substring(0, 8).toUpperCase() }} • {{ item.projectName }} • {{ timeAgo(item.createdAt) }}</div>
+              <div class="jd-item-subtitle">{{ item.subtitle || item.entityType }} • {{ timeAgo(item.viewedAt) }}</div>
             </div>
           </div>
         </div>
@@ -47,33 +52,15 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useWorkTaskStore } from '@/store/useWorkTaskStore'
-import axiosClient from '@/api/axiosClient'
+import { useStarredStore } from '@/store/useStarredStore'
 
 const emit = defineEmits(['close'])
 const router = useRouter()
-const workTaskStore = useWorkTaskStore()
+const starredStore = useStarredStore()
 const searchQuery = ref('')
 
-// Reactive: tự cập nhật ngay khi mở task mới từ bất kỳ đâu trong app
-const recentItems = computed(() => workTaskStore.recentlyViewedTasks)
-
-// Giữ expose để tương thích với parent (NexusSidebar @show="onRecentShow")
-// Không cần làm gì thêm vì recentItems đã reactive tự động
-const loadRecentItems = async () => {
-  try {
-    const res = await axiosClient.get('/tasks/search')
-    const validTasks = res.data?.data || []
-    const stored = JSON.parse(localStorage.getItem('recently_viewed_tasks') || '[]')
-    const filtered = stored.filter(s => validTasks.some(v => v.id === s.id))
-    if (stored.length !== filtered.length) {
-      localStorage.setItem('recently_viewed_tasks', JSON.stringify(filtered))
-      workTaskStore.recentlyViewedTasks = filtered
-    }
-  } catch (err) {
-    console.error('Failed to validate recent tasks:', err)
-  }
-}
+const recentItems = computed(() => starredStore.recentItems)
+const loadRecentItems = () => starredStore.fetchRecentItems({ page: 1, pageSize: 20 }).catch(() => {})
 defineExpose({ loadRecentItems })
 
 const filteredGroups = computed(() => {
@@ -96,7 +83,7 @@ const filteredGroups = computed(() => {
   yesterday.setDate(yesterday.getDate() - 1)
 
   list.forEach(item => {
-    const d = new Date(item.updatedAt || Date.now())
+    const d = new Date(item.viewedAt || Date.now())
     if (d >= today) groups['Today'].push(item)
     else if (d >= yesterday) groups['Yesterday'].push(item)
     else groups['Older'].push(item)
@@ -120,14 +107,12 @@ const timeAgo = (dateStr) => {
 
 const goToItem = (item) => {
   emit('close')
-  if (item.projectId) {
-    router.push(`/space/${item.projectId}/work-items`)
-  }
+  if (item.url) router.push(item.url)
 }
 
 const viewAllRecent = () => {
   emit('close')
-  router.push('/dashboard?tab=viewed')
+  router.push('/home/recent')
 }
 </script>
 

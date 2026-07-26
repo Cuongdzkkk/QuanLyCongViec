@@ -12,6 +12,8 @@ import { usePersonalWork } from '@/composables/usePersonalWork'
 import { PERSONAL_WORK_SCOPES } from '@/api/personalWorkApi'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSiteStore } from '@/store/useSiteStore'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { translateDemoText } from '@/utils/demoContentLocale'
 
 const route = useRoute()
@@ -20,6 +22,7 @@ const projectStore = useProjectStore()
 const workTaskStore = useWorkTaskStore()
 const authStore = useAuthStore()
 const siteStore = useSiteStore()
+const starredStore = useStarredStore()
 const { t, language } = useI18n()
 const demoText = (value) => translateDemoText(value, language.value)
 
@@ -31,7 +34,6 @@ const errorSpaces = ref(null)
 
 // Data refs
 const spaces = ref([])
-const deferredTasks = ref([])
 const projectMembers = ref([])
 const currentProjectRole = ref('member')
 const activeTab = ref('assigned') // recommended, assigned, starred, worked, viewed
@@ -40,9 +42,6 @@ const statusFilter = ref('all') // all, todo, inprogress, done
 const sortOption = ref('updated') // updated, created, priority
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
-const deferredLoading = ref(false)
-const deferredError = ref(null)
-let deferredController
 
 const {
   items: personalTasks,
@@ -61,9 +60,23 @@ const personalTabScopes = {
   worked: PERSONAL_WORK_SCOPES.worked
 }
 const isPersonalApiTab = computed(() => Boolean(personalTabScopes[activeTab.value]))
-const myTasks = computed(() => isPersonalApiTab.value ? personalTasks.value : deferredTasks.value)
-const loadingTasks = computed(() => isPersonalApiTab.value ? personalLoading.value : deferredLoading.value)
-const errorTasks = computed(() => isPersonalApiTab.value ? personalError.value : deferredError.value)
+const collectionTasks = computed(() => {
+  const source = activeTab.value === 'starred' ? starredStore.starredItems : starredStore.recentItems
+  return source.map(item => ({
+    id: item.itemId || item.entityId,
+    entityType: item.itemType || item.entityType,
+    title: item.itemName || item.title || t('forYou.untitled'),
+    projectId: item.projectId,
+    projectName: item.subtitle,
+    url: item.url,
+    createdAt: item.createdAt || item.viewedAt,
+    updatedAt: item.updatedAt || item.viewedAt,
+    statusName: item.statusName || ''
+  }))
+})
+const myTasks = computed(() => isPersonalApiTab.value ? personalTasks.value : collectionTasks.value)
+const loadingTasks = computed(() => isPersonalApiTab.value ? personalLoading.value : (activeTab.value === 'starred' ? starredStore.loading : starredStore.recentLoading))
+const errorTasks = computed(() => isPersonalApiTab.value ? personalError.value : (activeTab.value === 'starred' ? starredStore.error : starredStore.recentError))
 const contextKey = computed(() => [
   authStore.userId || '',
   authStore.token || '',
@@ -103,27 +116,14 @@ const fetchSpaces = async () => {
 }
 
 // 2. Fetch User Personal Tasks
-const fetchDeferredTasks = async () => {
-  deferredController?.abort()
-  deferredController = new AbortController()
-  deferredLoading.value = true
-  deferredError.value = null
-  deferredTasks.value = []
-  try {
-    const res = await axiosClient.get('/tasks/search', { signal: deferredController.signal })
-    deferredTasks.value = res.data?.data || []
-  } catch (error) {
-    if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return
-    deferredError.value = error
-    console.error('Failed to load personal tasks:', error)
-  } finally {
-    deferredLoading.value = false
-  }
-}
-
 const fetchMyTasks = async () => {
   const scope = personalTabScopes[activeTab.value]
-  if (!scope) return fetchDeferredTasks()
+  if (activeTab.value === 'starred') {
+    return starredStore.fetchStarredItems({ page: currentPage.value, pageSize: itemsPerPage.value }).catch(() => null)
+  }
+  if (activeTab.value === 'viewed') {
+    return starredStore.fetchRecentItems({ page: currentPage.value, pageSize: itemsPerPage.value }).catch(() => null)
+  }
   return fetchPage({
     scope,
     page: currentPage.value,
@@ -132,9 +132,14 @@ const fetchMyTasks = async () => {
 }
 
 // 3. Task Starring (Client-side localized)
-const toggleTaskStar = (task) => {
-  workTaskStore.toggleTaskStar(task)
-  ElMessage.success(workTaskStore.isTaskStarred(task.id) ? t('forYou.taskStarred') : t('forYou.taskUnstarred'))
+const toggleTaskStar = async (task) => {
+  const wasStarred = starredStore.isStarred(STARRED_ENTITY_TYPES.WORK_TASK, task.id)
+  try {
+    await starredStore.setStarred(STARRED_ENTITY_TYPES.WORK_TASK, task.id, !wasStarred)
+    ElMessage.success(wasStarred ? t('forYou.taskUnstarred') : t('forYou.taskStarred'))
+  } catch {
+    ElMessage.error(starredStore.error || t('forYou.updateTaskStarFailed'))
+  }
 }
 
 // 4. Space Starring
@@ -144,7 +149,7 @@ const toggleSpaceStar = async (space) => {
     await projectStore.updateFavorite(space.id, !isCurrentlyFav)
     ElMessage.success(isCurrentlyFav ? t('forYou.spaceUnstarred') : t('forYou.spaceStarred'))
   } catch {
-    ElMessage.error(t('forYou.updateSpaceStarFailed'))
+    ElMessage.error(starredStore.error || t('forYou.updateSpaceStarFailed'))
   }
 }
 
@@ -178,11 +183,8 @@ const filteredTasksList = computed(() => {
   
   if (isPersonalApiTab.value) {
     list = myTasks.value
-  } else if (activeTab.value === 'starred') {
-    list = workTaskStore.starredTasks.map(v => myTasks.value.find(t => t.id === (v.itemId || v.id))).filter(Boolean)
-  } else if (activeTab.value === 'viewed') {
-    const viewed = JSON.parse(localStorage.getItem('recently_viewed_tasks') || '[]')
-    list = viewed.map(v => myTasks.value.find(t => t.id === v.id)).filter(Boolean)
+  } else {
+    list = myTasks.value
   }
 
   // Status filter
@@ -227,14 +229,16 @@ const filteredTasksList = computed(() => {
 const totalPages = computed(() => Math.max(
   1,
   Math.ceil(
-    (isPersonalApiTab.value ? totalCount.value : filteredTasksList.value.length) /
+    (isPersonalApiTab.value
+      ? totalCount.value
+      : activeTab.value === 'starred'
+        ? starredStore.starredPagination.totalCount
+        : starredStore.recentPagination.totalCount) /
     itemsPerPage.value
   )
 ))
 const paginatedTasks = computed(() => {
-  if (isPersonalApiTab.value) return filteredTasksList.value
-  const start = (currentPage.value - 1) * itemsPerPage.value
-  return filteredTasksList.value.slice(start, start + itemsPerPage.value)
+  return filteredTasksList.value
 })
 
 // Group Tasks
@@ -283,7 +287,10 @@ const groupedTasks = computed(() => {
 
 // Task Details Dialog
 const openTaskDetail = async (task) => {
-  logViewedTask(task)
+  if (task.url && (task.entityType === STARRED_ENTITY_TYPES.PROJECT || !task.projectId)) {
+    await router.push(task.url)
+    return
+  }
   
   try {
     const mRes = await axiosClient.get(`/projects/${task.projectId}/members`)
@@ -299,6 +306,7 @@ const openTaskDetail = async (task) => {
 
   taskDetailHistory.value = []
   selectedTask.value = workTaskStore.normalizeTaskRecord(task, task.projectId)
+  starredStore.recordViewed(STARRED_ENTITY_TYPES.WORK_TASK, task.id).catch(() => {})
 }
 
 const openTaskDetailFromModal = (task, options = {}) => {
@@ -359,11 +367,6 @@ const updateTask = async (task, field, value) => {
   }
 }
 
-// Log viewed task vào store (reactive) + localStorage
-const logViewedTask = (task) => {
-  workTaskStore.logViewedTask(task, spaces.value)
-}
-
 const getTaskIcon = (task) => {
   const ts = (task.statusName || '').toUpperCase()
   if (ts.includes('DONE')) return 'fa-solid fa-square-check text-green-500'
@@ -394,7 +397,7 @@ const timeAgo = (dateStr) => {
 
 onMounted(() => {
   fetchSpaces()
-  workTaskStore.fetchStarredTasks().catch(() => {})
+  starredStore.fetchStarredItems().catch(() => {})
 })
 
 watch(() => route.query.tab, (tab) => {
@@ -414,8 +417,6 @@ watch(currentPage, () => {
 })
 
 watch(contextKey, () => {
-  deferredController?.abort()
-  deferredTasks.value = []
   reset()
   currentPage.value = 1
   if (!authStore.token || !authStore.userId) return
@@ -424,7 +425,6 @@ watch(contextKey, () => {
 }, { immediate: true })
 
 onBeforeUnmount(() => {
-  deferredController?.abort()
   reset()
 })
 
@@ -579,7 +579,14 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                   <div class="jtr-actions" @click.stop>
-                    <button class="star-btn" :class="{ starred: isTaskStarred(task.id) }" @click.stop="toggleTaskStar(task)">
+                    <button
+                      class="star-btn"
+                      type="button"
+                      :class="{ starred: isTaskStarred(task.id) }"
+                      :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.WORK_TASK, task.id)"
+                      :aria-label="isTaskStarred(task.id) ? t('forYou.taskUnstarred') : t('forYou.taskStarred')"
+                      @click.stop="toggleTaskStar(task)"
+                    >
                       <i :class="isTaskStarred(task.id) ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star'"></i>
                     </button>
                   </div>

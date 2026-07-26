@@ -38,11 +38,20 @@
         </div>
 
         <div v-if="filteredItems.length === 0" class="empty-state">
-          {{ labels.empty }}
+          {{ emptyLabel }}
         </div>
       </div>
       <div v-else class="empty-state">
         {{ labels.loading }}
+      </div>
+      <div v-if="activeTab === 'viewed' && starredStore.recentError" class="empty-state">
+        <p>{{ starredStore.recentError }}</p>
+        <button type="button" @click="loadRecentPage(currentPage)">{{ labels.retry }}</button>
+      </div>
+      <div v-if="activeTab === 'viewed' && starredStore.recentPagination.totalCount > pageSize" class="pagination">
+        <button type="button" :disabled="currentPage <= 1 || isLoading" @click="loadRecentPage(currentPage - 1)">‹</button>
+        <span>{{ currentPage }} / {{ totalPages }}</span>
+        <button type="button" :disabled="currentPage >= totalPages || isLoading" @click="loadRecentPage(currentPage + 1)">›</button>
       </div>
     </div>
   </div>
@@ -53,21 +62,28 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useActivityStore } from '@/store/useActivityStore'
-import axiosClient from '@/api/axiosClient'
+import { useStarredStore } from '@/store/useStarredStore'
 
 const i18nStore = useI18nStore()
 const t = (key) => i18nStore.t(key)
 
 const activityStore = useActivityStore()
+const starredStore = useStarredStore()
 const router = useRouter()
 const activeTab = ref('worked')
 const searchQuery = ref('')
-const recentViews = ref([])
-const recentLoading = ref(false)
+const currentPage = ref(1)
+const pageSize = 20
 
 const labels = computed(() => i18nStore.locale === 'vi'
-  ? { empty: 'Không có hoạt động nào gần đây.', loading: 'Đang tải dữ liệu...' }
-  : { empty: 'No recent activity.', loading: 'Loading data...' })
+  ? { empty: 'Không có hoạt động nào gần đây.', loading: 'Đang tải dữ liệu...', retry: 'Thử lại' }
+  : { empty: 'No recent activity.', loading: 'Loading data...', retry: 'Retry' })
+const emptyLabel = computed(() => {
+  if (activeTab.value !== 'viewed') return labels.value.empty
+  return i18nStore.locale === 'vi'
+    ? 'Bạn chưa xem dự án hoặc công việc nào gần đây.'
+    : 'You have not viewed any projects or work items recently.'
+})
 
 const formatDateTime = (value) => {
   const date = new Date(value)
@@ -88,34 +104,29 @@ const formatActivityTime = (activity) => {
   return activity?.time || ''
 }
 
-const fetchRecentViews = async () => {
-  recentLoading.value = true
-  try {
-    const res = await axiosClient.get('/recentviews', { params: { limit: 50 } })
-    recentViews.value = (res.data?.data || []).map((item) => ({
-      id: item.id,
+const recentViews = computed(() => starredStore.recentItems.map((item) => ({
+      id: item.id || `${item.entityType}:${item.entityId}`,
       icon: item.icon || 'fa-regular fa-eye',
       text: item.subtitle || item.entityType || '',
       bold: item.title,
       time: formatDateTime(item.viewedAt),
       _ts: Date.parse(item.viewedAt) || Date.now(),
       url: item.url
-    }))
-  } catch (err) {
-    console.error('Failed to load recent views', err)
-  } finally {
-    recentLoading.value = false
-  }
+    })))
+const loadRecentPage = async (page) => {
+  currentPage.value = page
+  await starredStore.fetchRecentItems({ page, pageSize }).catch(() => {})
 }
+const totalPages = computed(() => Math.max(1, Math.ceil(starredStore.recentPagination.totalCount / pageSize)))
 
 onMounted(async () => {
   await Promise.all([
     activityStore.fetchRecentActivities({ limit: 50 }),
-    fetchRecentViews()
+    loadRecentPage(1)
   ])
 })
 
-const isLoading = computed(() => activeTab.value === 'worked' ? activityStore.loading : recentLoading.value)
+const isLoading = computed(() => activeTab.value === 'worked' ? activityStore.loading : starredStore.recentLoading)
 
 const filteredItems = computed(() => {
   const source = activeTab.value === 'worked' ? activityStore.activities : recentViews.value

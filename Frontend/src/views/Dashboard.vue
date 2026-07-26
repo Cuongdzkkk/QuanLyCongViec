@@ -59,8 +59,13 @@
 
         <div v-else class="project-grid">
           <article v-for="project in filteredProjects" :key="project.id" class="project-card">
-            <button class="favorite-btn" type="button" @click="toggleFavorite(project)">
-              <i :class="project.isFavorite ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+            <button
+              class="favorite-btn"
+              type="button"
+              :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, project.id)"
+              @click="toggleFavorite(project)"
+            >
+              <i :class="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
             </button>
 
             <div class="project-cover" :style="projectCoverStyle(project)" :aria-label="project.coverAltText || project.name">
@@ -173,12 +178,15 @@ import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 
 import { useProjectStore } from '@/store/useProjectStore'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { useI18n } from '@/composables/useI18n'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import DailyFocusWidget from '@/components/DailyFocusWidget.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
+const starredStore = useStarredStore()
 const { t, language } = useI18n()
 
 const currentUser = ref(null)
@@ -262,14 +270,12 @@ const openTaskModal = async (project = null) => {
 }
 
 const toggleFavorite = async (project) => {
-  const nextValue = !project.isFavorite
-  project.isFavorite = nextValue
+  const nextValue = !starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id)
   try {
     await projectStore.updateFavorite(project.id, nextValue)
     ElMessage.success(nextValue ? t('dashboard.projectStarred') : t('dashboard.projectUnstarred'))
   } catch (error) {
-    project.isFavorite = !nextValue
-    ElMessage.error(t('dashboard.favoriteUpdateFailed'))
+    ElMessage.error(starredStore.error || t('dashboard.favoriteUpdateFailed'))
   }
 }
 
@@ -301,7 +307,10 @@ onMounted(async () => {
   if (userStr) currentUser.value = JSON.parse(userStr)
   updateTime()
   setInterval(updateTime, 60000)
-  await projectStore.fetchAllProjects(true)
+  await Promise.all([
+    projectStore.fetchAllProjects(true),
+    starredStore.fetchStarredItems({ page: 1, pageSize: 100 }).catch(() => [])
+  ])
 })
 
 watch(language, updateTime)
@@ -681,6 +690,4 @@ watch(language, updateTime)
   }
 }
 </style>
-
-
 

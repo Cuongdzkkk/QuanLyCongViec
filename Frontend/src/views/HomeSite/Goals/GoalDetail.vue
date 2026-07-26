@@ -646,6 +646,7 @@ import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { usePeopleStore } from '@/store/usePeopleStore'
 import axiosClient from '@/api/axiosClient'
 import { useTeamStore } from '@/store/useTeamStore'
+import { useStarredStore } from '@/store/useStarredStore'
 import RichTextEditor from '@/components/common/RichTextEditor.vue'
 import ShareModal from '@/components/common/ShareModal.vue'
 import CommentSection from '@/components/common/CommentSection.vue'
@@ -667,6 +668,7 @@ const goalStore = useGoalStore()
 const projectStore = useHomeProjectStore()
 const teamStore = useTeamStore()
 const peopleStore = usePeopleStore()
+const starredStore = useStarredStore()
 const siteProjects = computed(() => projectStore.projects || [])
 
 const myInitials = computed(() => {
@@ -784,14 +786,7 @@ onMounted(async () => {
     startDateInput.value = dateValue ? new Date(dateValue).toISOString().slice(0, 10) : ''
     if (goal.value?.id) {
       try {
-        await axiosClient.post('/recentviews', {
-          entityType: 'Goal',
-          entityId: goal.value.id,
-          title: goal.value.title || 'Goal',
-          subtitle: 'Goal',
-          url: `/home/goals/${goal.value.id}`,
-          icon: 'fa-solid fa-bullseye'
-        })
+        await starredStore.recordViewed('Goal', goal.value.id)
       } catch (err) {
         console.warn('Failed to record recent goal view', err)
       }
@@ -2178,4 +2173,3 @@ const postUpdate = () => {
   outline: none !important;
 }
 </style>
-

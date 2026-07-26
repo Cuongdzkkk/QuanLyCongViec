@@ -65,7 +65,7 @@
             >
                <div class="card-actions-top" @click.stop>
                  <button class="card-icon-btn" type="button" @click="copySpaceLink(space)"><i class="fa-solid fa-link"></i></button>
-                 <button class="card-icon-btn" type="button" :class="{ 'starred': space.starred }" @click="toggleStar(space)"><i :class="space.starred ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i></button>
+                 <button class="card-icon-btn" type="button" :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, space.id)" :class="{ 'starred': space.starred }" @click="toggleStar(space)"><i :class="space.starred ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i></button>
                </div>
             </div>
 
@@ -122,7 +122,7 @@
             <tbody>
               <tr v-for="(space, index) in filteredSpaces" :key="'table-' + space.id" @click="goToSpace(space.id)" style="border-bottom: 1px solid var(--color-border); cursor: pointer; transition: background 0.2s;" class="table-row-hover">
                 <td style="padding: 12px 16px;" @click.stop>
-                  <button class="card-icon-btn transparent-btn" style="background: transparent; border: none; color: var(--color-text-muted);" :class="{ 'starred': space.starred }" @click="toggleStar(space)">
+                  <button class="card-icon-btn transparent-btn" type="button" :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, space.id)" style="background: transparent; border: none; color: var(--color-text-muted);" :class="{ 'starred': space.starred }" @click="toggleStar(space)">
                     <i :class="space.starred ? 'fa-solid fa-star' : 'fa-regular fa-star'" :style="{ color: space.starred ? '#EAB308' : '' }"></i>
                   </button>
                 </td>
@@ -183,6 +183,8 @@ import axiosClient from '@/api/axiosClient'
 import CreateSpaceModal from '@/components/CreateSpaceModal.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useProjectStore } from '@/store/useProjectStore'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { canAccessProjectSettings, getProjectSettingsDeniedMessage, getStoredUser } from '@/utils/permissions'
 import { subscribeAdminRealtime } from '@/utils/adminRealtime'
 import { getProjectSettingsWindowName, openNamedAppWindow, PROJECT_ADMIN_WINDOW_NAME } from '@/utils/windowTabs'
@@ -195,6 +197,7 @@ const handleSwitchSettings = (path) => {
 }
 
 const projectStore = useProjectStore()
+const starredStore = useStarredStore()
 const { language, t } = useI18n()
 const loading = ref(false)
 const spaces = ref([])
@@ -250,14 +253,14 @@ const copySpaceLink = async (space) => {
 }
 
 const toggleStar = async (space) => {
-  const nextFavorite = !space.starred
+  const nextFavorite = !starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, space.id)
   space.starred = nextFavorite
   try {
     await projectStore.updateFavorite(space.id, nextFavorite)
     ElMessage.success(nextFavorite ? t('projects.projectStarred') : t('projects.projectUnstarred'))
   } catch (error) {
     space.starred = !nextFavorite
-    ElMessage.error(t('projects.favoriteFailed'))
+    ElMessage.error(starredStore.error || t('projects.favoriteFailed'))
   }
 }
 
@@ -281,11 +284,14 @@ const projectCoverStyle = (space, index) => space.cover
 const fetchSpaces = async () => {
   loading.value = true
   try {
-    const data = await projectStore.fetchAllProjects(true)
+    const [, data] = await Promise.all([
+      starredStore.fetchStarredItems({ page: 1, pageSize: 100 }).catch(() => []),
+      projectStore.fetchAllProjects(true)
+    ])
 
     spaces.value = data.map(p => ({
       id: p.id,
-      starred: Boolean(p.isFavorite),
+      starred: starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, p.id),
       name: p.name,
       key: p.key || p.name.substring(0, 4).toUpperCase(),
       myRole: p.myRole || null,

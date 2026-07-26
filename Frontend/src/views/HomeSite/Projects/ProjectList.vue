@@ -82,8 +82,16 @@
               <td @click.stop="toggleFollow(proj.id)">
                 <span class="following-text" style="cursor: pointer;">{{ proj.isFollowing ? labels.following : labels.follow }}</span>
               </td>
-              <td @click.stop="toggleStar(proj.id)">
-                <i :class="proj.isStarred ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'" style="cursor: pointer;"></i>
+              <td @click.stop>
+                <button
+                  class="icon-btn"
+                  type="button"
+                  :disabled="starredStore.isPending('Project', proj.id)"
+                  :aria-label="proj.isStarred ? labels.unstar : labels.starred"
+                  @click="toggleStar(proj.id)"
+                >
+                  <i :class="proj.isStarred ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'"></i>
+                </button>
               </td>
               <td>
                 <span class="updated-text">{{ formatDate(proj.updatedAt || proj.createdAt) }}</span>
@@ -115,7 +123,13 @@
                 <i class="fa-regular fa-eye"></i>
                 {{ proj.isFollowing ? labels.following : labels.follow }}
               </button>
-              <button class="row-action-btn icon-only" @click.stop="toggleStar(proj.id)">
+              <button
+                class="row-action-btn icon-only"
+                type="button"
+                :disabled="starredStore.isPending('Project', proj.id)"
+                :aria-label="proj.isStarred ? labels.unstar : labels.starred"
+                @click.stop="toggleStar(proj.id)"
+              >
                 <i :class="proj.isStarred ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'"></i>
               </button>
             </div>
@@ -195,6 +209,7 @@ import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { useStarredStore } from '@/store/useStarredStore'
 import { useFollowerStore } from '@/store/useFollowerStore'
 import { useI18nStore } from '@/store/useI18nStore'
+import { ElMessage } from 'element-plus'
 import { useSiteStore } from '@/store/useSiteStore'
 import { isValidEntityId } from '@/utils/contextIds'
 import UserAvatar from '@/components/common/UserAvatar.vue'
@@ -480,7 +495,11 @@ const goToProject = (id) => {
 }
 
 const toggleStar = async (id) => {
-  await starredStore.toggleStar('Project', id)
+  try {
+    await starredStore.setStarred('Project', id, !starredStore.isStarred('Project', id))
+  } catch {
+    ElMessage.error(starredStore.error || labels.value.loadFailed)
+  }
 }
 
 const toggleFollow = async (id) => {
@@ -1536,4 +1555,3 @@ const isCompletedStatus = (status) => {
   }
 }
 </style>
-

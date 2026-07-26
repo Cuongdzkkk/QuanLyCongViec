@@ -60,6 +60,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useStarredStore } from '@/store/useStarredStore'
 
 const props = defineProps({
   isVisible: {
@@ -72,16 +73,17 @@ const emit = defineEmits(['close'])
 
 const router = useRouter()
 const route = useRoute()
+const starredStore = useStarredStore()
 const searchQuery = ref('')
-const recentTasks = ref([])
+const recentTasks = computed(() => starredStore.recentItems.map(item => ({
+  ...item,
+  id: item.entityId,
+  projectName: item.subtitle,
+  updatedAt: item.viewedAt
+})))
 
 const loadRecentTasks = () => {
-  try {
-    const data = JSON.parse(localStorage.getItem('recently_viewed_tasks') || '[]')
-    recentTasks.value = data
-  } catch (err) {
-    recentTasks.value = []
-  }
+  starredStore.fetchRecentItems({ page: 1, pageSize: 20 }).catch(() => {})
 }
 
 watch(() => props.isVisible, (newVal) => {
@@ -124,9 +126,7 @@ const goToTask = (task) => {
   // Since we don't have a direct route to open a task by ID in the URL for now,
   // we just take the user to the project's board where they can see it.
   closePopup()
-  if (task.projectId) {
-    router.push(`/space/${task.projectId}/work-items`)
-  }
+  if (task.url) router.push(task.url)
 }
 
 const getStatusIcon = (statusName) => {
