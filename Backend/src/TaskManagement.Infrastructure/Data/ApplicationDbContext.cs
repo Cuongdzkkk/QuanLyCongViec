@@ -628,6 +628,15 @@ namespace TaskManagement.Infrastructure.Data
                 .HasIndex(rv => new { rv.UserId, rv.EntityType, rv.EntityId })
                 .IsUnique();
 
+            modelBuilder.Entity<RecentView>()
+                .HasIndex(rv => new { rv.UserId, rv.ViewedAt, rv.Id })
+                .IsDescending(false, true, false);
+
+            modelBuilder.Entity<RecentView>()
+                .ToTable("RecentViews", table => table.HasCheckConstraint(
+                    "CK_RecentViews_EntityType",
+                    "[EntityType] IN ('Goal', 'Project', 'Team', 'User', 'WorkTask')"));
+
             modelBuilder.Entity<KudoReaction>()
                 .HasOne(kr => kr.Kudo)
                 .WithMany()
@@ -980,9 +989,13 @@ namespace TaskManagement.Infrastructure.Data
                 .HasIndex(si => si.UserId);
 
             modelBuilder.Entity<StarredItem>()
+                .HasIndex(si => new { si.UserId, si.WorkspaceId, si.CreatedAt, si.Id })
+                .IsDescending(false, false, true, false);
+
+            modelBuilder.Entity<StarredItem>()
                 .ToTable("StarredItems", table => table.HasCheckConstraint(
                     "CK_StarredItems_ItemType",
-                    "[ItemType] IN ('Goal', 'Project', 'Team', 'User')"));
+                    "[ItemType] IN ('Goal', 'Project', 'Team', 'User', 'WorkTask')"));
 
             modelBuilder.Entity<ProjectLink>()
                 .HasOne(pl => pl.Project)

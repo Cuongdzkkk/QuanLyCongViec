@@ -109,7 +109,9 @@ namespace TaskManagement.API.Extensions
             // Phase 1: SprintA Alignment Entities
             services.AddScoped<IGoalService, GoalService>();
             services.AddScoped<IProjectLinkService, ProjectLinkService>();
+            services.AddScoped<IPersonalEntityReferenceResolver, PersonalEntityReferenceResolver>();
             services.AddScoped<IStarredItemService, StarredItemService>();
+            services.AddScoped<IRecentViewService, RecentViewService>();
             services.AddScoped<IFollowerService, FollowerService>();
             
             return services;
