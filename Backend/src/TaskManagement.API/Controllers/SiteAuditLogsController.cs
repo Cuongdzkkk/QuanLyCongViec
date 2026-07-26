@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using TaskManagement.Infrastructure.Data;
 
 namespace TaskManagement.API.Controllers
@@ -20,9 +21,24 @@ namespace TaskManagement.API.Controllers
         [HttpGet]
         public async Task<IActionResult> Get([FromQuery] string? timeFilter, [FromQuery] string? search, [FromQuery] int limit = 100)
         {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdClaim, out var userId))
+            {
+                return Unauthorized(new { statusCode = 401, message = "Unauthorized." });
+            }
+
+            var isActiveUser = await _context.Users
+                .AsNoTracking()
+                .AnyAsync(user => user.Id == userId && user.IsActive && !user.IsDeleted);
+            if (!isActiveUser)
+            {
+                return StatusCode(403, new { statusCode = 403, message = "The authenticated user is not active." });
+            }
+
             var query = _context.SiteAuditLogs
                 .AsNoTracking()
                 .Include(log => log.User)
+                .Where(log => log.UserId == userId)
                 .AsQueryable();
 
             var now = DateTime.UtcNow;
@@ -51,6 +67,7 @@ namespace TaskManagement.API.Controllers
             var total = await query.CountAsync();
             var rawItems = await query
                 .OrderByDescending(log => log.CreatedAt)
+                .ThenBy(log => log.Id)
                 .Take(cappedLimit)
                 .Select(log => new
                 {

@@ -19,6 +19,8 @@ namespace TaskManagement.Application.Interfaces
         Task<IEnumerable<WorkTaskResponseDto>> GetTasksByProjectIdAsync(Guid projectId);
         Task<IEnumerable<WorkTaskResponseDto>> GetMyTasksAsync(Guid userId);
         Task<List<WorkTaskResponseDto>> SearchTasksAsync(Guid userId, string? query, string? status, Guid? assigneeId, int? priority, Guid? projectId = null, string? scope = "all");
+        Task<PersonalWorkPageDto> GetPersonalWorkPageAsync(Guid userId, string scope, int page, int pageSize);
+        Task<PersonalWorkSummaryDto> GetPersonalWorkSummaryAsync(Guid userId);
         Task ArchiveAsync(Guid id);
         Task RestoreAsync(Guid id);
         Task<bool> ToggleSubscriptionAsync(Guid taskId, Guid userId);
