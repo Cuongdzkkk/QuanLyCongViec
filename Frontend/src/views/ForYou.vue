@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
@@ -8,12 +8,18 @@ import TaskDetailModal from '@/components/TaskDetailModal.vue'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
 import { useI18n } from '@/composables/useI18n'
+import { usePersonalWork } from '@/composables/usePersonalWork'
+import { PERSONAL_WORK_SCOPES } from '@/api/personalWorkApi'
+import { useAuthStore } from '@/store/useAuthStore'
+import { useSiteStore } from '@/store/useSiteStore'
 import { translateDemoText } from '@/utils/demoContentLocale'
 
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
 const workTaskStore = useWorkTaskStore()
+const authStore = useAuthStore()
+const siteStore = useSiteStore()
 const { t, language } = useI18n()
 const demoText = (value) => translateDemoText(value, language.value)
 
@@ -21,13 +27,11 @@ const currentProjectId = computed(() => route.params.id || null)
 
 // Loading, empty & error states
 const loadingSpaces = ref(false)
-const loadingTasks = ref(false)
 const errorSpaces = ref(null)
-const errorTasks = ref(null)
 
 // Data refs
 const spaces = ref([])
-const myTasks = ref([])
+const deferredTasks = ref([])
 const projectMembers = ref([])
 const currentProjectRole = ref('member')
 const activeTab = ref('assigned') // recommended, assigned, starred, worked, viewed
@@ -36,15 +40,39 @@ const statusFilter = ref('all') // all, todo, inprogress, done
 const sortOption = ref('updated') // updated, created, priority
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
+const deferredLoading = ref(false)
+const deferredError = ref(null)
+let deferredController
+
+const {
+  items: personalTasks,
+  totalCount,
+  loading: personalLoading,
+  error: personalError,
+  summary,
+  fetchPage,
+  fetchSummary,
+  reset
+} = usePersonalWork()
+
+const personalTabScopes = {
+  recommended: PERSONAL_WORK_SCOPES.suggested,
+  assigned: PERSONAL_WORK_SCOPES.assigned,
+  worked: PERSONAL_WORK_SCOPES.worked
+}
+const isPersonalApiTab = computed(() => Boolean(personalTabScopes[activeTab.value]))
+const myTasks = computed(() => isPersonalApiTab.value ? personalTasks.value : deferredTasks.value)
+const loadingTasks = computed(() => isPersonalApiTab.value ? personalLoading.value : deferredLoading.value)
+const errorTasks = computed(() => isPersonalApiTab.value ? personalError.value : deferredError.value)
+const contextKey = computed(() => [
+  authStore.userId || '',
+  authStore.token || '',
+  siteStore.activeSite?.id || siteStore.activeSite?.Id || ''
+].join(':'))
 
 // Task details modal interaction
 const selectedTask = ref(null)
 const taskDetailHistory = ref([])
-
-const currentUserId = computed(() => {
-  const user = localStorage.getItem('user')
-  return user ? JSON.parse(user).id : null
-})
 
 const emojiList = ['📦', '🚀', '⚡', '💡', '🔥', '🎯']
 
@@ -75,18 +103,32 @@ const fetchSpaces = async () => {
 }
 
 // 2. Fetch User Personal Tasks
-const fetchMyTasks = async () => {
-  loadingTasks.value = true
-  errorTasks.value = null
+const fetchDeferredTasks = async () => {
+  deferredController?.abort()
+  deferredController = new AbortController()
+  deferredLoading.value = true
+  deferredError.value = null
+  deferredTasks.value = []
   try {
-    const res = await axiosClient.get('/tasks/search')
-    myTasks.value = res.data?.data || []
+    const res = await axiosClient.get('/tasks/search', { signal: deferredController.signal })
+    deferredTasks.value = res.data?.data || []
   } catch (error) {
-    errorTasks.value = t('forYou.loadTasksFailed')
+    if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return
+    deferredError.value = error
     console.error('Failed to load personal tasks:', error)
   } finally {
-    loadingTasks.value = false
+    deferredLoading.value = false
   }
+}
+
+const fetchMyTasks = async () => {
+  const scope = personalTabScopes[activeTab.value]
+  if (!scope) return fetchDeferredTasks()
+  return fetchPage({
+    scope,
+    page: currentPage.value,
+    pageSize: itemsPerPage.value
+  }).catch(() => null)
 }
 
 // 3. Task Starring (Client-side localized)
@@ -134,16 +176,8 @@ const sortedSpaces = computed(() => {
 const filteredTasksList = computed(() => {
   let list = []
   
-  if (activeTab.value === 'assigned') {
-    list = myTasks.value.filter(task => task.assignedUserId === currentUserId.value || (task.assignees || []).some(a => a.userId === currentUserId.value || a.id === currentUserId.value))
-  } else if (activeTab.value === 'worked') {
-    list = myTasks.value.filter(task => task.reporterId === currentUserId.value || task.assignedUserId === currentUserId.value || (task.assignees || []).some(a => a.userId === currentUserId.value || a.id === currentUserId.value))
-  } else if (activeTab.value === 'recommended') {
-    list = myTasks.value.filter(task => {
-      const isMine = task.assignedUserId === currentUserId.value || task.reporterId === currentUserId.value
-      const isDone = (task.statusName || '').toUpperCase().includes('DONE')
-      return isMine && !isDone
-    })
+  if (isPersonalApiTab.value) {
+    list = myTasks.value
   } else if (activeTab.value === 'starred') {
     list = workTaskStore.starredTasks.map(v => myTasks.value.find(t => t.id === (v.itemId || v.id))).filter(Boolean)
   } else if (activeTab.value === 'viewed') {
@@ -190,8 +224,15 @@ const filteredTasksList = computed(() => {
 })
 
 // Pagination
-const totalPages = computed(() => Math.ceil(filteredTasksList.value.length / itemsPerPage.value))
+const totalPages = computed(() => Math.max(
+  1,
+  Math.ceil(
+    (isPersonalApiTab.value ? totalCount.value : filteredTasksList.value.length) /
+    itemsPerPage.value
+  )
+))
 const paginatedTasks = computed(() => {
+  if (isPersonalApiTab.value) return filteredTasksList.value
   const start = (currentPage.value - 1) * itemsPerPage.value
   return filteredTasksList.value.slice(start, start + itemsPerPage.value)
 })
@@ -353,7 +394,6 @@ const timeAgo = (dateStr) => {
 
 onMounted(() => {
   fetchSpaces()
-  fetchMyTasks()
   workTaskStore.fetchStarredTasks().catch(() => {})
 })
 
@@ -362,7 +402,30 @@ watch(() => route.query.tab, (tab) => {
 }, { immediate: true })
 
 watch(activeTab, () => {
+  if (currentPage.value !== 1) {
+    currentPage.value = 1
+    return
+  }
+  fetchMyTasks()
+})
+
+watch(currentPage, () => {
+  fetchMyTasks()
+})
+
+watch(contextKey, () => {
+  deferredController?.abort()
+  deferredTasks.value = []
+  reset()
   currentPage.value = 1
+  if (!authStore.token || !authStore.userId) return
+  fetchSummary().catch(() => null)
+  fetchMyTasks()
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  deferredController?.abort()
+  reset()
 })
 
 </script>
@@ -440,10 +503,10 @@ watch(activeTab, () => {
               >
                 <span>{{ tab.label }}</span>
                 <span 
-                  v-if="tab.id === 'assigned' && myTasks.filter(t => t.assignedUserId === currentUserId).length > 0" 
+                  v-if="tab.id === 'assigned' && summary?.assigned > 0"
                   class="tab-badge"
                 >
-                  {{ myTasks.filter(t => t.assignedUserId === currentUserId).length }}
+                  {{ summary.assigned }}
                 </span>
               </button>
             </div>
@@ -470,6 +533,11 @@ watch(activeTab, () => {
 
           <div v-if="loadingTasks" class="loading-state">
             <i class="fa-solid fa-spinner fa-spin"></i> {{ t('forYou.loadingYourWork') }}
+          </div>
+
+          <div v-else-if="errorTasks" class="empty-state">
+            <h3 class="text-sm font-semibold text-gray-700 dark:text-neutral-300">{{ t('forYou.loadTasksFailed') }}</h3>
+            <button class="jira-btn-subtle mt-4" @click="fetchMyTasks">{{ t('common.retry') }}</button>
           </div>
           
           <!-- Premium Empty State for Tasks -->
@@ -2066,4 +2134,3 @@ watch(activeTab, () => {
   }
 }
 </style>
-
