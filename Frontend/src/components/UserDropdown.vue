@@ -79,6 +79,7 @@ import { getStoredUser } from '@/utils/permissions'
 import { clearAuthSession } from '@/utils/authSession'
 import axiosClient from '@/api/axiosClient'
 import { useI18nStore } from '@/store/useI18nStore'
+import { useSprintStore } from '@/store/useSprintStore'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 
 const router = useRouter()
@@ -86,6 +87,7 @@ const langSubVisible = ref(false)
 const profileData = ref(null)
 
 const i18nStore = useI18nStore()
+const sprintStore = useSprintStore()
 const t = (key) => i18nStore.t(key)
 
 const currentUser = computed(() => profileData.value || getStoredUser())
@@ -135,6 +137,7 @@ const handleCommand = async (cmd) => {
     } catch (error) {
       console.error('Logout error:', error)
     } finally {
+      sprintStore.resetScope()
       clearAuthSession()
       router.push('/login')
     }

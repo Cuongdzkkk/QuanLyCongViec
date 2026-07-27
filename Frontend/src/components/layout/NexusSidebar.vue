@@ -277,9 +277,11 @@ const favoriteSprints = computed(() => {
    return sprintStore.sprints.filter(s => s.isFavorite);
 })
 
-watch(currentProjectId, async (newVal, oldVal) => {
-   const isProjectRoute = route.path.startsWith('/space') && route.params.id
+watch(() => [route.path, route.params.id], async ([path, newVal], previous = []) => {
+   const oldVal = previous[1]
+   const isProjectRoute = path.startsWith('/space') && newVal
    if (!isProjectRoute) {
+      sprintStore.resetScope()
       return
    }
 
