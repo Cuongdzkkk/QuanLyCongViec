@@ -137,6 +137,7 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<Department>().HasQueryFilter(d => !d.IsDeleted);
             modelBuilder.Entity<Project>().HasQueryFilter(p => !p.IsDeleted);
             modelBuilder.Entity<WorkTask>().HasQueryFilter(wt => !wt.IsDeleted);
+            modelBuilder.Entity<Sprint>().HasQueryFilter(sprint => !sprint.IsDeleted);
             modelBuilder.Entity<Workspace>().HasQueryFilter(w => !w.IsDeleted);
             modelBuilder.Entity<CustomFieldDefinition>().HasQueryFilter(cfd => !cfd.IsDeleted);
             modelBuilder.Entity<StickyNote>().HasQueryFilter(note => !note.IsDeleted);
@@ -339,6 +340,21 @@ namespace TaskManagement.Infrastructure.Data
                 .WithMany(p => p.Sprints)
                 .HasForeignKey(s => s.ProjectId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Sprint>()
+                .Property(sprint => sprint.State)
+                .HasMaxLength(20)
+                .HasDefaultValue(TaskManagement.Domain.Rules.SprintStates.Planned);
+
+            modelBuilder.Entity<Sprint>()
+                .HasIndex(sprint => sprint.ProjectId)
+                .IsUnique()
+                .HasDatabaseName("UX_Sprints_Project_Active")
+                .HasFilter("[State] = N'Active' AND [IsDeleted] = 0");
+
+            modelBuilder.Entity<Sprint>()
+                .HasIndex(sprint => new { sprint.ProjectId, sprint.State, sprint.StartDate, sprint.CreatedAt, sprint.Id })
+                .HasDatabaseName("IX_Sprints_Project_State_Order");
 
             modelBuilder.Entity<TaskType>()
                 .HasOne(tt => tt.Project)

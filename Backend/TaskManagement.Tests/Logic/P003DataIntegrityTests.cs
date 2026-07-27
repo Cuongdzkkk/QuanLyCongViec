@@ -177,12 +177,13 @@ public sealed class P003DataIntegrityTests
 
         var service = new SprintService(context);
         await FluentActions.Invoking(() => service.CloseAsync(
+                sourceProjectId,
                 sourceSprintId,
                 new CloseSprintDto { TargetSprintId = invalidTargetId },
                 userId))
             .Should().ThrowAsync<ArgumentException>().WithMessage("*same project and workspace*");
 
-        await service.CloseAsync(sourceSprintId, new CloseSprintDto { TargetSprintId = validTargetId }, userId);
+        await service.CloseAsync(sourceProjectId, sourceSprintId, new CloseSprintDto { TargetSprintId = validTargetId }, userId);
         (await context.Sprints.FindAsync(sourceSprintId))!.Status.Should().BeFalse();
     }
 

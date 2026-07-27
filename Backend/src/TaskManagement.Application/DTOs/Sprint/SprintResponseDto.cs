@@ -4,11 +4,14 @@ namespace TaskManagement.Application.DTOs.Sprint
     {
         public Guid Id { get; set; }
         public Guid ProjectId { get; set; }
+        public Guid WorkspaceId { get; set; }
         public string Name { get; set; } = string.Empty;
         public DateTime StartDate { get; set; }
         public DateTime EndDate { get; set; }
         public bool Status { get; set; }
         public string State { get; set; } = "Upcoming";
+        public DateTime? StartedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
         public int ProgressPercent { get; set; }
         public int TaskCount { get; set; }
         public int CompletedTaskCount { get; set; }

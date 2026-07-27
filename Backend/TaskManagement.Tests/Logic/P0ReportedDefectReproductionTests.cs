@@ -209,6 +209,7 @@ public sealed class P0ReportedDefectReproductionTests
         await context.SaveChangesAsync();
 
         var action = () => new SprintService(context).CloseAsync(
+            sourceProjectId,
             sourceSprintId,
             new CloseSprintDto { TargetSprintId = targetSprintId },
             Guid.NewGuid());
