@@ -113,7 +113,14 @@
             <router-link to="/forgot-password" class="forgot-link">{{ t('auth.forgotPassword.title') }}?</router-link>
           </div>
 
-          <el-button type="primary" native-type="submit" class="auth-btn" size="large" :loading="isLoading">
+          <el-button
+            type="primary"
+            native-type="submit"
+            class="auth-btn"
+            size="large"
+            :loading="isLoading"
+            :disabled="googleVerifying"
+          >
             {{ t('auth.login.submit') }}
           </el-button>
         </el-form>
@@ -122,11 +129,39 @@
           <div class="divider"><span>{{ t('auth.login.orContinueWith') }}</span></div>
 
           <div class="social-login">
-            <GoogleLogin v-if="isGoogleConfigured" :callback="handleGoogleLogin" popup-type="TOKEN" class="social-btn-wrapper">
-              <el-button native-type="button" class="social-btn google-btn">
-                <img :src="googleIcon" alt="Google" class="social-icon" /> Google
+            <div
+              v-if="isGoogleConfigured"
+              class="google-identity-shell"
+              :class="{ 'is-busy': googleVerifying || isLoading }"
+              :aria-busy="googleVerifying || isLoading"
+            >
+              <div
+                ref="googleButtonContainer"
+                class="google-identity-button"
+                :class="{ 'is-hidden': googleSdkState !== 'ready' }"
+              ></div>
+              <el-button
+                v-if="googleSdkState === 'loading'"
+                native-type="button"
+                class="social-btn google-btn google-placeholder"
+                loading
+                disabled
+              >
+                Google
               </el-button>
-            </GoogleLogin>
+              <el-button
+                v-else-if="googleSdkState === 'error'"
+                native-type="button"
+                class="social-btn google-btn google-placeholder"
+                @click="retryGoogleSetup"
+              >
+                <img :src="googleIcon" alt="" class="social-icon" /> {{ tr('Retry Google', 'Thử lại Google') }}
+              </el-button>
+              <div v-if="googleVerifying" class="google-verifying-overlay" aria-live="polite">
+                <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                <span>{{ tr('Verifying...', 'Đang xác minh...') }}</span>
+              </div>
+            </div>
             <el-button v-else native-type="button" class="social-btn google-btn" @click="handleGoogleLoginNotConfigured">
               <img :src="googleIcon" alt="Google" class="social-icon" /> Google
             </el-button>
@@ -134,6 +169,14 @@
             <el-button native-type="button" class="social-btn github-btn" @click="handleGitHubLogin">
               <img :src="githubIcon" alt="GitHub" class="social-icon" /> GitHub
             </el-button>
+          </div>
+
+          <div v-if="googleError" class="google-auth-error" role="alert">
+            <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+            <span>{{ googleError.message }}</span>
+            <button v-if="googleError.retryable" type="button" @click="retryGoogleSetup">
+              {{ tr('Retry', 'Thử lại') }}
+            </button>
           </div>
 
           <p class="auth-footer-text">
@@ -150,7 +193,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -164,14 +207,19 @@ import {
   Zap
 } from 'lucide-vue-next'
 import axiosClient from '../api/axiosClient'
+import { loginWithGoogleCredential } from '@/api/authApi'
 import { saveAuthSession } from '@/utils/authSession'
 import { useI18n } from '@/composables/useI18n'
 import { currentTheme, toggleTheme } from '@/utils/theme'
+import {
+  registerGoogleIdentity,
+  renderGoogleIdentityButton
+} from '@/services/googleIdentityService'
 import googleIcon from '../assets/Icongoogle.png'
 import githubIcon from '../assets/Icongithub.png'
 
 const router = useRouter()
-const { t } = useI18n()
+const { t, tr } = useI18n()
 
 const form = reactive({
   email: '',
@@ -182,12 +230,24 @@ const form = reactive({
 const isLoading = ref(false)
 const requires2FA = ref(false)
 const otpCode = ref('')
+const googleButtonContainer = ref(null)
+const googleSdkState = ref('idle')
+const googleVerifying = ref(false)
+const googleError = ref(null)
+let releaseGoogleIdentity = null
+let googleLoginAbortController = null
+let googleRequestId = 0
+let componentActive = true
+let lastCredentialFingerprint = ''
+let lastCredentialHandledAt = 0
 
 const getSafeRedirect = () => {
   return '/site-selection'
 }
 
 const handleLogin = async () => {
+  if (googleVerifying.value) return
+
   if (!form.email || !form.password) {
     ElMessage.warning(t('auth.messages.missingCredentials'))
     return
@@ -244,31 +304,195 @@ const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const isGoogleConfigured = googleClientId && googleClientId !== 'CHANGE_ME_USE_LOCAL_ENV'
 
 const handleGoogleLoginNotConfigured = () => {
-  ElMessage.error('Google OAuth chưa được cấu hình.')
+  ElMessage.error(tr(
+    'Google sign-in is not configured.',
+    'Đăng nhập Google chưa được cấu hình.'
+  ))
+}
+
+const fingerprintCredential = (credential) => {
+  let hash = 2166136261
+  for (let index = 0; index < credential.length; index += 1) {
+    hash ^= credential.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `${credential.length}:${hash >>> 0}`
+}
+
+const getGoogleError = (error) => {
+  const status = Number(error?.response?.status || error?.status || 0)
+  if (status === 400) {
+    return {
+      status,
+      message: tr(
+        'The Google sign-in request could not be processed.',
+        'Không thể xử lý yêu cầu đăng nhập Google.'
+      ),
+      retryable: true
+    }
+  }
+  if (status === 401) {
+    return {
+      status,
+      message: tr(
+        'Your Google credential is invalid or expired. Please sign in with Google again.',
+        'Phiên xác thực Google không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập Google lại.'
+      ),
+      retryable: true
+    }
+  }
+  if (status === 403) {
+    return {
+      status,
+      message: tr(
+        'This account is inactive or is not allowed to sign in.',
+        'Tài khoản này đang bị khóa hoặc không được phép đăng nhập.'
+      ),
+      retryable: false
+    }
+  }
+  if (status === 409) {
+    return {
+      status,
+      message: tr(
+        'This Google account is not safely linked to the existing account.',
+        'Tài khoản Google này chưa được liên kết an toàn với tài khoản hiện có.'
+      ),
+      retryable: false
+    }
+  }
+  if (status === 503) {
+    return {
+      status,
+      message: tr(
+        'Google sign-in is temporarily unavailable. Please try again.',
+        'Đăng nhập Google tạm thời không khả dụng. Vui lòng thử lại.'
+      ),
+      retryable: true
+    }
+  }
+  return {
+    status,
+    message: tr(
+      'Google sign-in could not be completed. Please try again.',
+      'Không thể hoàn tất đăng nhập Google. Vui lòng thử lại.'
+    ),
+    retryable: true
+  }
 }
 
 const handleGoogleLogin = async (response) => {
-  const token = response?.access_token || response?.credential
-  if (!token) {
-    ElMessage.error(t('auth.messages.googleNoToken'))
+  if (!componentActive || isLoading.value || googleVerifying.value) return
+
+  const credential = typeof response?.credential === 'string'
+    ? response.credential.trim()
+    : ''
+  if (!credential) {
+    googleError.value = getGoogleError({ status: 400 })
+    ElMessage.error(googleError.value.message)
     return
   }
 
-  isLoading.value = true
-  try {
-    const res = await axiosClient.post('/auth/google-login', {
-      Credential: token
-    })
+  const now = Date.now()
+  const fingerprint = fingerprintCredential(credential)
+  if (
+    googleVerifying.value ||
+    (fingerprint === lastCredentialFingerprint && now - lastCredentialHandledAt < 2000)
+  ) {
+    return
+  }
 
-    saveAuthSession(res.data.data)
+  googleVerifying.value = true
+  googleError.value = null
+  lastCredentialFingerprint = fingerprint
+  lastCredentialHandledAt = now
+  googleLoginAbortController?.abort()
+  const controller = new AbortController()
+  googleLoginAbortController = controller
+  const requestId = ++googleRequestId
+  let succeeded = false
+
+  try {
+    const authData = await loginWithGoogleCredential(credential, {
+      signal: controller.signal
+    })
+    if (!componentActive || requestId !== googleRequestId) return
+
+    saveAuthSession(authData)
+    succeeded = true
     ElMessage.success(t('auth.messages.googleSuccess'))
-    router.push(getSafeRedirect())
+    await router.push(getSafeRedirect())
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || t('auth.messages.googleFailed'))
+    if (
+      error?.name === 'CanceledError' ||
+      error?.name === 'AbortError' ||
+      error?.code === 'ERR_CANCELED' ||
+      !componentActive ||
+      requestId !== googleRequestId
+    ) {
+      return
+    }
+    googleError.value = getGoogleError(error)
+    ElMessage.error(googleError.value.message)
   } finally {
-    isLoading.value = false
+    if (requestId === googleRequestId && !succeeded) {
+      googleVerifying.value = false
+    }
   }
 }
+
+const setupGoogleIdentity = async () => {
+  if (!isGoogleConfigured || !componentActive) return
+  googleSdkState.value = 'loading'
+  googleError.value = null
+
+  try {
+    releaseGoogleIdentity?.()
+    releaseGoogleIdentity = await registerGoogleIdentity({
+      clientId: googleClientId,
+      callback: handleGoogleLogin
+    })
+    if (!componentActive) {
+      releaseGoogleIdentity?.()
+      releaseGoogleIdentity = null
+      return
+    }
+
+    googleSdkState.value = 'ready'
+    await nextTick()
+    renderGoogleIdentityButton(googleButtonContainer.value)
+  } catch {
+    if (!componentActive) return
+    releaseGoogleIdentity?.()
+    releaseGoogleIdentity = null
+    googleSdkState.value = 'error'
+    googleError.value = {
+      status: 0,
+      message: tr(
+        'Google sign-in could not be loaded. Email and password sign-in is still available.',
+        'Không thể tải đăng nhập Google. Bạn vẫn có thể đăng nhập bằng email và mật khẩu.'
+      ),
+      retryable: true
+    }
+  }
+}
+
+const retryGoogleSetup = () => {
+  if (googleVerifying.value) return
+  googleError.value = null
+  setupGoogleIdentity()
+}
+
+onMounted(setupGoogleIdentity)
+
+onBeforeUnmount(() => {
+  componentActive = false
+  googleRequestId += 1
+  googleLoginAbortController?.abort()
+  releaseGoogleIdentity?.()
+  releaseGoogleIdentity = null
+  lastCredentialFingerprint = ''
+})
 
 const handleGitHubLogin = () => {
   const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID
@@ -695,6 +919,88 @@ const handleGitHubLogin = () => {
   flex: 1;
 }
 
+.google-identity-shell {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+}
+
+.google-identity-shell.is-busy {
+  pointer-events: none;
+}
+
+.google-identity-button {
+  width: 100%;
+  min-height: 42px;
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.google-identity-button.is-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.google-placeholder {
+  width: 100%;
+}
+
+.google-verifying-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--auth-border);
+  border-radius: 10px;
+  color: var(--auth-text);
+  background: color-mix(in srgb, var(--auth-surface-strong) 94%, transparent);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.google-auth-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, #dc2626 35%, var(--auth-border));
+  border-radius: 8px;
+  color: color-mix(in srgb, #dc2626 78%, var(--auth-text));
+  background: color-mix(in srgb, #dc2626 8%, var(--auth-surface-strong));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.google-auth-error span {
+  min-width: 0;
+  flex: 1;
+}
+
+.google-auth-error button {
+  flex: 0 0 auto;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.google-auth-error button:focus-visible {
+  border-radius: 4px;
+  outline: 3px solid color-mix(in srgb, currentColor 28%, transparent);
+  outline-offset: 2px;
+}
+
 .social-btn {
   width: 100%;
   min-height: 44px;
@@ -824,6 +1130,11 @@ const handleGitHubLogin = () => {
   .social-login {
     grid-template-columns: 1fr;
     flex-direction: column;
+  }
+
+  .google-identity-shell,
+  .google-identity-button {
+    width: 100%;
   }
 
   .remember-action {
