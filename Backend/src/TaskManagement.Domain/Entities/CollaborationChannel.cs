@@ -10,6 +10,8 @@ public sealed class CollaborationChannel
     public Guid CreatedByUserId { get; set; }
     public User CreatedByUser { get; set; } = null!;
     public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string? ProvisioningKey { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public bool IsArchived { get; set; }

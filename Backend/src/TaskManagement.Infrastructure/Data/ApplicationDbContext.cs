@@ -1077,8 +1077,18 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<CollaborationChannel>(entity =>
             {
                 entity.Property(channel => channel.Name).HasMaxLength(100).IsRequired();
+                entity.Property(channel => channel.Description).HasMaxLength(500);
+                entity.Property(channel => channel.ProvisioningKey).HasMaxLength(100);
                 entity.HasIndex(channel => new { channel.WorkspaceId, channel.ProjectId });
                 entity.HasIndex(channel => new { channel.ProjectId, channel.IsDeleted, channel.IsArchived });
+                entity.HasIndex(channel => new
+                    {
+                        channel.ProjectId,
+                        channel.CreatedByUserId,
+                        channel.ProvisioningKey
+                    })
+                    .IsUnique()
+                    .HasFilter("[ProvisioningKey] IS NOT NULL");
                 entity.HasOne(channel => channel.Workspace)
                     .WithMany()
                     .HasForeignKey(channel => channel.WorkspaceId)
