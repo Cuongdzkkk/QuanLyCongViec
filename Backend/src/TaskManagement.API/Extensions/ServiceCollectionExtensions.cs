@@ -46,6 +46,8 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<IChannelTextService, ChannelTextService>();
             services.AddScoped<ICollaborationChannelService, CollaborationChannelService>();
             services.AddScoped<IDirectConversationService, DirectConversationService>();
+            services.AddScoped<ICollaborationRealtimeAuthorizationService, CollaborationRealtimeAuthorizationService>();
+            services.AddSingleton<ICollaborationRealtimePublisher, TaskManagement.API.Services.ChatRealtimePublisher>();
             services.AddScoped<ITaskDependencyService, TaskDependencyService>();
             
             services.AddMemoryCache();
@@ -78,6 +80,17 @@ namespace TaskManagement.API.Extensions
                 };
                 options.Events = new JwtBearerEvents
                 {
+                    OnMessageReceived = context =>
+                    {
+                        if (context.HttpContext.Request.Path.StartsWithSegments(
+                                TaskManagement.API.Hubs.ChatHub.Route) &&
+                            context.Request.Query.TryGetValue("access_token", out var accessToken) &&
+                            !string.IsNullOrWhiteSpace(accessToken))
+                        {
+                            context.Token = accessToken;
+                        }
+                        return Task.CompletedTask;
+                    },
                     OnTokenValidated = async context =>
                     {
                         var userIdValue = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);

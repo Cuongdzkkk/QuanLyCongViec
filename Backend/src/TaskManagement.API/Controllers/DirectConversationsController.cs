@@ -13,10 +13,14 @@ namespace TaskManagement.API.Controllers;
 public sealed class DirectConversationsController : ControllerBase
 {
     private readonly IDirectConversationService _service;
+    private readonly ICollaborationRealtimePublisher _realtimePublisher;
 
-    public DirectConversationsController(IDirectConversationService service)
+    public DirectConversationsController(
+        IDirectConversationService service,
+        ICollaborationRealtimePublisher realtimePublisher)
     {
         _service = service;
+        _realtimePublisher = realtimePublisher;
     }
 
     [HttpPost]
@@ -102,6 +106,9 @@ public sealed class DirectConversationsController : ControllerBase
         {
             var result = await _service.SendAsync(
                 conversationId, userId, request.Content, cancellationToken);
+            await _realtimePublisher.PublishDirectMessageCreatedAsync(
+                result,
+                cancellationToken);
             return StatusCode(
                 StatusCodes.Status201Created,
                 ApiResponse<DirectMessageDto>.Created(result, "Message sent."));

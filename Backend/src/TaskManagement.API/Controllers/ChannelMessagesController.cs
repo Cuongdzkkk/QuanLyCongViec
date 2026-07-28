@@ -13,10 +13,14 @@ namespace TaskManagement.API.Controllers;
 public sealed class ChannelMessagesController : ControllerBase
 {
     private readonly IChannelTextService _channelTextService;
+    private readonly ICollaborationRealtimePublisher _realtimePublisher;
 
-    public ChannelMessagesController(IChannelTextService channelTextService)
+    public ChannelMessagesController(
+        IChannelTextService channelTextService,
+        ICollaborationRealtimePublisher realtimePublisher)
     {
         _channelTextService = channelTextService;
+        _realtimePublisher = realtimePublisher;
     }
 
     [HttpGet]
@@ -60,6 +64,9 @@ public sealed class ChannelMessagesController : ControllerBase
                 channelId,
                 userId,
                 request.Content,
+                cancellationToken);
+            await _realtimePublisher.PublishChannelMessageCreatedAsync(
+                result,
                 cancellationToken);
             return StatusCode(
                 StatusCodes.Status201Created,

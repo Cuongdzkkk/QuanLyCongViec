@@ -196,12 +196,18 @@ public sealed class DirectConversationServiceTests
             $$"""{"content":"hello","senderId":"{{userBId}}","createdAt":"2000-01-01"}""",
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
         var service = new Mock<IDirectConversationService>();
+        var publisher = new Mock<ICollaborationRealtimePublisher>();
+        DirectMessageDto? persistedMessage = null;
         service.Setup(item => item.SendAsync(
                 conversationId, userAId, "hello", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new DirectMessageDto(
+            .ReturnsAsync(persistedMessage = new DirectMessageDto(
                 Guid.NewGuid(), conversationId, "hello",
                 new DirectMessageSenderDto(userAId, "A", null), DateTime.UtcNow));
-        var controller = new DirectConversationsController(service.Object)
+        publisher.Setup(item => item.PublishDirectMessageCreatedAsync(
+                persistedMessage,
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var controller = new DirectConversationsController(service.Object, publisher.Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -217,6 +223,7 @@ public sealed class DirectConversationServiceTests
 
         response.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(201);
         service.VerifyAll();
+        publisher.VerifyAll();
         typeof(SendDirectMessageRequestDto).GetProperties().Select(item => item.Name)
             .Should().BeEquivalentTo(["Content"]);
         typeof(DirectMessageSenderDto).GetProperties().Select(item => item.Name)
