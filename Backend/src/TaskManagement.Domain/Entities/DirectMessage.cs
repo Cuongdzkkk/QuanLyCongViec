@@ -5,6 +5,8 @@ namespace TaskManagement.Domain.Entities
     public class DirectMessage
     {
         public Guid Id { get; set; }
+        public Guid? ConversationId { get; set; }
+        public DirectConversation? Conversation { get; set; }
         public Guid SenderId { get; set; }
         public User? Sender { get; set; }
         public Guid ReceiverId { get; set; }

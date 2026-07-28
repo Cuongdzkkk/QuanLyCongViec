@@ -45,6 +45,7 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<IResourceAuthorizationService, ResourceAuthorizationService>();
             services.AddScoped<IChannelTextService, ChannelTextService>();
             services.AddScoped<ICollaborationChannelService, CollaborationChannelService>();
+            services.AddScoped<IDirectConversationService, DirectConversationService>();
             services.AddScoped<ITaskDependencyService, TaskDependencyService>();
             
             services.AddMemoryCache();

@@ -121,6 +121,8 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<EntityFollower> EntityFollowers { get; set; }
 
         public DbSet<DirectMessage> DirectMessages { get; set; }
+        public DbSet<DirectConversation> DirectConversations { get; set; }
+        public DbSet<DirectConversationParticipant> DirectConversationParticipants { get; set; }
         public DbSet<ChannelMessage> ChannelMessages { get; set; }
         public DbSet<CollaborationChannel> CollaborationChannels { get; set; }
         public DbSet<CollaborationChannelMember> CollaborationChannelMembers { get; set; }
@@ -1061,6 +1063,43 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.ApplyConfiguration(new Configurations.TenantConfigConfiguration());
             modelBuilder.ApplyConfiguration(new Configurations.RefreshTokenConfiguration());
 
+
+            modelBuilder.Entity<DirectConversation>(entity =>
+            {
+                entity.HasIndex(conversation => new { conversation.UserLowId, conversation.UserHighId }).IsUnique();
+                entity.HasIndex(conversation => new { conversation.WorkspaceId, conversation.LastMessageAt, conversation.CreatedAt, conversation.Id });
+                entity.HasOne(conversation => conversation.Workspace).WithMany()
+                    .HasForeignKey(conversation => conversation.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(conversation => conversation.UserLow).WithMany()
+                    .HasForeignKey(conversation => conversation.UserLowId).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(conversation => conversation.UserHigh).WithMany()
+                    .HasForeignKey(conversation => conversation.UserHighId).OnDelete(DeleteBehavior.Restrict);
+                entity.ToTable("DirectConversations", table =>
+                    table.HasCheckConstraint("CK_DirectConversations_DistinctUsers", "[UserLowId] <> [UserHighId]"));
+            });
+
+            modelBuilder.Entity<DirectConversationParticipant>(entity =>
+            {
+                entity.HasKey(participant => new { participant.ConversationId, participant.UserId });
+                entity.HasIndex(participant => new { participant.UserId, participant.ConversationId });
+                entity.HasOne(participant => participant.Conversation)
+                    .WithMany(conversation => conversation.Participants)
+                    .HasForeignKey(participant => participant.ConversationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(participant => participant.User).WithMany()
+                    .HasForeignKey(participant => participant.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<DirectMessage>(entity =>
+            {
+                entity.Property(message => message.Content).HasMaxLength(4000).IsRequired();
+                entity.HasIndex(message => new { message.ConversationId, message.SentAt, message.Id });
+                entity.HasOne(message => message.Conversation)
+                    .WithMany(conversation => conversation.Messages)
+                    .HasForeignKey(message => message.ConversationId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
 
            modelBuilder.Entity<DirectMessage>()
                 .HasOne(dm => dm.Sender)
