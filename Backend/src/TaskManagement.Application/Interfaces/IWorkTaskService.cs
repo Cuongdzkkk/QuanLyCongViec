@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TaskManagement.Application.DTOs.Module;
 using TaskManagement.Application.DTOs.WorkTask;
 
 namespace TaskManagement.Application.Interfaces
@@ -12,6 +13,12 @@ namespace TaskManagement.Application.Interfaces
         /// PM/PO/SM see all tasks. DEV/QA see only assigned/reported tasks.
         /// </summary>
         Task<List<WorkTaskResponseDto>> GetByProjectAsync(Guid projectId, Guid userId);
+        Task<ModuleDetailDto?> GetModuleDetailAsync(
+            Guid projectId,
+            Guid moduleId,
+            Guid userId,
+            int page,
+            int pageSize);
         
         Task<WorkTaskResponseDto> CreateAsync(Guid reporterId, CreateWorkTaskDto request);
         Task<WorkTaskResponseDto> UpdateAsync(Guid taskId, Guid userId, UpdateWorkTaskDto dto);

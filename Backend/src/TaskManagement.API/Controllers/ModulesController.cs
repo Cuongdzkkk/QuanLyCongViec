@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using TaskManagement.API.Filters;
+using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 
@@ -15,10 +16,12 @@ namespace TaskManagement.API.Controllers
     public class ModulesController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IWorkTaskService _workTaskService;
 
-        public ModulesController(ApplicationDbContext context)
+        public ModulesController(ApplicationDbContext context, IWorkTaskService workTaskService)
         {
             _context = context;
+            _workTaskService = workTaskService;
         }
 
         [HttpGet("modules")]
@@ -128,6 +131,40 @@ namespace TaskManagement.API.Controllers
                     hasNextPage = normalizedPage < totalPages
                 }
             });
+        }
+
+        [HttpGet("modules/{moduleId}")]
+        public async Task<IActionResult> GetDetail(
+            Guid projectId,
+            Guid moduleId,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            var userIdValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdValue, out var userId))
+            {
+                return Unauthorized(new { statusCode = 401, message = "Unauthorized. JWT is missing or invalid." });
+            }
+
+            try
+            {
+                var detail = await _workTaskService.GetModuleDetailAsync(
+                    projectId,
+                    moduleId,
+                    userId,
+                    page,
+                    pageSize);
+                if (detail == null)
+                {
+                    return NotFound(new { statusCode = 404, message = "Module khong ton tai trong du an nay." });
+                }
+
+                return Ok(new { statusCode = 200, message = "Success", data = detail });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new { statusCode = 403, message = ex.Message });
+            }
         }
 
         [HttpPost("modules")]
