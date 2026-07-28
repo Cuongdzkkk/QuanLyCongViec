@@ -46,5 +46,65 @@ export const collaborationApi = {
       { signal: options.signal }
     )
     return unwrapData(response)
+  },
+
+  async getDirectMessageUsers(projectId, options = {}) {
+    const response = await axiosClient.get('/users', {
+      params: {
+        projectId,
+        page: options.page ?? 1,
+        pageSize: options.pageSize ?? 100
+      },
+      signal: options.signal
+    })
+    return {
+      items: response?.data?.data ?? [],
+      page: response?.data?.page ?? options.page ?? 1,
+      pageSize: response?.data?.pageSize ?? options.pageSize ?? 100,
+      totalCount: response?.data?.total ?? 0
+    }
+  },
+
+  async findOrCreateDirectConversation(participantUserId, options = {}) {
+    const response = await axiosClient.post(
+      '/direct-conversations',
+      { participantUserId },
+      { signal: options.signal }
+    )
+    return unwrapData(response)
+  },
+
+  async getDirectConversations(options = {}) {
+    const response = await axiosClient.get('/direct-conversations', {
+      params: {
+        page: options.page ?? 1,
+        pageSize: options.pageSize ?? 50
+      },
+      signal: options.signal
+    })
+    return unwrapData(response)
+  },
+
+  async getDirectMessages(conversationId, options = {}) {
+    const response = await axiosClient.get(
+      `/direct-conversations/${conversationId}/messages`,
+      {
+        params: {
+          page: options.page ?? 1,
+          pageSize: options.pageSize ?? 50
+        },
+        signal: options.signal
+      }
+    )
+    return unwrapData(response)
+  },
+
+  async sendDirectMessage(conversationId, content, options = {}) {
+    const response = await axiosClient.post(
+      `/direct-conversations/${conversationId}/messages`,
+      { content },
+      { signal: options.signal }
+    )
+    return unwrapData(response)
   }
 }

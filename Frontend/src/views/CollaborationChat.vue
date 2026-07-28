@@ -137,23 +137,71 @@
         <!-- Direct Messages List -->
         <div class="sidebar-section mt-4" v-if="currentTab === 'dm'">
           <span class="section-title">TIN NHẮN TRỰC TIẾP</span>
+          <select
+            v-model="activeProjectId"
+            class="project-scope-select"
+            aria-label="Chọn Project để tìm người nhận"
+          >
+            <option value="">Chọn Project</option>
+            <option v-for="project in projectOptions" :key="project.id" :value="project.id">
+              {{ project.name }}
+            </option>
+          </select>
+          <select
+            class="project-scope-select"
+            :value="selectedRecipientId"
+            :disabled="membersLoading || findingConversation || !activeProjectId"
+            aria-label="Chọn người nhận Direct Message"
+            @change="selectDirectRecipient($event.target.value)"
+          >
+            <option value="">
+              {{ membersLoading ? 'Đang tải thành viên...' : 'Chọn người nhận' }}
+            </option>
+            <option v-for="member in members" :key="member.id" :value="member.id">
+              {{ member.name }}
+            </option>
+          </select>
           <div class="section-list">
+            <div v-if="membersError" class="channel-state channel-state-error" role="alert">
+              <span>{{ membersError }}</span>
+              <button type="button" class="state-action" aria-label="Thử tải lại thành viên" @click="retryMembers">Thử lại</button>
+            </div>
+            <div v-if="conversationsLoading" class="channel-state" role="status">
+              <i class="fa-solid fa-spinner fa-spin"></i>
+              <span>Đang tải cuộc trò chuyện...</span>
+            </div>
+            <div v-else-if="conversationsError" class="channel-state channel-state-error" role="alert">
+              <span>{{ conversationsError }}</span>
+              <button type="button" class="state-action" aria-label="Thử tải lại cuộc trò chuyện" @click="retryConversations">Thử lại</button>
+            </div>
+            <div v-else-if="directConversations.length === 0" class="channel-state">
+              Bạn chưa có cuộc trò chuyện nào.
+            </div>
             <button 
-              v-for="m in members" 
-              :key="m.id" 
+              v-for="conversation in directConversations"
+              :key="conversation.id"
               class="list-item" 
-              :class="{ active: activeChat?.id === m.id && activeChat?.type === 'dm' }"
-              @click="selectChat(m, 'dm')"
+              :class="{ active: activeChat?.id === conversation.id && activeChat?.type === 'dm' }"
+              :disabled="findingConversation"
+              @click="selectChat(conversation, 'dm')"
             >
-              <div class="avatar-status-wrapper">
-                <el-avatar :size="24" :src="m.avatar">{{ m.name.charAt(0) }}</el-avatar>
-                <span class="status-dot" :class="m.status"></span>
-              </div>
+              <el-avatar :size="24" :src="conversation.avatar">{{ conversation.name.charAt(0) }}</el-avatar>
               <div class="flex flex-col text-left overflow-hidden ml-2">
-                <span class="item-name truncate">{{ m.name }}</span>
-                <span class="text-xs text-muted truncate">{{ m.statusText || (m.status === 'online' ? 'Online' : 'Offline') }}</span>
+                <span class="item-name truncate">{{ conversation.name }}</span>
+                <span class="text-xs text-muted truncate">{{ conversation.lastMessagePreview || 'Chưa có tin nhắn' }}</span>
               </div>
-              <el-badge v-if="m.unread" :value="m.unread" class="ml-auto" />
+              <span class="conversation-time">
+                {{ formatTime(conversation.lastMessageAt || conversation.createdAt) }}
+              </span>
+            </button>
+            <button
+              v-if="directConversations.length < conversationPagination.totalCount"
+              type="button"
+              class="state-action load-more-action"
+              :disabled="conversationsLoadingMore"
+              @click="loadMoreConversations"
+            >
+              {{ conversationsLoadingMore ? 'Đang tải...' : 'Tải thêm cuộc trò chuyện' }}
             </button>
           </div>
         </div>
@@ -202,7 +250,7 @@
           <div>
             <h4 class="font-semibold text-primary leading-tight">{{ activeChat?.name || 'Chưa chọn Channel' }}</h4>
             <p class="text-xs text-muted leading-none">
-              {{ activeChat?.type === 'channel' ? activeChat.desc : (activeChat?.status === 'online' ? 'Đang hoạt động' : 'Ngoại tuyến') }}
+              {{ activeChat?.type === 'channel' ? activeChat.desc : (activeChat ? 'Tin nhắn được lưu trên máy chủ' : 'Chọn một cuộc trò chuyện') }}
             </p>
           </div>
         </div>
@@ -232,11 +280,11 @@
         <div style="display: flex; flex-direction: column; flex: 1; min-width: 0; height: 100%;">
           <!-- Messages View -->
           <div ref="messageThread" class="messages-thread">
-            <div v-if="currentTab === 'channel' && historyLoading" class="history-state" role="status">
+            <div v-if="historyLoading" class="history-state" role="status">
               <i class="fa-solid fa-spinner fa-spin"></i>
               <span>Đang tải tin nhắn...</span>
             </div>
-            <div v-else-if="currentTab === 'channel' && historyError" class="history-state history-state-error" role="alert">
+            <div v-else-if="historyError" class="history-state history-state-error" role="alert">
               <span>{{ historyError }}</span>
               <button type="button" class="state-action" @click="retryHistory">Thử lại</button>
             </div>
@@ -246,8 +294,14 @@
             <div v-else-if="currentTab === 'channel' && activeMessages.length === 0" class="history-state">
               Chưa có tin nhắn trong kênh này.
             </div>
+            <div v-else-if="currentTab === 'dm' && !activeChat" class="history-state">
+              Chọn một cuộc trò chuyện hoặc người nhận để bắt đầu.
+            </div>
+            <div v-else-if="currentTab === 'dm' && activeMessages.length === 0" class="history-state">
+              Chưa có tin nhắn trong cuộc trò chuyện này.
+            </div>
             <button
-              v-if="currentTab === 'channel' && activeMessages.length < messagePagination.totalCount"
+              v-if="activeChat && activeMessages.length < messagePagination.totalCount"
               type="button"
               class="state-action load-older-action"
               :disabled="historyLoadingOlder"
@@ -273,7 +327,7 @@
                   <p>{{ msg.content }}</p>
                   
                   <!-- File Attachment Preview -->
-                  <div v-if="msg.attachment" class="attachment-preview-container mt-2">
+                  <div v-if="currentTab !== 'dm' && msg.attachment" class="attachment-preview-container mt-2">
                     <div v-if="isImageFile(msg.attachment.name)" class="image-attachment">
                       <img :src="msg.attachment.url" class="max-w-xs max-h-48 rounded border border-slate-700/50" />
                     </div>
@@ -318,7 +372,7 @@
                 size="small"
                 class="btn-secondary"
                 title="Đính kèm file"
-                :disabled="currentTab === 'channel'"
+                :disabled="true"
                 @click="triggerAttachment"
               >
                 <i class="fa-solid fa-paperclip"></i>
@@ -348,7 +402,6 @@
                 </div>
               </el-popover>
 
-              <span class="text-xs text-muted ml-2" v-if="isTyping">Ai đó đang nhập...</span>
             </div>
             <div class="input-form">
               <textarea
@@ -356,7 +409,7 @@
                 :placeholder="composerPlaceholder"
                 class="chat-input w-full"
                 rows="1"
-                :maxlength="currentTab === 'channel' ? 4000 : undefined"
+                :maxlength="4000"
                 :disabled="composerDisabled"
                 @keydown.enter.exact.prevent="sendMessage"
               ></textarea>
@@ -370,7 +423,7 @@
                 <i :class="sendingMessage ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
               </button>
             </div>
-            <div v-if="currentTab === 'channel' && newMessage.length >= 3600" class="character-counter">
+            <div v-if="newMessage.length >= 3600" class="character-counter">
               {{ newMessage.length }}/4000
             </div>
           </div>
@@ -1176,42 +1229,41 @@ const createNewVoice = () => {
 }
 
 const members = ref([])
+const membersLoading = ref(false)
+const membersError = ref('')
+const memberAbortController = ref(null)
+let memberRequestId = 0
+const selectedRecipientId = ref('')
 
 const currentUser = ref({
   id: '',
-  name: 'Đoàn Minh Quân',
+  name: '',
   avatar: ''
 })
 
-const defaultDirectMessages = {
-  'user-phat': [
-    { senderId: 'user-phat', senderName: 'Trần Gia Phát', senderAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128', content: 'Quân ơi, rảnh thì call video thảo luận vụ setup SignalR một chút nhé.', sentAt: new Date(Date.now() - 3600000).toISOString() }
-  ]
-}
-
-const loadDirectMessages = () => {
-  const stored = localStorage.getItem('collaboration_dm_messages')
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch (e) {
-      console.error(e)
-    }
-  }
-  return defaultDirectMessages
-}
-
-const directMessages = ref(loadDirectMessages())
-
-const saveDirectMessages = () => {
-  localStorage.setItem('collaboration_dm_messages', JSON.stringify(directMessages.value))
-}
+const directConversations = ref([])
+const conversationsLoading = ref(false)
+const conversationsLoadingMore = ref(false)
+const conversationsError = ref('')
+const conversationPagination = ref({
+  page: 1,
+  pageSize: 50,
+  totalCount: 0,
+  ordering: ''
+})
+const conversationAbortController = ref(null)
+let conversationRequestId = 0
+const findingConversation = ref(false)
+const findConversationAbortController = ref(null)
 
 const activeChat = ref(null)
 
 const activeMessages = ref([])
 const activeChannel = computed(() =>
   activeChat.value?.type === 'channel' ? activeChat.value : null
+)
+const activeDirectConversation = computed(() =>
+  activeChat.value?.type === 'dm' ? activeChat.value : null
 )
 const newMessage = ref('')
 const messageThread = ref(null)
@@ -1229,7 +1281,6 @@ const messagePagination = ref({
 const messageAbortController = ref(null)
 let messageRequestId = 0
 const videoCallActive = ref(false)
-const isTyping = ref(false)
 
 const isCallMuted = ref(false)
 const isCallCameraOn = ref(false)
@@ -1336,6 +1387,44 @@ const mapChannelMessage = (item, expectedChannelId) => {
   }
 }
 
+const mapDirectConversation = (item) => {
+  if (!item?.conversationId || !item?.otherParticipant?.userId) {
+    throw new Error('Invalid Direct Message conversation response.')
+  }
+
+  return {
+    id: item.conversationId,
+    conversationId: item.conversationId,
+    participantUserId: item.otherParticipant.userId,
+    name: item.otherParticipant.displayName || 'Unknown user',
+    avatar: item.otherParticipant.avatarUrl || '',
+    lastMessagePreview: item.lastMessagePreview || '',
+    lastMessageAt: item.lastMessageAt || null,
+    createdAt: item.createdAt,
+    type: 'dm'
+  }
+}
+
+const mapDirectMessage = (item, expectedConversationId) => {
+  if (
+    !item?.messageId ||
+    item?.conversationId !== expectedConversationId ||
+    !item?.sender?.userId
+  ) {
+    throw new Error('Invalid Direct Message response scope.')
+  }
+
+  return {
+    messageId: item.messageId,
+    conversationId: item.conversationId,
+    senderId: item.sender.userId,
+    senderName: item.sender.displayName || 'Unknown user',
+    senderAvatar: item.sender.avatarUrl || '',
+    content: item.content,
+    sentAt: item.createdAt
+  }
+}
+
 const messageKey = (message) =>
   message.messageId || `${message.senderId}:${message.sentAt}:${message.content}`
 
@@ -1367,6 +1456,44 @@ const clearChannelSelection = () => {
   removeAttachedFile()
 }
 
+const clearDirectSelection = ({ clearComposer = true } = {}) => {
+  findConversationAbortController.value?.abort()
+  findConversationAbortController.value = null
+  findingConversation.value = false
+  sendMessageAbortController.value?.abort()
+  sendMessageAbortController.value = null
+  clearMessageHistory()
+  if (activeChat.value?.type === 'dm') {
+    activeChat.value = null
+  }
+  selectedRecipientId.value = ''
+  if (clearComposer) newMessage.value = ''
+  removeAttachedFile()
+}
+
+const clearDirectContext = () => {
+  memberAbortController.value?.abort()
+  memberAbortController.value = null
+  memberRequestId += 1
+  conversationAbortController.value?.abort()
+  conversationAbortController.value = null
+  conversationRequestId += 1
+  members.value = []
+  membersLoading.value = false
+  membersError.value = ''
+  directConversations.value = []
+  conversationsLoading.value = false
+  conversationsLoadingMore.value = false
+  conversationsError.value = ''
+  conversationPagination.value = {
+    page: 1,
+    pageSize: 50,
+    totalCount: 0,
+    ordering: ''
+  }
+  clearDirectSelection()
+}
+
 const clearChannels = () => {
   createChannelAbortController.value?.abort()
   createChannelAbortController.value = null
@@ -1389,6 +1516,7 @@ const clearChannels = () => {
 
 const clearCollaborationState = () => {
   clearChannels()
+  clearDirectContext()
   activeProjectId.value = ''
   clearScopedCurrentProjectId()
 }
@@ -1532,6 +1660,152 @@ const loadMoreChannels = () => {
   })
 }
 
+const loadDirectMessageUsers = async (projectId) => {
+  if (!projectId) {
+    members.value = []
+    membersError.value = ''
+    return
+  }
+
+  memberAbortController.value?.abort()
+  const controller = new AbortController()
+  memberAbortController.value = controller
+  const requestId = memberRequestId + 1
+  memberRequestId = requestId
+  membersLoading.value = true
+  membersError.value = ''
+
+  try {
+    const result = await collaborationApi.getDirectMessageUsers(projectId, {
+      page: 1,
+      pageSize: 100,
+      signal: controller.signal
+    })
+    if (requestId !== memberRequestId || activeProjectId.value !== projectId) return
+    members.value = (Array.isArray(result?.items) ? result.items : [])
+      .filter(user => user?.id && user.id !== currentUser.value.id)
+      .map(user => ({
+        id: user.id,
+        name: user.fullName || 'Unknown user',
+        avatar: user.avatarUrl || '',
+        statusText: user.jobTitle || 'Thành viên'
+      }))
+    membersError.value = ''
+  } catch (error) {
+    if (
+      isCanceledRequest(error) ||
+      requestId !== memberRequestId ||
+      activeProjectId.value !== projectId
+    ) {
+      return
+    }
+    members.value = []
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+      membersError.value = 'Phiên đăng nhập đã hết hạn.'
+    } else if (status === 403 || status === 404) {
+      membersError.value = 'Project không còn khả dụng hoặc bạn không có quyền xem thành viên.'
+    } else {
+      membersError.value = apiErrorMessage(error, 'Không thể tải danh sách thành viên.')
+    }
+  } finally {
+    if (requestId === memberRequestId) {
+      membersLoading.value = false
+      memberAbortController.value = null
+    }
+  }
+}
+
+const retryMembers = () => loadDirectMessageUsers(activeProjectId.value)
+
+const loadDirectConversations = async ({
+  page = 1,
+  append = false,
+  selectFirst = true
+} = {}) => {
+  conversationAbortController.value?.abort()
+  const controller = new AbortController()
+  conversationAbortController.value = controller
+  const requestId = conversationRequestId + 1
+  conversationRequestId = requestId
+  if (append) {
+    conversationsLoadingMore.value = true
+  } else {
+    conversationsLoading.value = true
+    conversationsError.value = ''
+  }
+
+  try {
+    const result = await collaborationApi.getDirectConversations({
+      page,
+      pageSize: conversationPagination.value.pageSize,
+      signal: controller.signal
+    })
+    if (requestId !== conversationRequestId || currentTab.value !== 'dm') return
+    const items = Array.isArray(result?.items)
+      ? result.items.map(mapDirectConversation)
+      : []
+    const merged = append ? [...directConversations.value, ...items] : items
+    directConversations.value = Array.from(
+      new Map(merged.map(item => [item.id, item])).values()
+    )
+    conversationPagination.value = {
+      page: Number(result?.page || page),
+      pageSize: Number(result?.pageSize || 50),
+      totalCount: Number(result?.totalCount || 0),
+      ordering: result?.ordering || ''
+    }
+    conversationsError.value = ''
+
+    if (
+      !append &&
+      selectFirst &&
+      !activeDirectConversation.value &&
+      directConversations.value.length > 0
+    ) {
+      await selectChat(directConversations.value[0], 'dm')
+    }
+  } catch (error) {
+    if (isCanceledRequest(error) || requestId !== conversationRequestId) return
+    if (!append) {
+      directConversations.value = []
+      clearDirectSelection()
+    }
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+      conversationsError.value = 'Phiên đăng nhập đã hết hạn.'
+    } else if (status === 403) {
+      conversationsError.value = 'Bạn không có quyền tải Direct Message.'
+    } else {
+      conversationsError.value = apiErrorMessage(error, 'Không thể tải danh sách cuộc trò chuyện.')
+    }
+  } finally {
+    if (requestId === conversationRequestId) {
+      conversationsLoading.value = false
+      conversationsLoadingMore.value = false
+      conversationAbortController.value = null
+    }
+  }
+}
+
+const retryConversations = () => loadDirectConversations({ page: 1 })
+
+const loadMoreConversations = () => {
+  if (
+    conversationsLoadingMore.value ||
+    directConversations.value.length >= conversationPagination.value.totalCount
+  ) {
+    return
+  }
+  return loadDirectConversations({
+    page: conversationPagination.value.page + 1,
+    append: true,
+    selectFirst: false
+  })
+}
+
 const loadChannelHistory = async (channel, { page = 1, older = false } = {}) => {
   if (!channel?.id || channel.projectId !== activeProjectId.value) return
   messageAbortController.value?.abort()
@@ -1614,45 +1888,114 @@ const loadChannelHistory = async (channel, { page = 1, older = false } = {}) => 
   }
 }
 
+const loadDirectHistory = async (conversation, { page = 1, older = false } = {}) => {
+  if (!conversation?.id) return
+  messageAbortController.value?.abort()
+  const controller = new AbortController()
+  messageAbortController.value = controller
+  const requestId = messageRequestId + 1
+  messageRequestId = requestId
+  if (older) {
+    historyLoadingOlder.value = true
+  } else {
+    activeMessages.value = []
+    historyError.value = ''
+    historyLoading.value = true
+  }
+  const previousScrollHeight = messageThread.value?.scrollHeight || 0
+
+  try {
+    const result = await collaborationApi.getDirectMessages(conversation.id, {
+      page,
+      pageSize: messagePagination.value.pageSize,
+      signal: controller.signal
+    })
+    if (
+      requestId !== messageRequestId ||
+      activeDirectConversation.value?.id !== conversation.id
+    ) {
+      return
+    }
+    const newestFirst = Array.isArray(result?.items)
+      ? result.items.map(item => mapDirectMessage(item, conversation.id))
+      : []
+    const chronologicalPage = [...newestFirst].reverse()
+    const merged = older
+      ? [...chronologicalPage, ...activeMessages.value]
+      : chronologicalPage
+    activeMessages.value = Array.from(
+      new Map(merged.map(item => [item.messageId, item])).values()
+    )
+    messagePagination.value = {
+      page: Number(result?.page || page),
+      pageSize: Number(result?.pageSize || 50),
+      totalCount: Number(result?.totalCount || 0),
+      ordering: result?.ordering || ''
+    }
+    historyError.value = ''
+
+    await nextTick()
+    if (older && messageThread.value) {
+      messageThread.value.scrollTop +=
+        messageThread.value.scrollHeight - previousScrollHeight
+    } else {
+      scrollToBottom()
+    }
+  } catch (error) {
+    if (
+      isCanceledRequest(error) ||
+      requestId !== messageRequestId ||
+      activeDirectConversation.value?.id !== conversation.id
+    ) {
+      return
+    }
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+      historyError.value = 'Phiên đăng nhập đã hết hạn.'
+    } else if (status === 403 || status === 404) {
+      clearDirectSelection()
+      directConversations.value = directConversations.value.filter(
+        item => item.id !== conversation.id
+      )
+      historyError.value = 'Cuộc trò chuyện không còn khả dụng hoặc bạn không còn quyền truy cập.'
+      await loadDirectConversations({ page: 1, selectFirst: false })
+    } else {
+      historyError.value = apiErrorMessage(error, 'Không thể tải lịch sử Direct Message.')
+    }
+  } finally {
+    if (requestId === messageRequestId) {
+      historyLoading.value = false
+      historyLoadingOlder.value = false
+      messageAbortController.value = null
+    }
+  }
+}
+
 const retryHistory = () => {
   if (activeChannel.value) {
     return loadChannelHistory(activeChannel.value, { page: 1 })
+  }
+  if (activeDirectConversation.value) {
+    return loadDirectHistory(activeDirectConversation.value, { page: 1 })
   }
 }
 
 const loadOlderMessages = () => {
   if (
-    !activeChannel.value ||
+    !activeChat.value ||
     historyLoadingOlder.value ||
     activeMessages.value.length >= messagePagination.value.totalCount
   ) {
     return
   }
-  return loadChannelHistory(activeChannel.value, {
+  const options = {
     page: messagePagination.value.page + 1,
     older: true
-  })
-}
-
-const migrateLegacyDirectMessages = (memberIds) => {
-  if (localStorage.getItem('collaboration_dm_messages')) return
-  const stored = localStorage.getItem('collaboration_messages')
-  if (!stored) return
-  try {
-    const legacy = JSON.parse(stored)
-    const migrated = {}
-    for (const memberId of memberIds) {
-      if (Array.isArray(legacy?.[memberId])) {
-        migrated[memberId] = legacy[memberId]
-      }
-    }
-    if (Object.keys(migrated).length > 0) {
-      directMessages.value = migrated
-      saveDirectMessages()
-    }
-  } catch {
-    // Ignore malformed legacy browser data; backend Channel history is authoritative.
   }
+  return activeChannel.value
+    ? loadChannelHistory(activeChannel.value, options)
+    : loadDirectHistory(activeDirectConversation.value, options)
 }
 
 const composerDisabled = computed(() => {
@@ -1674,74 +2017,62 @@ const composerPlaceholder = computed(() => {
 
 onMounted(async () => {
   try {
-    // 1. Get current user profile
-     const meRes = await axiosClient.get('/users/me')
-     if (meRes.data && meRes.data.data) {
-       const me = meRes.data.data
-       currentUser.value = {
-         id: me.id,
-         name: me.fullName,
-         avatar: me.avatarUrl || ''
-       }
-       // Helper to remove accents
-       const stripAccents = (str) => {
-         if (!str) return '';
-         return str.normalize('NFD')
-                   .replace(/[\u0300-\u036f]/g, '')
-                   .replace(/[đĐ]/g, m => m === 'đ' ? 'd' : 'D');
-       }
-       const parts = (me.fullName || 'USER').trim().split(/\s+/)
-       const last = parts[parts.length - 1]
-       const clean = stripAccents(last).toUpperCase().replace(/[^A-Z0-9]/g, '')
-       const suffix = me.id ? me.id.substring(me.id.length - 4).toUpperCase() : '9982'
-       myFriendCode.value = `${clean}-${suffix}`
-     }
-  } catch (e) {
-    console.error('Cannot load current user profile:', e)
-  }
-
-  try {
-    // 2. Get list of active users/members
-    const usersRes = await axiosClient.get('/users', { params: { pageSize: 100 } })
-    if (usersRes.data && usersRes.data.data) {
-      members.value = usersRes.data.data.map(u => ({
-        id: u.id,
-        name: u.fullName,
-        status: 'online',
-        statusText: u.jobTitle || 'Thành viên',
-        avatar: u.avatarUrl || '',
-        unread: 0
-      })).filter(u => u.id !== currentUser.value.id)
-      migrateLegacyDirectMessages(members.value.map(member => member.id))
+    const meRes = await axiosClient.get('/users/me')
+    const me = meRes?.data?.data
+    if (!me?.id) throw new Error('Current user response is invalid.')
+    currentUser.value = {
+      id: me.id,
+      name: me.fullName || '',
+      avatar: me.avatarUrl || ''
     }
-  } catch (e) {
-    console.error('Cannot load team members:', e)
+  } catch (error) {
+    const status = error?.response?.status
+    membersError.value = status === 401
+      ? 'Phiên đăng nhập đã hết hạn.'
+      : 'Không thể xác định người dùng hiện tại.'
+    conversationsError.value = membersError.value
+    return
   }
 
   await loadProjects()
-
-  if (currentTab.value === 'dm' && members.value.length > 0) {
-    selectChat(members.value[0], 'dm')
+  if (!activeProjectId.value && projectOptions.value.length > 0) {
+    activeProjectId.value = projectOptions.value[0].id
+  } else if (currentTab.value === 'dm') {
+    if (activeProjectId.value) {
+      await loadDirectMessageUsers(activeProjectId.value)
+    }
+    await loadDirectConversations({ page: 1 })
   }
 })
 
-watch(() => route.query.tab, (newTab) => {
+watch(() => route.query.tab, async (newTab) => {
   if (newTab === 'dm') {
-    if (members.value.length > 0) {
-      selectChat(members.value[0], 'dm')
-    }
-  } else if (channels.value.length > 0) {
-    selectChat(channels.value[0], 'channel')
-  } else {
     clearChannelSelection()
+    clearDirectContext()
+    if (activeProjectId.value) {
+      await loadDirectMessageUsers(activeProjectId.value)
+    }
+    await loadDirectConversations({ page: 1 })
+  } else {
+    clearDirectContext()
+    if (activeProjectId.value) {
+      await loadChannels({ page: 1 })
+    }
   }
 })
 
 watch(activeProjectId, async (projectId, previousProjectId) => {
   if (projectId === previousProjectId) return
-  clearChannels()
+  if (currentTab.value === 'dm') {
+    clearDirectContext()
+  } else {
+    clearChannels()
+  }
   if (!projectId) {
     clearScopedCurrentProjectId()
+    if (currentTab.value === 'dm') {
+      await loadDirectConversations({ page: 1 })
+    }
     return
   }
   if (!projectOptions.value.some(project => project.id === projectId)) {
@@ -1749,7 +2080,14 @@ watch(activeProjectId, async (projectId, previousProjectId) => {
     return
   }
   setScopedCurrentProjectId(projectId)
-  await loadChannels({ page: 1 })
+  if (currentTab.value === 'dm') {
+    await Promise.all([
+      loadDirectMessageUsers(projectId),
+      loadDirectConversations({ page: 1 })
+    ])
+  } else {
+    await loadChannels({ page: 1 })
+  }
 })
 
 watch(projectOptions, (projects) => {
@@ -1764,11 +2102,18 @@ watch(projectOptions, (projects) => {
 onBeforeUnmount(() => {
   createChannelAbortController.value?.abort()
   channelAbortController.value?.abort()
+  memberAbortController.value?.abort()
+  conversationAbortController.value?.abort()
+  findConversationAbortController.value?.abort()
   messageAbortController.value?.abort()
   sendMessageAbortController.value?.abort()
   channelRequestId += 1
+  memberRequestId += 1
+  conversationRequestId += 1
   messageRequestId += 1
   channels.value = []
+  members.value = []
+  directConversations.value = []
   activeMessages.value = []
   activeChat.value = null
   channelsError.value = ''
@@ -1886,41 +2231,63 @@ const insertEmoji = (emoji) => {
   newMessage.value += emoji
 }
 
-const sendDirectMessage = () => {
-  if (!newMessage.value.trim() && !attachedFile.value) return
+const sendDirectMessage = async () => {
+  if (sendingMessage.value || !activeDirectConversation.value) return
+  const content = newMessage.value
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim()
+  if (!content) return
+  if (content.length > 4000) {
+    ElMessage.warning('Tin nhắn không được vượt quá 4.000 ký tự.')
+    return
+  }
 
-  const msgObj = {
-    senderId: currentUser.value.id || 'user-quan',
-    senderName: currentUser.value.name || 'Đoàn Minh Quân',
-    senderAvatar: currentUser.value.avatar || '',
-    content: newMessage.value,
-    sentAt: new Date().toISOString()
-  }
-  
-  if (attachedFile.value) {
-    msgObj.attachment = {
-      name: attachedFile.value.name,
-      size: attachedFile.value.size,
-      url: attachedFile.value.url,
-      type: attachedFile.value.type
+  const conversation = activeDirectConversation.value
+  const shouldScroll = isNearMessageBottom()
+  const controller = new AbortController()
+  sendMessageAbortController.value = controller
+  sendingMessage.value = true
+  try {
+    const result = await collaborationApi.sendDirectMessage(
+      conversation.id,
+      content,
+      { signal: controller.signal }
+    )
+    if (activeDirectConversation.value?.id !== conversation.id) return
+    const message = mapDirectMessage(result, conversation.id)
+    if (!activeMessages.value.some(item => item.messageId === message.messageId)) {
+      activeMessages.value = [...activeMessages.value, message]
+      messagePagination.value.totalCount += 1
     }
-    attachedFile.value = null
+    newMessage.value = ''
+    await loadDirectConversations({ page: 1, selectFirst: false })
+    await nextTick()
+    if (shouldScroll) scrollToBottom()
+  } catch (error) {
+    if (isCanceledRequest(error)) return
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+      ElMessage.error('Phiên đăng nhập đã hết hạn.')
+    } else if (status === 403 || status === 404) {
+      clearDirectSelection({ clearComposer: false })
+      directConversations.value = directConversations.value.filter(
+        item => item.id !== conversation.id
+      )
+      ElMessage.error('Cuộc trò chuyện không còn khả dụng hoặc bạn không còn quyền gửi.')
+      await loadDirectConversations({ page: 1, selectFirst: false })
+    } else if (status === 400) {
+      ElMessage.error(apiErrorMessage(error, 'Nội dung tin nhắn không hợp lệ.'))
+    } else {
+      ElMessage.error(apiErrorMessage(error, 'Không thể gửi tin nhắn. Nội dung vẫn được giữ lại.'))
+    }
+  } finally {
+    if (sendMessageAbortController.value === controller) {
+      sendMessageAbortController.value = null
+      sendingMessage.value = false
+    }
   }
-  
-  const chatId = activeChat.value.id
-  if (!directMessages.value[chatId]) {
-    directMessages.value[chatId] = []
-  }
-  directMessages.value[chatId].push(msgObj)
-  activeMessages.value = directMessages.value[chatId]
-  saveDirectMessages()
-  
-  newMessage.value = ''
-  nextTick(() => {
-    scrollToBottom()
-  })
-  
-  simulatePartnerResponse(activeChat.value.id, activeChat.value.name, activeChat.value.avatar)
 }
 
 const sendChannelMessage = async () => {
@@ -1982,6 +2349,65 @@ const sendMessage = () => {
     : sendDirectMessage()
 }
 
+const selectDirectRecipient = async (participantUserId) => {
+  if (
+    findingConversation.value ||
+    !participantUserId ||
+    !members.value.some(member => member.id === participantUserId)
+  ) {
+    return
+  }
+
+  clearDirectSelection()
+  selectedRecipientId.value = participantUserId
+  const controller = new AbortController()
+  findConversationAbortController.value = controller
+  findingConversation.value = true
+  try {
+    const result = await collaborationApi.findOrCreateDirectConversation(
+      participantUserId,
+      { signal: controller.signal }
+    )
+    const conversation = mapDirectConversation(result)
+    if (conversation.participantUserId !== participantUserId) {
+      throw new Error('Direct Message participant response is out of scope.')
+    }
+    directConversations.value = [
+      conversation,
+      ...directConversations.value.filter(item => item.id !== conversation.id)
+    ]
+    conversationPagination.value.totalCount = Math.max(
+      conversationPagination.value.totalCount,
+      directConversations.value.length
+    )
+    await selectChat(conversation, 'dm')
+    await loadDirectConversations({ page: 1, selectFirst: false })
+  } catch (error) {
+    if (isCanceledRequest(error)) return
+    selectedRecipientId.value = ''
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+      ElMessage.error('Phiên đăng nhập đã hết hạn.')
+    } else if (status === 400) {
+      ElMessage.error('Người nhận không hợp lệ.')
+    } else if (status === 403 || status === 404) {
+      ElMessage.error('Người dùng không tồn tại hoặc nằm ngoài phạm vi cộng tác.')
+      await loadDirectMessageUsers(activeProjectId.value)
+    } else if (status === 409) {
+      await loadDirectConversations({ page: 1 })
+      ElMessage.error('Cuộc trò chuyện vừa thay đổi. Danh sách đã được làm mới.')
+    } else {
+      ElMessage.error(apiErrorMessage(error, 'Không thể mở cuộc trò chuyện.'))
+    }
+  } finally {
+    if (findConversationAbortController.value === controller) {
+      findConversationAbortController.value = null
+      findingConversation.value = false
+    }
+  }
+}
+
 const selectChat = async (item, type) => {
   if (type === 'channel') {
     if (
@@ -1993,14 +2419,23 @@ const selectChat = async (item, type) => {
     }
     clearMessageHistory()
     removeAttachedFile()
+  } else if (
+    !item?.id ||
+    !item?.participantUserId ||
+    !directConversations.value.some(conversation => conversation.id === item.id)
+  ) {
+    return
   }
 
+  clearMessageHistory()
+  removeAttachedFile()
   activeChat.value = {
     id: item.id,
     name: item.name,
     type: type,
     desc: item.desc || (type === 'dm' ? `Cuộc hội thoại trực tiếp với ${item.name}` : ''),
     avatar: item.avatar || '',
+    participantUserId: item.participantUserId || null,
     projectId: item.projectId || null,
     workspaceId: item.workspaceId || null,
     canRead: type === 'channel' ? item.canRead : true,
@@ -2009,17 +2444,8 @@ const selectChat = async (item, type) => {
   }
 
   if (type === 'dm') {
-    clearMessageHistory()
-    if (!directMessages.value[item.id]) {
-      directMessages.value[item.id] = []
-    }
-    directMessages.value[item.id] = directMessages.value[item.id].filter(msg => {
-      return msg.senderId === item.id || msg.senderId === currentUser.value.id || msg.senderId === 'user-quan'
-    })
-    saveDirectMessages()
-    activeMessages.value = directMessages.value[item.id]
-    await nextTick()
-    scrollToBottom()
+    selectedRecipientId.value = item.participantUserId
+    await loadDirectHistory(activeChat.value, { page: 1 })
     return
   }
 
@@ -2032,39 +2458,13 @@ const scrollToBottom = () => {
   }
 }
 
-const simulatePartnerResponse = (partnerId, partnerName, partnerAvatar) => {
-  isTyping.value = true
-  setTimeout(() => {
-    isTyping.value = false
-    const responses = [
-      'Tớ nhận được rồi nhé, thiết kế nhìn rất hiện đại!',
-      'Ok cậu, lát tớ review lại rồi báo lại nhé.',
-      'Cậu có cần chỉnh sửa gì thêm về phần API không?',
-      'Bên tớ đang test thử, mọi thứ chạy rất mượt.',
-      'Tuyệt vời! Cảm ơn cậu nhiều nhé.'
-    ]
-    const randomReply = responses[Math.floor(Math.random() * responses.length)]
-    
-    const replyObj = {
-      senderId: partnerId,
-      senderName: partnerName,
-      senderAvatar: partnerAvatar || '',
-      content: randomReply,
-      sentAt: new Date().toISOString()
-    }
-    
-    if (!directMessages.value[partnerId]) {
-      directMessages.value[partnerId] = []
-    }
-    directMessages.value[partnerId].push(replyObj)
-    saveDirectMessages()
-    
-    if (activeChat.value.id === partnerId) {
-      nextTick(() => {
-        scrollToBottom()
-      })
-    }
-  }, 2000)
+const isNearMessageBottom = () => {
+  if (!messageThread.value) return true
+  const distance =
+    messageThread.value.scrollHeight -
+    messageThread.value.scrollTop -
+    messageThread.value.clientHeight
+  return distance <= 120
 }
 
 // Call simulation helpers
@@ -2130,18 +2530,6 @@ const sendFriendRequest = () => {
 
 const acceptFriend = (req) => {
   friendRequests.value = friendRequests.value.filter(r => r.id !== req.id)
-  
-  // Add to members list
-  if (!members.value.some(m => m.id === req.id)) {
-    members.value.push({
-      id: req.id,
-      name: req.name,
-      status: 'online',
-      statusText: 'Đã kết bạn',
-      avatar: req.avatar || '',
-      unread: 0
-    })
-  }
   ElMessage.success(`Đã đồng ý kết bạn với ${req.name}!`)
 }
 
@@ -2186,17 +2574,6 @@ const confirmInviteToServer = () => {
   inviteServerActive.value = false
   ElMessage.success(`Đã thêm ${selected.length} thành viên vào Server!`)
 }
-
-// Simulate receiving call after 15s if in DM
-onMounted(() => {
-  setTimeout(() => {
-    if (activeChat.value && activeChat.value.type === 'dm' && !videoCallActive.value && !outgoingCallActive.value) {
-      callingPartnerName.value = activeChat.value.name
-      callingPartnerAvatar.value = activeChat.value.avatar || ''
-      incomingCallActive.value = true
-    }
-  }, 15000)
-})
 
 </script>
 
@@ -2585,6 +2962,14 @@ onMounted(() => {
   letter-spacing: 0.08em;
   margin-bottom: 12px;
   text-transform: uppercase;
+}
+
+.conversation-time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 6px;
+  color: var(--color-text-muted);
+  font-size: 10px;
 }
 
 .section-list {
