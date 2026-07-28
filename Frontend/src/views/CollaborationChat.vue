@@ -1,40 +1,43 @@
 <template>
   <div class="chat-container">
-    <!-- Left-most Discord-style Server Sidebar (only in channels tab) -->
+    <!-- Project scope sidebar for real collaboration channels -->
     <div class="server-bar" v-if="currentTab === 'channel'">
       <div 
-        v-for="srv in servers" 
-        :key="srv.id" 
+        v-for="project in projectOptions"
+        :key="project.id"
         class="server-icon-wrapper"
-        :class="{ active: activeServer.id === srv.id }"
-        @click="selectServer(srv)"
-        :title="srv.name"
+        :class="{ active: activeProjectId === project.id }"
+        @click="selectProject(project.id)"
+        :title="project.name"
       >
-        <div class="server-icon" :style="{ backgroundColor: srv.color }">
-          {{ srv.name.charAt(0).toUpperCase() }}
+        <div class="server-icon">
+          {{ project.name.charAt(0).toUpperCase() }}
         </div>
         <div class="active-indicator"></div>
       </div>
       
-      <!-- Add Server Circle Button -->
-      <button class="add-server-circle-btn" @click="openCreateServerModal" title="Tạo Server mới">
-        <i class="fa-solid fa-plus"></i>
-      </button>
     </div>
 
     <!-- Chat Sidebar (Channels & Direct Messages) -->
     <div class="chat-sidebar">
-      <div class="sidebar-header clickable-header" @click="currentTab === 'channel' && openServerSettingsModal()">
+      <div class="sidebar-header">
         <h3 class="font-bold truncate" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0;">
-          <i class="fa-solid fa-server text-primary text-base" v-if="currentTab === 'channel'"></i>
+          <i class="fa-solid fa-diagram-project text-primary text-base" v-if="currentTab === 'channel'"></i>
           <i class="fa-solid fa-comments text-primary text-lg" v-else style="margin-right: 8px;"></i>
-          <span>{{ currentTab === 'channel' ? activeServer.name : 'Kênh Thảo Luận' }}</span>
+          <span>{{ currentTab === 'channel' ? (activeProject?.name || 'Chọn Project') : 'Kênh Thảo Luận' }}</span>
         </h3>
-        <div style="display: flex; align-items: center; gap: 6px;" v-if="currentTab === 'channel'">
-          <i class="fa-solid fa-gear text-xs text-muted hover-settings-icon" style="transition: color 0.2s;" @click.stop="openServerSettingsModal" title="Cài đặt Server"></i>
-          <i class="fa-solid fa-chevron-down text-xs text-muted"></i>
-        </div>
       </div>
+      <select
+        v-if="currentTab === 'channel'"
+        v-model="activeProjectId"
+        class="project-scope-select"
+        aria-label="Chọn Project cho Channel"
+      >
+        <option value="">Chọn Project</option>
+        <option v-for="project in projectOptions" :key="project.id" :value="project.id">
+          {{ project.name }}
+        </option>
+      </select>
 
       <!-- Sidebar lists wrap in scrollable container to pin voice panel at bottom -->
       <div class="sidebar-lists-scrollable">
@@ -42,27 +45,59 @@
         <div class="sidebar-section" v-if="currentTab === 'channel'">
           <div class="flex items-center justify-between section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <span class="section-title" style="margin-bottom: 0;">CHANNELS</span>
-            <button class="add-btn-small" title="Tạo kênh mới" @click="openCreateChannelModal">
+            <button
+              class="add-btn-small"
+              title="Tạo Channel"
+              aria-label="Tạo Channel"
+              :disabled="!activeProjectId || channelsLoading"
+              @click="openCreateChannelModal"
+            >
               <i class="fa-solid fa-plus text-xs"></i>
             </button>
           </div>
           <div class="section-list">
+            <div v-if="projectsLoading || channelsLoading" class="channel-state" role="status">
+              <i class="fa-solid fa-spinner fa-spin"></i>
+              <span>Đang tải Channel...</span>
+            </div>
+            <div v-else-if="projectsError" class="channel-state channel-state-error" role="alert">
+              <span>{{ projectsError }}</span>
+              <button type="button" class="state-action" @click="retryProjects">Thử lại</button>
+            </div>
+            <div v-else-if="channelsError" class="channel-state channel-state-error" role="alert">
+              <span>{{ channelsError }}</span>
+              <button type="button" class="state-action" @click="retryChannels">Thử lại</button>
+            </div>
+            <div v-else-if="!activeProjectId" class="channel-state">
+              Chọn Project để xem Channel.
+            </div>
+            <div v-else-if="channels.length === 0" class="channel-state">
+              Project này chưa có Channel bạn có thể truy cập.
+            </div>
             <button 
               v-for="ch in channels" 
               :key="ch.id" 
               class="list-item" 
-              :class="{ active: activeChat.id === ch.id && activeChat.type === 'channel' }"
+              :class="{ active: activeChat?.id === ch.id && activeChat?.type === 'channel' }"
               @click="selectChat(ch, 'channel')"
             >
               <span class="item-icon">#</span>
               <span class="item-name truncate">{{ ch.name }}</span>
-              <el-badge v-if="ch.unread" :value="ch.unread" class="ml-auto" />
+            </button>
+            <button
+              v-if="channels.length < channelPagination.totalCount"
+              type="button"
+              class="state-action load-more-action"
+              :disabled="channelsLoadingMore"
+              @click="loadMoreChannels"
+            >
+              {{ channelsLoadingMore ? 'Đang tải...' : 'Tải thêm Channel' }}
             </button>
           </div>
         </div>
 
         <!-- Voice Channels List -->
-        <div class="sidebar-section mt-4" v-if="currentTab === 'channel'">
+        <div class="sidebar-section mt-4" v-if="currentTab === 'voice'">
           <div class="flex items-center justify-between section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <span class="section-title" style="margin-bottom: 0;">KÊNH THOẠI (VOICE)</span>
             <button class="add-btn-small" title="Tạo kênh thoại mới" @click="openCreateVoiceModal">
@@ -107,7 +142,7 @@
               v-for="m in members" 
               :key="m.id" 
               class="list-item" 
-              :class="{ active: activeChat.id === m.id && activeChat.type === 'dm' }"
+              :class="{ active: activeChat?.id === m.id && activeChat?.type === 'dm' }"
               @click="selectChat(m, 'dm')"
             >
               <div class="avatar-status-wrapper">
@@ -125,7 +160,7 @@
       </div>
 
       <!-- Connected Voice Control Panel (Discord style) -->
-      <div v-if="activeVoiceChannel" class="connected-voice-panel mt-auto">
+      <div v-if="currentTab === 'voice' && activeVoiceChannel" class="connected-voice-panel mt-auto">
         <div class="voice-status-info flex items-center justify-between" style="display: flex; justify-content: space-between; align-items: center;">
           <div class="flex items-center gap-2" style="display: flex; align-items: center; gap: 8px;">
             <span class="status-indicator-ping"><i class="fa-solid fa-signal text-success text-xs" style="color: var(--color-success);"></i></span>
@@ -163,11 +198,11 @@
     <div class="chat-main">
       <div class="chat-header">
         <div class="active-info">
-          <span class="active-icon">{{ activeChat.type === 'channel' ? '#' : '@' }}</span>
+          <span class="active-icon">{{ activeChat?.type === 'channel' ? '#' : '@' }}</span>
           <div>
-            <h4 class="font-semibold text-primary leading-tight">{{ activeChat.name }}</h4>
+            <h4 class="font-semibold text-primary leading-tight">{{ activeChat?.name || 'Chưa chọn Channel' }}</h4>
             <p class="text-xs text-muted leading-none">
-              {{ activeChat.type === 'channel' ? activeChat.desc : (activeChat.status === 'online' ? 'Đang hoạt động' : 'Ngoại tuyến') }}
+              {{ activeChat?.type === 'channel' ? activeChat.desc : (activeChat?.status === 'online' ? 'Đang hoạt động' : 'Ngoại tuyến') }}
             </p>
           </div>
         </div>
@@ -185,7 +220,7 @@
           <button class="action-btn" v-if="currentTab === 'dm'" title="Tìm kiếm tin nhắn">
             <i class="fa-solid fa-magnifying-glass text-lg"></i>
           </button>
-          <button class="action-btn" :title="currentTab === 'dm' ? 'Tạo nhóm Server' : 'Thành viên'" @click="currentTab === 'dm' ? openCreateServerFromDmModal() : toggleMembersSidebar()">
+          <button v-if="currentTab === 'dm'" class="action-btn" title="Tạo nhóm Server" @click="openCreateServerFromDmModal">
             <i class="fa-solid fa-users text-lg"></i>
           </button>
         </div>
@@ -197,14 +232,37 @@
         <div style="display: flex; flex-direction: column; flex: 1; min-width: 0; height: 100%;">
           <!-- Messages View -->
           <div ref="messageThread" class="messages-thread">
+            <div v-if="currentTab === 'channel' && historyLoading" class="history-state" role="status">
+              <i class="fa-solid fa-spinner fa-spin"></i>
+              <span>Đang tải tin nhắn...</span>
+            </div>
+            <div v-else-if="currentTab === 'channel' && historyError" class="history-state history-state-error" role="alert">
+              <span>{{ historyError }}</span>
+              <button type="button" class="state-action" @click="retryHistory">Thử lại</button>
+            </div>
+            <div v-else-if="currentTab === 'channel' && !activeChannel" class="history-state">
+              Chọn một Channel để xem tin nhắn.
+            </div>
+            <div v-else-if="currentTab === 'channel' && activeMessages.length === 0" class="history-state">
+              Chưa có tin nhắn trong kênh này.
+            </div>
+            <button
+              v-if="currentTab === 'channel' && activeMessages.length < messagePagination.totalCount"
+              type="button"
+              class="state-action load-older-action"
+              :disabled="historyLoadingOlder"
+              @click="loadOlderMessages"
+            >
+              {{ historyLoadingOlder ? 'Đang tải...' : 'Tải tin nhắn cũ hơn' }}
+            </button>
             <div 
-              v-for="(msg, idx) in activeMessages" 
-              :key="idx" 
+              v-for="msg in activeMessages"
+              :key="messageKey(msg)"
               class="message-card"
               :class="{ 'mine': msg.senderId === currentUser.id }"
             >
               <el-avatar :size="32" :src="msg.senderAvatar" class="flex-shrink-0">
-                {{ msg.senderName.charAt(0) }}
+                {{ msg.senderName?.charAt(0) || '?' }}
               </el-avatar>
               <div class="message-body">
                 <div class="message-meta">
@@ -256,7 +314,13 @@
             </div>
 
             <div class="input-actions-bar">
-              <el-button size="small" class="btn-secondary" title="Đính kèm file" @click="triggerAttachment">
+              <el-button
+                size="small"
+                class="btn-secondary"
+                title="Đính kèm file"
+                :disabled="currentTab === 'channel'"
+                @click="triggerAttachment"
+              >
                 <i class="fa-solid fa-paperclip"></i>
               </el-button>
               
@@ -287,22 +351,33 @@
               <span class="text-xs text-muted ml-2" v-if="isTyping">Ai đó đang nhập...</span>
             </div>
             <div class="input-form">
-              <input 
+              <textarea
                 v-model="newMessage" 
-                type="text" 
-                placeholder="Gửi tin nhắn hoặc gõ / để mở trợ giúp..." 
+                :placeholder="composerPlaceholder"
                 class="chat-input w-full"
-                @keyup.enter="sendMessage"
-              />
-              <button class="btn-send" @click="sendMessage">
-                <i class="fa-solid fa-paper-plane"></i>
+                rows="1"
+                :maxlength="currentTab === 'channel' ? 4000 : undefined"
+                :disabled="composerDisabled"
+                @keydown.enter.exact.prevent="sendMessage"
+              ></textarea>
+              <button
+                class="btn-send"
+                :disabled="composerDisabled || !newMessage.trim()"
+                :aria-label="sendingMessage ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'"
+                :title="sendingMessage ? 'Đang gửi...' : 'Gửi tin nhắn'"
+                @click="sendMessage"
+              >
+                <i :class="sendingMessage ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
               </button>
+            </div>
+            <div v-if="currentTab === 'channel' && newMessage.length >= 3600" class="character-counter">
+              {{ newMessage.length }}/4000
             </div>
           </div>
         </div>
 
         <!-- Right Server Members Sidebar -->
-        <div v-if="showMembersSidebar && currentTab === 'channel'" class="members-sidebar-right">
+        <div v-if="currentTab === 'server' && showMembersSidebar" class="members-sidebar-right">
           <div class="flex items-center justify-between" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <span class="text-xs font-bold text-muted uppercase">Thành viên ({{ activeServerMembers.length }})</span>
           </div>
@@ -532,6 +607,8 @@
             placeholder="Ví dụ: backend-dev" 
             class="custom-friend-input"
             style="width: 100%; height: 38px;"
+            maxlength="100"
+            :disabled="creatingChannel"
           />
         </div>
         <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -541,13 +618,21 @@
             placeholder="Mô tả mục đích của kênh này..." 
             class="custom-friend-input"
             style="width: 100%; height: 38px;"
+            maxlength="500"
+            :disabled="creatingChannel"
           />
         </div>
       </div>
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <el-button @click="createChannelActive = false">Hủy</el-button>
-          <button class="btn-save" @click="createNewChannel">Tạo Kênh</button>
+          <el-button :disabled="creatingChannel" @click="closeCreateChannelModal">Hủy</el-button>
+          <button
+            class="btn-save"
+            :disabled="creatingChannel || !newChannelName.trim()"
+            @click="createNewChannel"
+          >
+            {{ creatingChannel ? 'Đang tạo...' : 'Tạo Kênh' }}
+          </button>
         </div>
       </template>
     </el-dialog>
@@ -749,20 +834,32 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
+import { collaborationApi } from '@/api/collaborationApi'
+import { useProjectStore } from '@/store/useProjectStore'
+import {
+  clearScopedCurrentProjectId,
+  getScopedCurrentProjectId,
+  setScopedCurrentProjectId
+} from '@/utils/projectContext'
 
 const route = useRoute()
 const router = useRouter()
-const currentTab = computed(() => route.query.tab || 'channel')
+const projectStore = useProjectStore()
+const currentTab = computed(() => route.query.tab === 'dm' ? 'dm' : 'channel')
+const projectOptions = computed(() => projectStore.sidebarProjects)
+const activeProjectId = ref('')
+const activeProject = computed(() =>
+  projectOptions.value.find(project => project.id === activeProjectId.value) || null
+)
+const projectsLoading = ref(false)
+const projectsError = ref('')
 
 const defaultServers = [
-  { id: 'srv-sprinta', name: 'SprintA Workspace', color: '#6366f1', channels: [
-    { id: 'ch-general', name: 'general', desc: 'Thảo luận chung của cả đội', unread: 0 },
-    { id: 'ch-frontend', name: 'frontend-dev', desc: 'Nơi thảo luận về giao diện Vue 3 + Element Plus', unread: 2 }
-  ], voiceChannels: [
+  { id: 'srv-sprinta', name: 'SprintA Workspace', color: '#6366f1', channels: [], voiceChannels: [
     { id: 'vc-sprint', name: 'Họp Kế Hoạch Sprint 🚀', users: [
       { id: 'user-kiet', name: 'Nguyễn Tuấn Kiệt', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=128' },
       { id: 'user-phat', name: 'Trần Gia Phát', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128' }
@@ -773,9 +870,7 @@ const defaultServers = [
     { id: 'user-kiet', name: 'Nguyễn Tuấn Kiệt', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=128' },
     { id: 'user-phat', name: 'Trần Gia Phát', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128' }
   ] },
-  { id: 'srv-gaming', name: 'Góc Giải Trí 🎮', color: '#10b981', channels: [
-    { id: 'ch-chat', name: 'tán-gẫu', desc: 'Tán gẫu ngoài giờ làm việc', unread: 0 }
-  ], voiceChannels: [
+  { id: 'srv-gaming', name: 'Góc Giải Trí 🎮', color: '#10b981', channels: [], voiceChannels: [
     { id: 'vc-pubg', name: 'PUBG Team 🔫', users: [] },
     { id: 'vc-lol', name: 'Liên Minh Huyền Thoại ⚔️', users: [] }
   ] }
@@ -800,7 +895,18 @@ const saveServers = () => {
 
 const activeServer = ref(servers.value[0])
 
-const channels = computed(() => activeServer.value ? activeServer.value.channels : [])
+const channels = ref([])
+const channelsLoading = ref(false)
+const channelsLoadingMore = ref(false)
+const channelsError = ref('')
+const channelPagination = ref({
+  page: 1,
+  pageSize: 50,
+  totalCount: 0,
+  ordering: ''
+})
+const channelAbortController = ref(null)
+let channelRequestId = 0
 const voiceChannels = computed(() => activeServer.value ? activeServer.value.voiceChannels : [])
 
 const selectServer = (srv) => {
@@ -816,6 +922,10 @@ const newServerName = ref('')
 const createChannelActive = ref(false)
 const newChannelName = ref('')
 const newChannelDesc = ref('')
+const creatingChannel = ref(false)
+const createChannelIdempotencyKey = ref('')
+const createChannelPayloadFingerprint = ref('')
+const createChannelAbortController = ref(null)
 const createVoiceActive = ref(false)
 const newVoiceName = ref('')
 
@@ -862,9 +972,22 @@ const openCreateServerModal = () => {
   createServerActive.value = true
 }
 const openCreateChannelModal = () => {
+  if (!activeProjectId.value) {
+    ElMessage.warning('Chọn Project trước khi tạo Channel.')
+    return
+  }
   newChannelName.value = ''
   newChannelDesc.value = ''
+  createChannelIdempotencyKey.value = makeChannelIdempotencyKey()
+  createChannelPayloadFingerprint.value = ''
   createChannelActive.value = true
+}
+
+const closeCreateChannelModal = () => {
+  if (creatingChannel.value) return
+  createChannelActive.value = false
+  createChannelIdempotencyKey.value = ''
+  createChannelPayloadFingerprint.value = ''
 }
 const openCreateVoiceModal = () => {
   newVoiceName.value = ''
@@ -883,9 +1006,7 @@ const createNewServer = () => {
     id: `srv-${Date.now()}`,
     name: newServerName.value.trim(),
     color: color,
-    channels: [
-      { id: `ch-gen-${Date.now()}`, name: 'general', desc: 'Thảo luận chung của Server', unread: 0 }
-    ],
+    channels: [],
     voiceChannels: [
       { id: `vc-gen-${Date.now()}`, name: 'Phòng thoại chung 🔊', users: [] }
     ],
@@ -928,9 +1049,7 @@ const confirmCreateServerFromDm = () => {
     id: `srv-${Date.now()}`,
     name: dmServerName.value.trim(),
     color: color,
-    channels: [
-      { id: `ch-gen-${Date.now()}`, name: 'general', desc: `Kênh thảo luận nhóm của ${dmServerName.value.trim()}`, unread: 0 }
-    ],
+    channels: [],
     voiceChannels: [
       { id: `vc-gen-${Date.now()}`, name: 'Phòng thoại chung 🔊', users: [] }
     ],
@@ -962,23 +1081,82 @@ const confirmCreateServerFromDm = () => {
   selectServer(newSrv)
   ElMessage.success(`Đã tạo nhóm server "${newSrv.name}" và chuyển sang chat nhóm!`)
 }
-const createNewChannel = () => {
-  if (!newChannelName.value.trim()) {
-    ElMessage.warning('Vui lòng nhập tên kênh!')
+const createNewChannel = async () => {
+  if (creatingChannel.value || !activeProjectId.value) return
+  const name = newChannelName.value.trim()
+  const description = newChannelDesc.value.trim()
+  if (!name) {
+    ElMessage.warning('Vui lòng nhập tên Channel.')
     return
   }
-  const nameFormatted = newChannelName.value.trim().toLowerCase().replace(/\s+/g, '-')
-  const newCh = {
-    id: `ch-custom-${Date.now()}`,
-    name: nameFormatted,
-    desc: newChannelDesc.value.trim() || 'Kênh trao đổi tùy chỉnh',
-    unread: 0
+
+  const payload = {
+    name,
+    description: description || null,
+    visibility: 'Private'
   }
-  activeServer.value.channels.push(newCh)
-  saveServers()
-  createChannelActive.value = false
-  selectChat(newCh, 'channel')
-  ElMessage.success(`Đã tạo kênh chat #${nameFormatted}`)
+  const fingerprint = JSON.stringify(payload)
+  if (
+    !createChannelIdempotencyKey.value ||
+    (createChannelPayloadFingerprint.value &&
+      createChannelPayloadFingerprint.value !== fingerprint)
+  ) {
+    createChannelIdempotencyKey.value = makeChannelIdempotencyKey()
+  }
+  createChannelPayloadFingerprint.value = fingerprint
+  const requestProjectId = activeProjectId.value
+  const controller = new AbortController()
+  createChannelAbortController.value = controller
+  creatingChannel.value = true
+
+  try {
+    const result = await collaborationApi.createProjectChannel(
+      requestProjectId,
+      payload,
+      {
+        idempotencyKey: createChannelIdempotencyKey.value,
+        signal: controller.signal
+      }
+    )
+    if (activeProjectId.value !== requestProjectId) return
+    const channel = mapChannel(result, requestProjectId)
+    await loadChannels({ page: 1, selectFirst: false })
+    channelsError.value = ''
+    if (!channels.value.some(item => item.id === channel.id)) {
+      channels.value = [...channels.value, channel]
+      channelPagination.value.totalCount = Math.max(
+        channelPagination.value.totalCount,
+        channels.value.length
+      )
+    }
+    createChannelActive.value = false
+    createChannelIdempotencyKey.value = ''
+    createChannelPayloadFingerprint.value = ''
+    await selectChat(channel, 'channel')
+    ElMessage.success(`Đã tạo Channel #${channel.name}`)
+  } catch (error) {
+    if (isCanceledRequest(error)) return
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+    } else if (status === 403) {
+      ElMessage.error('Bạn không có quyền tạo Channel trong Project này.')
+    } else if (status === 404 || status === 409) {
+      await loadChannels({ page: 1 })
+      ElMessage.error(
+        status === 409
+          ? 'Yêu cầu tạo Channel bị xung đột. Danh sách đã được làm mới.'
+          : 'Project không còn khả dụng. Danh sách Channel đã được làm mới.'
+      )
+    } else {
+      ElMessage.error(apiErrorMessage(error, 'Không thể tạo Channel. Bạn có thể thử lại.'))
+    }
+  } finally {
+    if (createChannelAbortController.value === controller) {
+      createChannelAbortController.value = null
+    }
+    creatingChannel.value = false
+  }
 }
 
 const createNewVoice = () => {
@@ -1005,22 +1183,14 @@ const currentUser = ref({
   avatar: ''
 })
 
-const defaultMessages = {
-  'ch-general': [
-    { senderId: 'user-kiet', senderName: 'Nguyễn Tuấn Kiệt', senderAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=128', content: 'Chào mọi người, chúc một tuần mới làm việc hiệu quả!', sentAt: new Date(Date.now() - 3600000 * 4).toISOString() },
-    { senderId: 'user-quan', senderName: 'Đoàn Minh Quân', senderAvatar: '', content: 'Chào cả nhà, hôm nay mình bắt đầu thiết kế Module Team Collaboration nhé.', sentAt: new Date(Date.now() - 3600000 * 3).toISOString() }
-  ],
-  'ch-frontend': [
-    { senderId: 'user-phat', senderName: 'Trần Gia Phát', senderAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128', content: 'Cậu ơi, đã hoàn thành import CSS Variables chưa?', sentAt: new Date(Date.now() - 3600000 * 2).toISOString() },
-    { senderId: 'user-phat', senderName: 'Trần Gia Phát', senderAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128', content: 'Tớ có gửi kèm file thiết kế UI ở đây.', sentAt: new Date(Date.now() - 3600000 * 1.9).toISOString(), attachment: { name: 'UI_Specification_v2.pdf', size: '2.4 MB' } }
-  ],
+const defaultDirectMessages = {
   'user-phat': [
     { senderId: 'user-phat', senderName: 'Trần Gia Phát', senderAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128', content: 'Quân ơi, rảnh thì call video thảo luận vụ setup SignalR một chút nhé.', sentAt: new Date(Date.now() - 3600000).toISOString() }
   ]
 }
 
-const loadMessages = () => {
-  const stored = localStorage.getItem('collaboration_messages')
+const loadDirectMessages = () => {
+  const stored = localStorage.getItem('collaboration_dm_messages')
   if (stored) {
     try {
       return JSON.parse(stored)
@@ -1028,25 +1198,36 @@ const loadMessages = () => {
       console.error(e)
     }
   }
-  return defaultMessages
+  return defaultDirectMessages
 }
 
-const mockMessages = ref(loadMessages())
+const directMessages = ref(loadDirectMessages())
 
-const saveMessages = () => {
-  localStorage.setItem('collaboration_messages', JSON.stringify(mockMessages.value))
+const saveDirectMessages = () => {
+  localStorage.setItem('collaboration_dm_messages', JSON.stringify(directMessages.value))
 }
 
-const activeChat = ref({
-  id: 'ch-general',
-  name: 'general',
-  type: 'channel',
-  desc: 'Thảo luận chung của cả đội'
-})
+const activeChat = ref(null)
 
 const activeMessages = ref([])
+const activeChannel = computed(() =>
+  activeChat.value?.type === 'channel' ? activeChat.value : null
+)
 const newMessage = ref('')
 const messageThread = ref(null)
+const historyLoading = ref(false)
+const historyLoadingOlder = ref(false)
+const historyError = ref('')
+const sendingMessage = ref(false)
+const sendMessageAbortController = ref(null)
+const messagePagination = ref({
+  page: 1,
+  pageSize: 50,
+  totalCount: 0,
+  ordering: ''
+})
+const messageAbortController = ref(null)
+let messageRequestId = 0
 const videoCallActive = ref(false)
 const isTyping = ref(false)
 
@@ -1097,6 +1278,400 @@ const leaveVoiceChannel = () => {
   activeVoiceChannel.value = null
 }
 
+const isCanceledRequest = (error) =>
+  error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED'
+
+const apiErrorMessage = (error, fallback) => {
+  const message = error?.response?.data?.message
+  return typeof message === 'string' && message.trim() ? message : fallback
+}
+
+const makeChannelIdempotencyKey = () => {
+  const randomPart = typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return `channel:${randomPart}`
+}
+
+const mapChannel = (item, expectedProjectId) => {
+  if (
+    !item?.channelId ||
+    !item?.workspaceId ||
+    item?.projectId !== expectedProjectId
+  ) {
+    throw new Error('Invalid Channel response scope.')
+  }
+
+  return {
+    id: item.channelId,
+    channelId: item.channelId,
+    name: item.name,
+    desc: item.description || '',
+    workspaceId: item.workspaceId,
+    projectId: item.projectId,
+    visibility: item.visibility,
+    isMember: Boolean(item.isMember),
+    canRead: Boolean(item.canRead),
+    canSend: Boolean(item.canSend),
+    canManage: Boolean(item.canManage),
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt
+  }
+}
+
+const mapChannelMessage = (item, expectedChannelId) => {
+  if (!item?.messageId || item?.channelId !== expectedChannelId || !item?.sender?.userId) {
+    throw new Error('Invalid Channel message response scope.')
+  }
+
+  return {
+    messageId: item.messageId,
+    channelId: item.channelId,
+    orderingId: item.orderingId,
+    senderId: item.sender.userId,
+    senderName: item.sender.displayName || 'Unknown user',
+    senderAvatar: item.sender.avatarUrl || '',
+    content: item.content,
+    sentAt: item.createdAt
+  }
+}
+
+const messageKey = (message) =>
+  message.messageId || `${message.senderId}:${message.sentAt}:${message.content}`
+
+const clearMessageHistory = () => {
+  messageAbortController.value?.abort()
+  messageAbortController.value = null
+  messageRequestId += 1
+  activeMessages.value = []
+  historyLoading.value = false
+  historyLoadingOlder.value = false
+  historyError.value = ''
+  sendingMessage.value = false
+  messagePagination.value = {
+    page: 1,
+    pageSize: 50,
+    totalCount: 0,
+    ordering: ''
+  }
+}
+
+const clearChannelSelection = () => {
+  sendMessageAbortController.value?.abort()
+  sendMessageAbortController.value = null
+  clearMessageHistory()
+  if (activeChat.value?.type === 'channel') {
+    activeChat.value = null
+  }
+  newMessage.value = ''
+  removeAttachedFile()
+}
+
+const clearChannels = () => {
+  createChannelAbortController.value?.abort()
+  createChannelAbortController.value = null
+  creatingChannel.value = false
+  channelAbortController.value?.abort()
+  channelAbortController.value = null
+  channelRequestId += 1
+  channels.value = []
+  channelsLoading.value = false
+  channelsLoadingMore.value = false
+  channelsError.value = ''
+  channelPagination.value = {
+    page: 1,
+    pageSize: 50,
+    totalCount: 0,
+    ordering: ''
+  }
+  clearChannelSelection()
+}
+
+const clearCollaborationState = () => {
+  clearChannels()
+  activeProjectId.value = ''
+  clearScopedCurrentProjectId()
+}
+
+const selectProject = (projectId) => {
+  if (!projectOptions.value.some(project => project.id === projectId)) return
+  activeProjectId.value = projectId
+}
+
+const loadProjects = async ({ force = false } = {}) => {
+  projectsLoading.value = true
+  projectsError.value = ''
+  try {
+    const projects = await projectStore.fetchAllProjects(force)
+    if (projectStore.error && projects.length === 0) {
+      projectsError.value = 'Không thể tải danh sách Project.'
+      return
+    }
+    const preferredProjectId = getScopedCurrentProjectId()
+    if (
+      !activeProjectId.value &&
+      preferredProjectId &&
+      projectOptions.value.some(project => project.id === preferredProjectId)
+    ) {
+      activeProjectId.value = preferredProjectId
+    }
+  } finally {
+    projectsLoading.value = false
+  }
+}
+
+const retryProjects = () => loadProjects({ force: true })
+
+const loadChannels = async ({
+  page = 1,
+  append = false,
+  selectFirst = true
+} = {}) => {
+  const projectId = activeProjectId.value
+  if (!projectId) {
+    clearChannels()
+    return
+  }
+
+  channelAbortController.value?.abort()
+  const controller = new AbortController()
+  channelAbortController.value = controller
+  const requestId = channelRequestId + 1
+  channelRequestId = requestId
+  if (append) {
+    channelsLoadingMore.value = true
+  } else {
+    clearChannelSelection()
+    channels.value = []
+    channelsError.value = ''
+    channelsLoading.value = true
+  }
+
+  try {
+    const result = await collaborationApi.getProjectChannels(projectId, {
+      page,
+      pageSize: channelPagination.value.pageSize,
+      signal: controller.signal
+    })
+    if (
+      requestId !== channelRequestId ||
+      activeProjectId.value !== projectId
+    ) {
+      return
+    }
+    const items = Array.isArray(result?.items)
+      ? result.items.map(item => mapChannel(item, projectId))
+      : []
+    const merged = append ? [...channels.value, ...items] : items
+    const unique = new Map(merged.map(item => [item.id, item]))
+    channels.value = Array.from(unique.values())
+    channelPagination.value = {
+      page: Number(result?.page || page),
+      pageSize: Number(result?.pageSize || 50),
+      totalCount: Number(result?.totalCount || 0),
+      ordering: result?.ordering || ''
+    }
+    channelsError.value = ''
+
+    if (
+      !append &&
+      selectFirst &&
+      currentTab.value === 'channel' &&
+      channels.value.length > 0
+    ) {
+      await selectChat(channels.value[0], 'channel')
+    }
+  } catch (error) {
+    if (
+      isCanceledRequest(error) ||
+      requestId !== channelRequestId ||
+      activeProjectId.value !== projectId
+    ) {
+      return
+    }
+    const status = error?.response?.status
+    if (!append) {
+      channels.value = []
+      clearChannelSelection()
+    }
+    if (status === 401) {
+      clearCollaborationState()
+      channelsError.value = 'Phiên đăng nhập đã hết hạn.'
+    } else if (status === 403) {
+      channelsError.value = 'Bạn không có quyền xem Channel của Project này.'
+    } else if (status === 404) {
+      channelsError.value = 'Project không tồn tại hoặc bạn không còn quyền truy cập.'
+      await projectStore.fetchAllProjects(true)
+      if (!projectOptions.value.some(project => project.id === projectId)) {
+        activeProjectId.value = ''
+      }
+    } else {
+      channelsError.value = apiErrorMessage(error, 'Không thể tải danh sách Channel.')
+    }
+  } finally {
+    if (requestId === channelRequestId) {
+      channelsLoading.value = false
+      channelsLoadingMore.value = false
+      channelAbortController.value = null
+    }
+  }
+}
+
+const retryChannels = () => loadChannels({ page: 1 })
+
+const loadMoreChannels = () => {
+  if (
+    channelsLoadingMore.value ||
+    channels.value.length >= channelPagination.value.totalCount
+  ) {
+    return
+  }
+  return loadChannels({
+    page: channelPagination.value.page + 1,
+    append: true
+  })
+}
+
+const loadChannelHistory = async (channel, { page = 1, older = false } = {}) => {
+  if (!channel?.id || channel.projectId !== activeProjectId.value) return
+  messageAbortController.value?.abort()
+  const controller = new AbortController()
+  messageAbortController.value = controller
+  const requestId = messageRequestId + 1
+  messageRequestId = requestId
+  if (older) {
+    historyLoadingOlder.value = true
+  } else {
+    activeMessages.value = []
+    historyError.value = ''
+    historyLoading.value = true
+  }
+  const previousScrollHeight = messageThread.value?.scrollHeight || 0
+
+  try {
+    const result = await collaborationApi.getChannelMessages(channel.id, {
+      page,
+      pageSize: messagePagination.value.pageSize,
+      signal: controller.signal
+    })
+    if (
+      requestId !== messageRequestId ||
+      activeChannel.value?.id !== channel.id ||
+      activeProjectId.value !== channel.projectId
+    ) {
+      return
+    }
+    const newestFirst = Array.isArray(result?.items)
+      ? result.items.map(item => mapChannelMessage(item, channel.id))
+      : []
+    const chronologicalPage = [...newestFirst].reverse()
+    const merged = older
+      ? [...chronologicalPage, ...activeMessages.value]
+      : chronologicalPage
+    const unique = new Map(merged.map(item => [item.messageId, item]))
+    activeMessages.value = Array.from(unique.values())
+    messagePagination.value = {
+      page: Number(result?.page || page),
+      pageSize: Number(result?.pageSize || 50),
+      totalCount: Number(result?.totalCount || 0),
+      ordering: result?.ordering || ''
+    }
+    historyError.value = ''
+
+    await nextTick()
+    if (older && messageThread.value) {
+      messageThread.value.scrollTop +=
+        messageThread.value.scrollHeight - previousScrollHeight
+    } else {
+      scrollToBottom()
+    }
+  } catch (error) {
+    if (
+      isCanceledRequest(error) ||
+      requestId !== messageRequestId ||
+      activeChannel.value?.id !== channel.id
+    ) {
+      return
+    }
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+      historyError.value = 'Phiên đăng nhập đã hết hạn.'
+    } else if (status === 403 || status === 404) {
+      clearChannelSelection()
+      channels.value = channels.value.filter(item => item.id !== channel.id)
+      historyError.value = 'Channel không còn khả dụng hoặc bạn không còn quyền truy cập.'
+      if (status === 404) await loadChannels({ page: 1 })
+    } else {
+      historyError.value = apiErrorMessage(error, 'Không thể tải lịch sử Channel.')
+    }
+  } finally {
+    if (requestId === messageRequestId) {
+      historyLoading.value = false
+      historyLoadingOlder.value = false
+      messageAbortController.value = null
+    }
+  }
+}
+
+const retryHistory = () => {
+  if (activeChannel.value) {
+    return loadChannelHistory(activeChannel.value, { page: 1 })
+  }
+}
+
+const loadOlderMessages = () => {
+  if (
+    !activeChannel.value ||
+    historyLoadingOlder.value ||
+    activeMessages.value.length >= messagePagination.value.totalCount
+  ) {
+    return
+  }
+  return loadChannelHistory(activeChannel.value, {
+    page: messagePagination.value.page + 1,
+    older: true
+  })
+}
+
+const migrateLegacyDirectMessages = (memberIds) => {
+  if (localStorage.getItem('collaboration_dm_messages')) return
+  const stored = localStorage.getItem('collaboration_messages')
+  if (!stored) return
+  try {
+    const legacy = JSON.parse(stored)
+    const migrated = {}
+    for (const memberId of memberIds) {
+      if (Array.isArray(legacy?.[memberId])) {
+        migrated[memberId] = legacy[memberId]
+      }
+    }
+    if (Object.keys(migrated).length > 0) {
+      directMessages.value = migrated
+      saveDirectMessages()
+    }
+  } catch {
+    // Ignore malformed legacy browser data; backend Channel history is authoritative.
+  }
+}
+
+const composerDisabled = computed(() => {
+  if (currentTab.value === 'dm') return !activeChat.value || sendingMessage.value
+  return (
+    !activeChannel.value ||
+    !activeChannel.value.canSend ||
+    historyLoading.value ||
+    sendingMessage.value
+  )
+})
+
+const composerPlaceholder = computed(() => {
+  if (currentTab.value === 'dm') return 'Gửi tin nhắn...'
+  if (!activeChannel.value) return 'Chọn Channel để gửi tin nhắn'
+  if (!activeChannel.value.canSend) return 'Bạn không có quyền gửi vào Channel này'
+  return `Gửi tin nhắn tới #${activeChannel.value.name}`
+})
+
 onMounted(async () => {
   try {
     // 1. Get current user profile
@@ -1137,43 +1712,16 @@ onMounted(async () => {
         avatar: u.avatarUrl || '',
         unread: 0
       })).filter(u => u.id !== currentUser.value.id)
+      migrateLegacyDirectMessages(members.value.map(member => member.id))
     }
   } catch (e) {
     console.error('Cannot load team members:', e)
   }
 
-  try {
-    // 3. Get departments as team channels
-    const depRes = await axiosClient.get('/departments')
-    if (depRes.data && depRes.data.data) {
-      channels.value = depRes.data.data.map(d => ({
-        id: d.id,
-        name: d.name.toLowerCase().replace(/\s+/g, '-'),
-        desc: d.description || `Kênh trao đổi của phòng ${d.name}`,
-        unread: 0
-      }))
-    } else {
-      channels.value = [
-        { id: 'ch-general', name: 'general', desc: 'Thảo luận chung của cả đội', unread: 0 },
-        { id: 'ch-frontend', name: 'frontend-dev', desc: 'Nơi thảo luận về giao diện Vue 3 + Element Plus', unread: 2 }
-      ]
-    }
-  } catch (e) {
-    channels.value = [
-      { id: 'ch-general', name: 'general', desc: 'Thảo luận chung của cả đội', unread: 0 },
-      { id: 'ch-frontend', name: 'frontend-dev', desc: 'Nơi thảo luận về giao diện Vue 3 + Element Plus', unread: 2 }
-    ]
-  }
+  await loadProjects()
 
-  // Set active chat initially based on selected tab query
-  if (currentTab.value === 'dm') {
-    if (members.value.length > 0) {
-      selectChat(members.value[0], 'dm')
-    }
-  } else {
-    if (channels.value.length > 0) {
-      selectChat(channels.value[0], 'channel')
-    }
+  if (currentTab.value === 'dm' && members.value.length > 0) {
+    selectChat(members.value[0], 'dm')
   }
 })
 
@@ -1182,11 +1730,49 @@ watch(() => route.query.tab, (newTab) => {
     if (members.value.length > 0) {
       selectChat(members.value[0], 'dm')
     }
+  } else if (channels.value.length > 0) {
+    selectChat(channels.value[0], 'channel')
   } else {
-    if (channels.value.length > 0) {
-      selectChat(channels.value[0], 'channel')
-    }
+    clearChannelSelection()
   }
+})
+
+watch(activeProjectId, async (projectId, previousProjectId) => {
+  if (projectId === previousProjectId) return
+  clearChannels()
+  if (!projectId) {
+    clearScopedCurrentProjectId()
+    return
+  }
+  if (!projectOptions.value.some(project => project.id === projectId)) {
+    activeProjectId.value = ''
+    return
+  }
+  setScopedCurrentProjectId(projectId)
+  await loadChannels({ page: 1 })
+})
+
+watch(projectOptions, (projects) => {
+  if (
+    activeProjectId.value &&
+    !projects.some(project => project.id === activeProjectId.value)
+  ) {
+    activeProjectId.value = ''
+  }
+})
+
+onBeforeUnmount(() => {
+  createChannelAbortController.value?.abort()
+  channelAbortController.value?.abort()
+  messageAbortController.value?.abort()
+  sendMessageAbortController.value?.abort()
+  channelRequestId += 1
+  messageRequestId += 1
+  channels.value = []
+  activeMessages.value = []
+  activeChat.value = null
+  channelsError.value = ''
+  historyError.value = ''
 })
 const addFriendActive = ref(false)
 const searchFriendQuery = ref('')
@@ -1300,9 +1886,9 @@ const insertEmoji = (emoji) => {
   newMessage.value += emoji
 }
 
-const sendMessage = () => {
+const sendDirectMessage = () => {
   if (!newMessage.value.trim() && !attachedFile.value) return
-  
+
   const msgObj = {
     senderId: currentUser.value.id || 'user-quan',
     senderName: currentUser.value.name || 'Đoàn Minh Quân',
@@ -1322,53 +1908,122 @@ const sendMessage = () => {
   }
   
   const chatId = activeChat.value.id
-  if (!mockMessages.value[chatId]) {
-    mockMessages.value[chatId] = []
+  if (!directMessages.value[chatId]) {
+    directMessages.value[chatId] = []
   }
-  mockMessages.value[chatId].push(msgObj)
-  saveMessages()
+  directMessages.value[chatId].push(msgObj)
+  activeMessages.value = directMessages.value[chatId]
+  saveDirectMessages()
   
   newMessage.value = ''
   nextTick(() => {
     scrollToBottom()
   })
   
-  // Simulate response for DM
-  if (activeChat.value.type === 'dm') {
-    simulatePartnerResponse(activeChat.value.id, activeChat.value.name, activeChat.value.avatar)
+  simulatePartnerResponse(activeChat.value.id, activeChat.value.name, activeChat.value.avatar)
+}
+
+const sendChannelMessage = async () => {
+  if (sendingMessage.value || !activeChannel.value?.canSend) return
+  const content = newMessage.value
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim()
+  if (!content) return
+  if (content.length > 4000) {
+    ElMessage.warning('Tin nhắn không được vượt quá 4.000 ký tự.')
+    return
+  }
+
+  const channel = activeChannel.value
+  const controller = new AbortController()
+  sendMessageAbortController.value = controller
+  sendingMessage.value = true
+  try {
+    const result = await collaborationApi.sendChannelMessage(
+      channel.id,
+      { content },
+      { signal: controller.signal }
+    )
+    if (activeChannel.value?.id !== channel.id) return
+    const message = mapChannelMessage(result, channel.id)
+    if (!activeMessages.value.some(item => item.messageId === message.messageId)) {
+      activeMessages.value = [...activeMessages.value, message]
+      messagePagination.value.totalCount += 1
+    }
+    newMessage.value = ''
+    await nextTick()
+    scrollToBottom()
+  } catch (error) {
+    if (isCanceledRequest(error)) return
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+    } else if (status === 403 || status === 404) {
+      clearChannelSelection()
+      channels.value = channels.value.filter(item => item.id !== channel.id)
+      ElMessage.error('Channel không còn khả dụng hoặc bạn không còn quyền gửi.')
+      if (status === 404) await loadChannels({ page: 1 })
+    } else {
+      ElMessage.error(apiErrorMessage(error, 'Không thể gửi tin nhắn. Nội dung vẫn được giữ lại.'))
+    }
+  } finally {
+    if (sendMessageAbortController.value === controller) {
+      sendMessageAbortController.value = null
+    }
+    sendingMessage.value = false
   }
 }
 
-const selectChat = (item, type) => {
+const sendMessage = () => {
+  if (composerDisabled.value) return
+  return currentTab.value === 'channel'
+    ? sendChannelMessage()
+    : sendDirectMessage()
+}
+
+const selectChat = async (item, type) => {
+  if (type === 'channel') {
+    if (
+      !item?.id ||
+      item.projectId !== activeProjectId.value ||
+      !channels.value.some(channel => channel.id === item.id)
+    ) {
+      return
+    }
+    clearMessageHistory()
+    removeAttachedFile()
+  }
+
   activeChat.value = {
     id: item.id,
     name: item.name,
     type: type,
     desc: item.desc || (type === 'dm' ? `Cuộc hội thoại trực tiếp với ${item.name}` : ''),
-    avatar: item.avatar || ''
-  }
-  
-  // Mark as read
-  item.unread = 0
-  
-  // Load messages
-  if (!mockMessages.value[item.id]) {
-    mockMessages.value[item.id] = []
+    avatar: item.avatar || '',
+    projectId: item.projectId || null,
+    workspaceId: item.workspaceId || null,
+    canRead: type === 'channel' ? item.canRead : true,
+    canSend: type === 'channel' ? item.canSend : true,
+    canManage: type === 'channel' ? item.canManage : false
   }
 
-  // Self-healing clean up: if it's a DM, only keep messages from the current user or the selected partner
   if (type === 'dm') {
-    mockMessages.value[item.id] = mockMessages.value[item.id].filter(msg => {
+    clearMessageHistory()
+    if (!directMessages.value[item.id]) {
+      directMessages.value[item.id] = []
+    }
+    directMessages.value[item.id] = directMessages.value[item.id].filter(msg => {
       return msg.senderId === item.id || msg.senderId === currentUser.value.id || msg.senderId === 'user-quan'
     })
-    saveMessages()
-  }
-  
-  activeMessages.value = mockMessages.value[item.id]
-  
-  nextTick(() => {
+    saveDirectMessages()
+    activeMessages.value = directMessages.value[item.id]
+    await nextTick()
     scrollToBottom()
-  })
+    return
+  }
+
+  await loadChannelHistory(activeChat.value, { page: 1 })
 }
 
 const scrollToBottom = () => {
@@ -1398,11 +2053,11 @@ const simulatePartnerResponse = (partnerId, partnerName, partnerAvatar) => {
       sentAt: new Date().toISOString()
     }
     
-    if (!mockMessages.value[partnerId]) {
-      mockMessages.value[partnerId] = []
+    if (!directMessages.value[partnerId]) {
+      directMessages.value[partnerId] = []
     }
-    mockMessages.value[partnerId].push(replyObj)
-    saveMessages()
+    directMessages.value[partnerId].push(replyObj)
+    saveDirectMessages()
     
     if (activeChat.value.id === partnerId) {
       nextTick(() => {
@@ -1556,6 +2211,7 @@ onMounted(() => {
   gap: 8px;
   border-right: 1px solid var(--color-border);
   flex-shrink: 0;
+  overflow-y: auto;
 }
 
 .server-icon-wrapper {
@@ -1582,6 +2238,69 @@ onMounted(() => {
   transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
   user-select: none;
+  background-color: var(--color-accent);
+}
+
+.project-scope-select {
+  width: 100%;
+  min-height: 36px;
+  margin-bottom: 12px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.channel-state,
+.history-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px 10px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.history-state {
+  min-height: 120px;
+  margin: auto;
+}
+
+.channel-state-error,
+.history-state-error {
+  color: var(--color-danger);
+}
+
+.state-action {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.load-more-action,
+.load-older-action {
+  width: 100%;
+}
+
+.load-older-action {
+  align-self: center;
+  width: auto;
+}
+
+.state-action:disabled,
+.add-btn-small:disabled,
+.btn-send:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .server-icon-wrapper:hover .server-icon {
@@ -2030,6 +2749,12 @@ onMounted(() => {
   border: 1px solid var(--color-border);
 }
 
+.message-content p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .message-card.mine .message-content {
   background-color: var(--color-accent);
   color: white;
@@ -2079,8 +2804,20 @@ onMounted(() => {
 .chat-input {
   border: 2px solid var(--color-border) !important;
   border-radius: 8px !important;
-  height: 40px !important;
-  padding-inline: 12px !important;
+  min-height: 40px !important;
+  max-height: 112px;
+  padding: 9px 12px !important;
+  line-height: 20px;
+  resize: vertical;
+  overflow-y: auto;
+  font: inherit;
+}
+
+.character-counter {
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  text-align: right;
 }
 
 .btn-send {
@@ -2099,6 +2836,10 @@ onMounted(() => {
 
 .btn-send:hover {
   background-color: var(--color-accent-hover);
+}
+
+.btn-send:disabled:hover {
+  background-color: var(--color-accent);
 }
 
 .video-grid {
@@ -2291,6 +3032,25 @@ onMounted(() => {
     min-height: calc(100vh - 112px);
   }
 
+  .server-bar {
+    width: 100%;
+    height: 64px;
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 6px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .server-icon-wrapper,
+  .server-icon {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+  }
+
   .chat-sidebar {
     width: 100%;
     max-height: 240px;
@@ -2300,6 +3060,16 @@ onMounted(() => {
 
   .messages-thread {
     min-height: 420px;
+  }
+
+  .message-card {
+    max-width: 92%;
+  }
+
+  .chat-input-area {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
   }
 }
 </style>
@@ -2995,12 +3765,3 @@ background-color: #111c2d !important;
   border: 1px solid var(--color-border) !important;
 }
 </style>
-
-
-
-
-
-
-
-
-
