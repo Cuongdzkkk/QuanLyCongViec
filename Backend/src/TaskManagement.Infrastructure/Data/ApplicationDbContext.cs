@@ -122,6 +122,8 @@ namespace TaskManagement.Infrastructure.Data
 
         public DbSet<DirectMessage> DirectMessages { get; set; }
         public DbSet<ChannelMessage> ChannelMessages { get; set; }
+        public DbSet<CollaborationChannel> CollaborationChannels { get; set; }
+        public DbSet<CollaborationChannelMember> CollaborationChannelMembers { get; set; }
 
         public DbSet<CustomFieldDefinition> CustomFieldDefinitions { get; set; }
         public DbSet<CustomFieldValue> CustomFieldValues { get; set; }
@@ -1072,6 +1074,54 @@ namespace TaskManagement.Infrastructure.Data
                 .HasForeignKey(dm => dm.ReceiverId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            modelBuilder.Entity<CollaborationChannel>(entity =>
+            {
+                entity.Property(channel => channel.Name).HasMaxLength(100).IsRequired();
+                entity.HasIndex(channel => new { channel.WorkspaceId, channel.ProjectId });
+                entity.HasIndex(channel => new { channel.ProjectId, channel.IsDeleted, channel.IsArchived });
+                entity.HasOne(channel => channel.Workspace)
+                    .WithMany()
+                    .HasForeignKey(channel => channel.WorkspaceId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(channel => channel.Project)
+                    .WithMany()
+                    .HasForeignKey(channel => channel.ProjectId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(channel => channel.CreatedByUser)
+                    .WithMany()
+                    .HasForeignKey(channel => channel.CreatedByUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<CollaborationChannelMember>(entity =>
+            {
+                entity.HasKey(member => new { member.ChannelId, member.UserId });
+                entity.HasIndex(member => new { member.UserId, member.IsActive });
+                entity.HasOne(member => member.Channel)
+                    .WithMany(channel => channel.Members)
+                    .HasForeignKey(member => member.ChannelId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(member => member.User)
+                    .WithMany()
+                    .HasForeignKey(member => member.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<ChannelMessage>(entity =>
+            {
+                entity.Property(message => message.LegacyDepartmentId).HasColumnName("ChannelId");
+                entity.HasIndex(message => new
+                {
+                    message.CollaborationChannelId,
+                    message.SentAt,
+                    message.Id
+                });
+                entity.HasOne(message => message.CollaborationChannel)
+                    .WithMany(channel => channel.Messages)
+                    .HasForeignKey(message => message.CollaborationChannelId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
             modelBuilder.Entity<ChannelMessage>()
                 .HasOne(cm => cm.Sender)
                 .WithMany()
@@ -1079,9 +1129,9 @@ namespace TaskManagement.Infrastructure.Data
                 .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<ChannelMessage>()
-                .HasOne(cm => cm.Channel)
+                .HasOne(cm => cm.LegacyDepartment)
                 .WithMany()
-                .HasForeignKey(cm => cm.ChannelId)
+                .HasForeignKey(cm => cm.LegacyDepartmentId)
                 .OnDelete(DeleteBehavior.Cascade);
             // Custom Fields Configurations
             modelBuilder.Entity<CustomFieldDefinition>(entity =>

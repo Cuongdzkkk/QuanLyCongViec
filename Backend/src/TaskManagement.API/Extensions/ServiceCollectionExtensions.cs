@@ -43,6 +43,7 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<IOtpService, OtpService>();
             services.AddScoped<IResourceAuthorizationService, ResourceAuthorizationService>();
+            services.AddScoped<IChannelTextService, ChannelTextService>();
             services.AddScoped<ITaskDependencyService, TaskDependencyService>();
             
             services.AddMemoryCache();
