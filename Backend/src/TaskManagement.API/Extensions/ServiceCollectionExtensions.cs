@@ -24,6 +24,8 @@ namespace TaskManagement.API.Extensions
 
             // Đăng ký Application Services
             services.AddScoped<IJwtService, JwtService>();
+            services.AddSingleton<IGoogleTokenVerifier, GoogleTokenVerifier>();
+            services.AddScoped<IGoogleIdentityValidator, GoogleIdentityValidator>();
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IProjectMemberService, ProjectMemberService>();
             services.AddScoped<IWorkTaskService, WorkTaskService>();

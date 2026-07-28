@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using System.Data;
+using TaskManagement.Application.Auth;
 using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.Auth;
 using TaskManagement.Application.Interfaces;
@@ -9,7 +11,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Net.Http.Headers;
-using Google.Apis.Auth;
 using Microsoft.Extensions.Configuration;
 
 namespace TaskManagement.Infrastructure.Services
@@ -21,14 +22,22 @@ namespace TaskManagement.Infrastructure.Services
         private readonly IConfiguration _configuration;
         private readonly IOtpService _otpService;
         private readonly IEmailService _emailService;
+        private readonly IGoogleIdentityValidator _googleIdentityValidator;
 
-        public AuthService(ApplicationDbContext context, IJwtService jwtService, IConfiguration configuration, IOtpService otpService, IEmailService emailService)
+        public AuthService(
+            ApplicationDbContext context,
+            IJwtService jwtService,
+            IConfiguration configuration,
+            IOtpService otpService,
+            IEmailService emailService,
+            IGoogleIdentityValidator? googleIdentityValidator = null)
         {
             _context = context;
             _jwtService = jwtService;
             _configuration = configuration;
             _otpService = otpService;
             _emailService = emailService;
+            _googleIdentityValidator = googleIdentityValidator ?? new GoogleIdentityValidator(configuration);
         }
 
         public async Task<(AuthResponseDto? response, string? refreshToken, bool requires2FA)> LoginAsync(LoginRequestDto request)
@@ -137,128 +146,134 @@ namespace TaskManagement.Infrastructure.Services
 
         public async Task<(AuthResponseDto response, string refreshToken)> GoogleLoginAsync(GoogleLoginRequestDto request)
         {
-            if (string.IsNullOrEmpty(request.Credential))
+            if (string.IsNullOrWhiteSpace(request.Credential))
             {
-                throw new ArgumentException("Thiếu token xác thực từ Google (Credential is empty). Vui lòng thử lại.");
+                throw new ArgumentException("Google credential is required.");
             }
 
-            string email;
-            string name;
-
-            // Thử 2 luồng: JWT ID Token (One Tap) hoặc Access Token (Popup TOKEN flow)
+            var identity = await _googleIdentityValidator.ValidateAsync(request.Credential.Trim());
             try
             {
-                // Luồng 1: Nếu Credential là JWT ID Token → validate trực tiếp
-                var googleClientId = _configuration["Google:ClientId"]
-                    ?? throw new InvalidOperationException("Google ClientId is not configured.");
-                var settings = new GoogleJsonWebSignature.ValidationSettings
+                if (_context.Database.IsRelational())
                 {
-                    Audience = new List<string> { googleClientId }
-                };
-                var jwtPayload = await GoogleJsonWebSignature.ValidateAsync(request.Credential, settings);
-                email = jwtPayload.Email;
-                name = jwtPayload.Name;
-            }
-            catch
-            {
-                // Luồng 2: Nếu Credential là Access Token → gọi Google Userinfo API
-                using var httpClient = new HttpClient();
-                httpClient.DefaultRequestHeaders.Authorization = 
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", request.Credential);
-                
-                var userInfoResponse = await httpClient.GetAsync("https://www.googleapis.com/oauth2/v3/userinfo");
-                if (!userInfoResponse.IsSuccessStatusCode)
-                {
-                    throw new UnauthorizedAccessException("Token Google không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
+                    var strategy = _context.Database.CreateExecutionStrategy();
+                    return await strategy.ExecuteAsync(() => ResolveGoogleIdentityAsync(identity, useTransaction: true));
                 }
 
-                var content = await userInfoResponse.Content.ReadAsStringAsync();
-                var userInfo = JsonSerializer.Deserialize<JsonElement>(content);
-                
-                email = userInfo.GetProperty("email").GetString() 
-                    ?? throw new UnauthorizedAccessException("Không thể lấy email từ Google.");
-                name = userInfo.TryGetProperty("name", out var nameEl) ? nameEl.GetString() ?? email : email;
+                return await ResolveGoogleIdentityAsync(identity, useTransaction: false);
             }
-            email = EmailCanonicalizer.Normalize(email);
-            var user = await _context.Users
-                .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Email.ToLower() == email);
-
-            if (user?.IsDeleted == true)
+            catch (DbUpdateException)
             {
-                throw new UnauthorizedAccessException("Unable to authenticate this account.");
-            }
-
-            if (user == null)
-            {
-                user = new User
+                _context.ChangeTracker.Clear();
+                var concurrentLogin = await FindGoogleLoginAsync(identity.Subject);
+                if (concurrentLogin != null)
                 {
-                    Id = Guid.NewGuid(),
-                    Email = email,
-                    FullName = name,
-                    PasswordHash = string.Empty, // Empty or random hash since they login via Google
-                    CreatedAt = DateTime.UtcNow,
-                    IsDeleted = false
-                };
-                
-                _context.Users.Add(user);
-                
-                var defaultRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Developer" || r.Name == "DEV");
-                if (defaultRole != null)
-                {
-                    var ur = new UserRole
-                    {
-                        UserId = user.Id,
-                        RoleId = defaultRole.Id,
-                        Role = defaultRole
-                    };
-                    _context.UserRoles.Add(ur);
-                     // Assign for instant token generation using the exact same tracked instance
-                    user.UserRoles = new List<UserRole> { ur };
+                    EnsureGoogleUserCanSignIn(concurrentLogin.User);
+                    return await GenerateGoogleTokensAsync(concurrentLogin.User);
                 }
-                
-                await _context.SaveChangesAsync();
-            }
 
-            if (!user.IsActive)
+                throw new GoogleAccountConflictException();
+            }
+        }
+
+        private async Task<(AuthResponseDto response, string refreshToken)> ResolveGoogleIdentityAsync(
+            GoogleIdentity identity,
+            bool useTransaction)
+        {
+            await using var transaction = useTransaction
+                ? await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable)
+                : null;
+
+            var existingLogin = await FindGoogleLoginAsync(identity.Subject);
+            if (existingLogin != null)
             {
-                throw new UnauthorizedAccessException("Unable to authenticate this account.");
+                EnsureGoogleUserCanSignIn(existingLogin.User);
+                existingLogin.LastLoginAt = DateTime.UtcNow;
+                existingLogin.ProviderEmail = identity.Email;
+                var existingResult = await GenerateGoogleTokensAsync(existingLogin.User);
+                if (transaction != null) await transaction.CommitAsync();
+                return existingResult;
             }
 
-            var roles = user.UserRoles?.Select(ur => ur.Role.Name).ToList() ?? new List<string>();
+            var emailOwner = await _context.Users
+                .FirstOrDefaultAsync(user => user.Email.ToLower() == identity.Email);
+            if (emailOwner != null)
+            {
+                if (emailOwner.IsDeleted || !emailOwner.IsActive)
+                {
+                    throw new GoogleAccountForbiddenException();
+                }
 
-            // Users without system roles should stay role-less until explicitly assigned.
+                throw new GoogleAccountConflictException();
+            }
 
-            var accessToken = _jwtService.GenerateAccessToken(user, roles);
-            var refreshToken = _jwtService.GenerateRefreshToken();
-
-            user.RefreshToken = refreshToken;
-            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
-            
-            _context.RefreshTokens.Add(new RefreshToken 
+            var now = DateTime.UtcNow;
+            var user = new User
+            {
+                Id = Guid.NewGuid(),
+                Email = identity.Email,
+                FullName = identity.DisplayName,
+                AvatarUrl = identity.AvatarUrl,
+                PasswordHash = string.Empty,
+                IsActive = true,
+                IsDeleted = false,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            var externalLogin = new ExternalLogin
             {
                 Id = Guid.NewGuid(),
                 UserId = user.Id,
-                Token = refreshToken,
-                DeviceId = request.Credential?.Length > 30 ? "Google-App-SSO" : "SSO-WEB",
-                ExpiryTime = DateTime.UtcNow.AddDays(7),
-                IsRevoked = false
-            });
+                User = user,
+                Provider = "Google",
+                ProviderSubject = identity.Subject,
+                ProviderEmail = identity.Email,
+                CreatedAt = now,
+                LastLoginAt = now
+            };
+            user.ExternalLogins.Add(externalLogin);
+            _context.Users.Add(user);
+
+            var defaultRole = await _context.Roles
+                .FirstOrDefaultAsync(role => role.Name == "Developer" || role.Name == "DEV");
+            if (defaultRole != null)
+            {
+                var userRole = new UserRole
+                {
+                    UserId = user.Id,
+                    RoleId = defaultRole.Id,
+                    Role = defaultRole
+                };
+                _context.UserRoles.Add(userRole);
+                user.UserRoles = new List<UserRole> { userRole };
+            }
 
             await _context.SaveChangesAsync();
+            if (transaction != null) await transaction.CommitAsync();
+            return await GenerateGoogleTokensAsync(user);
+        }
 
-            var response = new AuthResponseDto
+        private Task<ExternalLogin?> FindGoogleLoginAsync(string subject) =>
+            _context.ExternalLogins
+                .Include(login => login.User)
+                    .ThenInclude(user => user.UserRoles)
+                    .ThenInclude(userRole => userRole.Role)
+                .SingleOrDefaultAsync(login =>
+                    login.Provider == "Google" &&
+                    login.ProviderSubject == subject);
+
+        private static void EnsureGoogleUserCanSignIn(User user)
+        {
+            if (user.IsDeleted || !user.IsActive)
             {
-                AccessToken = accessToken,
-                Id = user.Id,
-                Email = user.Email,
-                FullName = user.FullName,
-                AvatarUrl = user.AvatarUrl,
-                SystemRoles = roles.ToArray()
-            };
+                throw new GoogleAccountForbiddenException();
+            }
+        }
 
-            return (response, refreshToken);
+        private async Task<(AuthResponseDto response, string refreshToken)> GenerateGoogleTokensAsync(User user)
+        {
+            var result = await GenerateTokensForUser(user, "Google-SSO");
+            return (result.response!, result.refreshToken!);
         }
 
         public async Task<(AuthResponseDto response, string refreshToken)> GitHubLoginAsync(GitHubLoginRequestDto request)

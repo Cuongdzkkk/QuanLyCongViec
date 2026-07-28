@@ -82,6 +82,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<AiAttachment> AiAttachments { get; set; }
         public DbSet<AiAttachmentChunk> AiAttachmentChunks { get; set; }
         public DbSet<IntegrationAccount> IntegrationAccounts { get; set; }
+        public DbSet<ExternalLogin> ExternalLogins { get; set; }
         public DbSet<InboxItem> InboxItems { get; set; }
         public DbSet<SyncHistory> SyncHistories { get; set; }
 
@@ -254,6 +255,11 @@ namespace TaskManagement.Infrastructure.Data
                     .OnDelete(DeleteBehavior.Cascade);
             });
             modelBuilder.Entity<IntegrationAccount>().HasIndex(ia => new { ia.UserId, ia.Provider }).IsUnique();
+            modelBuilder.Entity<ExternalLogin>().HasIndex(login => new { login.Provider, login.ProviderSubject }).IsUnique();
+            modelBuilder.Entity<ExternalLogin>().HasIndex(login => new { login.UserId, login.Provider }).IsUnique();
+            modelBuilder.Entity<ExternalLogin>().Property(login => login.Provider).HasMaxLength(32).IsRequired();
+            modelBuilder.Entity<ExternalLogin>().Property(login => login.ProviderSubject).HasMaxLength(255).IsRequired();
+            modelBuilder.Entity<ExternalLogin>().Property(login => login.ProviderEmail).HasMaxLength(450).IsRequired();
             modelBuilder.Entity<InboxItem>().HasIndex(ii => new { ii.UserId, ii.Provider, ii.ExternalId }).IsUnique();
             modelBuilder.Entity<InboxItem>().HasIndex(ii => new { ii.UserId, ii.Source, ii.CreatedAt });
             modelBuilder.Entity<InboxItem>().HasIndex(ii => new { ii.UserId, ii.IsRead });
@@ -521,6 +527,12 @@ namespace TaskManagement.Infrastructure.Data
                 .HasOne(ia => ia.User)
                 .WithMany()
                 .HasForeignKey(ia => ia.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ExternalLogin>()
+                .HasOne(login => login.User)
+                .WithMany(user => user.ExternalLogins)
+                .HasForeignKey(login => login.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<InboxItem>()
