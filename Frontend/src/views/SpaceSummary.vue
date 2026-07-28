@@ -12,11 +12,11 @@
 
       <ProjectPageHeader
         icon="fa-solid fa-layer-group"
-        :title="t('Work Items')"
-        :description="t('Manage tasks, bugs, and features')"
+        :title="activeModuleFilterId ? (moduleDetail?.name || tr('Module', 'Module')) : t('Work Items')"
+        :description="activeModuleFilterId ? (moduleDetail?.description || tr('Scoped work items in this module', 'Công việc thuộc Module này')) : t('Manage tasks, bugs, and features')"
       >
         <template #actions>
-          <div class="toolbar-actions-wrapper">
+          <div v-if="!activeModuleFilterId" class="toolbar-actions-wrapper">
             <el-button type="info" plain size="default" @click="showDataImportModal = true" :disabled="!canCurrentUserCreateTask" :title="!canCurrentUserCreateTask ? 'Bạn không có quyền nạp công việc' : ''">
               <i class="fa-solid fa-file-import mr-1"></i> Nạp dữ liệu công việc
             </el-button>
@@ -28,6 +28,7 @@
             </button>
           </div>
           <TaskDataImportModal
+            v-if="!activeModuleFilterId"
             v-model="showDataImportModal"
             :projectId="currentProjectId"
             :projectMembers="projectMembers"
@@ -37,7 +38,62 @@
         </template>
       </ProjectPageHeader>
 
-      <ProjectPageToolbar>
+      <section v-if="activeModuleFilterId" class="module-detail-context" aria-live="polite">
+        <div v-if="moduleDetailLoading" class="module-state-panel module-loading-state">
+          <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+          <div>
+            <strong>{{ tr('Loading module', 'Đang tải Module') }}</strong>
+            <span>{{ tr('Loading metadata and scoped work items...', 'Đang tải thông tin và danh sách công việc...') }}</span>
+          </div>
+        </div>
+
+        <div v-else-if="moduleDetailError" class="module-state-panel module-error-state" role="alert">
+          <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          <div>
+            <strong>{{ tr('Unable to load module', 'Không thể tải Module') }}</strong>
+            <span>{{ moduleDetailError.message }}</span>
+          </div>
+          <button type="button" class="module-retry-btn" @click="retryModuleDetail">
+            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+            {{ tr('Retry', 'Thử lại') }}
+          </button>
+        </div>
+
+        <template v-else-if="moduleDetail">
+          <div class="module-detail-heading">
+            <div>
+              <span class="module-status-label">{{ moduleDetail.status }}</span>
+              <strong>{{ moduleDetail.name }}</strong>
+            </div>
+            <div class="module-progress" :aria-label="tr(`${moduleDetail.progressPercent}% complete`, `Hoàn thành ${moduleDetail.progressPercent}%`)">
+              <span>{{ moduleDetail.progressPercent }}%</span>
+              <div class="module-progress-track">
+                <span :style="{ width: `${Math.min(100, Math.max(0, Number(moduleDetail.progressPercent) || 0))}%` }"></span>
+              </div>
+            </div>
+          </div>
+          <div class="module-summary-grid">
+            <div class="module-summary-item">
+              <span>{{ tr('Total', 'Tổng số') }}</span>
+              <strong>{{ moduleDetail.taskCount }}</strong>
+            </div>
+            <div class="module-summary-item is-complete">
+              <span>{{ tr('Completed', 'Hoàn thành') }}</span>
+              <strong>{{ moduleDetail.completedCount }}</strong>
+            </div>
+            <div class="module-summary-item is-progress">
+              <span>{{ tr('In progress', 'Đang thực hiện') }}</span>
+              <strong>{{ moduleDetail.inProgressCount }}</strong>
+            </div>
+            <div class="module-summary-item is-overdue">
+              <span>{{ tr('Overdue', 'Quá hạn') }}</span>
+              <strong>{{ moduleDetail.overdueCount }}</strong>
+            </div>
+          </div>
+        </template>
+      </section>
+
+      <ProjectPageToolbar v-if="!activeModuleFilterId">
         <template #filters>
           <div class="view-toggles">
             <button class="toggle-btn" :class="{ active: currentTab === 'list' }" @click="currentTab = 'list'" :title="t('List view')"><i class="fa-solid fa-bars"></i></button>
@@ -90,7 +146,7 @@
         </template>
       </ProjectPageToolbar>
 
-      <div class="work-filter-row" v-if="showFilterPanel || activeTaskFilters.length">
+      <div class="work-filter-row" v-if="!activeModuleFilterId && (showFilterPanel || activeTaskFilters.length)">
         <FilterBar
           v-model:filters="activeTaskFilters"
           @apply="applyTaskFilters"
@@ -100,7 +156,7 @@
       </div>
 
       <!-- Global Empty State for Work Items (List/Board views) -->
-      <div v-if="!store.loading && filteredTasksList.length === 0 && (currentTab === 'list' || currentTab === 'board')" class="empty-state-global" style="padding: 60px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--color-surface); border-radius: 12px; border: 1px dashed var(--color-border); margin: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);">
+      <div v-if="!activeModuleFilterId && !store.loading && filteredTasksList.length === 0 && (currentTab === 'list' || currentTab === 'board')" class="empty-state-global" style="padding: 60px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--color-surface); border-radius: 12px; border: 1px dashed var(--color-border); margin: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);">
         <div class="empty-illustration-wrapper" style="font-size: 54px; color: var(--color-text-muted); margin-bottom: 16px; opacity: 0.8;">
           <i class="fa-solid fa-folder-open"></i>
         </div>
@@ -116,8 +172,14 @@
         </div>
       </div>
 
+      <div v-if="activeModuleFilterId && moduleDetail && moduleDetail.taskCount === 0 && !moduleDetailLoading && !moduleDetailError" class="module-empty-state">
+        <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
+        <strong>{{ tr('This module has no work items yet.', 'Module này chưa có công việc.') }}</strong>
+        <span>{{ tr('Work items assigned to this module will appear here.', 'Công việc được gán vào Module sẽ hiển thị tại đây.') }}</span>
+      </div>
+
       <!-- Other Tab Views -->
-      <div v-if="currentTab === 'list' && filteredTasksList.length > 0" class="list-wrapper" style="padding: 16px;">
+      <div v-if="currentTab === 'list' && filteredTasksList.length > 0 && !moduleDetailLoading && !moduleDetailError" class="list-wrapper" style="padding: 16px;">
          <div class="plane-list-view">
            <div v-for="group in listViewGroups" :key="group.id" class="list-group">
              <div class="group-header" @click="toggleListGroup(group.id)">
@@ -229,27 +291,31 @@
            </div>
          </div>
       </div>
-      <div v-if="currentTab === 'calendar'" class="calendar-wrapper">
+      <div v-if="currentTab === 'calendar' && !moduleDetailLoading && !moduleDetailError && (!activeModuleFilterId || moduleDetail?.taskCount > 0)" class="calendar-wrapper">
          <CalendarTab :tasks="filteredTasksList" @open-task="openTaskDetail" @create-task="openCreateTaskFromCalendar" />
       </div>
-      <div v-if="currentTab === 'spreadsheet'" class="spreadsheet-wrapper" style="display: flex; flex: 1; overflow: hidden;">
+      <div v-if="currentTab === 'spreadsheet' && !moduleDetailLoading && !moduleDetailError && (!activeModuleFilterId || moduleDetail?.taskCount > 0)" class="spreadsheet-wrapper" style="display: flex; flex: 1; overflow: hidden;">
           <SpreadsheetTab
             :tasks="filteredTasksList"
             :projectId="getProjectId()"
             :projectMembers="projectMembers"
+            :serverPagination="activeModuleFilterId ? moduleTaskPagination : null"
+            :readonly="Boolean(activeModuleFilterId)"
             @task-click="openTaskDetail"
             @update-task="updateTask"
             @create-task="payload => openCreateTask(payload?.statusName || 'TO DO')"
+            @page-change="changeModuleTaskPage"
+            @page-size-change="changeModuleTaskPageSize"
           />
       </div>
-      <div v-if="currentTab === 'timeline'" class="timeline-wrapper">
+      <div v-if="currentTab === 'timeline' && !moduleDetailLoading && !moduleDetailError && (!activeModuleFilterId || moduleDetail?.taskCount > 0)" class="timeline-wrapper">
          <TimelineTab :projectId="getProjectId()" :tasks="filteredTasksList" @open-task="openTaskDetail" @create-task="openCreateTaskFromCalendar" />
       </div>
 
       <!-- Kanban Board Layout -->
       <div
         class="kanban-wrapper"
-        v-if="currentTab === 'board' && filteredTasksList.length > 0"
+        v-if="currentTab === 'board' && filteredTasksList.length > 0 && !moduleDetailLoading && !moduleDetailError"
         @wheel="handleKanbanWheel"
       >
         <!-- Loading indicator -->
@@ -618,6 +684,7 @@ import { ref, onMounted, computed, defineAsyncComponent, watch, nextTick, onUnmo
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
+import { getModuleDetail } from '@/api/moduleApi'
 import { downloadResponseFile, csvWithBom } from '@/utils/downloadFile'
 import { broadcastAdminRealtime, subscribeAdminRealtime } from '@/utils/adminRealtime'
 import { getStoredUserSession } from '@/utils/authSession'
@@ -805,6 +872,22 @@ onUnmounted(() => {
   document.body.classList.remove('no-shadow-context')
 })
 const activeModuleFilterId = computed(() => route.query.moduleId || null)
+const moduleDetail = ref(null)
+const moduleDetailLoading = ref(false)
+const moduleDetailError = ref(null)
+const moduleTaskPage = ref(1)
+const moduleTaskPageSize = ref(20)
+const moduleTaskPagination = ref({
+  page: 1,
+  pageSize: 20,
+  totalCount: 0,
+  totalPages: 0,
+  hasPreviousPage: false,
+  hasNextPage: false
+})
+let moduleDetailAbortController = null
+let moduleDetailRequestId = 0
+let initialDataRequestId = 0
 const activeCarryOverSprintId = computed(() => route.query.carryOverFromSprintId || null)
 const carryOverTaskIds = ref([])
 const projectBadge = computed(() => project.value?.icon || project.value?.identifier?.charAt(0)?.toUpperCase() || project.value?.name?.charAt(0)?.toUpperCase() || 'P')
@@ -825,6 +908,35 @@ const persistShowSubtasksPreference = (value, projectId = currentProjectId.value
 }
 
 const isForbiddenError = (error) => Number(error?.response?.status) === 403
+const getSessionIdentity = () => {
+  const user = getStoredUserSession()
+  return `${user?.id || user?.userId || user?.email || 'anonymous'}`
+}
+const getModuleErrorStatus = (error) => Number(error?.response?.status || error?.status || 0)
+const getModuleErrorMessage = (error) => {
+  const status = getModuleErrorStatus(error)
+  if (status === 400) return tr('The module request is invalid.', 'Yêu cầu Module không hợp lệ.')
+  if (status === 403) return tr('You do not have permission to view this module.', 'Bạn không có quyền xem Module này.')
+  if (status === 404) return tr('This module does not exist or is no longer accessible.', 'Module không tồn tại hoặc bạn không còn quyền truy cập.')
+  return tr('Module data could not be loaded. Check your connection and try again.', 'Không thể tải dữ liệu Module. Hãy kiểm tra kết nối và thử lại.')
+}
+const clearModuleDetailState = ({ keepPage = false } = {}) => {
+  moduleDetailAbortController?.abort()
+  moduleDetailAbortController = null
+  moduleDetailRequestId += 1
+  moduleDetail.value = null
+  moduleDetailError.value = null
+  moduleDetailLoading.value = false
+  moduleTaskPagination.value = {
+    page: keepPage ? moduleTaskPage.value : 1,
+    pageSize: moduleTaskPageSize.value,
+    totalCount: 0,
+    totalPages: 0,
+    hasPreviousPage: false,
+    hasNextPage: false
+  }
+  if (!keepPage) moduleTaskPage.value = 1
+}
 
 const resolveAccessibleProjectId = async (preferredProjectId = null) => {
   const projects = await projectStore.fetchAllProjects(true)
@@ -926,6 +1038,7 @@ const matchesTaskFilters = (task) => {
 
 const topLevelTasks = computed(() => rawTasks.value)
 const visibleTasks = computed(() => {
+  if (activeModuleFilterId.value) return allTasks.value || []
   const sourceTasks = showSubtasks.value ? (allTasks.value || []) : topLevelTasks.value
   return sourceTasks.filter(canCurrentUserSeeTask)
 })
@@ -1187,26 +1300,12 @@ const getTaskDate = (task, field) => {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : date
 }
-const taskHasModuleMatch = (task, moduleId) => {
-  if (!task || !moduleId) return false
-  if (task.moduleId === moduleId) return true
-  if (Array.isArray(task.moduleIds) && task.moduleIds.includes(moduleId)) return true
-  if (Array.isArray(task.modules) && task.modules.some(item => (item.id || item.moduleId) === moduleId)) return true
-  return false
-}
 const taskMatchesSprintScope = (task, sprintId) => {
   if (!sprintId) return true
   if (task.sprintId === sprintId) return true
   if (isSubtask(task)) return false
   return allTasks.value.some(candidate => isSubtask(candidate) && getParentTaskLinkId(candidate) === task.id && candidate.sprintId === sprintId)
 }
-const taskMatchesModuleScope = (task, moduleId) => {
-  if (!moduleId) return true
-  if (taskHasModuleMatch(task, moduleId)) return true
-  if (isSubtask(task)) return false
-  return allTasks.value.some(candidate => isSubtask(candidate) && getParentTaskLinkId(candidate) === task.id && taskHasModuleMatch(candidate, moduleId))
-}
-
 const taskMatchesCarryOverScope = (task, taskIds) => {
   if (!taskIds.length) return true
   if (taskIds.includes(task.id)) return true
@@ -1372,12 +1471,11 @@ const filteredProjectMembers = computed(() => {
 const filteredTasksList = computed(() => {
   let filteredTasks = [...visibleTasks.value];
 
+  if (activeModuleFilterId.value) return filteredTasks
+
   filteredTasks = filteredTasks.filter(matchesTaskFilters)
   if (activeSprintFilterId.value) {
      filteredTasks = filteredTasks.filter(t => taskMatchesSprintScope(t, activeSprintFilterId.value));
-  }
-  if (activeModuleFilterId.value) {
-     filteredTasks = filteredTasks.filter(t => taskMatchesModuleScope(t, activeModuleFilterId.value));
   }
   if (carryOverTaskIds.value.length) {
      filteredTasks = filteredTasks.filter(t => taskMatchesCarryOverScope(t, carryOverTaskIds.value));
@@ -1387,7 +1485,8 @@ const filteredTasksList = computed(() => {
   }
 
   const shouldIncludeSubtasks = showSubtasks.value
-  return sortTasksByDisplayOrder(shouldIncludeSubtasks ? filteredTasks : filteredTasks.filter(task => !isSubtask(task)));
+  const scopedTasks = shouldIncludeSubtasks ? filteredTasks : filteredTasks.filter(task => !isSubtask(task))
+  return sortTasksByDisplayOrder(scopedTasks)
 });
 
 const createdResolvedOptions = computed(() => {
@@ -1685,6 +1784,8 @@ const loadInitialData = async (options = {}) => {
       }
   }
 
+  const requestId = ++initialDataRequestId
+  const contextKey = `${getSessionIdentity()}:${pid}:${activeModuleFilterId.value || ''}`
   try {
     setScopedCurrentProjectId(pid)
     showSubtasks.value = loadShowSubtasksPreference(pid)
@@ -1702,6 +1803,9 @@ const loadInitialData = async (options = {}) => {
       axiosClient.get(`/projects/${pid}/task-statuses`).catch(() => ({ data: { data: [] } })),
       axiosClient.get(`/projects/${pid}/execution-rules`).catch(() => ({ data: { data: {} } }))
     ])
+    const currentContextKey = `${getSessionIdentity()}:${getProjectId()}:${activeModuleFilterId.value || ''}`
+    if (requestId !== initialDataRequestId || contextKey !== currentContextKey) return
+
     project.value = pRes.data.data
     projectMembers.value = (mRes.data.data || []).map(member => ({
       ...member,
@@ -1722,6 +1826,8 @@ const loadInitialData = async (options = {}) => {
 
     if (activeCarryOverSprintId.value) {
       const carryOverRes = await axiosClient.get(`/projects/${pid}/sprints/${activeCarryOverSprintId.value}/carry-over-tasks`)
+      const latestContextKey = `${getSessionIdentity()}:${getProjectId()}:${activeModuleFilterId.value || ''}`
+      if (requestId !== initialDataRequestId || contextKey !== latestContextKey) return
       carryOverTaskIds.value = (carryOverRes.data?.data || []).map(task => task.id)
     }
 
@@ -1729,6 +1835,7 @@ const loadInitialData = async (options = {}) => {
     openTaskFromRouteQuery()
     await loadProjectPermissionMatrix()
   } catch (error) {
+    if (requestId !== initialDataRequestId) return
     if (isForbiddenError(error)) {
       isForbidden.value = true
     } else {
@@ -1737,9 +1844,90 @@ const loadInitialData = async (options = {}) => {
   }
 }
 
+const fetchModuleTasks = async ({ page = moduleTaskPage.value } = {}) => {
+  const pid = getProjectId()
+  const moduleId = activeModuleFilterId.value
+  if (!pid || !moduleId) return []
+
+  moduleDetailAbortController?.abort()
+  const controller = new AbortController()
+  moduleDetailAbortController = controller
+  const requestId = ++moduleDetailRequestId
+  const sessionIdentity = getSessionIdentity()
+  const contextKey = `${sessionIdentity}:${pid}:${moduleId}:${page}:${moduleTaskPageSize.value}`
+
+  moduleDetailLoading.value = true
+  moduleDetailError.value = null
+  allTasks.value = []
+  selectedTask.value = null
+
+  try {
+    const detail = await getModuleDetail(pid, moduleId, {
+      page,
+      pageSize: moduleTaskPageSize.value,
+      signal: controller.signal
+    })
+    const currentContextKey = `${getSessionIdentity()}:${getProjectId()}:${activeModuleFilterId.value}:${page}:${moduleTaskPageSize.value}`
+    if (requestId !== moduleDetailRequestId || contextKey !== currentContextKey) {
+      return []
+    }
+
+    if (detail.tasks.totalPages > 0 && page > detail.tasks.totalPages) {
+      moduleTaskPage.value = detail.tasks.totalPages
+      return fetchModuleTasks({ page: detail.tasks.totalPages })
+    }
+
+    moduleDetail.value = detail
+    moduleTaskPage.value = detail.tasks.page
+    moduleTaskPagination.value = { ...detail.tasks }
+    allTasks.value = detail.tasks.items.map(task => store.normalizeTaskRecord({
+      ...task,
+      moduleId: detail.id,
+      moduleName: detail.name,
+      projectId: detail.projectId
+    }, detail.projectId))
+    return allTasks.value
+  } catch (error) {
+    if (error?.name === 'CanceledError' || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') {
+      return []
+    }
+    if (requestId === moduleDetailRequestId) {
+      moduleDetailError.value = {
+        status: getModuleErrorStatus(error),
+        message: getModuleErrorMessage(error)
+      }
+      allTasks.value = []
+    }
+    return []
+  } finally {
+    if (requestId === moduleDetailRequestId) {
+      moduleDetailLoading.value = false
+    }
+  }
+}
+
+const retryModuleDetail = () => fetchModuleTasks({ page: moduleTaskPage.value })
+const changeModuleTaskPage = (page) => {
+  if (moduleDetailLoading.value || page < 1 || page === moduleTaskPage.value) return
+  moduleTaskPage.value = page
+  fetchModuleTasks({ page })
+}
+const changeModuleTaskPageSize = (pageSize) => {
+  const normalized = Math.min(100, Math.max(1, Number(pageSize) || 20))
+  if (moduleDetailLoading.value || normalized === moduleTaskPageSize.value) return
+  moduleTaskPageSize.value = normalized
+  moduleTaskPage.value = 1
+  fetchModuleTasks({ page: 1 })
+}
+
 const fetchTasks = async (options = {}) => {
   const pid = getProjectId()
   if(!pid) return
+  if (activeModuleFilterId.value) {
+      return fetchModuleTasks({ page: moduleTaskPage.value })
+  }
+
+  clearModuleDetailState()
   try {
       const tasks = await store.fetchTasks(pid, options);
       allTasks.value = Array.isArray(tasks) ? tasks : []
@@ -2125,6 +2313,13 @@ let realtimeRefreshTimer = null
 
 const handleRealtimeTaskUpdated = (task) => {
   if (!task?.id) return
+  if (activeModuleFilterId.value) {
+    clearTimeout(realtimeRefreshTimer)
+    realtimeRefreshTimer = setTimeout(() => {
+      fetchModuleTasks({ page: moduleTaskPage.value })
+    }, 120)
+    return
+  }
   const normalizedTask = store.normalizeTaskRecord(task, getProjectId())
   if (!canCurrentUserSeeTask(normalizedTask)) {
     allTasks.value = allTasks.value.filter(item => item.id !== normalizedTask.id)
@@ -2201,17 +2396,27 @@ onMounted(() => {
   })
 })
 
-watch(currentProjectId, (projectId, previousProjectId) => {
-  if (!projectId || projectId === previousProjectId) {
-    return
-  }
+watch(
+  () => [currentProjectId.value, activeModuleFilterId.value],
+  ([projectId, moduleId], [previousProjectId, previousModuleId]) => {
+    if (!projectId || (projectId === previousProjectId && moduleId === previousModuleId)) {
+      return
+    }
 
-  dynamicProjectId = projectId
-  showAnalyticsSidebar.value = false
-  isAnalyticsExpanded.value = false
-  startTaskRealtime(projectId)
-  loadInitialData()
-}, { immediate: false })
+    clearModuleDetailState()
+    rawTasks.value = []
+    allTasks.value = []
+    selectedTask.value = null
+    dynamicProjectId = projectId
+    showAnalyticsSidebar.value = false
+    isAnalyticsExpanded.value = false
+    if (projectId !== previousProjectId) {
+      startTaskRealtime(projectId)
+    }
+    loadInitialData()
+  },
+  { immediate: false }
+)
 
 watch(showSubtasks, (value) => {
   persistShowSubtasksPreference(value)
@@ -2239,6 +2444,9 @@ watch(
 onUnmounted(() => {
   window.removeEventListener('global-create-task', handleGlobalCreate)
   analyticsThemeObserver?.disconnect()
+  moduleDetailAbortController?.abort()
+  moduleDetailRequestId += 1
+  initialDataRequestId += 1
   clearTimeout(realtimeRefreshTimer)
   if (signalRTaskUpdatedHandler) {
     signalRService.off('TaskUpdated', signalRTaskUpdatedHandler)
@@ -2265,6 +2473,211 @@ onUnmounted(() => {
   color: var(--color-text-primary);
   font-family: 'Inter', sans-serif;
   overflow: hidden;
+}
+
+.module-detail-context {
+  flex: 0 0 auto;
+  padding: 12px var(--sa-page-x, 24px);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.module-state-panel,
+.module-detail-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.module-state-panel {
+  min-height: 72px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-primary);
+}
+
+.module-state-panel > div {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.module-state-panel span {
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.module-loading-state > i {
+  color: var(--color-accent);
+}
+
+.module-error-state {
+  border-color: color-mix(in srgb, #ef4444 45%, var(--color-border));
+  background: color-mix(in srgb, #ef4444 7%, var(--color-surface));
+}
+
+.module-error-state > i {
+  color: #ef4444;
+}
+
+.module-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.module-retry-btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-accent) 32%, transparent);
+  outline-offset: 2px;
+}
+
+.module-detail-heading {
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.module-detail-heading > div:first-child {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.module-detail-heading strong {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.module-status-label {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 32%, var(--color-border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.module-progress {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.module-progress-track {
+  width: 112px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--color-border);
+}
+
+.module-progress-track > span {
+  display: block;
+  height: 100%;
+  background: #22c55e;
+}
+
+.module-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.module-summary-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid #64748b;
+  border-radius: 7px;
+  background: var(--color-bg-secondary);
+}
+
+.module-summary-item.is-complete { border-left-color: #22c55e; }
+.module-summary-item.is-progress { border-left-color: #0ea5e9; }
+.module-summary-item.is-overdue { border-left-color: #ef4444; }
+.module-summary-item span { overflow-wrap: anywhere; color: var(--color-text-muted); font-size: 12px; }
+.module-summary-item strong { color: var(--color-text-primary); font-size: 17px; }
+
+.module-empty-state {
+  display: flex;
+  flex: 1;
+  min-height: 220px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.module-empty-state i {
+  margin-bottom: 4px;
+  font-size: 38px;
+}
+
+.module-empty-state strong {
+  color: var(--color-text-primary);
+  font-size: 15px;
+}
+
+.module-empty-state span {
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .module-detail-context {
+    padding: 10px 12px;
+  }
+
+  .module-detail-heading,
+  .module-state-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .module-progress {
+    width: 100%;
+  }
+
+  .module-progress-track {
+    flex: 1;
+    width: auto;
+  }
+
+  .module-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .module-retry-btn {
+    justify-content: center;
+    width: 100%;
+  }
 }
 
 .timeline-wrapper {
