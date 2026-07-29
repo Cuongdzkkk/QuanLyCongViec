@@ -1,64 +1,98 @@
 <template>
-  <div class="starred-page">
+  <main class="tool-page">
     <header class="page-header">
+      <span class="eyebrow">{{ labels.eyebrow }}</span>
       <h1>{{ labels.title }}</h1>
+      <p>{{ labels.description }}</p>
     </header>
 
-    <div class="page-content">
+    <section class="page-content" aria-labelledby="starred-results-title">
+      <h2 id="starred-results-title" class="sr-only">{{ labels.results }}</h2>
       <div class="filter-controls">
-        <div class="search-input-wrapper">
-          <i class="fa-solid fa-magnifying-glass search-icon"></i>
-          <input v-model="searchQuery" type="text" :placeholder="labels.search" class="search-input" />
-        </div>
-        <select v-model="typeFilter" class="filter-select">
-          <option value="">{{ labels.allTypes }}</option>
-          <option value="project">{{ labels.project }}</option>
-          <option value="goal">{{ labels.goal }}</option>
-          <option value="team">{{ labels.team }}</option>
-          <option value="user">{{ labels.user }}</option>
-        </select>
+        <label class="search-field">
+          <span class="sr-only">{{ labels.search }}</span>
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input v-model="searchQuery" type="search" :placeholder="labels.search" />
+        </label>
+        <label class="select-field">
+          <span class="sr-only">{{ labels.allTypes }}</span>
+          <select v-model="typeFilter">
+            <option value="">{{ labels.allTypes }}</option>
+            <option value="project">{{ labels.project }}</option>
+            <option value="worktask">{{ labels.task }}</option>
+            <option value="goal">{{ labels.goal }}</option>
+            <option value="team">{{ labels.team }}</option>
+            <option value="user">{{ labels.user }}</option>
+          </select>
+          <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+        </label>
       </div>
 
-      <div v-if="starredStore.loading" class="empty-state">{{ labels.loading }}</div>
-      <div v-else-if="starredStore.error" class="empty-state">
+      <div v-if="starredStore.loading" class="page-state" role="status" aria-live="polite">
+        <span class="state-spinner" aria-hidden="true"></span>
+        <h2>{{ labels.loading }}</h2>
+        <p>{{ labels.loadingDesc }}</p>
+      </div>
+
+      <div v-else-if="starredStore.error" class="page-state state-error" role="alert">
+        <i class="fa-solid fa-triangle-exclamation state-icon" aria-hidden="true"></i>
+        <h2>{{ labels.errorTitle }}</h2>
         <p>{{ starredStore.error }}</p>
-        <button class="retry-btn" type="button" @click="loadPage(currentPage)">{{ labels.retry }}</button>
+        <button class="retry-button" type="button" @click="loadPage(currentPage)">{{ labels.retry }}</button>
       </div>
 
-      <div class="starred-grid" v-else-if="filteredStarredItems.length > 0">
-        <div class="starred-card" v-for="item in filteredStarredItems" :key="`${item.itemType}:${item.itemId}`" @click="openItem(item)">
-          <div class="card-icon" :class="normalizeType(item)">
-            <i class="fa-solid" :class="getIcon(item)"></i>
-          </div>
-          <div class="card-content">
-            <h3>{{ item.itemName || item.name || item.title || labels.untitled }}</h3>
-            <p>{{ typeLabel(item) }}</p>
-          </div>
+      <div v-else-if="filteredStarredItems.length > 0" class="starred-grid">
+        <article
+          v-for="item in filteredStarredItems"
+          :key="`${item.itemType}:${item.itemId}`"
+          class="starred-card"
+          :class="{ clickable: canOpen(item) }"
+        >
           <button
-            class="unstar-btn"
+            class="card-main"
+            type="button"
+            :disabled="!canOpen(item)"
+            @click="openItem(item)"
+          >
+            <span class="card-icon" :class="normalizeType(item)">
+              <i class="fa-solid" :class="getIcon(item)" aria-hidden="true"></i>
+            </span>
+            <span class="card-copy">
+              <strong>{{ item.itemName || item.name || item.title || labels.untitled }}</strong>
+              <small>{{ typeLabel(item) }}</small>
+            </span>
+          </button>
+          <button
+            class="unstar-button"
             type="button"
             :disabled="starredStore.isPending(item.itemType, item.itemId)"
+            :aria-busy="starredStore.isPending(item.itemType, item.itemId)"
             :aria-label="labels.unstar"
-            @click.stop="unstar(item)"
             :title="labels.unstar"
+            @click="unstar(item)"
           >
-            <i class="fa-solid fa-star"></i>
+            <i :class="starredStore.isPending(item.itemType, item.itemId) ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-star'" aria-hidden="true"></i>
           </button>
-        </div>
+        </article>
       </div>
 
-      <div class="empty-state hero-empty" v-else>
-        <div class="empty-illustration"><i class="fa-regular fa-star"></i></div>
-        <h2>{{ labels.emptyTitle }}</h2>
-        <p>{{ labels.emptyDesc }}</p>
+      <div v-else class="page-state">
+        <i class="fa-regular fa-star state-icon" aria-hidden="true"></i>
+        <h2>{{ hasFilters ? labels.noMatches : labels.emptyTitle }}</h2>
+        <p>{{ hasFilters ? labels.noMatchesDesc : labels.emptyDesc }}</p>
       </div>
-      <div v-if="starredStore.starredPagination.totalCount > pageSize" class="pagination">
-        <button type="button" :disabled="currentPage <= 1 || starredStore.loading" @click="loadPage(currentPage - 1)">‹</button>
+
+      <nav v-if="!starredStore.error && starredStore.starredPagination.totalCount > pageSize" class="pagination" :aria-label="labels.pagination">
+        <button type="button" :disabled="currentPage <= 1 || starredStore.loading" :aria-label="labels.previous" @click="loadPage(currentPage - 1)">
+          <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+        </button>
         <span>{{ currentPage }} / {{ totalPages }}</span>
-        <button type="button" :disabled="currentPage >= totalPages || starredStore.loading" @click="loadPage(currentPage + 1)">›</button>
-      </div>
-    </div>
-  </div>
+        <button type="button" :disabled="currentPage >= totalPages || starredStore.loading" :aria-label="labels.next" @click="loadPage(currentPage + 1)">
+          <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+        </button>
+      </nav>
+    </section>
+  </main>
 </template>
 
 <script setup>
@@ -77,63 +111,52 @@ const pageSize = 24
 
 const labels = computed(() => i18nStore.locale === 'vi'
   ? {
-      title: 'Gắn sao',
-      search: 'Tìm kiếm theo tiêu đề',
-      allTypes: 'Tất cả loại',
-      loading: 'Đang tải dữ liệu...',
-      retry: 'Thử lại',
-      project: 'Dự án',
-      goal: 'Mục tiêu',
-      team: 'Nhóm',
-      user: 'Người dùng',
-      item: 'Mục',
-      untitled: 'Chưa có tiêu đề',
-      unstar: 'Bỏ gắn sao',
-      emptyTitle: 'Bạn chưa đánh dấu sao mục nào.',
-      emptyDesc: 'Những mục bạn gắn sao sẽ xuất hiện ở đây để truy cập nhanh.'
+      eyebrow: 'Lối tắt cá nhân', title: 'Đã gắn sao', description: 'Tập hợp dự án, mục tiêu và công việc quan trọng để quay lại nhanh.',
+      results: 'Danh sách đã gắn sao', search: 'Tìm theo tiêu đề', allTypes: 'Tất cả loại', loading: 'Đang tải mục đã gắn sao',
+      loadingDesc: 'Danh sách của bạn sẽ xuất hiện trong giây lát.', retry: 'Thử lại', errorTitle: 'Không thể tải mục đã gắn sao',
+      project: 'Dự án', task: 'Công việc', goal: 'Mục tiêu', team: 'Nhóm', user: 'Người dùng', item: 'Mục',
+      untitled: 'Chưa có tiêu đề', unstar: 'Bỏ gắn sao', emptyTitle: 'Chưa có mục nào được gắn sao',
+      emptyDesc: 'Các mục bạn gắn sao sẽ xuất hiện ở đây để truy cập nhanh.', noMatches: 'Không có kết quả phù hợp',
+      noMatchesDesc: 'Thử thay đổi từ khóa hoặc loại mục.', pagination: 'Phân trang mục đã gắn sao', previous: 'Trang trước', next: 'Trang sau'
     }
   : {
-      title: 'Starred',
-      search: 'Search by title',
-      allTypes: 'All types',
-      loading: 'Loading data...',
-      retry: 'Retry',
-      project: 'Project',
-      goal: 'Goal',
-      team: 'Team',
-      user: 'User',
-      item: 'Item',
-      untitled: 'Untitled',
-      unstar: 'Unstar',
-      emptyTitle: 'No starred items yet',
-      emptyDesc: 'Items you star will appear here for quick access.'
+      eyebrow: 'Personal shortcuts', title: 'Starred', description: 'Keep important projects, goals, and work items close at hand.',
+      results: 'Starred items', search: 'Search by title', allTypes: 'All types', loading: 'Loading starred items',
+      loadingDesc: 'Your shortcuts will be ready in a moment.', retry: 'Try again', errorTitle: 'Starred items are unavailable',
+      project: 'Project', task: 'Work item', goal: 'Goal', team: 'Team', user: 'User', item: 'Item',
+      untitled: 'Untitled', unstar: 'Remove from starred', emptyTitle: 'No starred items yet',
+      emptyDesc: 'Items you star will appear here for quick access.', noMatches: 'No matching items',
+      noMatchesDesc: 'Try changing the search or item type.', pagination: 'Starred pagination', previous: 'Previous page', next: 'Next page'
     })
 
-const loadPage = async (page) => {
-  currentPage.value = page
-  await starredStore.fetchStarredItems({ page, pageSize }).catch(() => {})
-}
-
-onMounted(() => loadPage(1))
-
 const normalizeType = (item) => String(item?.itemType || item?.type || item?.entityType || 'item').toLowerCase()
-
 const getTargetId = (item) => item?.itemId || item?.entityId || item?.targetId || item?.projectId || item?.goalId || item?.teamId || item?.userId
+const hasFilters = computed(() => Boolean(searchQuery.value.trim() || typeFilter.value))
 
 const filteredStarredItems = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
-  return (starredStore.starredItems || []).filter((item) => {
+  const query = searchQuery.value.trim().toLowerCase()
+  return starredStore.starredItems.filter((item) => {
     const type = normalizeType(item)
-    const matchesType = !typeFilter.value || type === typeFilter.value
-    const matchesSearch = !q || `${item.itemName || ''} ${item.name || ''} ${item.title || ''} ${type}`.toLowerCase().includes(q)
-    return matchesType && matchesSearch
+    return (!typeFilter.value || type === typeFilter.value) &&
+      (!query || `${item.itemName || ''} ${item.name || ''} ${item.title || ''} ${type}`.toLowerCase().includes(query))
   })
 })
+
 const totalPages = computed(() => Math.max(1, Math.ceil(starredStore.starredPagination.totalCount / pageSize)))
+const loadPage = async (page) => {
+  try {
+    await starredStore.fetchStarredItems({ page, pageSize })
+    currentPage.value = page
+  } catch {
+    // Keep the current page number and expose the API error state.
+  }
+}
+onMounted(() => loadPage(1))
 
 const getIcon = (item) => {
   const type = normalizeType(item)
   if (type === 'project') return 'fa-rocket'
+  if (type === 'worktask') return 'fa-square-check'
   if (type === 'goal') return 'fa-bullseye'
   if (type === 'team') return 'fa-users'
   if (type === 'user') return 'fa-user'
@@ -143,234 +166,111 @@ const getIcon = (item) => {
 const typeLabel = (item) => {
   const type = normalizeType(item)
   if (type === 'project') return labels.value.project
+  if (type === 'worktask') return labels.value.task
   if (type === 'goal') return labels.value.goal
   if (type === 'team') return labels.value.team
   if (type === 'user') return labels.value.user
   return labels.value.item
 }
 
+const canOpen = (item) => Boolean(item.url || getTargetId(item))
 const openItem = (item) => {
   if (item.url) return router.push(item.url)
   const id = getTargetId(item)
   const type = normalizeType(item)
-  if (type === 'project') return router.push(id ? `/home/projects/${id}` : '/home/projects')
-  if (type === 'goal') return router.push(id ? `/home/goals/${id}` : '/home/goals')
-  if (type === 'team') return router.push(id ? `/home/teams/${id}` : '/home/teams')
-  if (type === 'user') return router.push(id ? `/home/people/${id}` : '/home/teams')
+  if (type === 'project') return router.push(`/home/projects/${id}`)
+  if (type === 'goal') return router.push(`/home/goals/${id}`)
+  if (type === 'team') return router.push(`/home/teams/${id}`)
+  if (type === 'user') return router.push(`/home/people/${id}`)
 }
 
 const unstar = async (item) => {
   const id = getTargetId(item)
   if (!id) return
-  await starredStore.setStarred(item.itemType || item.type || item.entityType || 'Project', id, false)
-  if (filteredStarredItems.value.length === 0 && currentPage.value > 1) {
-    await loadPage(currentPage.value - 1)
+  try {
+    await starredStore.setStarred(item.itemType || item.type || item.entityType, id, false)
+    if (starredStore.starredItems.length === 0 && currentPage.value > 1) await loadPage(currentPage.value - 1)
+  } catch {
+    // The failed item stays visible; the page renders the API error with retry.
   }
 }
 </script>
 
 <style scoped>
-.starred-page {
-  min-height: 100vh;
-  background: var(--home-bg, #ffffff);
-  color: var(--home-text, #172b4d);
-}
+.tool-page { min-height: 100vh; box-sizing: border-box; background: var(--home-bg, #f7f8fa); color: var(--home-text, #172b4d); }
+.page-header { padding: 34px 40px 25px; border-bottom: 1px solid var(--home-border, #dfe1e6); background: linear-gradient(135deg, color-mix(in srgb, var(--home-panel, #fff) 92%, var(--home-accent, #0c66e4) 8%), var(--home-panel, #fff)); }
+.eyebrow { color: var(--home-accent, #0c66e4); font-size: 11px; font-weight: 900; letter-spacing: 0.11em; text-transform: uppercase; }
+.page-header h1 { margin: 6px 0 7px; font-size: clamp(26px, 4vw, 34px); font-weight: 850; letter-spacing: -0.025em; }
+.page-header p { max-width: 620px; margin: 0; color: var(--home-muted, #5e6c84); font-size: 14px; line-height: 1.55; }
+.page-content { max-width: 1120px; padding: 24px 40px 44px; }
 
-.page-header {
-  padding: 32px 40px 0;
-}
+.filter-controls { width: min(100%, 1040px); margin-bottom: 20px; padding: 10px; display: flex; gap: 10px; box-sizing: border-box; border: 1px solid var(--home-border, #dfe1e6); border-radius: 14px; background: var(--home-panel, #fff); box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04); }
+.search-field { position: relative; min-width: 0; flex: 1; }
+.search-field i { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--home-muted, #5e6c84); font-size: 13px; pointer-events: none; }
+.search-field input,
+.select-field select { appearance: none; -webkit-appearance: none; width: 100%; height: 40px; box-sizing: border-box; border: 1px solid var(--home-border, #dfe1e6); border-radius: 9px; outline: 0; background: var(--home-panel-strong, #fff); color: var(--home-text, #172b4d); font: inherit; font-size: 14px; }
+.search-field input { padding: 9px 12px 9px 38px; }
+.select-field { position: relative; width: 180px; flex: 0 0 auto; }
+.select-field select { padding: 0 36px 0 12px; cursor: pointer; }
+.select-field i { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); color: var(--home-muted, #5e6c84); font-size: 11px; pointer-events: none; }
+.search-field input:focus-visible,
+.select-field select:focus-visible { border-color: var(--home-accent, #0c66e4); box-shadow: 0 0 0 3px color-mix(in srgb, var(--home-accent, #0c66e4) 18%, transparent); }
 
-.page-header h1 {
-  margin: 0 0 24px;
-  color: var(--home-text, #172b4d);
-  font-size: 28px;
-  font-weight: 800;
-}
+.starred-grid { width: min(100%, 1040px); display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 14px; }
+.starred-card { min-width: 0; min-height: 76px; padding: 7px; display: flex; align-items: center; box-sizing: border-box; border: 1px solid var(--home-border, #dfe1e6); border-radius: 14px; background: var(--home-panel, #fff); transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease; }
+.starred-card:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--home-accent, #0c66e4) 45%, var(--home-border, #dfe1e6)); box-shadow: 0 14px 30px rgba(15, 23, 42, 0.09); }
 
-.page-content {
-  padding: 20px 40px 40px;
-  border-top: 1px solid var(--home-border, #dfe1e6);
-}
-
-.filter-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  width: min(100%, 1040px);
-  margin-bottom: 18px;
-  padding: 12px;
-  border: 1px solid var(--home-border, #dfe1e6);
-  border-radius: 12px;
-  background: var(--home-panel, #ffffff);
-}
-
-.search-input-wrapper {
-  position: relative;
-  width: min(100%, 300px);
-}
-
-.search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--home-muted, #5e6c84);
-  font-size: 14px;
-}
-
-.search-input,
-.filter-select {
-  height: 38px;
-  border: 1px solid var(--home-border, #dfe1e6);
-  border-radius: 8px;
-  background: var(--home-panel-strong, #ffffff);
-  color: var(--home-text, #091e42);
-  font-size: 14px;
-  outline: none;
-}
-
-.search-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 12px 8px 38px;
-}
-
-.filter-select {
-  padding: 0 12px;
-}
-
-.search-input:focus,
-.filter-select:focus {
-  border-color: var(--home-accent, #4c9aff);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.14);
-}
-
-.starred-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
-  width: min(100%, 1040px);
-}
-
-.starred-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px;
-  border: 1px solid var(--home-border, #dfe1e6);
-  border-radius: 12px;
-  background: var(--home-panel, #ffffff);
-  cursor: pointer;
-  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
-}
-
-.starred-card:hover {
-  transform: translateY(-1px);
-  border-color: rgba(56, 189, 248, 0.55);
-  box-shadow: 0 16px 38px rgba(2, 6, 23, 0.12);
-}
-
-.card-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  flex: 0 0 auto;
-}
-
+.card-main,
+.unstar-button,
+.retry-button,
+.pagination button { appearance: none; -webkit-appearance: none; border: 0; background: transparent; color: inherit; font: inherit; padding: 0; cursor: pointer; touch-action: manipulation; }
+.card-main { min-width: 0; min-height: 58px; flex: 1; display: flex; align-items: center; gap: 12px; border-radius: 10px; text-align: left; }
+.card-main:disabled { cursor: default; }
+.card-icon { width: 42px; height: 42px; margin-left: 4px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 11px; color: #fff; }
 .card-icon.project { background: linear-gradient(135deg, #0ea5e9, #2563eb); }
+.card-icon.worktask { background: linear-gradient(135deg, #2563eb, #4f46e5); }
 .card-icon.goal { background: linear-gradient(135deg, #10b981, #0f766e); }
 .card-icon.team { background: linear-gradient(135deg, #8b5cf6, #4f46e5); }
 .card-icon.user { background: linear-gradient(135deg, #06b6d4, #0284c7); }
-.card-icon.item { background: linear-gradient(135deg, #f59e0b, #ef4444); }
+.card-icon.item { background: linear-gradient(135deg, #f59e0b, #e34935); }
+.card-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.card-copy strong,
+.card-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-copy strong { font-size: 14px; font-weight: 850; }
+.card-copy small { margin-top: 3px; color: var(--home-muted, #5e6c84); font-size: 12px; }
+.unstar-button { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 10px; color: #e3a008; font-size: 15px; }
+.unstar-button:hover { background: color-mix(in srgb, #e3a008 14%, transparent); }
+.unstar-button:disabled { cursor: wait; }
+.unstar-button i { width: 1em; line-height: 1; text-align: center; }
 
-.card-content {
-  flex: 1;
-  min-width: 0;
-}
+.page-state { width: min(100%, 1040px); min-height: 300px; padding: 42px 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; border: 1px dashed var(--home-border, #dfe1e6); border-radius: 16px; background: var(--home-panel, #fff); text-align: center; }
+.page-state h2 { margin: 0 0 7px; font-size: 17px; font-weight: 850; }
+.page-state p { max-width: 460px; margin: 0; color: var(--home-muted, #5e6c84); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.state-icon { width: 54px; height: 54px; margin-bottom: 17px; display: grid; place-items: center; border-radius: 15px; background: color-mix(in srgb, var(--home-accent, #0c66e4) 10%, transparent); color: var(--home-accent, #0c66e4); font-size: 26px; }
+.state-error .state-icon { background: color-mix(in srgb, #e34935 10%, transparent); color: #e34935; }
+.state-spinner { width: 30px; height: 30px; margin-bottom: 20px; border: 3px solid color-mix(in srgb, var(--home-accent, #0c66e4) 18%, transparent); border-top-color: var(--home-accent, #0c66e4); border-radius: 50%; animation: page-spin 0.8s linear infinite; }
+@keyframes page-spin { to { transform: rotate(360deg); } }
+.retry-button { margin-top: 18px; padding: 9px 14px; border: 1px solid var(--home-border, #dfe1e6); border-radius: 9px; background: var(--home-panel-strong, #fff); font-size: 13px; font-weight: 800; }
+.retry-button:hover { background: var(--home-panel-hover, #f4f5f7); }
 
-.card-content h3 {
-  margin: 0 0 4px;
-  overflow: hidden;
-  color: var(--home-text, #172b4d);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-  font-weight: 800;
-}
+.pagination { width: min(100%, 1040px); margin-top: 20px; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--home-muted, #5e6c84); font-size: 13px; font-weight: 800; }
+.pagination button { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--home-border, #dfe1e6); border-radius: 10px; background: var(--home-panel, #fff); }
+.pagination button:hover:not(:disabled) { background: var(--home-panel-hover, #f4f5f7); color: var(--home-accent, #0c66e4); }
+.pagination button:disabled { cursor: not-allowed; opacity: 0.48; }
 
-.card-content p {
-  margin: 0;
-  color: var(--home-muted, #5e6c84);
-  font-size: 12px;
-}
+.card-main:focus-visible,
+.unstar-button:focus-visible,
+.retry-button:focus-visible,
+.pagination button:focus-visible { outline: 3px solid color-mix(in srgb, var(--home-accent, #0c66e4) 42%, transparent); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-.unstar-btn {
-  border: 0;
-  border-radius: 9px;
-  background: rgba(245, 158, 11, 0.14);
-  color: #fbbf24;
-  cursor: pointer;
-  padding: 9px;
-  font-size: 16px;
+@media (max-width: 640px) {
+  .page-header { padding: 26px 18px 21px; }
+  .page-content { padding: 18px 14px 34px; }
+  .filter-controls { flex-direction: column; }
+  .select-field { width: 100%; }
+  .starred-grid { grid-template-columns: minmax(0, 1fr); }
 }
-
-.unstar-btn:disabled {
-  cursor: wait;
-  opacity: 0.55;
-}
-
-.retry-btn,
-.pagination button {
-  border: 1px solid var(--home-border, #dfe1e6);
-  background: var(--home-panel, #ffffff);
-  color: var(--home-text, #172b4d);
-  cursor: pointer;
-  padding: 8px 12px;
-}
-
-.pagination {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: min(100%, 1040px);
-  margin-top: 20px;
-}
-
-.pagination button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.empty-state {
-  width: min(100%, 1040px);
-  padding: 48px 20px;
-  border: 1px dashed var(--home-border, #dfe1e6);
-  border-radius: 16px;
-  color: var(--home-muted, #5e6c84);
-  text-align: center;
-}
-
-.hero-empty {
-  margin-top: 8px;
-}
-
-.empty-illustration {
-  margin-bottom: 16px;
-  color: #fbbf24;
-  font-size: 52px;
-}
-
-.empty-state h2 {
-  margin: 0 0 8px;
-  color: var(--home-text, #172b4d);
-  font-size: 20px;
-}
-
-.empty-state p {
-  margin: 0;
-}
+@media (hover: none) { .starred-card:hover { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .starred-card { transition: none; } }
 </style>

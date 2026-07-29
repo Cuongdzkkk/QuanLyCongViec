@@ -63,6 +63,8 @@
               class="favorite-btn"
               type="button"
               :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, project.id)"
+              :aria-pressed="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id)"
+              :aria-label="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id) ? 'Remove project from starred' : 'Add project to starred'"
               @click="toggleFavorite(project)"
             >
               <i :class="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
@@ -100,8 +102,15 @@
 
         <div class="project-grid">
           <article v-for="project in favoriteProjects" :key="`favorite-${project.id}`" class="project-card">
-            <button class="favorite-btn" type="button" @click="toggleFavorite(project)">
-              <i :class="project.isFavorite ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+            <button
+              class="favorite-btn"
+              type="button"
+              :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, project.id)"
+              :aria-pressed="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id)"
+              :aria-label="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id) ? 'Remove project from starred' : 'Add project to starred'"
+              @click="toggleFavorite(project)"
+            >
+              <i :class="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
             </button>
 
             <div class="project-cover" :style="projectCoverStyle(project)" :aria-label="project.coverAltText || project.name">
@@ -469,18 +478,31 @@ watch(language, updateTime)
 }
 
 .favorite-btn {
+  appearance: none;
+  -webkit-appearance: none;
   position: absolute;
   top: 12px;
   right: 12px;
   z-index: 1;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 2px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
   background: rgba(0, 0, 0, 0.45);
   color: #facc15;
+  font: inherit;
   cursor: pointer;
+  touch-action: manipulation;
+  display: grid;
+  place-items: center;
 }
+.favorite-btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 52%, #fff);
+  outline-offset: 2px;
+}
+.favorite-btn:disabled { cursor: wait; }
+.favorite-btn i { width: 1em; line-height: 1; text-align: center; }
 
 .project-cover {
   height: 110px;
@@ -690,4 +712,3 @@ watch(language, updateTime)
   }
 }
 </style>
-

@@ -208,6 +208,7 @@ export const useGoalStore = defineStore('goal', {
         if (target) target.isStarred = this.currentGoal.isStarred
       } catch (err) {
         console.error('Failed to toggle star', err)
+        throw err
       }
     }
   }

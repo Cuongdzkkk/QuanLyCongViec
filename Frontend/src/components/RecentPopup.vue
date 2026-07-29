@@ -1,80 +1,85 @@
 <template>
   <transition name="slide-right">
     <div v-if="isVisible" class="recent-popup-overlay" @click.self="closePopup">
-      <div class="recent-sheet">
-        <div class="sheet-header">
-          <h3><i class="fa-solid fa-clock-rotate-left"></i> Recent Activity</h3>
-          <button class="close-btn" @click="closePopup">
-            <i class="fa-solid fa-xmark"></i>
+      <aside class="recent-sheet" aria-labelledby="recent-sheet-title">
+        <header class="sheet-header">
+          <h3 id="recent-sheet-title"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Recent activity</h3>
+          <button class="icon-button" type="button" aria-label="Close recent activity" @click="closePopup">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
           </button>
-        </div>
+        </header>
 
-        <div class="sheet-search">
-          <i class="fa-solid fa-magnifying-glass search-icon"></i>
-          <input type="text" v-model="searchQuery" placeholder="Search recent work items..." />
-        </div>
+        <label class="sheet-search">
+          <span class="sr-only">Search recent work items</span>
+          <i class="fa-solid fa-magnifying-glass search-icon" aria-hidden="true"></i>
+          <input v-model="searchQuery" type="search" placeholder="Search recent work items" />
+        </label>
 
         <div class="sheet-body">
-          <div v-if="filteredRecentTasks.length === 0" class="empty-recent">
-            <i class="fa-solid fa-folder-open empty-icon"></i>
-            <p v-if="searchQuery">No recent items match your search.</p>
-            <p v-else>No recent activity. View a work item to see it here.</p>
+          <div v-if="starredStore.recentLoading" class="sheet-state" role="status" aria-live="polite">
+            <span class="state-spinner" aria-hidden="true"></span>
+            <h4>Loading recent activity</h4>
+            <p>Finding the items you viewed most recently.</p>
           </div>
-          
+
+          <div v-else-if="starredStore.recentError" class="sheet-state state-error" role="alert">
+            <i class="fa-solid fa-triangle-exclamation state-icon" aria-hidden="true"></i>
+            <h4>Recent activity is unavailable</h4>
+            <p>{{ starredStore.recentError }}</p>
+            <button class="retry-button" type="button" @click="loadRecentTasks">Try again</button>
+          </div>
+
+          <div v-else-if="filteredRecentTasks.length === 0" class="sheet-state">
+            <i class="fa-regular fa-clock state-icon" aria-hidden="true"></i>
+            <h4>{{ searchQuery ? 'No matching items' : 'No recent activity yet' }}</h4>
+            <p>{{ searchQuery ? 'Try a different title, key, or project.' : 'View a work item to see it here.' }}</p>
+          </div>
+
           <ul v-else class="recent-list">
-            <li 
-              v-for="task in filteredRecentTasks" 
-              :key="task.id" 
-              class="recent-item"
-              @click="goToTask(task)"
-            >
-              <div class="ri-left">
-                <i :class="getStatusIcon(task.statusName)" class="status-icon"></i>
-              </div>
-              <div class="ri-center">
-                <div class="ri-title">{{ task.title }}</div>
-                <div class="ri-meta">
-                  <span class="ri-key font-mono">{{ task.sequenceId || task.id.substring(0, 8).toUpperCase() }}</span>
-                  <span class="ri-project">
-                    <i class="fa-solid fa-briefcase"></i> {{ task.projectName }}
+            <li v-for="task in filteredRecentTasks" :key="`${task.entityType}:${task.id}`">
+              <button
+                class="recent-item"
+                type="button"
+                :disabled="!task.url"
+                @click="goToTask(task)"
+              >
+                <span class="status-box"><i :class="getStatusIcon(task.statusName)" aria-hidden="true"></i></span>
+                <span class="item-center">
+                  <strong>{{ task.title || 'Untitled work item' }}</strong>
+                  <span class="item-meta">
+                    <span class="item-key">{{ task.sequenceId || shortId(task.id) }}</span>
+                    <span class="item-project"><i class="fa-solid fa-briefcase" aria-hidden="true"></i> {{ task.projectName || 'Project' }}</span>
                   </span>
-                </div>
-              </div>
-              <div class="ri-right">
+                </span>
                 <span class="time-ago">{{ timeAgo(task.updatedAt) }}</span>
-              </div>
+              </button>
             </li>
           </ul>
         </div>
-        
-        <div class="sheet-footer">
-          <router-link :to="viewAllLink" class="view-all-link" @click="closePopup">
-            Xem tất cả hoạt động gần đây <i class="fa-solid fa-arrow-right"></i>
+
+        <footer class="sheet-footer">
+          <router-link to="/home/recent" class="view-all-link" @click="closePopup">
+            View all recent activity <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
           </router-link>
-        </div>
-      </div>
+        </footer>
+      </aside>
     </div>
   </transition>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { computed, onUnmounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useStarredStore } from '@/store/useStarredStore'
 
 const props = defineProps({
-  isVisible: {
-    type: Boolean,
-    default: false
-  }
+  isVisible: { type: Boolean, default: false }
 })
-
 const emit = defineEmits(['close'])
-
 const router = useRouter()
-const route = useRoute()
 const starredStore = useStarredStore()
 const searchQuery = ref('')
+
 const recentTasks = computed(() => starredStore.recentItems.map(item => ({
   ...item,
   id: item.entityId,
@@ -82,12 +87,10 @@ const recentTasks = computed(() => starredStore.recentItems.map(item => ({
   updatedAt: item.viewedAt
 })))
 
-const loadRecentTasks = () => {
-  starredStore.fetchRecentItems({ page: 1, pageSize: 20 }).catch(() => {})
-}
+const loadRecentTasks = () => starredStore.fetchRecentItems({ page: 1, pageSize: 20 }).catch(() => null)
 
-watch(() => props.isVisible, (newVal) => {
-  if (newVal) {
+watch(() => props.isVisible, (visible) => {
+  if (visible) {
     searchQuery.value = ''
     loadRecentTasks()
     document.body.style.overflow = 'hidden'
@@ -95,282 +98,164 @@ watch(() => props.isVisible, (newVal) => {
     document.body.style.overflow = ''
   }
 })
-
-onUnmounted(() => {
-  document.body.style.overflow = ''
-})
+onUnmounted(() => { document.body.style.overflow = '' })
 
 const filteredRecentTasks = computed(() => {
-  if (!searchQuery.value.trim()) return recentTasks.value
-  const q = searchQuery.value.toLowerCase().trim()
-  return recentTasks.value.filter(t => 
-    t.title?.toLowerCase().includes(q) || 
-    t.sequenceId?.toLowerCase().includes(q) ||
-    t.projectName?.toLowerCase().includes(q)
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query) return recentTasks.value
+  return recentTasks.value.filter(task =>
+    `${task.title || ''} ${task.sequenceId || ''} ${task.projectName || ''}`.toLowerCase().includes(query)
   )
 })
 
-const currentProjectId = computed(() => route.params.id || 'default')
-
-const viewAllLink = computed(() => {
-  // Go to For You page with tab=viewed
-  return `/space/${currentProjectId.value}?tab=viewed`
-})
-
-const closePopup = () => {
-  emit('close')
-}
-
+const closePopup = () => emit('close')
 const goToTask = (task) => {
-  // We navigate to the project's work-items page
-  // Since we don't have a direct route to open a task by ID in the URL for now,
-  // we just take the user to the project's board where they can see it.
+  if (!task.url) return
   closePopup()
-  if (task.url) router.push(task.url)
+  router.push(task.url)
 }
+const shortId = (id) => id ? String(id).substring(0, 8).toUpperCase() : '—'
 
 const getStatusIcon = (statusName) => {
-  const s = `${statusName || 'BACKLOG'}`.toUpperCase().trim()
-  if (s === 'DONE') return 'fa-solid fa-circle-check text-green-500'
-  if (s === 'IN PROGRESS') return 'fa-solid fa-circle-half-stroke text-blue-500'
-  if (s === 'IN REVIEW') return 'fa-solid fa-eye text-orange-500'
-  if (s === 'TO DO' || s === 'TODO') return 'fa-regular fa-circle text-gray-400'
-  return 'fa-regular fa-circle-dashed text-gray-400'
+  const status = `${statusName || 'BACKLOG'}`.toUpperCase().trim()
+  if (status === 'DONE') return 'fa-solid fa-circle-check status-done'
+  if (status === 'IN PROGRESS') return 'fa-solid fa-circle-half-stroke status-progress'
+  if (status === 'IN REVIEW') return 'fa-solid fa-eye status-review'
+  return 'fa-regular fa-circle status-default'
 }
 
-const timeAgo = (dateStr) => {
-  if (!dateStr || dateStr.startsWith('0001-01-01')) return 'Vừa xong'
-  const date = new Date(dateStr)
-  if (isNaN(date.getTime()) || date.getFullYear() <= 1970) return 'Vừa xong'
-  const seconds = Math.floor((new Date() - date) / 1000)
-  if (seconds < 0) return 'Vừa xong'
-  
-  let interval = seconds / 31536000
-  if (interval >= 1) return Math.floor(interval) + ' năm trước'
-  interval = seconds / 2592000
-  if (interval >= 1) return Math.floor(interval) + ' tháng trước'
-  interval = seconds / 86400
-  if (interval >= 1) return Math.floor(interval) + ' ngày trước'
-  interval = seconds / 3600
-  if (interval >= 1) return Math.floor(interval) + ' giờ trước'
-  interval = seconds / 60
-  if (interval >= 1) return Math.floor(interval) + ' phút trước'
-  return 'Vừa xong'
+const timeAgo = (value) => {
+  const date = new Date(value)
+  if (!value || Number.isNaN(date.getTime()) || date.getFullYear() <= 1970) return 'Just now'
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
+  if (seconds < 60) return 'Just now'
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+  if (seconds < 2592000) return `${Math.floor(seconds / 86400)}d ago`
+  return `${Math.floor(seconds / 2592000)}mo ago`
 }
 </script>
 
 <style scoped>
 .recent-popup-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(2px);
+  inset: 0;
   z-index: 9999;
   display: flex;
   justify-content: flex-end;
+  background: rgba(5, 12, 24, 0.46);
+  backdrop-filter: blur(3px);
 }
-
 .recent-sheet {
-  width: 400px;
-  max-width: 100%;
+  width: min(400px, 100vw);
   height: 100vh;
-  background: var(--color-bg);
-  border-left: 1px solid var(--color-border);
-  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
-  display: flex;
-  flex-direction: column;
-}
-
-.sheet-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--color-border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.sheet-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--color-text-primary);
-}
-
-.close-btn {
-  background: transparent;
-  border: none;
-  color: var(--color-text-muted);
-  font-size: 16px;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  transition: all 0.2s;
-}
-
-.close-btn:hover {
-  background: var(--color-border);
-  color: var(--color-text-primary);
-}
-
-.sheet-search {
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--color-border);
-  position: relative;
-}
-
-.search-icon {
-  position: absolute;
-  left: 36px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--color-text-muted);
-  font-size: 14px;
-}
-
-.sheet-search input {
-  width: 100%;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-primary);
-  border-radius: 6px;
-  padding: 10px 12px 10px 36px;
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.sheet-search input:focus {
-  border-color: var(--color-accent);
-}
-
-.sheet-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0;
-}
-
-.empty-recent {
-  padding: 60px 24px;
-  text-align: center;
-  color: var(--color-text-muted);
-}
-
-.empty-icon {
-  font-size: 32px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.recent-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.recent-item {
-  display: flex;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--color-border);
-  cursor: pointer;
-  transition: background 0.2s;
-  gap: 12px;
-}
-
-.recent-item:hover {
-  background: var(--color-surface-hover);
-}
-
-.ri-left {
-  padding-top: 2px;
-}
-
-.ri-center {
-  flex: 1;
-  min-width: 0; /* for truncation */
-}
-
-.ri-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-  margin-bottom: 4px;
-  white-space: nowrap;
+  height: 100dvh;
+  min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ri-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.ri-project {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.ri-right {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  justify-content: flex-start;
+  box-sizing: border-box;
+  border-left: 1px solid var(--color-border, #dfe1e6);
+  background: var(--color-bg, #f7f8fa);
+  color: var(--color-text-primary, #172b4d);
+  box-shadow: -12px 0 42px rgba(2, 6, 23, 0.2);
 }
+.sheet-header { min-height: 68px; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; border-bottom: 1px solid var(--color-border, #dfe1e6); }
+.sheet-header h3 { min-width: 0; margin: 0; display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 800; }
 
-.time-ago {
-  font-size: 11px;
-  color: var(--color-text-muted);
+.icon-button,
+.retry-button,
+.recent-item {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
 }
+.icon-button { width: 40px; height: 40px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 10px; color: var(--color-text-muted, #6b778c); }
+.icon-button:hover { background: var(--color-surface-hover, #eef1f5); color: var(--color-text-primary, #172b4d); }
 
-.sheet-footer {
-  padding: 16px 24px;
-  border-top: 1px solid var(--color-border);
-  text-align: center;
+.sheet-search { position: relative; padding: 14px 20px; display: block; box-sizing: border-box; border-bottom: 1px solid var(--color-border, #dfe1e6); }
+.search-icon { position: absolute; left: 33px; top: 50%; transform: translateY(-50%); color: var(--color-text-muted, #6b778c); font-size: 13px; pointer-events: none; }
+.sheet-search input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 9px 12px 9px 36px;
+  border: 1px solid var(--color-border, #dfe1e6);
+  border-radius: 10px;
+  outline: 0;
+  background: var(--color-surface, #fff);
+  color: var(--color-text-primary, #172b4d);
+  font: inherit;
+  font-size: 14px;
 }
+.sheet-search input:focus-visible { border-color: var(--color-accent, #0c66e4); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, #0c66e4) 18%, transparent); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-.view-all-link {
-  color: var(--color-accent);
-  font-size: 13px;
-  font-weight: 500;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: opacity 0.2s;
-}
+.sheet-body { min-height: 0; flex: 1; overflow-y: auto; }
+.sheet-state { min-height: 280px; height: 100%; padding: 40px 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; text-align: center; }
+.sheet-state h4 { margin: 0 0 7px; font-size: 15px; font-weight: 800; }
+.sheet-state p { max-width: 290px; margin: 0; color: var(--color-text-muted, #6b778c); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.state-icon { width: 44px; height: 44px; margin-bottom: 16px; display: grid; place-items: center; color: var(--color-text-muted, #6b778c); font-size: 28px; }
+.state-error .state-icon { color: #e34935; }
+.state-spinner { width: 28px; height: 28px; margin-bottom: 18px; border: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 18%, transparent); border-top-color: var(--color-accent, #0c66e4); border-radius: 50%; animation: popup-spin 0.8s linear infinite; }
+@keyframes popup-spin { to { transform: rotate(360deg); } }
+.retry-button { margin-top: 16px; padding: 9px 13px; border: 1px solid var(--color-border, #dfe1e6); border-radius: 9px; background: var(--color-surface, #fff); font-size: 13px; font-weight: 800; }
+.retry-button:hover { background: var(--color-surface-hover, #eef1f5); }
 
-.view-all-link:hover {
-  opacity: 0.8;
-  text-decoration: underline;
-}
+.recent-list { margin: 0; padding: 8px; list-style: none; }
+.recent-list li { margin: 0; padding: 0; }
+.recent-item { width: 100%; min-height: 70px; padding: 11px 10px; display: flex; align-items: center; gap: 11px; box-sizing: border-box; border-radius: 11px; text-align: left; }
+.recent-item:hover { background: var(--color-surface-hover, #eef1f5); }
+.recent-item:disabled { cursor: default; }
+.status-box { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 9px; background: var(--color-surface, #fff); }
+.status-done { color: #0f9d72; }
+.status-progress { color: #0c66e4; }
+.status-review { color: #d97706; }
+.status-default { color: var(--color-text-muted, #6b778c); }
+.item-center { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.item-center strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 800; }
+.item-meta { min-width: 0; margin-top: 4px; display: flex; align-items: center; gap: 9px; color: var(--color-text-muted, #6b778c); font-size: 11px; }
+.item-key { flex: 0 0 auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.item-project { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.time-ago { flex: 0 0 auto; color: var(--color-text-muted, #6b778c); font-size: 11px; white-space: nowrap; }
 
-/* Transitions */
+.sheet-footer { padding: 13px 20px; border-top: 1px solid var(--color-border, #dfe1e6); text-align: center; }
+.view-all-link { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; color: var(--color-accent, #0c66e4); font-size: 13px; font-weight: 800; text-decoration: none; }
+.view-all-link:hover { text-decoration: underline; }
+.icon-button:focus-visible,
+.retry-button:focus-visible,
+.recent-item:focus-visible,
+.view-all-link:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 42%, transparent); outline-offset: 2px; }
+
 .slide-right-enter-active,
-.slide-right-leave-active {
-  transition: opacity 0.3s ease;
-}
-
+.slide-right-leave-active { transition: opacity 0.24s ease; }
 .slide-right-enter-active .recent-sheet,
-.slide-right-leave-active .recent-sheet {
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
+.slide-right-leave-active .recent-sheet { transition: transform 0.24s cubic-bezier(0.2, 0.7, 0.2, 1); }
 .slide-right-enter-from,
-.slide-right-leave-to {
-  opacity: 0;
-}
-
+.slide-right-leave-to { opacity: 0; }
 .slide-right-enter-from .recent-sheet,
-.slide-right-leave-to .recent-sheet {
-  transform: translateX(100%);
+.slide-right-leave-to .recent-sheet { transform: translateX(100%); }
+
+@media (max-width: 390px) {
+  .sheet-header,
+  .sheet-search,
+  .sheet-footer { padding-left: 14px; padding-right: 14px; }
+  .search-icon { left: 27px; }
+  .item-meta { gap: 6px; }
+  .time-ago { max-width: 58px; overflow: hidden; text-overflow: ellipsis; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .slide-right-enter-active,
+  .slide-right-leave-active,
+  .slide-right-enter-active .recent-sheet,
+  .slide-right-leave-active .recent-sheet { transition: none; }
 }
 </style>

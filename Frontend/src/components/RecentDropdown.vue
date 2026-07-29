@@ -1,56 +1,65 @@
 <template>
-  <div class="jd-content">
-    <div class="jd-header">
-      <h3>Recent work</h3>
-    </div>
+  <div class="quick-panel">
+    <header class="panel-header"><h3>Recent work</h3></header>
 
-    <div class="jd-search">
-      <i class="fa-solid fa-magnifying-glass"></i>
-      <input type="text" v-model="searchQuery" placeholder="Search recent items" />
-    </div>
+    <label class="panel-search">
+      <span class="sr-only">Search recent items</span>
+      <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+      <input v-model="searchQuery" type="search" placeholder="Search recent items" />
+    </label>
 
-    <div class="jd-body">
-      <div v-if="starredStore.recentLoading" class="jd-empty">Loading recent work...</div>
-      <div v-else-if="starredStore.recentError" class="jd-empty">
+    <div class="panel-body">
+      <div v-if="starredStore.recentLoading" class="panel-state" role="status" aria-live="polite">
+        <span class="state-spinner" aria-hidden="true"></span>
+        <h4>Loading recent work</h4>
+        <p>Finding the items you viewed most recently.</p>
+      </div>
+
+      <div v-else-if="starredStore.recentError" class="panel-state state-error" role="alert">
+        <i class="fa-solid fa-triangle-exclamation state-icon" aria-hidden="true"></i>
+        <h4>Recent work is unavailable</h4>
         <p>{{ starredStore.recentError }}</p>
-        <button type="button" @click="loadRecentItems">Retry</button>
-      </div>
-      <div v-else-if="filteredGroups.length === 0" class="jd-empty">
-        <i class="fa-solid fa-box-open" style="font-size: 48px; color: var(--color-text-muted); margin-bottom: 16px;"></i>
-        <p v-if="searchQuery">No matching items found</p>
-        <p v-else>You haven't viewed any items recently</p>
+        <button class="retry-button" type="button" @click="loadRecentItems">Try again</button>
       </div>
 
-      <div v-else class="jd-groups">
-        <div v-for="group in filteredGroups" :key="group.label" class="jd-group mb-4">
-          <div class="jd-group-label">{{ group.label }}</div>
-          
-          <div 
-            v-for="item in group.items" 
-            :key="item.id" 
-            class="jd-item"
+      <div v-else-if="filteredGroups.length === 0" class="panel-state">
+        <i class="fa-regular fa-clock state-icon" aria-hidden="true"></i>
+        <h4>{{ searchQuery ? 'No matching items' : 'No recent work yet' }}</h4>
+        <p>{{ searchQuery ? 'Try a different title or project name.' : 'Items you open will appear here.' }}</p>
+      </div>
+
+      <div v-else class="panel-groups">
+        <section v-for="group in filteredGroups" :key="group.label">
+          <h4 class="group-label">{{ group.label }}</h4>
+          <div
+            v-for="item in group.items"
+            :key="`${item.entityType}:${item.entityId}`"
+            class="panel-item"
+            :class="{ disabled: !item.url }"
+            :role="item.url ? 'link' : undefined"
+            :tabindex="item.url ? 0 : -1"
             @click="goToItem(item)"
+            @keydown.enter.prevent="goToItem(item)"
+            @keydown.space.prevent="goToItem(item)"
           >
-            <div class="jd-item-icon">
-              <i :class="item.icon || 'fa-regular fa-eye'"></i>
-            </div>
-            <div class="jd-item-content">
-              <div class="jd-item-title">{{ item.title }}</div>
-              <div class="jd-item-subtitle">{{ item.subtitle || item.entityType }} • {{ timeAgo(item.viewedAt) }}</div>
-            </div>
+            <span class="item-icon"><i :class="item.icon || 'fa-regular fa-eye'" aria-hidden="true"></i></span>
+            <span class="item-copy">
+              <strong>{{ item.title || 'Untitled item' }}</strong>
+              <small>{{ item.subtitle || item.entityType }} · {{ timeAgo(item.viewedAt) }}</small>
+            </span>
           </div>
-        </div>
+        </section>
       </div>
     </div>
 
-    <div class="jd-footer">
-      <button @click="viewAllRecent">Xem tất cả hoạt động gần đây</button>
-    </div>
+    <footer class="panel-footer">
+      <button type="button" @click="viewAllRecent">View all recent activity</button>
+    </footer>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStarredStore } from '@/store/useStarredStore'
 
@@ -59,55 +68,46 @@ const router = useRouter()
 const starredStore = useStarredStore()
 const searchQuery = ref('')
 
-const recentItems = computed(() => starredStore.recentItems)
-const loadRecentItems = () => starredStore.fetchRecentItems({ page: 1, pageSize: 20 }).catch(() => {})
+const loadRecentItems = () => starredStore.fetchRecentItems({ page: 1, pageSize: 20 }).catch(() => null)
 defineExpose({ loadRecentItems })
 
 const filteredGroups = computed(() => {
-  let list = recentItems.value
-
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.toLowerCase()
-    list = list.filter(t => t.title?.toLowerCase().includes(q) || t.projectName?.toLowerCase().includes(q))
-  }
-
-  const groups = {
-    'Today': [],
-    'Yesterday': [],
-    'Older': []
-  }
-
+  const query = searchQuery.value.trim().toLowerCase()
+  const items = query
+    ? starredStore.recentItems.filter(item => `${item.title || ''} ${item.subtitle || ''}`.toLowerCase().includes(query))
+    : starredStore.recentItems
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
+  const groups = { Today: [], Yesterday: [], Older: [] }
 
-  list.forEach(item => {
-    const d = new Date(item.viewedAt || Date.now())
-    if (d >= today) groups['Today'].push(item)
-    else if (d >= yesterday) groups['Yesterday'].push(item)
-    else groups['Older'].push(item)
+  items.forEach((item) => {
+    const viewedAt = new Date(item.viewedAt)
+    if (!Number.isNaN(viewedAt.getTime()) && viewedAt >= today) groups.Today.push(item)
+    else if (!Number.isNaN(viewedAt.getTime()) && viewedAt >= yesterday) groups.Yesterday.push(item)
+    else groups.Older.push(item)
   })
 
-  return Object.entries(groups).filter(([_, items]) => items.length > 0).map(([label, items]) => ({ label, items }))
+  return Object.entries(groups)
+    .filter(([, groupItems]) => groupItems.length > 0)
+    .map(([label, groupItems]) => ({ label, items: groupItems }))
 })
 
-const timeAgo = (dateStr) => {
-  if (!dateStr || dateStr.startsWith('0001-01-01')) return 'Vừa xong'
-  const date = new Date(dateStr)
-  if (isNaN(date.getTime()) || date.getFullYear() <= 1970) return 'Vừa xong'
-  const seconds = Math.floor((new Date() - date) / 1000)
-  if (seconds < 0) return 'Vừa xong'
-  let interval = seconds / 3600
-  if (interval >= 1) return Math.floor(interval) + ' giờ trước'
-  interval = seconds / 60
-  if (interval >= 1) return Math.floor(interval) + ' phút trước'
-  return 'Vừa xong'
+const timeAgo = (value) => {
+  const date = new Date(value)
+  if (!value || Number.isNaN(date.getTime()) || date.getFullYear() <= 1970) return 'Just now'
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
+  if (seconds < 60) return 'Just now'
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+  return `${Math.floor(seconds / 86400)}d ago`
 }
 
 const goToItem = (item) => {
+  if (!item.url) return
   emit('close')
-  if (item.url) router.push(item.url)
+  router.push(item.url)
 }
 
 const viewAllRecent = () => {
@@ -117,160 +117,85 @@ const viewAllRecent = () => {
 </script>
 
 <style scoped>
-.jd-content {
+.quick-panel {
+  width: min(340px, calc(100vw - 24px));
+  min-width: 0;
+  min-height: 344px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 96%, var(--color-accent) 4%), var(--color-surface));
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface, #fff) 96%, var(--color-accent, #0c66e4) 4%), var(--color-surface, #fff));
   color: var(--color-text-primary, #172b4d);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  border-radius: 16px;
-  overflow: hidden;
-  min-width: 320px;
 }
+.panel-header { padding: 16px 16px 8px; }
+.panel-header h3,
+.group-label { margin: 0; color: var(--color-text-muted, #6b778c); font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.group-label { padding: 9px 12px 5px; font-size: 10px; }
 
-.jd-header {
-  padding: 16px 16px 8px;
-}
-.jd-header h3 {
-  margin: 0;
-  font-size: 12px;
-  text-transform: uppercase;
-  color: var(--color-text-muted, #6b778c);
-  font-weight: 850;
-  letter-spacing: 0.08em;
-}
-
-.jd-search {
-  position: relative;
-  padding: 8px 12px 12px;
-  display: flex;
-  align-items: center;
-}
-.jd-search i {
-  position: absolute;
-  left: 24px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 12px;
-  color: var(--color-text-muted, #6b778c);
-  pointer-events: none;
-  z-index: 1;
-}
-.jd-search input {
-  width: 100% !important;
-  box-sizing: border-box !important;
-  border: 1px solid var(--color-border, #dfe1e6) !important;
-  border-radius: 16px !important;
-  padding: 7px 10px 7px 32px !important;
-  font-size: 13px !important;
-  height: 38px !important;
-  outline: none !important;
-  background: var(--color-surface-hover, #f4f5f7) !important;
-  color: var(--color-text-primary, #172b4d) !important;
-  box-shadow: none !important;
-  transition: border-color 0.2s ease, background 0.2s ease;
-}
-.jd-search input:focus {
-  border-color: var(--color-accent, #4c9aff) !important;
-  background: var(--color-surface, #fff) !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent, #0c66e4) 12%, transparent) !important;
-}
-
-.jd-body {
-  flex: 1;
-  overflow-y: auto;
-  max-height: 320px;
-  padding: 0 8px 8px;
-}
-
-.jd-empty {
-  text-align: center;
-  padding: 32px 16px;
-  color: var(--color-text-muted, #6b778c);
-  font-size: 13px;
-}
-.jd-empty img {
-  width: 80px;
-  margin: 0 auto 12px;
-  opacity: 0.7;
-}
-
-.jd-group-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--color-text-muted, #6b778c);
-  text-transform: uppercase;
-  padding: 8px 16px 4px;
-}
-
-.jd-item {
-  display: flex;
-  align-items: center;
-  padding: 10px 10px;
-  cursor: pointer;
-  border-radius: 12px;
-  transition: background 0.16s ease, transform 0.16s ease;
-}
-.jd-item:hover {
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface-hover));
-  transform: translateX(2px);
-}
-
-.jd-item-icon {
-  margin-right: 12px;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-}
-
-.jd-item-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.jd-item-title {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--color-text-primary, #172b4d);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.jd-item-subtitle {
-  font-size: 11px;
-  color: var(--color-text-muted, #6b778c);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.jd-footer {
-  padding: 10px 14px;
-  border-top: 1px solid var(--color-border, #ebecf0);
-}
-
-.jd-footer button {
+.panel-search { position: relative; padding: 6px 12px 12px; display: block; }
+.panel-search i { position: absolute; left: 25px; top: 25px; transform: translateY(-50%); color: var(--color-text-muted, #6b778c); font-size: 12px; pointer-events: none; }
+.panel-search input {
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
-  text-align: left;
-  background: transparent;
-  border: none;
-  color: var(--color-accent, #0c66e4);
-  font-size: 13px;
-  font-weight: 800;
-  padding: 8px;
-  border-radius: 10px;
-  cursor: pointer;
-}
-.jd-footer button:hover {
+  height: 38px;
+  box-sizing: border-box;
+  padding: 7px 10px 7px 34px;
+  border: 1px solid var(--color-border, #dfe1e6);
+  border-radius: 11px;
+  outline: 0;
   background: var(--color-surface-hover, #f4f5f7);
-  text-decoration: none;
+  color: var(--color-text-primary, #172b4d);
+  font: inherit;
+  font-size: 13px;
 }
+.panel-search input:focus-visible { border-color: var(--color-accent, #0c66e4); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, #0c66e4) 18%, transparent); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-[data-theme='dark'] .jd-content {
-  background:
-    linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.98)),
-    #0f172a;
+.panel-body { min-height: 230px; max-height: 320px; flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+.panel-state { min-height: 230px; padding: 24px 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; text-align: center; }
+.panel-state h4 { margin: 0 0 6px; font-size: 14px; font-weight: 800; }
+.panel-state p { max-width: 250px; margin: 0; color: var(--color-text-muted, #6b778c); font-size: 12px; line-height: 1.5; }
+.state-icon { width: 40px; height: 40px; margin-bottom: 14px; display: grid; place-items: center; color: var(--color-text-muted, #6b778c); font-size: 26px; }
+.state-error .state-icon { color: #e34935; }
+.state-spinner { width: 24px; height: 24px; margin-bottom: 16px; border: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 18%, transparent); border-top-color: var(--color-accent, #0c66e4); border-radius: 50%; animation: panel-spin 0.8s linear infinite; }
+@keyframes panel-spin { to { transform: rotate(360deg); } }
+
+.panel-item { min-height: 52px; padding: 7px 10px; display: flex; align-items: center; box-sizing: border-box; border-radius: 11px; cursor: pointer; transition: background 0.16s ease, transform 0.16s ease; }
+.panel-item:hover { background: color-mix(in srgb, var(--color-accent, #0c66e4) 9%, var(--color-surface-hover, #f4f5f7)); transform: translateX(2px); }
+.panel-item:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 38%, transparent); outline-offset: -2px; }
+.panel-item.disabled { cursor: default; }
+.item-icon { width: 28px; height: 28px; margin-right: 10px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 8px; background: color-mix(in srgb, var(--color-accent, #0c66e4) 14%, transparent); color: var(--color-accent, #0c66e4); font-size: 13px; }
+.item-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.item-copy strong,
+.item-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-copy strong { font-size: 13px; font-weight: 800; }
+.item-copy small { color: var(--color-text-muted, #6b778c); font-size: 11px; }
+
+.panel-footer { padding: 9px 12px; border-top: 1px solid var(--color-border, #ebecf0); }
+.panel-footer button,
+.retry-button {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
 }
+.panel-footer button { width: 100%; padding: 9px 10px; border-radius: 9px; color: var(--color-accent, #0c66e4); text-align: left; font-size: 13px; font-weight: 800; }
+.panel-footer button:hover { background: var(--color-surface-hover, #f4f5f7); }
+.retry-button { margin-top: 14px; padding: 8px 12px; border: 1px solid var(--color-border, #dfe1e6); border-radius: 9px; background: var(--color-surface, #fff); font-size: 12px; font-weight: 800; }
+.retry-button:hover { background: var(--color-surface-hover, #f4f5f7); }
+.panel-footer button:focus-visible,
+.retry-button:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 42%, transparent); outline-offset: 2px; }
+
+[data-theme='dark'] .quick-panel { background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface, #162033) 94%, #2563eb 6%), var(--color-surface, #162033)); }
+@media (hover: none) { .panel-item:hover { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .panel-item { transition: none; } }
 </style>

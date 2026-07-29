@@ -3663,24 +3663,36 @@ onUnmounted(() => {
 }
 
 .star-task-btn {
+  appearance: none;
+  -webkit-appearance: none;
   background: transparent;
-  border: none;
+  border: 0;
   cursor: pointer;
   padding: 4px;
   color: var(--color-text-muted);
+  font: inherit;
   border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
+  min-width: 40px;
+  min-height: 40px;
+  touch-action: manipulation;
 }
 .star-task-btn:hover {
   background: var(--color-surface-hover);
 }
 .star-task-btn.small {
-  padding: 2px;
+  padding: 0;
   font-size: 12px;
 }
+.star-task-btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 42%, transparent);
+  outline-offset: 2px;
+}
+.star-task-btn:disabled { cursor: wait; }
+.star-task-btn i { width: 1em; line-height: 1; text-align: center; }
 
 
 /* Analytics Sidebar */

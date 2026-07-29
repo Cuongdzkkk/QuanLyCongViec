@@ -297,7 +297,7 @@ export const useWorkTaskStore = defineStore('workTask', {
     },
     async fetchStarredTasks() {
       const starredStore = useStarredStore()
-      await starredStore.fetchStarredItems()
+      await starredStore.fetchStarredItems({ page: 1, pageSize: 100 })
       return starredStore.starredItems.filter(item => item.itemType === STARRED_ENTITY_TYPES.WORK_TASK)
     },
     async toggleTaskStar(taskOrId) {

@@ -427,7 +427,7 @@ const pageTitle = computed(() => {
 onMounted(async () => {
   await siteStore.fetchSites()
   await projectStore.fetchProjects()
-  await starredStore.fetchStarredItems()
+  await starredStore.fetchStarredItems({ page: 1, pageSize: 100 })
   await followerStore.fetchFollowedItems()
   window.addEventListener('global-create-click', openCreateModal)
 })
@@ -485,7 +485,7 @@ const filteredProjects = computed(() => {
     ...p,
     key: p.key || (p.title ? p.title.substring(0, 3).toUpperCase() : 'PRJ'),
     status: p.status === true ? labels.value.pending : (p.status === false ? labels.value.archived : (p.status || labels.value.pending)),
-    isStarred: starredStore.starredItems?.some(i => i.itemId === p.id) || false,
+    isStarred: starredStore.isStarred('Project', p.id),
     isFollowing: followerStore.followedItems?.some(i => i.entityId === p.id) || false
   }))
 })
@@ -829,15 +829,19 @@ const isCompletedStatus = (status) => {
 }
 
 .icon-btn {
-  background: none;
-  border: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 0;
   font-size: 14px;
+  font-family: inherit;
   color: #6B778C;
   cursor: pointer;
   padding: 6px;
   border-radius: 3px;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.2s, background-color 0.2s;
+  touch-action: manipulation;
 }
 
 .icon-btn.starred {
@@ -851,6 +855,24 @@ const isCompletedStatus = (status) => {
 
 .icon-btn:hover {
   background-color: rgba(9, 30, 66, 0.08);
+}
+
+.icon-btn:focus-visible,
+.row-action-btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--home-accent, #0c66e4) 42%, transparent);
+  outline-offset: 2px;
+}
+
+.icon-btn:disabled,
+.row-action-btn:disabled {
+  cursor: wait;
+}
+
+.icon-btn i {
+  display: block;
+  width: 1em;
+  line-height: 1;
+  text-align: center;
 }
 
 /* Empty State Table */
@@ -1515,6 +1537,8 @@ const isCompletedStatus = (status) => {
 }
 
 .row-action-btn {
+  appearance: none;
+  -webkit-appearance: none;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1526,7 +1550,9 @@ const isCompletedStatus = (status) => {
   color: var(--home-text, #172b4d);
   font-size: 12px;
   font-weight: 800;
+  font-family: inherit;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .row-action-btn:hover {

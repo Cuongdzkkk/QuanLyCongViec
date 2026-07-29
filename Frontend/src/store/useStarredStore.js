@@ -12,7 +12,7 @@ import {
 } from '@/api/starredRecentApi'
 
 const emptyPagination = (pageSize = 50) => ({ totalCount: 0, page: 1, pageSize })
-const itemKey = (itemType, itemId) => `${itemType}:${itemId}`
+const itemKey = (itemType, itemId) => `${String(itemType || '').trim().toLowerCase()}:${String(itemId || '').trim().toLowerCase()}`
 const isCanceled = (error) => error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED'
 
 export const useStarredStore = defineStore('starredStore', () => {

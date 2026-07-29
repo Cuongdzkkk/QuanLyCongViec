@@ -397,7 +397,7 @@ const timeAgo = (dateStr) => {
 
 onMounted(() => {
   fetchSpaces()
-  starredStore.fetchStarredItems().catch(() => {})
+  starredStore.fetchStarredItems({ page: 1, pageSize: 100 }).catch(() => {})
 })
 
 watch(() => route.query.tab, (tab) => {
@@ -478,7 +478,10 @@ onBeforeUnmount(() => {
               <!-- Star button for Space -->
               <button 
                 class="sc-star-btn"
+                type="button"
                 :class="{ starred: projectStore.favoriteProjects.some(p => p.id === space.id) }"
+                :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, space.id)"
+                :aria-pressed="projectStore.favoriteProjects.some(p => p.id === space.id)"
                 @click.stop="toggleSpaceStar(space)"
                 :title="projectStore.favoriteProjects.some(p => p.id === space.id) ? 'Bỏ đánh dấu' : 'Đánh dấu'"
               >
@@ -741,12 +744,17 @@ onBeforeUnmount(() => {
 }
 
 .sc-star-btn {
+  appearance: none;
+  -webkit-appearance: none;
   background: transparent;
-  border: none;
+  border: 0;
   cursor: pointer;
   color: var(--color-text-muted, #6b778c);
   font-size: 14px;
-  padding: 6px;
+  font-family: inherit;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   border-radius: 6px;
   opacity: 1;
   transition: all 0.2s ease;
@@ -755,6 +763,7 @@ onBeforeUnmount(() => {
   right: 10px;
   top: 50%;
   transform: translateY(-50%);
+  touch-action: manipulation;
 }
 .space-card:hover .sc-star-btn {
   opacity: 1;
@@ -767,6 +776,15 @@ onBeforeUnmount(() => {
   color: var(--color-text-primary, #172b4d);
   background: rgba(9, 30, 66, 0.08);
 }
+.sc-star-btn:focus-visible,
+.star-btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 42%, transparent);
+  outline-offset: 2px;
+}
+.sc-star-btn:disabled,
+.star-btn:disabled { cursor: wait; }
+.sc-star-btn i,
+.star-btn i { display: block; width: 1em; line-height: 1; text-align: center; }
 
 /* Premium Space Empty Card */
 .empty-spaces-card {
@@ -1047,7 +1065,7 @@ onBeforeUnmount(() => {
 }
 
 .jtr-actions {
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.2s ease;
   margin-right: 16px;
 }
@@ -1056,14 +1074,20 @@ onBeforeUnmount(() => {
 }
 
 .star-btn {
+  appearance: none;
+  -webkit-appearance: none;
   background: transparent;
-  border: none;
+  border: 0;
   cursor: pointer;
   color: var(--color-text-muted, #6b778c);
   font-size: 14px;
-  padding: 4px;
+  font-family: inherit;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   border-radius: 4px;
   transition: color 0.15s ease;
+  touch-action: manipulation;
 }
 .star-btn:hover {
   color: var(--color-text-primary, #172b4d);
