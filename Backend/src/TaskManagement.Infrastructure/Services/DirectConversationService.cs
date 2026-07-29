@@ -35,77 +35,111 @@ public sealed class DirectConversationService : IDirectConversationService
         if (await PairExistsAsync(lowId, highId, cancellationToken))
             throw new DirectParticipantNotFoundException();
 
-        var workspaceId = await FindSharedWorkspaceAsync(userId, participantUserId, cancellationToken);
-        await using var transaction = _context.Database.IsRelational()
-            ? await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
-            : null;
+        await FindSharedWorkspaceAsync(userId, participantUserId, cancellationToken);
 
         try
         {
-            if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.SqlServer")
+            if (_context.Database.IsRelational())
             {
-                var pairLock = $"direct-conversation:{lowId:N}:{highId:N}";
-                await _context.Database.ExecuteSqlInterpolatedAsync(
-                    $"""
-                    DECLARE @result int;
-                    EXEC @result = sys.sp_getapplock
-                        @Resource = {pairLock},
-                        @LockMode = 'Exclusive',
-                        @LockOwner = 'Transaction',
-                        @LockTimeout = 10000;
-                    IF @result < 0
-                        THROW 51000, 'Could not acquire the direct conversation pair lock.', 1;
-                    """,
-                    cancellationToken);
+                var strategy = _context.Database.CreateExecutionStrategy();
+                return await strategy.ExecuteAsync(() => FindOrCreateCoreAsync(
+                    userId,
+                    participantUserId,
+                    lowId,
+                    highId,
+                    useTransaction: true,
+                    cancellationToken));
             }
 
-            existing = await FindPairAsync(lowId, highId, userId, cancellationToken);
-            if (existing != null)
-            {
-                if (transaction != null) await transaction.CommitAsync(cancellationToken);
-                return existing;
-            }
-            if (await PairExistsAsync(lowId, highId, cancellationToken))
-                throw new DirectParticipantNotFoundException();
-
-            // Revalidate inside the transaction so conversation and both participants are atomic.
-            workspaceId = await FindSharedWorkspaceAsync(userId, participantUserId, cancellationToken);
-            var now = DateTime.UtcNow;
-            var conversation = new DirectConversation
-            {
-                Id = Guid.NewGuid(),
-                WorkspaceId = workspaceId,
-                UserLowId = lowId,
-                UserHighId = highId,
-                CreatedAt = now
-            };
-            conversation.Participants.Add(new DirectConversationParticipant
-            {
-                ConversationId = conversation.Id,
-                UserId = lowId,
-                JoinedAt = now
-            });
-            conversation.Participants.Add(new DirectConversationParticipant
-            {
-                ConversationId = conversation.Id,
-                UserId = highId,
-                JoinedAt = now
-            });
-            _context.DirectConversations.Add(conversation);
-            await _context.SaveChangesAsync(cancellationToken);
-            if (transaction != null) await transaction.CommitAsync(cancellationToken);
-
-            return await FindPairAsync(lowId, highId, userId, cancellationToken)
-                ?? throw new InvalidOperationException("The direct conversation could not be loaded.");
+            return await FindOrCreateCoreAsync(
+                userId,
+                participantUserId,
+                lowId,
+                highId,
+                useTransaction: false,
+                cancellationToken);
         }
         catch (DbUpdateException)
         {
-            if (transaction != null) await transaction.RollbackAsync(cancellationToken);
             _context.ChangeTracker.Clear();
             var concurrent = await FindPairAsync(lowId, highId, userId, cancellationToken);
             if (concurrent != null) return concurrent;
             throw;
         }
+    }
+
+    private async Task<DirectConversationDto> FindOrCreateCoreAsync(
+        Guid userId,
+        Guid participantUserId,
+        Guid lowId,
+        Guid highId,
+        bool useTransaction,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = useTransaction
+            ? await _context.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable,
+                cancellationToken)
+            : null;
+
+        if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.SqlServer")
+        {
+            var pairLock = $"direct-conversation:{lowId:N}:{highId:N}";
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                DECLARE @result int;
+                EXEC @result = sys.sp_getapplock
+                    @Resource = {pairLock},
+                    @LockMode = 'Exclusive',
+                    @LockOwner = 'Transaction',
+                    @LockTimeout = 10000;
+                IF @result < 0
+                    THROW 51000, 'Could not acquire the direct conversation pair lock.', 1;
+                """,
+                cancellationToken);
+        }
+
+        var existing = await FindPairAsync(lowId, highId, userId, cancellationToken);
+        if (existing != null)
+        {
+            if (transaction != null) await transaction.CommitAsync(cancellationToken);
+            return existing;
+        }
+        if (await PairExistsAsync(lowId, highId, cancellationToken))
+            throw new DirectParticipantNotFoundException();
+
+        // Revalidate inside the transaction so conversation and both participants are atomic.
+        var workspaceId = await FindSharedWorkspaceAsync(
+            userId,
+            participantUserId,
+            cancellationToken);
+        var now = DateTime.UtcNow;
+        var conversation = new DirectConversation
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = workspaceId,
+            UserLowId = lowId,
+            UserHighId = highId,
+            CreatedAt = now
+        };
+        conversation.Participants.Add(new DirectConversationParticipant
+        {
+            ConversationId = conversation.Id,
+            UserId = lowId,
+            JoinedAt = now
+        });
+        conversation.Participants.Add(new DirectConversationParticipant
+        {
+            ConversationId = conversation.Id,
+            UserId = highId,
+            JoinedAt = now
+        });
+        _context.DirectConversations.Add(conversation);
+        await _context.SaveChangesAsync(cancellationToken);
+        if (transaction != null) await transaction.CommitAsync(cancellationToken);
+
+        return await FindPairAsync(lowId, highId, userId, cancellationToken)
+            ?? throw new InvalidOperationException("The direct conversation could not be loaded.");
     }
 
     public async Task<DirectConversationPageDto> ListAsync(
@@ -189,11 +223,6 @@ public sealed class DirectConversationService : IDirectConversationService
             ? conversation.UserHighId
             : conversation.UserLowId;
         var sentAt = DateTime.UtcNow;
-        await using var transaction = _context.Database.IsRelational()
-            ? await _context.Database.BeginTransactionAsync(
-                IsolationLevel.ReadCommitted,
-                cancellationToken)
-            : null;
         var message = new DirectMessage
         {
             Id = Guid.NewGuid(),
@@ -203,29 +232,22 @@ public sealed class DirectConversationService : IDirectConversationService
             Content = normalizedContent,
             SentAt = sentAt
         };
-        _context.DirectMessages.Add(message);
-        await _context.SaveChangesAsync(cancellationToken);
 
         if (_context.Database.IsRelational())
         {
-            await _context.DirectConversations
-                .Where(item => item.Id == conversationId &&
-                    (item.LastMessageAt == null || item.LastMessageAt < sentAt))
-                .ExecuteUpdateAsync(setters => setters.SetProperty(
-                    item => item.LastMessageAt,
-                    sentAt), cancellationToken);
+            var strategy = _context.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(() => SendCoreAsync(
+                message,
+                useTransaction: true,
+                cancellationToken));
         }
         else
         {
-            var trackedConversation = await _context.DirectConversations
-                .SingleAsync(item => item.Id == conversationId, cancellationToken);
-            trackedConversation.LastMessageAt =
-                trackedConversation.LastMessageAt == null || trackedConversation.LastMessageAt < sentAt
-                    ? sentAt
-                    : trackedConversation.LastMessageAt;
-            await _context.SaveChangesAsync(cancellationToken);
+            await SendCoreAsync(
+                message,
+                useTransaction: false,
+                cancellationToken);
         }
-        if (transaction != null) await transaction.CommitAsync(cancellationToken);
 
         return await _context.DirectMessages.AsNoTracking()
             .Where(item => item.Id == message.Id)
@@ -239,6 +261,55 @@ public sealed class DirectConversationService : IDirectConversationService
                     item.Sender != null ? item.Sender.AvatarUrl : null),
                 item.SentAt))
             .SingleAsync(cancellationToken);
+    }
+
+    private async Task SendCoreAsync(
+        DirectMessage message,
+        bool useTransaction,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = useTransaction
+            ? await _context.Database.BeginTransactionAsync(
+                IsolationLevel.ReadCommitted,
+                cancellationToken)
+            : null;
+
+        if (useTransaction && await _context.DirectMessages
+                .AsNoTracking()
+                .AnyAsync(item => item.Id == message.Id, cancellationToken))
+        {
+            if (transaction != null) await transaction.CommitAsync(cancellationToken);
+            return;
+        }
+
+        if (_context.Entry(message).State == EntityState.Detached)
+            _context.DirectMessages.Add(message);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        if (_context.Database.IsRelational())
+        {
+            await _context.DirectConversations
+                .Where(item => item.Id == message.ConversationId &&
+                    (item.LastMessageAt == null || item.LastMessageAt < message.SentAt))
+                .ExecuteUpdateAsync(setters => setters.SetProperty(
+                    item => item.LastMessageAt,
+                    message.SentAt), cancellationToken);
+        }
+        else
+        {
+            var trackedConversation = await _context.DirectConversations
+                .SingleAsync(
+                    item => item.Id == message.ConversationId,
+                    cancellationToken);
+            trackedConversation.LastMessageAt =
+                trackedConversation.LastMessageAt == null ||
+                trackedConversation.LastMessageAt < message.SentAt
+                    ? message.SentAt
+                    : trackedConversation.LastMessageAt;
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        if (transaction != null) await transaction.CommitAsync(cancellationToken);
     }
 
     private IQueryable<DirectConversation> VisibleConversations(Guid userId) =>

@@ -17,7 +17,9 @@ public sealed class DirectConversationSqlServerTests
     public async Task SqlServerEnforcesUniquePairAtomicParticipantsPersistenceAndConcurrentOrdering()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlServer(ConnectionString)
+            .UseSqlServer(
+                ConnectionString,
+                sqlServer => sqlServer.EnableRetryOnFailure())
             .Options;
         DirectSeed? seed = null;
         try

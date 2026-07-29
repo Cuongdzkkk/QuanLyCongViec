@@ -18,7 +18,9 @@ public sealed class CollaborationChannelSqlServerTests
     public async Task SqlServerProvisioningIsAtomicIdempotentConcurrentAndMessageCompatible()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlServer(ConnectionString)
+            .UseSqlServer(
+                ConnectionString,
+                sqlServer => sqlServer.EnableRetryOnFailure())
             .Options;
         DiscoverySeed? seed = null;
         var createdChannelIds = new List<Guid>();

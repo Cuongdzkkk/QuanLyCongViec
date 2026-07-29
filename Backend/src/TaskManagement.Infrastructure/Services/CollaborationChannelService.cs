@@ -112,53 +112,32 @@ public sealed class CollaborationChannelService : ICollaborationChannelService
         if (existing != null)
             return ExistingResult(existing, name, description);
 
-        await using var transaction = _context.Database.IsRelational()
-            ? await _context.Database.BeginTransactionAsync(
-                IsolationLevel.Serializable,
-                cancellationToken)
-            : null;
-
         try
         {
-            // Recheck under the transaction so an archived project cannot receive a new channel.
-            workspaceId = await GetActiveProjectWorkspaceIdAsync(
+            if (_context.Database.IsRelational())
+            {
+                var strategy = _context.Database.CreateExecutionStrategy();
+                return await strategy.ExecuteAsync(() => CreateCoreAsync(
+                    projectId,
+                    userId,
+                    name,
+                    description,
+                    normalizedKey,
+                    useTransaction: true,
+                    cancellationToken));
+            }
+
+            return await CreateCoreAsync(
                 projectId,
-                cancellationToken,
-                lockForUpdate: true);
-            await AuthorizeManageAsync(workspaceId, projectId, userId);
-
-            var now = DateTime.UtcNow;
-            var channel = new CollaborationChannel
-            {
-                Id = Guid.NewGuid(),
-                WorkspaceId = workspaceId,
-                ProjectId = projectId,
-                CreatedByUserId = userId,
-                Name = name,
-                Description = description,
-                ProvisioningKey = normalizedKey,
-                CreatedAt = now,
-                UpdatedAt = now
-            };
-            var membership = new CollaborationChannelMember
-            {
-                ChannelId = channel.Id,
-                UserId = userId,
-                JoinedAt = now,
-                IsActive = true,
-                CanSendMessages = true
-            };
-
-            _context.CollaborationChannels.Add(channel);
-            _context.CollaborationChannelMembers.Add(membership);
-            await _context.SaveChangesAsync(cancellationToken);
-            if (transaction != null) await transaction.CommitAsync(cancellationToken);
-
-            return new(ToDto(channel, canManage: true, canSend: true), true);
+                userId,
+                name,
+                description,
+                normalizedKey,
+                useTransaction: false,
+                cancellationToken);
         }
         catch (DbUpdateException)
         {
-            if (transaction != null) await transaction.RollbackAsync(cancellationToken);
             _context.ChangeTracker.Clear();
             var concurrent = await FindByProvisioningKeyAsync(
                 projectId,
@@ -169,6 +148,58 @@ public sealed class CollaborationChannelService : ICollaborationChannelService
                 return ExistingResult(concurrent, name, description);
             throw;
         }
+    }
+
+    private async Task<ProvisionCollaborationChannelResult> CreateCoreAsync(
+        Guid projectId,
+        Guid userId,
+        string name,
+        string? description,
+        string normalizedKey,
+        bool useTransaction,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = useTransaction
+            ? await _context.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable,
+                cancellationToken)
+            : null;
+
+        // Recheck under the transaction so an archived project cannot receive a new channel.
+        var workspaceId = await GetActiveProjectWorkspaceIdAsync(
+            projectId,
+            cancellationToken,
+            lockForUpdate: useTransaction);
+        await AuthorizeManageAsync(workspaceId, projectId, userId);
+
+        var now = DateTime.UtcNow;
+        var channel = new CollaborationChannel
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = workspaceId,
+            ProjectId = projectId,
+            CreatedByUserId = userId,
+            Name = name,
+            Description = description,
+            ProvisioningKey = normalizedKey,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        var membership = new CollaborationChannelMember
+        {
+            ChannelId = channel.Id,
+            UserId = userId,
+            JoinedAt = now,
+            IsActive = true,
+            CanSendMessages = true
+        };
+
+        _context.CollaborationChannels.Add(channel);
+        _context.CollaborationChannelMembers.Add(membership);
+        await _context.SaveChangesAsync(cancellationToken);
+        if (transaction != null) await transaction.CommitAsync(cancellationToken);
+
+        return new(ToDto(channel, canManage: true, canSend: true), true);
     }
 
     private async Task<Guid> GetActiveProjectWorkspaceIdAsync(
