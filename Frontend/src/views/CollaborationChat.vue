@@ -273,6 +273,17 @@
           </button>
         </div>
       </div>
+      <div
+        v-if="connectionNotice"
+        class="connection-notice"
+        :class="`is-${connectionState}`"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <i :class="connectionNoticeIcon" aria-hidden="true"></i>
+        <span>{{ connectionNotice }}</span>
+      </div>
 
       <!-- Main body layout with horizontal partition for Discord style members list -->
       <div style="display: flex; flex: 1; min-height: 0; width: 100%;">
@@ -893,6 +904,12 @@ import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 import { collaborationApi } from '@/api/collaborationApi'
 import { useProjectStore } from '@/store/useProjectStore'
+import { useAuthStore } from '@/store/useAuthStore'
+import {
+  collaborationRealtime,
+  COLLABORATION_REALTIME_STATES,
+  getCollaborationHubErrorCode
+} from '@/services/collaborationRealtime'
 import {
   clearScopedCurrentProjectId,
   getScopedCurrentProjectId,
@@ -902,6 +919,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
+const authStore = useAuthStore()
 const currentTab = computed(() => route.query.tab === 'dm' ? 'dm' : 'channel')
 const projectOptions = computed(() => projectStore.sidebarProjects)
 const activeProjectId = ref('')
@@ -1280,6 +1298,23 @@ const messagePagination = ref({
 })
 const messageAbortController = ref(null)
 let messageRequestId = 0
+let chatSelectionId = 0
+const connectionState = ref(COLLABORATION_REALTIME_STATES.DISCONNECTED)
+const connectionNotice = ref('')
+const connectionNoticeIcon = computed(() => {
+  if (
+    connectionState.value === COLLABORATION_REALTIME_STATES.CONNECTING ||
+    connectionState.value === COLLABORATION_REALTIME_STATES.RECONNECTING
+  ) {
+    return 'fa-solid fa-arrows-rotate fa-spin'
+  }
+  if (connectionState.value === COLLABORATION_REALTIME_STATES.CONNECTED) {
+    return 'fa-solid fa-circle-check'
+  }
+  return 'fa-solid fa-triangle-exclamation'
+})
+let connectionNoticeTimer = null
+const realtimeUnsubscribers = []
 const videoCallActive = ref(false)
 
 const isCallMuted = ref(false)
@@ -1371,7 +1406,13 @@ const mapChannel = (item, expectedProjectId) => {
 }
 
 const mapChannelMessage = (item, expectedChannelId) => {
-  if (!item?.messageId || item?.channelId !== expectedChannelId || !item?.sender?.userId) {
+  if (
+    !item?.messageId ||
+    item?.channelId !== expectedChannelId ||
+    !item?.sender?.userId ||
+    !Number.isFinite(Date.parse(item?.createdAt)) ||
+    typeof item?.content !== 'string'
+  ) {
     throw new Error('Invalid Channel message response scope.')
   }
 
@@ -1409,7 +1450,9 @@ const mapDirectMessage = (item, expectedConversationId) => {
   if (
     !item?.messageId ||
     item?.conversationId !== expectedConversationId ||
-    !item?.sender?.userId
+    !item?.sender?.userId ||
+    !Number.isFinite(Date.parse(item?.createdAt)) ||
+    typeof item?.content !== 'string'
   ) {
     throw new Error('Invalid Direct Message response scope.')
   }
@@ -1425,13 +1468,39 @@ const mapDirectMessage = (item, expectedConversationId) => {
   }
 }
 
-const messageKey = (message) =>
-  message.messageId || `${message.senderId}:${message.sentAt}:${message.content}`
+const messageKey = (message) => message.messageId
+
+const compareMessages = (left, right) => {
+  const timeDifference = Date.parse(left.sentAt) - Date.parse(right.sentAt)
+  if (Number.isFinite(timeDifference) && timeDifference !== 0) return timeDifference
+  return `${left.messageId}`.localeCompare(`${right.messageId}`)
+}
+
+const mergeMessages = (...collections) => {
+  const unique = new Map()
+  collections.flat().forEach((message) => {
+    if (message?.messageId) unique.set(message.messageId, message)
+  })
+  return Array.from(unique.values()).sort(compareMessages)
+}
+
+const appendRealtimeMessage = async (message) => {
+  if (activeMessages.value.some(item => item.messageId === message.messageId)) return
+  const shouldScroll = isNearMessageBottom()
+  activeMessages.value = mergeMessages(activeMessages.value, [message])
+  messagePagination.value.totalCount = Math.max(
+    messagePagination.value.totalCount + 1,
+    activeMessages.value.length
+  )
+  await nextTick()
+  if (shouldScroll) scrollToBottom()
+}
 
 const clearMessageHistory = () => {
   messageAbortController.value?.abort()
   messageAbortController.value = null
   messageRequestId += 1
+  chatSelectionId += 1
   activeMessages.value = []
   historyLoading.value = false
   historyLoadingOlder.value = false
@@ -1450,6 +1519,7 @@ const clearChannelSelection = () => {
   sendMessageAbortController.value = null
   clearMessageHistory()
   if (activeChat.value?.type === 'channel') {
+    void collaborationRealtime.leaveChannel(activeChat.value.id)
     activeChat.value = null
   }
   newMessage.value = ''
@@ -1464,6 +1534,7 @@ const clearDirectSelection = ({ clearComposer = true } = {}) => {
   sendMessageAbortController.value = null
   clearMessageHistory()
   if (activeChat.value?.type === 'dm') {
+    void collaborationRealtime.leaveDirectConversation(activeChat.value.id)
     activeChat.value = null
   }
   selectedRecipientId.value = ''
@@ -1515,9 +1586,11 @@ const clearChannels = () => {
 }
 
 const clearCollaborationState = () => {
+  void collaborationRealtime.stop()
   clearChannels()
   clearDirectContext()
   activeProjectId.value = ''
+  currentUser.value = { id: '', name: '', avatar: '' }
   clearScopedCurrentProjectId()
 }
 
@@ -1806,7 +1879,11 @@ const loadMoreConversations = () => {
   })
 }
 
-const loadChannelHistory = async (channel, { page = 1, older = false } = {}) => {
+const loadChannelHistory = async (channel, {
+  page = 1,
+  older = false,
+  refresh = false
+} = {}) => {
   if (!channel?.id || channel.projectId !== activeProjectId.value) return
   messageAbortController.value?.abort()
   const controller = new AbortController()
@@ -1815,7 +1892,7 @@ const loadChannelHistory = async (channel, { page = 1, older = false } = {}) => 
   messageRequestId = requestId
   if (older) {
     historyLoadingOlder.value = true
-  } else {
+  } else if (!refresh) {
     activeMessages.value = []
     historyError.value = ''
     historyLoading.value = true
@@ -1839,11 +1916,7 @@ const loadChannelHistory = async (channel, { page = 1, older = false } = {}) => 
       ? result.items.map(item => mapChannelMessage(item, channel.id))
       : []
     const chronologicalPage = [...newestFirst].reverse()
-    const merged = older
-      ? [...chronologicalPage, ...activeMessages.value]
-      : chronologicalPage
-    const unique = new Map(merged.map(item => [item.messageId, item]))
-    activeMessages.value = Array.from(unique.values())
+    activeMessages.value = mergeMessages(chronologicalPage, activeMessages.value)
     messagePagination.value = {
       page: Number(result?.page || page),
       pageSize: Number(result?.pageSize || 50),
@@ -1856,7 +1929,7 @@ const loadChannelHistory = async (channel, { page = 1, older = false } = {}) => 
     if (older && messageThread.value) {
       messageThread.value.scrollTop +=
         messageThread.value.scrollHeight - previousScrollHeight
-    } else {
+    } else if (!refresh) {
       scrollToBottom()
     }
   } catch (error) {
@@ -1888,7 +1961,11 @@ const loadChannelHistory = async (channel, { page = 1, older = false } = {}) => 
   }
 }
 
-const loadDirectHistory = async (conversation, { page = 1, older = false } = {}) => {
+const loadDirectHistory = async (conversation, {
+  page = 1,
+  older = false,
+  refresh = false
+} = {}) => {
   if (!conversation?.id) return
   messageAbortController.value?.abort()
   const controller = new AbortController()
@@ -1897,7 +1974,7 @@ const loadDirectHistory = async (conversation, { page = 1, older = false } = {})
   messageRequestId = requestId
   if (older) {
     historyLoadingOlder.value = true
-  } else {
+  } else if (!refresh) {
     activeMessages.value = []
     historyError.value = ''
     historyLoading.value = true
@@ -1920,12 +1997,7 @@ const loadDirectHistory = async (conversation, { page = 1, older = false } = {})
       ? result.items.map(item => mapDirectMessage(item, conversation.id))
       : []
     const chronologicalPage = [...newestFirst].reverse()
-    const merged = older
-      ? [...chronologicalPage, ...activeMessages.value]
-      : chronologicalPage
-    activeMessages.value = Array.from(
-      new Map(merged.map(item => [item.messageId, item])).values()
-    )
+    activeMessages.value = mergeMessages(chronologicalPage, activeMessages.value)
     messagePagination.value = {
       page: Number(result?.page || page),
       pageSize: Number(result?.pageSize || 50),
@@ -1938,7 +2010,7 @@ const loadDirectHistory = async (conversation, { page = 1, older = false } = {})
     if (older && messageThread.value) {
       messageThread.value.scrollTop +=
         messageThread.value.scrollHeight - previousScrollHeight
-    } else {
+    } else if (!refresh) {
       scrollToBottom()
     }
   } catch (error) {
@@ -2015,9 +2087,164 @@ const composerPlaceholder = computed(() => {
   return `Gửi tin nhắn tới #${activeChannel.value.name}`
 })
 
-onMounted(async () => {
+const hubErrorMessage = (code) => ({
+  AUTH_REQUIRED: 'Phiên đăng nhập đã hết hạn.',
+  USER_INACTIVE: 'Tài khoản không còn hoạt động.',
+  CHANNEL_NOT_FOUND_OR_FORBIDDEN: 'Channel không còn khả dụng hoặc bạn không còn quyền truy cập.',
+  CONVERSATION_NOT_FOUND_OR_FORBIDDEN: 'Cuộc trò chuyện không còn khả dụng hoặc bạn không còn quyền truy cập.',
+  INVALID_ID: 'Cuộc trò chuyện được chọn không hợp lệ.',
+  JOIN_FAILED: 'Không thể kết nối realtime. Lịch sử REST vẫn khả dụng.'
+}[code] || 'Không thể kết nối realtime. Lịch sử REST vẫn khả dụng.')
+
+const setConnectionNotice = (message, { clearAfter = 0 } = {}) => {
+  if (connectionNoticeTimer) {
+    window.clearTimeout(connectionNoticeTimer)
+    connectionNoticeTimer = null
+  }
+  connectionNotice.value = message
+  if (clearAfter > 0) {
+    connectionNoticeTimer = window.setTimeout(() => {
+      connectionNotice.value = ''
+      connectionNoticeTimer = null
+    }, clearAfter)
+  }
+}
+
+const handleRealtimeState = ({ state, code, reconnected = false }) => {
+  connectionState.value = state
+  if (state === COLLABORATION_REALTIME_STATES.CONNECTING) {
+    setConnectionNotice('Đang kết nối realtime…')
+  } else if (state === COLLABORATION_REALTIME_STATES.RECONNECTING) {
+    setConnectionNotice('Đang kết nối lại…')
+  } else if (state === COLLABORATION_REALTIME_STATES.CONNECTED && reconnected) {
+    setConnectionNotice('Đã kết nối lại', { clearAfter: 2500 })
+  } else if (state === COLLABORATION_REALTIME_STATES.CONNECTED) {
+    setConnectionNotice('')
+  } else if (state === COLLABORATION_REALTIME_STATES.ERROR) {
+    setConnectionNotice(hubErrorMessage(code))
+  } else if (
+    state === COLLABORATION_REALTIME_STATES.DISCONNECTED &&
+    currentUser.value.id
+  ) {
+    setConnectionNotice('Mất kết nối realtime. Tin nhắn vẫn được gửi và tải bằng REST.')
+  }
+}
+
+const handleChannelRealtimeMessage = async (payload) => {
+  const channel = activeChannel.value
+  if (!channel?.id || payload?.channelId !== channel.id || !payload?.messageId) return
+  try {
+    await appendRealtimeMessage(mapChannelMessage(payload, channel.id))
+  } catch {
+    // Ignore payloads that do not match the documented Channel event contract.
+  }
+}
+
+const handleDirectRealtimeMessage = async (payload) => {
+  const conversation = activeDirectConversation.value
+  if (
+    !conversation?.id ||
+    payload?.conversationId !== conversation.id ||
+    !payload?.messageId
+  ) {
+    return
+  }
+  try {
+    await appendRealtimeMessage(mapDirectMessage(payload, conversation.id))
+  } catch {
+    // Ignore payloads that do not match the documented Direct event contract.
+  }
+}
+
+const leaveActiveRealtimeGroup = async (chat = activeChat.value) => {
+  if (chat?.type === 'channel') {
+    await collaborationRealtime.leaveChannel(chat.id)
+  } else if (chat?.type === 'dm') {
+    await collaborationRealtime.leaveDirectConversation(chat.id)
+  }
+}
+
+const handleRealtimeGroupFailure = async ({ scope, id, code }) => {
+  connectionState.value = COLLABORATION_REALTIME_STATES.ERROR
+  setConnectionNotice(hubErrorMessage(code))
+  const sensitiveFailure = [
+    'AUTH_REQUIRED',
+    'USER_INACTIVE',
+    'CHANNEL_NOT_FOUND_OR_FORBIDDEN',
+    'CONVERSATION_NOT_FOUND_OR_FORBIDDEN',
+    'INVALID_ID'
+  ].includes(code)
+  if (!sensitiveFailure) return
+
+  if (scope === 'channel' && activeChannel.value?.id === id) {
+    clearChannelSelection()
+    channels.value = channels.value.filter(item => item.id !== id)
+    historyError.value = hubErrorMessage(code)
+    await loadChannels({ page: 1, selectFirst: false })
+  } else if (scope === 'dm' && activeDirectConversation.value?.id === id) {
+    clearDirectSelection()
+    directConversations.value = directConversations.value.filter(item => item.id !== id)
+    historyError.value = hubErrorMessage(code)
+    await loadDirectConversations({ page: 1, selectFirst: false })
+  }
+}
+
+const joinRealtimeForChat = async (chat) => {
+  if (
+    !chat?.id ||
+    activeChat.value?.id !== chat.id ||
+    activeChat.value?.type !== chat.type
+  ) {
+    return false
+  }
+  try {
+    if (chat.type === 'channel') {
+      await collaborationRealtime.joinChannel(chat.id)
+    } else {
+      await collaborationRealtime.joinDirectConversation(chat.id)
+    }
+    return true
+  } catch (error) {
+    await handleRealtimeGroupFailure({
+      scope: chat.type,
+      id: chat.id,
+      code: getCollaborationHubErrorCode(error)
+    })
+    return false
+  }
+}
+
+const handleRealtimeReconnected = async ({ errors }) => {
+  if (errors.length > 0) {
+    await handleRealtimeGroupFailure(errors[0])
+    return
+  }
+  const chat = activeChat.value
+  if (!chat?.id) return
+  if (chat.type === 'channel') {
+    await loadChannelHistory(chat, { page: 1, refresh: true })
+  } else {
+    await loadDirectHistory(chat, { page: 1, refresh: true })
+  }
+}
+
+const registerRealtimeHandlers = () => {
+  realtimeUnsubscribers.push(
+    collaborationRealtime.subscribeChannelMessage(handleChannelRealtimeMessage),
+    collaborationRealtime.subscribeDirectMessage(handleDirectRealtimeMessage),
+    collaborationRealtime.subscribeState(handleRealtimeState),
+    collaborationRealtime.subscribeReconnected(handleRealtimeReconnected)
+  )
+}
+
+let componentMounted = false
+let collaborationContextVersion = 0
+
+const initializeCollaborationContext = async ({ forceProjects = false } = {}) => {
+  const version = ++collaborationContextVersion
   try {
     const meRes = await axiosClient.get('/users/me')
+    if (!componentMounted || version !== collaborationContextVersion) return
     const me = meRes?.data?.data
     if (!me?.id) throw new Error('Current user response is invalid.')
     currentUser.value = {
@@ -2034,7 +2261,19 @@ onMounted(async () => {
     return
   }
 
-  await loadProjects()
+  if (!componentMounted || version !== collaborationContextVersion) return
+  try {
+    await collaborationRealtime.start()
+  } catch (error) {
+    handleRealtimeState({
+      state: COLLABORATION_REALTIME_STATES.ERROR,
+      code: getCollaborationHubErrorCode(error)
+    })
+  }
+
+  if (!componentMounted || version !== collaborationContextVersion) return
+  await loadProjects({ force: forceProjects })
+  if (!componentMounted || version !== collaborationContextVersion) return
   if (!activeProjectId.value && projectOptions.value.length > 0) {
     activeProjectId.value = projectOptions.value[0].id
   } else if (currentTab.value === 'dm') {
@@ -2043,9 +2282,16 @@ onMounted(async () => {
     }
     await loadDirectConversations({ page: 1 })
   }
+}
+
+onMounted(() => {
+  componentMounted = true
+  registerRealtimeHandlers()
+  void initializeCollaborationContext()
 })
 
 watch(() => route.query.tab, async (newTab) => {
+  await leaveActiveRealtimeGroup()
   if (newTab === 'dm') {
     clearChannelSelection()
     clearDirectContext()
@@ -2063,6 +2309,7 @@ watch(() => route.query.tab, async (newTab) => {
 
 watch(activeProjectId, async (projectId, previousProjectId) => {
   if (projectId === previousProjectId) return
+  await leaveActiveRealtimeGroup()
   if (currentTab.value === 'dm') {
     clearDirectContext()
   } else {
@@ -2090,6 +2337,18 @@ watch(activeProjectId, async (projectId, previousProjectId) => {
   }
 })
 
+watch(() => authStore.token, async (token, previousToken) => {
+  if (!componentMounted || token === previousToken) return
+  collaborationContextVersion += 1
+  await collaborationRealtime.stop()
+  clearCollaborationState()
+  projectStore.allProjects = []
+  setConnectionNotice('')
+  if (token && componentMounted) {
+    await initializeCollaborationContext({ forceProjects: true })
+  }
+})
+
 watch(projectOptions, (projects) => {
   if (
     activeProjectId.value &&
@@ -2100,6 +2359,14 @@ watch(projectOptions, (projects) => {
 })
 
 onBeforeUnmount(() => {
+  componentMounted = false
+  collaborationContextVersion += 1
+  realtimeUnsubscribers.splice(0).forEach(unsubscribe => unsubscribe())
+  if (connectionNoticeTimer) {
+    window.clearTimeout(connectionNoticeTimer)
+    connectionNoticeTimer = null
+  }
+  void collaborationRealtime.stop()
   createChannelAbortController.value?.abort()
   channelAbortController.value?.abort()
   memberAbortController.value?.abort()
@@ -2256,8 +2523,11 @@ const sendDirectMessage = async () => {
     )
     if (activeDirectConversation.value?.id !== conversation.id) return
     const message = mapDirectMessage(result, conversation.id)
-    if (!activeMessages.value.some(item => item.messageId === message.messageId)) {
-      activeMessages.value = [...activeMessages.value, message]
+    const messageAlreadyPresent = activeMessages.value.some(
+      item => item.messageId === message.messageId
+    )
+    activeMessages.value = mergeMessages(activeMessages.value, [message])
+    if (!messageAlreadyPresent) {
       messagePagination.value.totalCount += 1
     }
     newMessage.value = ''
@@ -2314,8 +2584,11 @@ const sendChannelMessage = async () => {
     )
     if (activeChannel.value?.id !== channel.id) return
     const message = mapChannelMessage(result, channel.id)
-    if (!activeMessages.value.some(item => item.messageId === message.messageId)) {
-      activeMessages.value = [...activeMessages.value, message]
+    const messageAlreadyPresent = activeMessages.value.some(
+      item => item.messageId === message.messageId
+    )
+    activeMessages.value = mergeMessages(activeMessages.value, [message])
+    if (!messageAlreadyPresent) {
       messagePagination.value.totalCount += 1
     }
     newMessage.value = ''
@@ -2358,6 +2631,7 @@ const selectDirectRecipient = async (participantUserId) => {
     return
   }
 
+  await leaveActiveRealtimeGroup()
   clearDirectSelection()
   selectedRecipientId.value = participantUserId
   const controller = new AbortController()
@@ -2417,8 +2691,6 @@ const selectChat = async (item, type) => {
     ) {
       return
     }
-    clearMessageHistory()
-    removeAttachedFile()
   } else if (
     !item?.id ||
     !item?.participantUserId ||
@@ -2427,8 +2699,11 @@ const selectChat = async (item, type) => {
     return
   }
 
+  const previousChat = activeChat.value
+  await leaveActiveRealtimeGroup(previousChat)
   clearMessageHistory()
   removeAttachedFile()
+  const selectionId = chatSelectionId
   activeChat.value = {
     id: item.id,
     name: item.name,
@@ -2443,13 +2718,22 @@ const selectChat = async (item, type) => {
     canManage: type === 'channel' ? item.canManage : false
   }
 
-  if (type === 'dm') {
-    selectedRecipientId.value = item.participantUserId
-    await loadDirectHistory(activeChat.value, { page: 1 })
+  await joinRealtimeForChat(activeChat.value)
+  if (
+    selectionId !== chatSelectionId ||
+    activeChat.value?.id !== item.id ||
+    activeChat.value?.type !== type
+  ) {
     return
   }
 
-  await loadChannelHistory(activeChat.value, { page: 1 })
+  if (type === 'dm') {
+    selectedRecipientId.value = item.participantUserId
+    await loadDirectHistory(activeChat.value, { page: 1 })
+  } else {
+    await loadChannelHistory(activeChat.value, { page: 1 })
+  }
+
 }
 
 const scrollToBottom = () => {
@@ -3030,6 +3314,7 @@ const confirmInviteToServer = () => {
 
 .chat-main {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background-color: var(--color-surface);
@@ -3044,8 +3329,39 @@ const confirmInviteToServer = () => {
   padding: 0 16px;
 }
 
+.connection-notice {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface));
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.connection-notice i {
+  flex: 0 0 14px;
+  width: 14px;
+  text-align: center;
+}
+
+.connection-notice.is-connected {
+  background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface));
+}
+
+.connection-notice.is-error {
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+}
+
 .active-info {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 8px;
 }
@@ -3445,6 +3761,12 @@ const confirmInviteToServer = () => {
 
   .messages-thread {
     min-height: 420px;
+  }
+
+  .chat-header,
+  .connection-notice {
+    padding-left: 12px;
+    padding-right: 12px;
   }
 
   .message-card {
