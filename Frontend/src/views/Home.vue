@@ -38,6 +38,7 @@ const authenticated = ref(Boolean(getStoredAccessToken()))
 const mobileOpen = ref(false)
 const activeFaq = ref(0)
 const pricing = ref(null)
+const pricingAudience = ref('Personal')
 const usage = ref(null)
 const pricingError = ref(false)
 const usageError = ref(false)
@@ -50,6 +51,7 @@ const isVi = computed(() => language.value === 'vi')
 const displayName = computed(() => user.value?.fullName || user.value?.username || user.value?.email || (isVi.value ? 'Người dùng SprintA' : 'SprintA user'))
 const initials = computed(() => displayName.value.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(-2).join('').toUpperCase() || 'SA')
 const workspaceName = computed(() => user.value?.currentWorkspace?.name || user.value?.workspaceName || 'Workspace')
+const pricingPlans = computed(() => (pricing.value?.plans || []).filter((plan) => plan.audience === pricingAudience.value))
 
 const editorialHeadlines = computed(() => isVi.value ? {
   hero: [
@@ -140,7 +142,11 @@ const copy = computed(() => isVi.value ? {
   extraCredits: 'Có thể mua thêm AI credits',
   transparentPricing: 'Bảng giá minh bạch, không có chi phí ẩn',
   plansPending: 'Bảng giá đang được cập nhật',
-  plansPendingDetail: 'Chưa có gói nào được công bố từ server. SprintA sẽ hiển thị tại đây ngay khi dữ liệu được phê duyệt.'
+  plansPendingDetail: 'Chưa có gói nào được công bố từ server. SprintA sẽ hiển thị tại đây ngay khi dữ liệu được phê duyệt.',
+  personal: 'Cá nhân',
+  team: 'Đội nhóm',
+  contact: 'Liên hệ',
+  explorePlan: 'Xem gói'
 } : {
   nav: ['Features', 'AI', 'Workflow', 'Pricing', 'Video'],
   badge: 'SPRINTA AGILE WORKSPACE',
@@ -178,7 +184,11 @@ const copy = computed(() => isVi.value ? {
   extraCredits: 'Extra AI credits available',
   transparentPricing: 'Transparent pricing with no hidden costs',
   plansPending: 'Pricing is being updated',
-  plansPendingDetail: 'No plans are published by the server yet. SprintA will show them here as soon as the data is approved.'
+  plansPendingDetail: 'No plans are published by the server yet. SprintA will show them here as soon as the data is approved.',
+  personal: 'Personal',
+  team: 'Team',
+  contact: 'Contact us',
+  explorePlan: 'Explore plan'
 })
 
 const products = computed(() => (isVi.value ? [
@@ -279,13 +289,13 @@ const loadUsage = async () => {
 }
 
 const priceLabel = (plan) => {
-  if (plan.monthlyPriceVnd == null) return copy.value.pending
+  if (plan.monthlyPriceVnd == null) return plan.priceStatus === 'Contact' ? copy.value.contact : copy.value.pending
   return `${new Intl.NumberFormat(isVi.value ? 'vi-VN' : 'en-US').format(plan.monthlyPriceVnd)} VND`
 }
 
 const planCode = (plan) => String(plan.id || plan.code || 'plan').toLowerCase()
-const isFeaturedPlan = (plan) => plan.isFeatured === true || planCode(plan) === 'team'
-const planIcon = (plan) => planCode(plan) === 'business' ? ShieldCheck : planCode(plan) === 'team' ? Users : Sparkles
+const isFeaturedPlan = (plan) => plan.isRecommended === true
+const planIcon = (plan) => planCode(plan) === 'enterprise' ? ShieldCheck : plan.audience === 'Team' ? Users : Sparkles
 
 const planFeatures = (plan) => {
   if (plan.features?.length) return plan.features
@@ -306,6 +316,7 @@ const logout = () => {
 const updateScrollProgress = () => {
   const available = document.documentElement.scrollHeight - window.innerHeight
   scrollProgress.value = available > 0 ? Math.min(100, Math.max(0, (window.scrollY / available) * 100)) : 0
+  landingRoot.value?.style.setProperty('--scroll-depth', `${Math.min(window.scrollY, 900) * -0.04}px`)
 }
 
 const setSpotlight = (event) => {
@@ -370,6 +381,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="landingRoot" class="landing-page">
+    <a class="skip-link" href="#main-content">Skip to content</a>
     <header class="landing-nav">
       <span class="scroll-progress" :style="{ transform: `scaleX(${scrollProgress / 100})` }"></span>
       <div class="nav-inner">
@@ -417,7 +429,7 @@ onBeforeUnmount(() => {
       </nav>
     </header>
 
-    <main>
+    <main id="main-content">
       <section class="hero">
         <div class="hero-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
         <div class="shell hero-grid">
@@ -449,6 +461,10 @@ onBeforeUnmount(() => {
               <div class="frame-bar"><i></i><i></i><i></i><span>Dashboard / Sprint workspace</span></div>
               <img src="/landing/sprinta-dashboard-real.png" alt="SprintA dashboard preview" />
             </div>
+            <div class="hero-depth-rail" aria-hidden="true">
+              <span class="depth-chip depth-chip-one">+12 tasks closed</span>
+              <span class="depth-chip depth-chip-two">Sprint 08 · live</span>
+            </div>
             <div class="context-card">
               <span><Bot :size="18" /></span>
               <div><b>{{ isVi ? 'Gợi ý thông minh' : 'Smart suggestions' }}</b><small>{{ isVi ? 'Có xác nhận trước khi chạy' : 'Confirmed before execution' }}</small></div>
@@ -473,7 +489,7 @@ onBeforeUnmount(() => {
             <p>{{ copy.productsIntro }}</p>
           </div>
           <div class="product-grid">
-            <article v-for="(product, index) in products" :key="product.route" class="product-card spotlight-card" :class="{ wide: index < 2 }" data-reveal @pointermove="setSpotlight" @pointerleave="resetSpotlight">
+            <article v-for="(product, index) in products" :key="product.route" class="product-card spotlight-card" :class="`product-card-${index + 1}`" data-reveal @pointermove="setSpotlight" @pointerleave="resetSpotlight">
               <div class="product-top">
                 <span class="product-icon"><component :is="product.icon" :size="20" /></span>
                 <span class="product-index">0{{ index + 1 }}</span>
@@ -507,6 +523,10 @@ onBeforeUnmount(() => {
             <button class="btn btn-ghost" type="button" @click="go('/dashboard')">{{ copy.aiButton }} <ArrowRight :size="16" /></button>
           </div>
           <div class="ai-panel spotlight-card" data-reveal @pointermove="setSpotlight" @pointerleave="resetSpotlight">
+            <span class="ai-chip ai-chip-context">Context · project 08</span>
+            <span class="ai-chip ai-chip-command">/create-task</span>
+            <span class="ai-chip ai-chip-confirm">Confirmed</span>
+            <span class="ai-path" aria-hidden="true"></span>
             <div class="panel-head">
               <img src="/ai-sprinta/idle.png" alt="SprintA AI mascot" />
               <div>
@@ -535,9 +555,9 @@ onBeforeUnmount(() => {
             <div class="eyebrow"><Coins :size="15" /> USAGE TRANSPARENCY</div>
             <h2><span>{{ landingHeadlines.pricing[0] }}</span> <em>{{ landingHeadlines.pricing[1] }}</em></h2>
             <p class="section-copy">{{ copy.pricingIntro }}</p>
-            <div class="pricing-mode" aria-label="Billing information">
-              <span class="pricing-mode-active"><Coins :size="14" /> {{ copy.monthly }}</span>
-              <span><ShieldCheck :size="14" /> {{ copy.serverPricing }}</span>
+            <div class="pricing-switcher" role="group" :aria-label="isVi ? 'Chọn nhóm gói' : 'Choose plan audience'">
+              <button type="button" :class="{ active: pricingAudience === 'Personal' }" :aria-pressed="pricingAudience === 'Personal'" @click="pricingAudience = 'Personal'"><Sparkles :size="14" /> {{ copy.personal }}</button>
+              <button type="button" :class="{ active: pricingAudience === 'Team' }" :aria-pressed="pricingAudience === 'Team'" @click="pricingAudience = 'Team'"><Users :size="14" /> {{ copy.team }}</button>
             </div>
           </div>
           <div v-if="usage && authenticated" class="usage-panel">
@@ -550,8 +570,8 @@ onBeforeUnmount(() => {
           <div v-else-if="usageError" class="api-state">{{ copy.usageFail }}</div>
         </div>
         <div class="shell">
-          <div v-if="pricing?.plans?.length" class="pricing-grid">
-            <article v-for="plan in pricing.plans" :key="plan.id || plan.code || plan.name" class="price-card spotlight-card" :class="{ featured: isFeaturedPlan(plan) }" data-reveal @pointermove="setSpotlight" @pointerleave="resetSpotlight">
+          <div v-if="pricingPlans.length" class="pricing-grid">
+            <article v-for="plan in pricingPlans" :key="plan.id || plan.code || plan.name" class="price-card spotlight-card" :class="{ featured: isFeaturedPlan(plan), enterprise: planCode(plan) === 'enterprise' }" data-reveal @pointermove="setSpotlight" @pointerleave="resetSpotlight">
               <div v-if="isFeaturedPlan(plan)" class="popular-badge"><Sparkles :size="13" /> {{ copy.popular }}</div>
               <div class="price-card-head">
                 <span class="plan-icon"><component :is="planIcon(plan)" :size="20" /></span>
@@ -562,9 +582,9 @@ onBeforeUnmount(() => {
                 <strong>{{ priceLabel(plan) }}</strong>
                 <span v-if="plan.monthlyPriceVnd != null">{{ copy.perMonth }}<template v-if="plan.perUser"> {{ copy.perUser }}</template></span>
               </div>
-              <p class="price-status"><span></span>{{ plan.monthlyPriceVnd == null ? copy.pending : copy.transparentPricing }}</p>
+              <p class="price-status"><span></span>{{ plan.monthlyPriceVnd == null ? (plan.priceStatus === 'Contact' ? copy.contact : copy.pending) : copy.transparentPricing }}</p>
               <button class="plan-cta" type="button" @click="go(authenticated ? '/dashboard' : '/register')">
-                {{ copy.choosePlan }} {{ plan.name }} <ArrowRight :size="16" />
+                {{ planCode(plan) === 'enterprise' ? copy.contact : copy.explorePlan }} {{ plan.name }} <ArrowRight :size="16" />
               </button>
               <div class="price-divider"></div>
               <div class="feature-list">
@@ -686,8 +706,13 @@ onBeforeUnmount(() => {
   overflow-x: clip;
   color: var(--ink);
   background: var(--bg);
-  font-family: Inter, "Avenir Next", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: 'Be Vietnam Pro', "Avenir Next", ui-sans-serif, system-ui, sans-serif;
+  position: relative;
+  isolation: isolate;
 }
+.skip-link { position: fixed; left: 16px; top: 12px; z-index: 100; transform: translateY(-180%); padding: 10px 14px; border-radius: 10px; color: var(--navy); background: var(--accent); font-weight: 800; text-decoration: none; transition: transform .2s ease; }
+.skip-link:focus { transform: translateY(0); outline: 3px solid var(--ink); outline-offset: 3px; }
+.landing-page::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .045; background-image: radial-gradient(rgba(8, 44, 72, .42) .7px, transparent .7px); background-size: 5px 5px; mix-blend-mode: multiply; }
 .landing-page img { max-width: 100%; }
 :global([data-theme="dark"] .landing-page) {
   --bg: #050d16;
@@ -824,7 +849,7 @@ onBeforeUnmount(() => {
 .proof-row { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 24px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .proof-row span { display: inline-flex; align-items: center; gap: 6px; }
 .proof-row svg { color: #17a878; }
-.hero-art { position: relative; perspective: 1400px; transform-style: preserve-3d; --spot-x: 50%; --spot-y: 50%; --tilt-x: 0deg; --tilt-y: 0deg; }
+.hero-art { position: relative; perspective: 1400px; transform-style: preserve-3d; --spot-x: 50%; --spot-y: 50%; --tilt-x: 0deg; --tilt-y: 0deg; transform: translateY(var(--scroll-depth, 0px)); transition: transform .2s ease-out; }
 .hero-art::before { content: ''; position: absolute; inset: -55px; z-index: -2; border-radius: 50%; background: radial-gradient(circle at var(--spot-x) var(--spot-y), color-mix(in srgb, var(--accent) 28%, transparent), transparent 50%); opacity: .8; filter: blur(20px); transition: opacity .3s ease; }
 .dashboard-frame {
   overflow: hidden;
@@ -832,7 +857,7 @@ onBeforeUnmount(() => {
   border-radius: 26px;
   background: var(--navy);
   box-shadow: 0 42px 120px rgba(4, 28, 46, .35), 0 12px 30px rgba(0,0,0,.22), inset 0 1px 1px rgba(255,255,255,.2);
-  transform: perspective(1200px) rotateX(var(--tilt-y)) rotateY(var(--tilt-x)) translateZ(12px);
+  transform: perspective(1200px) rotateX(calc(8deg + var(--tilt-y))) rotateY(calc(-9deg + var(--tilt-x))) translateZ(18px);
   transform-style: preserve-3d;
   transition: transform .25s cubic-bezier(.16,1,.3,1), box-shadow .25s ease, border-color .25s ease;
   animation: dashboardEnter .9s cubic-bezier(.16,1,.3,1) both, dashboardFloat 7s ease-in-out 1s infinite;
@@ -842,6 +867,10 @@ onBeforeUnmount(() => {
   box-shadow: 0 52px 140px rgba(4, 28, 46, .45), 0 18px 40px rgba(0, 169, 207, .18), inset 0 1px 2px rgba(255,255,255,.35);
   border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
 }
+.hero-depth-rail { position: absolute; inset: 0; pointer-events: none; transform-style: preserve-3d; }
+.depth-chip { position: absolute; display: inline-flex; align-items: center; padding: 9px 12px; border: 1px solid rgba(255,255,255,.2); border-radius: 11px; color: #d9f8ff; background: rgba(8, 37, 66, .82); box-shadow: 0 18px 42px rgba(4, 28, 46, .28); backdrop-filter: blur(12px); font-size: 11px; font-weight: 800; letter-spacing: .01em; }
+.depth-chip-one { left: -24px; top: 28%; transform: translateZ(72px) rotateZ(-4deg); animation: chipFloat 6s ease-in-out infinite; }
+.depth-chip-two { right: -26px; bottom: 12%; transform: translateZ(92px) rotateZ(4deg); animation: chipFloat 7s ease-in-out -2s infinite reverse; }
 .frame-bar { display: flex; align-items: center; gap: 7px; padding: 14px 16px; color: #a9c4d7; font-size: 12px; }
 .frame-bar i { width: 8px; height: 8px; border-radius: 50%; background: #ef5b63; }
 .frame-bar i:nth-child(2) { background: #f4b63f; }
@@ -911,9 +940,14 @@ onBeforeUnmount(() => {
 #features .product-headline em { color: var(--accent-gold); text-shadow: 0 0 28px color-mix(in srgb, var(--accent-gold) 22%, transparent); }
 .workflow-title { max-width: none; white-space: nowrap; font-size: clamp(42px, 4vw, 62px) !important; }
 .section-intro p, .section-copy { color: var(--muted); line-height: 1.75; font-size: 16px; }
-.product-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; margin-top: 46px; }
-.product-card { grid-column: span 2; min-height: 370px; display: flex; flex-direction: column; padding: 26px; border: 1px solid var(--line); border-radius: 26px; background: var(--surface); box-shadow: 0 16px 42px rgba(7, 26, 47, .055); transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(0); transform-style: preserve-3d; transition: transform .28s cubic-bezier(.16,1,.3,1), border-color .22s ease, box-shadow .22s ease; }
-.product-card.wide { grid-column: span 3; }
+.product-grid { display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: minmax(190px, auto); gap: 18px; margin-top: 38px; }
+.product-card { min-height: 265px; display: flex; flex-direction: column; padding: 26px; border: 0; border-radius: 26px; background: linear-gradient(145deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface-2) 82%, transparent)); box-shadow: 0 18px 45px rgba(7, 26, 47, .08), inset 0 1px 0 rgba(255,255,255,.6); transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(0); transform-style: preserve-3d; transition: transform .28s cubic-bezier(.16,1,.3,1), box-shadow .22s ease; }
+.product-card-1 { grid-column: span 4; grid-row: span 2; min-height: 425px; }
+.product-card-2 { grid-column: span 2; }
+.product-card-3 { grid-column: span 2; }
+.product-card-4 { grid-column: span 2; }
+.product-card-5 { grid-column: span 2; }
+.product-card-6 { grid-column: span 2; }
 .product-card:hover { transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(16px) translateY(-6px); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: 0 28px 75px rgba(7, 26, 47, .14), 0 0 25px color-mix(in srgb, var(--accent) 15%, transparent); }
 .product-top { display: flex; justify-content: space-between; align-items: center; }
 .product-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); transform: translateZ(24px); transition: transform .25s ease; }
@@ -943,8 +977,13 @@ onBeforeUnmount(() => {
 .spotlight-card:hover::before { opacity: 1; }
 .spotlight-card::after { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: radial-gradient(480px circle at var(--spot-x) var(--spot-y), color-mix(in srgb, var(--accent) 15%, transparent), transparent 70%); opacity: 0; transition: opacity .3s ease; pointer-events: none; }
 .spotlight-card:hover::after { opacity: 1; }
-.ai-panel { padding: 30px; border: 1px solid rgba(255,255,255,.2); border-radius: 30px; background: linear-gradient(145deg, #0d324e, #071c2e); box-shadow: inset 0 1px 1px rgba(255,255,255,.15), 0 32px 85px rgba(0,0,0,.35); transform: perspective(1200px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(0); transform-style: preserve-3d; transition: transform .28s cubic-bezier(.16,1,.3,1), box-shadow .25s ease, border-color .25s ease; }
+.ai-panel { position: relative; padding: 30px; border: 1px solid rgba(255,255,255,.2); border-radius: 30px; background: linear-gradient(145deg, #0d324e, #071c2e); box-shadow: inset 0 1px 1px rgba(255,255,255,.15), 0 32px 85px rgba(0,0,0,.35); transform: perspective(1200px) rotateX(calc(3deg + var(--tilt-y, 0deg))) rotateY(calc(-4deg + var(--tilt-x, 0deg))) translateZ(16px); transform-style: preserve-3d; transition: transform .28s cubic-bezier(.16,1,.3,1), box-shadow .25s ease, border-color .25s ease; }
 .ai-panel:hover { transform: perspective(1200px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(18px); border-color: color-mix(in srgb, var(--accent) 60%, rgba(255,255,255,.2)); box-shadow: inset 0 1px 2px rgba(255,255,255,.25), 0 40px 105px rgba(0,0,0,.45), 0 0 30px color-mix(in srgb, var(--accent) 20%, transparent); }
+.ai-chip { position: absolute; z-index: 4; padding: 7px 10px; border: 1px solid rgba(102,217,241,.34); border-radius: 9px; color: #c5f5ff; background: rgba(8, 38, 60, .78); box-shadow: 0 12px 28px rgba(0,0,0,.24); backdrop-filter: blur(10px); font-size: 10px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
+.ai-chip-context { top: 18px; right: 22px; transform: translateZ(58px) rotateZ(3deg); }
+.ai-chip-command { top: 45%; left: -22px; color: #ffe1a1; border-color: rgba(255,216,137,.35); transform: translateZ(76px) rotateZ(-4deg); }
+.ai-chip-confirm { right: -18px; bottom: 24%; color: #bdf6dc; border-color: rgba(40,208,163,.4); transform: translateZ(84px) rotateZ(4deg); }
+.ai-path { position: absolute; z-index: 1; top: 40%; left: 12%; width: 74%; height: 30%; border-top: 1px dashed rgba(102,217,241,.7); border-radius: 50%; transform: translateZ(42px) rotate(-7deg); opacity: .7; animation: pathPulse 4s ease-in-out infinite; pointer-events: none; }
 .panel-head { display: flex; align-items: center; gap: 13px; transform: translateZ(24px); }
 .panel-head img { width: 58px !important; height: 58px !important; object-fit: contain !important; border-radius: 18px; background: rgba(255,255,255,.06); }
 .panel-head div { display: grid; gap: 2px; }
@@ -963,14 +1002,18 @@ onBeforeUnmount(() => {
 .pricing-orb-two { width: 360px; height: 360px; bottom: -210px; left: -120px; background: radial-gradient(circle, color-mix(in srgb, var(--brand-royal) 10%, transparent), transparent 70%); }
 .pricing-header { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .72fr); gap: 70px; align-items: end; }
 .pricing-heading { max-width: 760px; }
-.pricing-mode { display: inline-flex; align-items: center; gap: 5px; margin-top: 24px; padding: 5px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--surface) 88%, transparent); box-shadow: 0 12px 28px color-mix(in srgb, var(--ink) 6%, transparent); }
-.pricing-mode span { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 13px; color: var(--muted); border-radius: 999px; font-size: 12px; font-weight: 850; }
-.pricing-mode .pricing-mode-active { color: #fff; background: var(--brand-deep); box-shadow: 0 8px 18px color-mix(in srgb, var(--brand-deep) 24%, transparent); }
-.pricing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 52px; align-items: stretch; }
-.price-card { position: relative; min-height: 510px; display: flex; flex-direction: column; padding: 32px; border: 1px solid color-mix(in srgb, var(--brand-slate) 28%, var(--line)); border-radius: 28px; background: color-mix(in srgb, var(--surface) 96%, transparent); box-shadow: 0 20px 54px color-mix(in srgb, var(--brand-deep) 8%, transparent); transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(0); transform-style: preserve-3d; transition: transform .28s cubic-bezier(.16,1,.3,1), border-color .22s ease, box-shadow .22s ease; }
+.pricing-switcher { display: inline-flex; align-items: center; gap: 5px; margin-top: 24px; padding: 5px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--surface) 88%, transparent); box-shadow: 0 12px 28px color-mix(in srgb, var(--ink) 6%, transparent); }
+.pricing-switcher button { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 15px; color: var(--muted); border: 0; border-radius: 10px; background: transparent; font: inherit; font-size: 12px; font-weight: 850; cursor: pointer; transition: color .2s ease, background .2s ease, transform .2s ease; }
+.pricing-switcher button:hover { transform: translateY(-1px); color: var(--ink); }
+.pricing-switcher button.active { color: #fff; background: var(--brand-deep); box-shadow: 0 8px 18px color-mix(in srgb, var(--brand-deep) 24%, transparent); }
+.pricing-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 42px; align-items: stretch; }
+.price-card { position: relative; min-height: 470px; display: flex; flex-direction: column; padding: 28px; border: 0; border-radius: 26px; background: linear-gradient(150deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface-2) 76%, transparent)); box-shadow: 0 20px 54px color-mix(in srgb, var(--brand-deep) 10%, transparent), inset 0 1px 0 rgba(255,255,255,.6); transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(4px); transform-style: preserve-3d; transition: transform .28s cubic-bezier(.16,1,.3,1), box-shadow .22s ease; }
 .price-card:hover { transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(20px) translateY(-8px); border-color: color-mix(in srgb, var(--brand-sky) 65%, var(--line)); box-shadow: 0 34px 80px color-mix(in srgb, var(--brand-deep) 18%, transparent), 0 0 30px color-mix(in srgb, var(--brand-sky) 20%, transparent); }
 .price-card.featured { border-color: color-mix(in srgb, var(--brand-royal) 75%, var(--line)); box-shadow: 0 28px 75px color-mix(in srgb, var(--brand-royal) 20%, transparent); transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(10px); }
 .price-card.featured:hover { transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(28px) translateY(-10px); box-shadow: 0 38px 95px color-mix(in srgb, var(--brand-royal) 28%, transparent), 0 0 35px color-mix(in srgb, var(--brand-sky) 28%, transparent); }
+.price-card.enterprise { grid-column: span 2; background: linear-gradient(135deg, color-mix(in srgb, var(--brand-deep) 82%, var(--surface)), color-mix(in srgb, var(--brand-sky) 17%, var(--surface))); color: #edf9ff; }
+.price-card.enterprise h3, .price-card.enterprise .price-value strong { color: #edf9ff; }
+.price-card.enterprise .price-label, .price-card.enterprise .price-status, .price-card.enterprise .price-value span, .price-card.enterprise .price-line { color: #b6d3e0; }
 .price-card.featured::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: linear-gradient(145deg, color-mix(in srgb, var(--brand-sky) 9%, transparent), transparent 38%); pointer-events: none; }
 .popular-badge { position: absolute; top: -15px; left: 50%; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 13px; color: #fff; border-radius: 999px; background: var(--brand-royal); box-shadow: 0 10px 24px color-mix(in srgb, var(--brand-royal) 30%, transparent); transform: translateX(-50%) translateZ(42px); transition: transform .25s ease; font-size: 11px; font-weight: 900; white-space: nowrap; }
 .price-card-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
@@ -979,7 +1022,7 @@ onBeforeUnmount(() => {
 .price-label { color: var(--brand-slate); font-size: 11px; font-weight: 950; letter-spacing: .16em; text-transform: uppercase; }
 .price-card h3 { margin: 22px 0 8px; font-size: 31px; letter-spacing: -.045em; }
 .price-value { min-height: 58px; display: flex; align-items: baseline; gap: 8px; }
-.price-value strong { color: var(--ink); font-size: clamp(25px, 2vw, 34px); letter-spacing: -.04em; }
+.price-value strong { color: var(--ink); font-size: clamp(25px, 2vw, 34px); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .price-value span { color: var(--muted); font-size: 12px; font-weight: 750; }
 .price-value.pending strong { color: var(--brand-deep); font-size: 24px; }
 :global([data-theme="dark"] .landing-page) .price-value.pending strong { color: var(--brand-sky); }
@@ -1042,8 +1085,10 @@ onBeforeUnmount(() => {
 .motion-ready .product-card:nth-child(6) { transition-delay: .20s; }
 @keyframes wordReveal { from { opacity: 0; transform: translateY(24px) rotate(1.5deg); filter: blur(7px); } to { opacity: 1; transform: translateY(0) rotate(0); filter: blur(0); } }
 @keyframes glintTwinkle { 0%, 100% { opacity: .28; transform: scale(.72) rotate(0); } 48% { opacity: 1; transform: scale(1.12) rotate(18deg); } }
-@keyframes dashboardEnter { from { opacity: 0; transform: translateY(28px) rotateX(7deg) scale(.97); } to { opacity: 1; transform: translateY(0) rotateX(0) scale(1); } }
-@keyframes dashboardFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes dashboardEnter { from { opacity: 0; transform: perspective(1200px) rotateX(8deg) rotateY(-9deg) translateZ(18px) translateY(28px) scale(.97); } to { opacity: 1; transform: perspective(1200px) rotateX(8deg) rotateY(-9deg) translateZ(18px) translateY(0) scale(1); } }
+@keyframes dashboardFloat { 0%,100% { transform: perspective(1200px) rotateX(8deg) rotateY(-9deg) translateZ(18px) translateY(0); } 50% { transform: perspective(1200px) rotateX(8deg) rotateY(-9deg) translateZ(18px) translateY(-8px); } }
+@keyframes chipFloat { 0%,100% { margin-top: 0; } 50% { margin-top: -8px; } }
+@keyframes pathPulse { 0%,100% { opacity: .35; transform: translateZ(42px) rotate(-7deg) scaleX(.96); } 50% { opacity: .9; transform: translateZ(42px) rotate(-7deg) scaleX(1); } }
 @keyframes auroraDrift { from { transform: translate3d(-2%, -2%, 0) scale(.95); } to { transform: translate3d(8%, 7%, 0) scale(1.08); } }
 @keyframes orbitSpin { to { transform: rotate(360deg); } }
 @keyframes livePulse { 0% { box-shadow: 0 0 0 0 rgba(32,199,168,.35); } 70%,100% { box-shadow: 0 0 0 9px rgba(32,199,168,0); } }
@@ -1065,7 +1110,8 @@ onBeforeUnmount(() => {
   .spotlight-card, .dashboard-frame, .context-card, .live-strip, .product-card, .ai-panel, .action-card, .price-card, .popular-badge, .plan-icon, .plan-cta { transform: none !important; perspective: none !important; transform-style: flat !important; }
 }
 @media (hover: none) {
-  .spotlight-card, .dashboard-frame, .context-card, .live-strip, .product-card, .ai-panel, .action-card, .price-card, .popular-badge, .plan-icon, .plan-cta { transform: none !important; perspective: none !important; transform-style: flat !important; }
+  .spotlight-card, .dashboard-frame, .context-card, .live-strip, .product-card, .ai-panel, .action-card, .price-card, .popular-badge, .plan-icon, .plan-cta { --tilt-x: 0deg; --tilt-y: 0deg; }
+  .hero-depth-rail, .ai-chip, .ai-path { animation-play-state: paused; }
 }
 @media (max-width: 980px) {
   .desktop-nav, .desktop-only, .user-meta { display: none; }
@@ -1074,9 +1120,10 @@ onBeforeUnmount(() => {
   .hero { min-height: auto; padding-top: 128px; }
   .hero-grid, .ai-grid, .faq-grid, .split, .pricing-header { grid-template-columns: 1fr; gap: 44px; }
   .product-grid { grid-template-columns: 1fr 1fr; }
-  .pricing-grid { grid-template-columns: 1fr; max-width: 640px; margin-inline: auto; }
+  .pricing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 760px; margin-inline: auto; }
+  .price-card.enterprise { grid-column: span 2; }
   .price-card { min-height: 0; }
-  .product-card, .product-card.wide { grid-column: span 1; }
+  .product-card, .product-card-1, .product-card-2, .product-card-3, .product-card-4, .product-card-5, .product-card-6 { grid-column: span 1; grid-row: auto; }
   .workflow-line { grid-template-columns: repeat(3, 1fr); gap: 22px 14px; min-height: auto; padding: 0; }
   .workflow-line::before, .workflow-line::after { display: none; }
   .workflow-node { grid-template-rows: auto; }
@@ -1097,8 +1144,9 @@ onBeforeUnmount(() => {
   .section { padding: 74px 0; }
   .signal-track { animation-duration: 36s; }
   .product-grid, .pricing-grid { grid-template-columns: 1fr; }
-  .pricing-mode { width: 100%; justify-content: center; border-radius: 18px; }
-  .pricing-mode span { justify-content: center; flex: 1 1 0; padding-inline: 8px; }
+  .price-card.enterprise { grid-column: span 1; }
+  .pricing-switcher { width: 100%; justify-content: center; border-radius: 18px; }
+  .pricing-switcher button { justify-content: center; flex: 1 1 0; padding-inline: 8px; }
   .price-card { padding: 25px 22px; }
   .workflow-line { grid-template-columns: 1fr; gap: 12px; }
   .workflow-copy, .workflow-node.is-lower .workflow-copy { min-height: 104px; padding: 16px 16px 16px 70px; align-content: center; }

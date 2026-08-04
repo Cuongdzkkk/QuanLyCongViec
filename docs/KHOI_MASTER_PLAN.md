@@ -797,7 +797,7 @@ AI phải cập nhật phần này sau mỗi batch.
 | OAuth runtime | DEFERRED | Chưa chốt | UI fallback hoạt động | External credentials/console | 2026-08-04 |
 | P0 Integration Hub + Intakes | PASS | feat(p0): secure intakes and integration permissions | 290/290 backend; frontend build PASS; runtime A/B/C PASS | BLOCKED_EXTERNAL: provider credentials/console | 2026-08-04 |
 | P1 AI usage/credit | PASS | fix(p1): align AI credit usage and quota | 294/294 backend; frontend build PASS; runtime pricing/DI PASS | AI_CREDIT_PURCHASE_DEFERRED | 2026-08-04 |
-| P2 Landing 3D | PASS | feat(frontend): elevate landing page with accessible 3d visuals | Frontend production build PASS; 3D perspective & tilt PASS; prefers-reduced-motion & mobile fallbacks PASS | Không | 2026-08-04 |
+| P2 Landing 3D rework | PASS | feat(pricing): apply approved MVP AI credit plans; feat(landing): restore motion and deliver visible 3d redesign | 294/294 backend; frontend build PASS; local additive migration applied; API/database pricing PASS; desktop/tablet/mobile/reduced-motion screenshots, pointer tilt and overflow checks PASS | AI_CREDIT_PURCHASE_DEFERRED; external OAuth credentials | 2026-08-04 |
 | P3 Final release | NOT STARTED | — | — | Phụ thuộc P0–P2 | — |
 
 ---

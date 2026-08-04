@@ -151,13 +151,13 @@ const resetSpotlight = (event) => {
   border-radius: 26px;
   background: var(--navy);
   box-shadow: 0 32px 85px rgba(4, 28, 46, .28);
-  transform: perspective(1200px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(0);
+  transform: perspective(1200px) rotateX(calc(2deg + var(--tilt-y, 0deg))) rotateY(calc(-3deg + var(--tilt-x, 0deg))) translateZ(12px);
   transform-style: preserve-3d;
   transition: transform .28s cubic-bezier(.16,1,.3,1), box-shadow .25s ease, border-color .25s ease;
 }
 
 .video-shell:hover {
-  transform: perspective(1200px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(14px);
+  transform: perspective(1200px) rotateX(calc(2deg + var(--tilt-y, 0deg))) rotateY(calc(-3deg + var(--tilt-x, 0deg))) translateZ(26px);
   border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
   box-shadow: 0 42px 110px rgba(4, 28, 46, .38), 0 0 30px color-mix(in srgb, var(--accent) 20%, transparent);
 }
@@ -229,9 +229,14 @@ const resetSpotlight = (event) => {
   color: white;
 }
 
-@media (prefers-reduced-motion: reduce), (hover: none) {
+@media (prefers-reduced-motion: reduce) {
   .video-shell { transform: none !important; perspective: none !important; }
   .video-play { transform: translate(-50%, -50%) !important; }
+}
+
+@media (hover: none) and (prefers-reduced-motion: no-preference) {
+  .video-shell { --tilt-x: 0deg; --tilt-y: 0deg; }
+  .video-play { transform: translate(-50%, -50%) translateZ(35px); }
 }
 
 @media (max-width: 900px) {
