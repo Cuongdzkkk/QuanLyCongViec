@@ -414,6 +414,11 @@ namespace TaskManagement.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -425,6 +430,12 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.Property<int>("IncludedAiCredits")
                         .HasColumnType("int");
+
+                    b.Property<bool>("IsPublished")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRecommended")
+                        .HasColumnType("bit");
 
                     b.Property<int?>("IncludedUsers")
                         .HasColumnType("int");
