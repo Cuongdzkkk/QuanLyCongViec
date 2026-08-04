@@ -3,7 +3,8 @@ import { getStoredAccessToken } from '@/utils/authSession'
 
 export const COLLABORATION_REALTIME_EVENTS = Object.freeze({
   CHANNEL_MESSAGE_CREATED: 'ChannelMessageCreated',
-  DIRECT_MESSAGE_CREATED: 'DirectMessageCreated'
+  DIRECT_MESSAGE_CREATED: 'DirectMessageCreated',
+  READ_STATE_CHANGED: 'CollaborationReadStateChanged'
 })
 
 export const COLLABORATION_REALTIME_STATES = Object.freeze({
@@ -48,6 +49,7 @@ class CollaborationRealtimeService {
     this.intentionalStop = false
     this.channelSubscribers = new Set()
     this.directSubscribers = new Set()
+    this.readStateSubscribers = new Set()
     this.stateSubscribers = new Set()
     this.reconnectedSubscribers = new Set()
   }
@@ -80,6 +82,10 @@ class CollaborationRealtimeService {
     connection.on(
       COLLABORATION_REALTIME_EVENTS.DIRECT_MESSAGE_CREATED,
       payload => this.directSubscribers.forEach(handler => handler(payload))
+    )
+    connection.on(
+      COLLABORATION_REALTIME_EVENTS.READ_STATE_CHANGED,
+      payload => this.readStateSubscribers.forEach(handler => handler(payload))
     )
     connection.onreconnecting(() => {
       if (!this.intentionalStop) this.emitState(COLLABORATION_REALTIME_STATES.RECONNECTING)
@@ -215,6 +221,11 @@ class CollaborationRealtimeService {
   subscribeDirectMessage(handler) {
     this.directSubscribers.add(handler)
     return () => this.directSubscribers.delete(handler)
+  }
+
+  subscribeReadState(handler) {
+    this.readStateSubscribers.add(handler)
+    return () => this.readStateSubscribers.delete(handler)
   }
 
   subscribeState(handler) {

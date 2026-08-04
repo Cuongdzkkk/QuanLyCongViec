@@ -48,6 +48,15 @@ export const collaborationApi = {
     return unwrapData(response)
   },
 
+  async markChannelRead(channelId, messageId, options = {}) {
+    const response = await axiosClient.post(
+      `/channels/${channelId}/read`,
+      { messageId },
+      { signal: options.signal }
+    )
+    return unwrapData(response)
+  },
+
   async getDirectMessageUsers(projectId, options = {}) {
     const response = await axiosClient.get('/users', {
       params: {
@@ -103,6 +112,15 @@ export const collaborationApi = {
     const response = await axiosClient.post(
       `/direct-conversations/${conversationId}/messages`,
       { content },
+      { signal: options.signal }
+    )
+    return unwrapData(response)
+  },
+
+  async markDirectConversationRead(conversationId, messageId, options = {}) {
+    const response = await axiosClient.post(
+      `/direct-conversations/${conversationId}/read`,
+      { messageId },
       { signal: options.signal }
     )
     return unwrapData(response)

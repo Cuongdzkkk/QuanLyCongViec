@@ -83,6 +83,13 @@
             >
               <span class="item-icon">#</span>
               <span class="item-name truncate">{{ ch.name }}</span>
+              <span
+                v-if="ch.unreadCount > 0"
+                class="collaboration-unread-badge"
+                role="status"
+                aria-live="polite"
+                :aria-label="`${ch.unreadCount} tin nhắn chưa đọc trong Channel ${ch.name}`"
+              >{{ formatUnreadCount(ch.unreadCount) }}</span>
             </button>
             <button
               v-if="channels.length < channelPagination.totalCount"
@@ -193,6 +200,13 @@
               <span class="conversation-time">
                 {{ formatTime(conversation.lastMessageAt || conversation.createdAt) }}
               </span>
+              <span
+                v-if="conversation.unreadCount > 0"
+                class="collaboration-unread-badge"
+                role="status"
+                aria-live="polite"
+                :aria-label="`${conversation.unreadCount} tin nhắn chưa đọc từ ${conversation.name}`"
+              >{{ formatUnreadCount(conversation.unreadCount) }}</span>
             </button>
             <button
               v-if="directConversations.length < conversationPagination.totalCount"
@@ -1314,6 +1328,9 @@ const connectionNoticeIcon = computed(() => {
   return 'fa-solid fa-triangle-exclamation'
 })
 let connectionNoticeTimer = null
+let markReadTimer = null
+let pendingRead = null
+let markReadVersion = 0
 const realtimeUnsubscribers = []
 const videoCallActive = ref(false)
 
@@ -1401,7 +1418,9 @@ const mapChannel = (item, expectedProjectId) => {
     canSend: Boolean(item.canSend),
     canManage: Boolean(item.canManage),
     createdAt: item.createdAt,
-    updatedAt: item.updatedAt
+    updatedAt: item.updatedAt,
+    unreadCount: Math.max(0, Number(item.unreadCount || 0)),
+    lastReadMessageId: item.lastReadMessageId || null
   }
 }
 
@@ -1442,6 +1461,8 @@ const mapDirectConversation = (item) => {
     lastMessagePreview: item.lastMessagePreview || '',
     lastMessageAt: item.lastMessageAt || null,
     createdAt: item.createdAt,
+    unreadCount: Math.max(0, Number(item.unreadCount || 0)),
+    lastReadMessageId: item.lastReadMessageId || null,
     type: 'dm'
   }
 }
@@ -1484,6 +1505,94 @@ const mergeMessages = (...collections) => {
   return Array.from(unique.values()).sort(compareMessages)
 }
 
+const formatUnreadCount = (count) => count > 99 ? '99+' : `${count}`
+
+const applyReadState = (state) => {
+  if (!state?.resourceId || !['channel', 'dm'].includes(state.resourceType)) return
+  const unreadCount = Math.max(0, Number(state.unreadCount || 0))
+  const updateItem = item => item.id === state.resourceId
+    ? {
+        ...item,
+        unreadCount,
+        lastReadMessageId: state.lastReadMessageId || item.lastReadMessageId || null
+      }
+    : item
+  if (state.resourceType === 'channel') {
+    channels.value = channels.value.map(updateItem)
+  } else {
+    directConversations.value = directConversations.value.map(updateItem)
+  }
+  if (
+    activeChat.value?.id === state.resourceId &&
+    activeChat.value?.type === state.resourceType
+  ) {
+    activeChat.value = updateItem(activeChat.value)
+  }
+}
+
+const cancelPendingMarkRead = () => {
+  markReadVersion += 1
+  pendingRead = null
+  if (markReadTimer) {
+    window.clearTimeout(markReadTimer)
+    markReadTimer = null
+  }
+}
+
+const flushMarkRead = async (request, version) => {
+  if (
+    version !== markReadVersion ||
+    !request?.messageId ||
+    activeChat.value?.id !== request.resourceId ||
+    activeChat.value?.type !== request.resourceType
+  ) {
+    return
+  }
+  try {
+    const state = request.resourceType === 'channel'
+      ? await collaborationApi.markChannelRead(request.resourceId, request.messageId)
+      : await collaborationApi.markDirectConversationRead(request.resourceId, request.messageId)
+    if (
+      version !== markReadVersion ||
+      activeChat.value?.id !== request.resourceId ||
+      activeChat.value?.type !== request.resourceType
+    ) {
+      return
+    }
+    applyReadState(state)
+  } catch (error) {
+    if (isCanceledRequest(error) || version !== markReadVersion) return
+    if (error?.response?.status === 401) clearCollaborationState()
+  } finally {
+    if (version === markReadVersion) pendingRead = null
+  }
+}
+
+const scheduleMarkRead = (resourceType, resourceId, messageId) => {
+  if (
+    !messageId ||
+    activeChat.value?.id !== resourceId ||
+    activeChat.value?.type !== resourceType
+  ) {
+    return
+  }
+  pendingRead = { resourceType, resourceId, messageId }
+  const version = ++markReadVersion
+  if (markReadTimer) window.clearTimeout(markReadTimer)
+  markReadTimer = window.setTimeout(() => {
+    markReadTimer = null
+    const request = pendingRead
+    void flushMarkRead(request, version)
+  }, 180)
+}
+
+const markRenderedLatestMessageRead = (resourceType, resourceId) => {
+  const latestMessage = activeMessages.value.at(-1)
+  if (latestMessage?.messageId) {
+    scheduleMarkRead(resourceType, resourceId, latestMessage.messageId)
+  }
+}
+
 const appendRealtimeMessage = async (message) => {
   if (activeMessages.value.some(item => item.messageId === message.messageId)) return
   const shouldScroll = isNearMessageBottom()
@@ -1497,6 +1606,7 @@ const appendRealtimeMessage = async (message) => {
 }
 
 const clearMessageHistory = () => {
+  cancelPendingMarkRead()
   messageAbortController.value?.abort()
   messageAbortController.value = null
   messageRequestId += 1
@@ -1626,7 +1736,8 @@ const retryProjects = () => loadProjects({ force: true })
 const loadChannels = async ({
   page = 1,
   append = false,
-  selectFirst = true
+  selectFirst = true,
+  preserveSelection = false
 } = {}) => {
   const projectId = activeProjectId.value
   if (!projectId) {
@@ -1642,7 +1753,7 @@ const loadChannels = async ({
   if (append) {
     channelsLoadingMore.value = true
   } else {
-    clearChannelSelection()
+    if (!preserveSelection) clearChannelSelection()
     channels.value = []
     channelsError.value = ''
     channelsLoading.value = true
@@ -1932,6 +2043,9 @@ const loadChannelHistory = async (channel, {
     } else if (!refresh) {
       scrollToBottom()
     }
+    if (page === 1 && !older) {
+      markRenderedLatestMessageRead('channel', channel.id)
+    }
   } catch (error) {
     if (
       isCanceledRequest(error) ||
@@ -2012,6 +2126,9 @@ const loadDirectHistory = async (conversation, {
         messageThread.value.scrollHeight - previousScrollHeight
     } else if (!refresh) {
       scrollToBottom()
+    }
+    if (page === 1 && !older) {
+      markRenderedLatestMessageRead('dm', conversation.id)
     }
   } catch (error) {
     if (
@@ -2135,6 +2252,7 @@ const handleChannelRealtimeMessage = async (payload) => {
   if (!channel?.id || payload?.channelId !== channel.id || !payload?.messageId) return
   try {
     await appendRealtimeMessage(mapChannelMessage(payload, channel.id))
+    markRenderedLatestMessageRead('channel', channel.id)
   } catch {
     // Ignore payloads that do not match the documented Channel event contract.
   }
@@ -2151,9 +2269,14 @@ const handleDirectRealtimeMessage = async (payload) => {
   }
   try {
     await appendRealtimeMessage(mapDirectMessage(payload, conversation.id))
+    markRenderedLatestMessageRead('dm', conversation.id)
   } catch {
     // Ignore payloads that do not match the documented Direct event contract.
   }
+}
+
+const handleReadStateChanged = (payload) => {
+  applyReadState(payload)
 }
 
 const leaveActiveRealtimeGroup = async (chat = activeChat.value) => {
@@ -2222,9 +2345,15 @@ const handleRealtimeReconnected = async ({ errors }) => {
   const chat = activeChat.value
   if (!chat?.id) return
   if (chat.type === 'channel') {
-    await loadChannelHistory(chat, { page: 1, refresh: true })
+    await Promise.all([
+      loadChannelHistory(chat, { page: 1, refresh: true }),
+      loadChannels({ page: 1, selectFirst: false, preserveSelection: true })
+    ])
   } else {
-    await loadDirectHistory(chat, { page: 1, refresh: true })
+    await Promise.all([
+      loadDirectHistory(chat, { page: 1, refresh: true }),
+      loadDirectConversations({ page: 1, selectFirst: false })
+    ])
   }
 }
 
@@ -2232,6 +2361,7 @@ const registerRealtimeHandlers = () => {
   realtimeUnsubscribers.push(
     collaborationRealtime.subscribeChannelMessage(handleChannelRealtimeMessage),
     collaborationRealtime.subscribeDirectMessage(handleDirectRealtimeMessage),
+    collaborationRealtime.subscribeReadState(handleReadStateChanged),
     collaborationRealtime.subscribeState(handleRealtimeState),
     collaborationRealtime.subscribeReconnected(handleRealtimeReconnected)
   )
@@ -2366,6 +2496,7 @@ onBeforeUnmount(() => {
     window.clearTimeout(connectionNoticeTimer)
     connectionNoticeTimer = null
   }
+  cancelPendingMarkRead()
   void collaborationRealtime.stop()
   createChannelAbortController.value?.abort()
   channelAbortController.value?.abort()
@@ -2715,7 +2846,9 @@ const selectChat = async (item, type) => {
     workspaceId: item.workspaceId || null,
     canRead: type === 'channel' ? item.canRead : true,
     canSend: type === 'channel' ? item.canSend : true,
-    canManage: type === 'channel' ? item.canManage : false
+    canManage: type === 'channel' ? item.canManage : false,
+    unreadCount: item.unreadCount || 0,
+    lastReadMessageId: item.lastReadMessageId || null
   }
 
   await joinRealtimeForChat(activeChat.value)
@@ -3254,6 +3387,28 @@ const confirmInviteToServer = () => {
   padding-left: 6px;
   color: var(--color-text-muted);
   font-size: 10px;
+}
+
+.collaboration-unread-badge {
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-accent);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 2px var(--sa-sidebar);
+}
+
+.list-item.active .collaboration-unread-badge {
+  background: var(--color-text-primary);
+  color: var(--color-surface);
 }
 
 .section-list {
