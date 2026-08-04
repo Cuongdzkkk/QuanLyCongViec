@@ -28,6 +28,27 @@ const copy = computed(() => languageCode.value === 'vi'
     })
 
 const loadVideo = () => { isLoaded.value = true }
+
+const setSpotlight = (event) => {
+  const target = event.currentTarget
+  const rect = target.getBoundingClientRect()
+  const x = event.clientX - rect.left
+  const y = event.clientY - rect.top
+  const centerX = rect.width / 2
+  const centerY = rect.height / 2
+  const tiltX = ((x - centerX) / centerX) * 6
+  const tiltY = -((y - centerY) / centerY) * 6
+  target.style.setProperty('--spot-x', `${x}px`)
+  target.style.setProperty('--spot-y', `${y}px`)
+  target.style.setProperty('--tilt-x', `${tiltX.toFixed(2)}deg`)
+  target.style.setProperty('--tilt-y', `${tiltY.toFixed(2)}deg`)
+}
+
+const resetSpotlight = (event) => {
+  const target = event.currentTarget
+  target.style.setProperty('--tilt-x', '0deg')
+  target.style.setProperty('--tilt-y', '0deg')
+}
 </script>
 
 <template>
@@ -45,7 +66,7 @@ const loadVideo = () => { isLoaded.value = true }
       </div>
     </div>
 
-    <div class="video-shell">
+    <div class="video-shell spotlight-card" @pointermove="setSpotlight" @pointerleave="resetSpotlight">
       <div v-if="!isLoaded" class="video-poster" role="img" :aria-label="props.title">
         <img src="/videos/sprinta-product-demo-poster.webp" :alt="props.title" />
         <button class="video-play" type="button" @click="loadVideo" :aria-label="copy.play">
@@ -126,13 +147,22 @@ const loadVideo = () => { isLoaded.value = true }
   width: min(1040px, 100%);
   margin: 42px auto 0;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 22px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-radius: 26px;
   background: var(--navy);
-  box-shadow: 0 26px 70px rgba(4, 28, 46, .22);
+  box-shadow: 0 32px 85px rgba(4, 28, 46, .28);
+  transform: perspective(1200px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(0);
+  transform-style: preserve-3d;
+  transition: transform .28s cubic-bezier(.16,1,.3,1), box-shadow .25s ease, border-color .25s ease;
 }
 
-.video-shell::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; border: 1px solid rgba(255,255,255,.14); border-radius: inherit; }
+.video-shell:hover {
+  transform: perspective(1200px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(14px);
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  box-shadow: 0 42px 110px rgba(4, 28, 46, .38), 0 0 30px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.video-shell::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; border: 1px solid rgba(255,255,255,.18); border-radius: inherit; }
 .video-poster,
 .video-frame {
   display: block;
@@ -158,15 +188,22 @@ const loadVideo = () => { isLoaded.value = true }
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  padding: 15px 20px;
-  transform: translate(-50%, -50%);
+  padding: 15px 22px;
+  transform: translate(-50%, -50%) translateZ(35px);
   color: white;
-  border: 1px solid #ffffff55;
+  border: 1px solid rgba(255, 255, 255, .4);
   border-radius: 999px;
   background: #008fb8ee;
-  box-shadow: 0 16px 34px rgba(0,143,184,.34);
+  box-shadow: 0 20px 42px rgba(0,143,184,.4);
   cursor: pointer;
   font-weight: 850;
+  transition: transform .2s ease, background .2s ease, box-shadow .2s ease;
+}
+
+.video-play:hover {
+  transform: translate(-50%, -50%) translateZ(45px) scale(1.06);
+  background: #009ecb;
+  box-shadow: 0 26px 54px rgba(0,143,184,.5);
 }
 
 .video-play:focus-visible,
@@ -190,6 +227,11 @@ const loadVideo = () => { isLoaded.value = true }
 
 .video-fallback:hover {
   color: white;
+}
+
+@media (prefers-reduced-motion: reduce), (hover: none) {
+  .video-shell { transform: none !important; perspective: none !important; }
+  .video-play { transform: translate(-50%, -50%) !important; }
 }
 
 @media (max-width: 900px) {

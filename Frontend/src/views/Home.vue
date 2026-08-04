@@ -50,6 +50,7 @@ const isVi = computed(() => language.value === 'vi')
 const displayName = computed(() => user.value?.fullName || user.value?.username || user.value?.email || (isVi.value ? 'Người dùng SprintA' : 'SprintA user'))
 const initials = computed(() => displayName.value.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(-2).join('').toUpperCase() || 'SA')
 const workspaceName = computed(() => user.value?.currentWorkspace?.name || user.value?.workspaceName || 'Workspace')
+
 const editorialHeadlines = computed(() => isVi.value ? {
   hero: [
     [{ text: 'Quản lý ' }, { text: 'công việc', tone: 'cyan', glint: true }],
@@ -85,6 +86,7 @@ const editorialHeadlines = computed(() => isVi.value ? {
     [{ text: 'From ' }, { text: 'idea', tone: 'amber', glint: true }, { text: ' to ' }, { text: 'done', tone: 'mint', glint: true }]
   ]
 })
+
 const landingHeadlines = computed(() => isVi.value ? {
   products: ['Một hệ thống', 'đủ sâu', 'cho đội thật'],
   ai: ['AI hiểu context.', 'Bạn vẫn giữ quyền quyết định.'],
@@ -228,8 +230,6 @@ const workflowSteps = computed(() => isVi.value
 const go = (path) => {
   mobileOpen.value = false
   if (path.startsWith('#')) {
-    // An anchor can jump before IntersectionObserver receives its first frame.
-    // Reveal its children eagerly so a navigation click never leaves a blank section.
     landingRoot.value?.querySelectorAll(`${path} [data-reveal]`).forEach((item) => item.classList.add('is-visible'))
     document.querySelector(path)?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -311,8 +311,22 @@ const updateScrollProgress = () => {
 const setSpotlight = (event) => {
   const target = event.currentTarget
   const rect = target.getBoundingClientRect()
-  target.style.setProperty('--spot-x', `${event.clientX - rect.left}px`)
-  target.style.setProperty('--spot-y', `${event.clientY - rect.top}px`)
+  const x = event.clientX - rect.left
+  const y = event.clientY - rect.top
+  const centerX = rect.width / 2
+  const centerY = rect.height / 2
+  const tiltX = ((x - centerX) / centerX) * 9
+  const tiltY = -((y - centerY) / centerY) * 9
+  target.style.setProperty('--spot-x', `${x}px`)
+  target.style.setProperty('--spot-y', `${y}px`)
+  target.style.setProperty('--tilt-x', `${tiltX.toFixed(2)}deg`)
+  target.style.setProperty('--tilt-y', `${tiltY.toFixed(2)}deg`)
+}
+
+const resetSpotlight = (event) => {
+  const target = event.currentTarget
+  target.style.setProperty('--tilt-x', '0deg')
+  target.style.setProperty('--tilt-y', '0deg')
 }
 
 onMounted(() => {
@@ -339,7 +353,6 @@ onMounted(() => {
     }, { threshold: 0.14, rootMargin: '0px 0px -7% 0px' })
     revealItems.forEach((item) => revealObserver.observe(item))
   }
-  // A final paint-safe fallback covers reload + immediate anchor navigation.
   revealFallbackTimer = window.setTimeout(() => {
     revealItems.forEach((item) => item.classList.add('is-visible'))
     landingRoot.value?.classList.add('motion-complete')
@@ -429,7 +442,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div class="hero-art reveal spotlight-card" data-reveal @pointermove="setSpotlight">
+          <div class="hero-art reveal spotlight-card" data-reveal @pointermove="setSpotlight" @pointerleave="resetSpotlight">
             <span class="orbit orbit-one" aria-hidden="true"></span>
             <span class="orbit orbit-two" aria-hidden="true"></span>
             <div class="dashboard-frame">
@@ -460,7 +473,7 @@ onBeforeUnmount(() => {
             <p>{{ copy.productsIntro }}</p>
           </div>
           <div class="product-grid">
-            <article v-for="(product, index) in products" :key="product.route" class="product-card spotlight-card" :class="{ wide: index < 2 }" data-reveal @pointermove="setSpotlight">
+            <article v-for="(product, index) in products" :key="product.route" class="product-card spotlight-card" :class="{ wide: index < 2 }" data-reveal @pointermove="setSpotlight" @pointerleave="resetSpotlight">
               <div class="product-top">
                 <span class="product-icon"><component :is="product.icon" :size="20" /></span>
                 <span class="product-index">0{{ index + 1 }}</span>
@@ -493,7 +506,7 @@ onBeforeUnmount(() => {
             </div>
             <button class="btn btn-ghost" type="button" @click="go('/dashboard')">{{ copy.aiButton }} <ArrowRight :size="16" /></button>
           </div>
-          <div class="ai-panel spotlight-card" data-reveal @pointermove="setSpotlight">
+          <div class="ai-panel spotlight-card" data-reveal @pointermove="setSpotlight" @pointerleave="resetSpotlight">
             <div class="panel-head">
               <img src="/ai-sprinta/idle.png" alt="SprintA AI mascot" />
               <div>
@@ -538,7 +551,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="shell">
           <div v-if="pricing?.plans?.length" class="pricing-grid">
-            <article v-for="plan in pricing.plans" :key="plan.id || plan.code || plan.name" class="price-card spotlight-card" :class="{ featured: isFeaturedPlan(plan) }" data-reveal @pointermove="setSpotlight">
+            <article v-for="plan in pricing.plans" :key="plan.id || plan.code || plan.name" class="price-card spotlight-card" :class="{ featured: isFeaturedPlan(plan) }" data-reveal @pointermove="setSpotlight" @pointerleave="resetSpotlight">
               <div v-if="isFeaturedPlan(plan)" class="popular-badge"><Sparkles :size="13" /> {{ copy.popular }}</div>
               <div class="price-card-head">
                 <span class="plan-icon"><component :is="planIcon(plan)" :size="20" /></span>
@@ -603,7 +616,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-          <div class="final-cta spotlight-card" data-reveal @pointermove="setSpotlight">
+          <div class="final-cta spotlight-card" data-reveal @pointermove="setSpotlight" @pointerleave="resetSpotlight">
             <div>
               <div class="eyebrow inverted"><Rocket :size="15" /> SPRINTA WORKSPACE</div>
               <h2><span>{{ landingHeadlines.cta[0] }}</span> <em>{{ landingHeadlines.cta[1] }}</em></h2>
@@ -811,34 +824,80 @@ onBeforeUnmount(() => {
 .proof-row { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 24px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .proof-row span { display: inline-flex; align-items: center; gap: 6px; }
 .proof-row svg { color: #17a878; }
-.hero-art { position: relative; --spot-x: 50%; --spot-y: 50%; }
-.hero-art::before { content: ''; position: absolute; inset: -45px; z-index: -1; border-radius: 50%; background: radial-gradient(circle at var(--spot-x) var(--spot-y), rgba(53,200,230,.25), transparent 46%); opacity: .75; transition: opacity .2s ease; }
+.hero-art { position: relative; perspective: 1400px; transform-style: preserve-3d; --spot-x: 50%; --spot-y: 50%; --tilt-x: 0deg; --tilt-y: 0deg; }
+.hero-art::before { content: ''; position: absolute; inset: -55px; z-index: -2; border-radius: 50%; background: radial-gradient(circle at var(--spot-x) var(--spot-y), color-mix(in srgb, var(--accent) 28%, transparent), transparent 50%); opacity: .8; filter: blur(20px); transition: opacity .3s ease; }
 .dashboard-frame {
   overflow: hidden;
-  border: 1px solid rgba(100, 139, 170, .32);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, rgba(100, 139, 170, .4));
   border-radius: 26px;
   background: var(--navy);
-  box-shadow: 0 38px 110px rgba(4, 28, 46, .28);
+  box-shadow: 0 42px 120px rgba(4, 28, 46, .35), 0 12px 30px rgba(0,0,0,.22), inset 0 1px 1px rgba(255,255,255,.2);
+  transform: perspective(1200px) rotateX(var(--tilt-y)) rotateY(var(--tilt-x)) translateZ(12px);
+  transform-style: preserve-3d;
+  transition: transform .25s cubic-bezier(.16,1,.3,1), box-shadow .25s ease, border-color .25s ease;
   animation: dashboardEnter .9s cubic-bezier(.16,1,.3,1) both, dashboardFloat 7s ease-in-out 1s infinite;
   transform-origin: 50% 70%;
+}
+.dashboard-frame:hover {
+  box-shadow: 0 52px 140px rgba(4, 28, 46, .45), 0 18px 40px rgba(0, 169, 207, .18), inset 0 1px 2px rgba(255,255,255,.35);
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
 }
 .frame-bar { display: flex; align-items: center; gap: 7px; padding: 14px 16px; color: #a9c4d7; font-size: 12px; }
 .frame-bar i { width: 8px; height: 8px; border-radius: 50%; background: #ef5b63; }
 .frame-bar i:nth-child(2) { background: #f4b63f; }
 .frame-bar i:nth-child(3) { background: #25b66d; }
 .frame-bar span { margin-left: 8px; }
-.dashboard-frame img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: top; }
-.context-card { position: absolute; right: -16px; top: 18%; display: flex; align-items: center; gap: 10px; max-width: 250px; padding: 14px; border: 1px solid rgba(255,255,255,.22); border-radius: 16px; color: #edf9ff; background: rgba(8, 37, 66, .88); box-shadow: 0 20px 48px rgba(7, 26, 47, .22); }
+.dashboard-frame img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: top; transform: translateZ(8px); transition: transform .25s ease; }
+.context-card {
+  position: absolute;
+  right: -16px;
+  top: 18%;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 250px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 18px;
+  color: #edf9ff;
+  background: rgba(8, 37, 66, .92);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 24px 60px rgba(4, 28, 46, .35), 0 0 0 1px rgba(255,255,255,.1);
+  transform: perspective(1000px) translateZ(48px) rotateX(calc(var(--tilt-y) * -0.3)) rotateY(calc(var(--tilt-x) * 0.3));
+  transition: transform .25s cubic-bezier(.16,1,.3,1), box-shadow .25s ease;
+}
+.context-card:hover {
+  transform: perspective(1000px) translateZ(64px) scale(1.03);
+  box-shadow: 0 32px 70px rgba(4, 28, 46, .45), 0 0 20px color-mix(in srgb, var(--accent) 30%, transparent);
+}
 .context-card span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: rgba(0, 167, 216, .24); color: #62daf1; }
 .context-card div { display: grid; gap: 2px; }
 .context-card small { color: #a8c4d8; }
-.live-strip { position: absolute; left: 24px; bottom: -17px; display: flex; align-items: center; gap: 9px; padding: 10px 14px; color: var(--ink); border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(14px); box-shadow: var(--shadow); font-size: 12px; font-weight: 850; }
+.live-strip {
+  position: absolute;
+  left: 24px;
+  bottom: -17px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 16px;
+  color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 16px 42px rgba(4, 28, 46, .16);
+  transform: perspective(1000px) translateZ(36px);
+  transition: transform .25s ease;
+}
 .live-strip span { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent-2) 18%, transparent); animation: livePulse 2s ease-out infinite; }
 .orbit { position: absolute; z-index: -1; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 50%; pointer-events: none; }
 .orbit::after { content: ''; position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); }
-.orbit-one { width: 112px; height: 112px; right: -46px; bottom: -42px; animation: orbitSpin 12s linear infinite; }
+.orbit-one { width: 112px; height: 112px; right: -46px; bottom: -42px; transform: translateZ(-30px); animation: orbitSpin 12s linear infinite; }
 .orbit-one::after { top: 15px; left: 10px; }
-.orbit-two { width: 68px; height: 68px; left: -28px; top: 22px; animation: orbitSpin 9s linear infinite reverse; }
+.orbit-two { width: 68px; height: 68px; left: -28px; top: 22px; transform: translateZ(55px); animation: orbitSpin 9s linear infinite reverse; }
 .orbit-two::after { right: 3px; bottom: 12px; }
 .signal-rail { overflow: hidden; padding: 14px 0; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--surface); font-size: 11px; font-weight: 900; letter-spacing: .16em; }
 .signal-track { display: flex; align-items: center; gap: 28px; width: max-content; animation: railMove 28s linear infinite; }
@@ -853,17 +912,17 @@ onBeforeUnmount(() => {
 .workflow-title { max-width: none; white-space: nowrap; font-size: clamp(42px, 4vw, 62px) !important; }
 .section-intro p, .section-copy { color: var(--muted); line-height: 1.75; font-size: 16px; }
 .product-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; margin-top: 46px; }
-.product-card { grid-column: span 2; min-height: 360px; display: flex; flex-direction: column; padding: 24px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); box-shadow: 0 16px 42px rgba(7, 26, 47, .055); transition: transform .24s cubic-bezier(.2,.8,.2,1), border-color .18s ease, box-shadow .18s ease; }
+.product-card { grid-column: span 2; min-height: 370px; display: flex; flex-direction: column; padding: 26px; border: 1px solid var(--line); border-radius: 26px; background: var(--surface); box-shadow: 0 16px 42px rgba(7, 26, 47, .055); transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(0); transform-style: preserve-3d; transition: transform .28s cubic-bezier(.16,1,.3,1), border-color .22s ease, box-shadow .22s ease; }
 .product-card.wide { grid-column: span 3; }
-.product-card:hover { transform: translateY(-7px); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); box-shadow: var(--shadow); }
+.product-card:hover { transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(16px) translateY(-6px); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: 0 28px 75px rgba(7, 26, 47, .14), 0 0 25px color-mix(in srgb, var(--accent) 15%, transparent); }
 .product-top { display: flex; justify-content: space-between; align-items: center; }
-.product-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.product-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); transform: translateZ(24px); transition: transform .25s ease; }
 .product-index { margin-left: auto; color: color-mix(in srgb, var(--muted) 55%, transparent); font-size: 11px; font-weight: 900; letter-spacing: .12em; }
 .product-index + .link-btn { margin-left: 18px; }
 .link-btn { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); border: 0; background: transparent; cursor: pointer; font-weight: 900; }
-.product-card h3 { margin: 24px 0 10px; font-size: 27px; letter-spacing: -.04em; }
-.product-card p { min-height: 54px; margin: 0 0 18px; color: var(--muted); line-height: 1.6; }
-.product-card img { margin-top: auto; width: 100%; aspect-ratio: 16 / 8.5; object-fit: cover; object-position: top; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); filter: saturate(.95) contrast(1.02); }
+.product-card h3 { margin: 24px 0 10px; font-size: 27px; letter-spacing: -.04em; transform: translateZ(18px); transition: transform .25s ease; }
+.product-card p { min-height: 54px; margin: 0 0 18px; color: var(--muted); line-height: 1.6; transform: translateZ(10px); transition: transform .25s ease; }
+.product-card img { margin-top: auto; width: 100%; aspect-ratio: 16 / 8.5; object-fit: cover; object-position: top; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); filter: saturate(.95) contrast(1.02); transform: translateZ(14px); transition: transform .25s ease; box-shadow: 0 10px 24px rgba(0,0,0,.1); }
 .ai-section { position: relative; overflow: hidden; color: #edf9ff; background: var(--navy); }
 .ai-section::before { content: ''; position: absolute; width: 560px; height: 560px; right: -180px; top: -240px; border-radius: 50%; background: radial-gradient(circle, rgba(53,200,230,.16), transparent 68%); pointer-events: none; }
 .inverted { color: #66d9f1; }
@@ -879,16 +938,20 @@ onBeforeUnmount(() => {
 .ai-flow span { color: #66d9f1; font-size: 12px; font-weight: 950; }
 .ai-flow small { color: #a9c4d8; line-height: 1.45; }
 .ai-flow > svg { align-self: center; color: #67cfe7; }
-.spotlight-card { position: relative; isolation: isolate; --spot-x: 50%; --spot-y: 50%; }
-.spotlight-card::after { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: radial-gradient(360px circle at var(--spot-x) var(--spot-y), rgba(53,200,230,.11), transparent 64%); opacity: 0; transition: opacity .25s ease; pointer-events: none; }
+.spotlight-card { position: relative; isolation: isolate; --spot-x: 50%; --spot-y: 50%; --tilt-x: 0deg; --tilt-y: 0deg; transform-style: preserve-3d; will-change: transform; transition: transform .28s cubic-bezier(.16,1,.3,1), border-color .22s ease, box-shadow .22s ease; }
+.spotlight-card::before { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: inherit; background: radial-gradient(400px circle at var(--spot-x) var(--spot-y), color-mix(in srgb, rgba(255,255,255,.18) 70%, transparent), transparent 75%); opacity: 0; pointer-events: none; transition: opacity .3s ease; }
+.spotlight-card:hover::before { opacity: 1; }
+.spotlight-card::after { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: radial-gradient(480px circle at var(--spot-x) var(--spot-y), color-mix(in srgb, var(--accent) 15%, transparent), transparent 70%); opacity: 0; transition: opacity .3s ease; pointer-events: none; }
 .spotlight-card:hover::after { opacity: 1; }
-.ai-panel { padding: 28px; border: 1px solid rgba(255,255,255,.17); border-radius: 28px; background: #0b2940; box-shadow: inset 0 1px rgba(255,255,255,.08), 0 28px 70px rgba(0,0,0,.18); }
-.panel-head { display: flex; align-items: center; gap: 13px; }
+.ai-panel { padding: 30px; border: 1px solid rgba(255,255,255,.2); border-radius: 30px; background: linear-gradient(145deg, #0d324e, #071c2e); box-shadow: inset 0 1px 1px rgba(255,255,255,.15), 0 32px 85px rgba(0,0,0,.35); transform: perspective(1200px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(0); transform-style: preserve-3d; transition: transform .28s cubic-bezier(.16,1,.3,1), box-shadow .25s ease, border-color .25s ease; }
+.ai-panel:hover { transform: perspective(1200px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(18px); border-color: color-mix(in srgb, var(--accent) 60%, rgba(255,255,255,.2)); box-shadow: inset 0 1px 2px rgba(255,255,255,.25), 0 40px 105px rgba(0,0,0,.45), 0 0 30px color-mix(in srgb, var(--accent) 20%, transparent); }
+.panel-head { display: flex; align-items: center; gap: 13px; transform: translateZ(24px); }
 .panel-head img { width: 58px !important; height: 58px !important; object-fit: contain !important; border-radius: 18px; background: rgba(255,255,255,.06); }
 .panel-head div { display: grid; gap: 2px; }
 .panel-head small { color: #a9c4d8; }
-.prompt-bubble { width: min(82%, 520px); margin: 24px 0 16px auto; padding: 15px 16px; border-radius: 18px 18px 4px 18px; color: #dff7ff; background: rgba(0, 167, 216, .18); line-height: 1.6; }
-.action-card { padding: 18px; border: 1px solid rgba(255,255,255,.16); border-radius: 18px; background: rgba(2, 17, 31, .56); }
+.prompt-bubble { width: min(82%, 520px); margin: 24px 0 16px auto; padding: 15px 16px; border-radius: 18px 18px 4px 18px; color: #dff7ff; background: rgba(0, 167, 216, .18); line-height: 1.6; transform: translateZ(28px); box-shadow: 0 14px 34px rgba(0,0,0,.22); }
+.action-card { padding: 18px; border: 1px solid rgba(255,255,255,.16); border-radius: 18px; background: rgba(2, 17, 31, .56); transform: translateZ(36px); box-shadow: 0 18px 42px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.12); transition: transform .25s ease, box-shadow .25s ease; }
+.action-card:hover { transform: translateZ(46px) scale(1.01); box-shadow: 0 24px 52px rgba(0,0,0,.45), 0 0 20px color-mix(in srgb, #28d0a3 25%, transparent); }
 .action-title { display: flex; align-items: center; gap: 8px; font-weight: 900; }
 .action-title svg { color: #28d0a3; }
 .action-title span { margin-left: auto; padding: 5px 8px; border-radius: 999px; color: #ffd789; background: rgba(255, 216, 137, .12); font-size: 12px; }
@@ -904,13 +967,14 @@ onBeforeUnmount(() => {
 .pricing-mode span { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 13px; color: var(--muted); border-radius: 999px; font-size: 12px; font-weight: 850; }
 .pricing-mode .pricing-mode-active { color: #fff; background: var(--brand-deep); box-shadow: 0 8px 18px color-mix(in srgb, var(--brand-deep) 24%, transparent); }
 .pricing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 52px; align-items: stretch; }
-.price-card { position: relative; min-height: 500px; display: flex; flex-direction: column; padding: 30px; border: 1px solid color-mix(in srgb, var(--brand-slate) 24%, var(--line)); border-radius: 26px; background: color-mix(in srgb, var(--surface) 96%, transparent); box-shadow: 0 20px 54px color-mix(in srgb, var(--brand-deep) 8%, transparent); transition: transform .24s cubic-bezier(.2,.8,.2,1), border-color .22s ease, box-shadow .22s ease; }
-.price-card:hover { transform: translateY(-7px); border-color: color-mix(in srgb, var(--brand-sky) 58%, var(--line)); box-shadow: 0 28px 64px color-mix(in srgb, var(--brand-deep) 14%, transparent); }
-.price-card.featured { border-color: color-mix(in srgb, var(--brand-royal) 70%, var(--line)); box-shadow: 0 26px 70px color-mix(in srgb, var(--brand-royal) 17%, transparent); }
+.price-card { position: relative; min-height: 510px; display: flex; flex-direction: column; padding: 32px; border: 1px solid color-mix(in srgb, var(--brand-slate) 28%, var(--line)); border-radius: 28px; background: color-mix(in srgb, var(--surface) 96%, transparent); box-shadow: 0 20px 54px color-mix(in srgb, var(--brand-deep) 8%, transparent); transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(0); transform-style: preserve-3d; transition: transform .28s cubic-bezier(.16,1,.3,1), border-color .22s ease, box-shadow .22s ease; }
+.price-card:hover { transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(20px) translateY(-8px); border-color: color-mix(in srgb, var(--brand-sky) 65%, var(--line)); box-shadow: 0 34px 80px color-mix(in srgb, var(--brand-deep) 18%, transparent), 0 0 30px color-mix(in srgb, var(--brand-sky) 20%, transparent); }
+.price-card.featured { border-color: color-mix(in srgb, var(--brand-royal) 75%, var(--line)); box-shadow: 0 28px 75px color-mix(in srgb, var(--brand-royal) 20%, transparent); transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(10px); }
+.price-card.featured:hover { transform: perspective(1000px) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(28px) translateY(-10px); box-shadow: 0 38px 95px color-mix(in srgb, var(--brand-royal) 28%, transparent), 0 0 35px color-mix(in srgb, var(--brand-sky) 28%, transparent); }
 .price-card.featured::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: linear-gradient(145deg, color-mix(in srgb, var(--brand-sky) 9%, transparent), transparent 38%); pointer-events: none; }
-.popular-badge { position: absolute; top: -15px; left: 50%; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 13px; color: #fff; border-radius: 999px; background: var(--brand-royal); box-shadow: 0 10px 24px color-mix(in srgb, var(--brand-royal) 30%, transparent); transform: translateX(-50%); font-size: 11px; font-weight: 900; white-space: nowrap; }
+.popular-badge { position: absolute; top: -15px; left: 50%; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 13px; color: #fff; border-radius: 999px; background: var(--brand-royal); box-shadow: 0 10px 24px color-mix(in srgb, var(--brand-royal) 30%, transparent); transform: translateX(-50%) translateZ(42px); transition: transform .25s ease; font-size: 11px; font-weight: 900; white-space: nowrap; }
 .price-card-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
-.plan-icon { display: grid; place-items: center; width: 44px; height: 44px; color: var(--brand-deep); border-radius: 14px; background: color-mix(in srgb, var(--brand-sky) 16%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-sky) 24%, transparent); }
+.plan-icon { display: grid; place-items: center; width: 44px; height: 44px; color: var(--brand-deep); border-radius: 14px; background: color-mix(in srgb, var(--brand-sky) 16%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-sky) 24%, transparent); transform: translateZ(25px); }
 :global([data-theme="dark"] .landing-page) .plan-icon { color: var(--brand-sky); }
 .price-label { color: var(--brand-slate); font-size: 11px; font-weight: 950; letter-spacing: .16em; text-transform: uppercase; }
 .price-card h3 { margin: 22px 0 8px; font-size: 31px; letter-spacing: -.045em; }
@@ -985,9 +1049,23 @@ onBeforeUnmount(() => {
 @keyframes livePulse { 0% { box-shadow: 0 0 0 0 rgba(32,199,168,.35); } 70%,100% { box-shadow: 0 0 0 9px rgba(32,199,168,0); } }
 @keyframes railMove { to { transform: translateX(-50%); } }
 @keyframes journeySignal { 0%, 8% { left: 5.5%; opacity: 0; } 12% { opacity: 1; } 84% { left: calc(94.5% - 10px); opacity: 1; } 94%, 100% { left: calc(94.5% - 10px); opacity: 0; } }
+.spotlight-card:focus-within,
+.btn:focus-visible,
+.plan-cta:focus-visible,
+.icon-btn:focus-visible,
+.lang-btn:focus-visible,
+.text-btn:focus-visible,
+.faq-item button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
   .motion-ready [data-reveal] { opacity: 1 !important; transform: none !important; }
+  .spotlight-card, .dashboard-frame, .context-card, .live-strip, .product-card, .ai-panel, .action-card, .price-card, .popular-badge, .plan-icon, .plan-cta { transform: none !important; perspective: none !important; transform-style: flat !important; }
+}
+@media (hover: none) {
+  .spotlight-card, .dashboard-frame, .context-card, .live-strip, .product-card, .ai-panel, .action-card, .price-card, .popular-badge, .plan-icon, .plan-cta { transform: none !important; perspective: none !important; transform-style: flat !important; }
 }
 @media (max-width: 980px) {
   .desktop-nav, .desktop-only, .user-meta { display: none; }
