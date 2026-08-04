@@ -206,7 +206,16 @@ public sealed class DirectConversationService : IDirectConversationService
                     message.SenderId,
                     message.Sender != null ? message.Sender.FullName : "Unknown user",
                     message.Sender != null ? message.Sender.AvatarUrl : null),
-                message.SentAt))
+                message.SentAt,
+                message.Attachments
+                    .OrderBy(attachment => attachment.CreatedAt)
+                    .ThenBy(attachment => attachment.Id)
+                    .Select(attachment => new CollaborationAttachmentDto(
+                        attachment.Id,
+                        attachment.OriginalFileName,
+                        attachment.ContentType,
+                        attachment.SizeBytes))
+                    .ToList()))
             .ToListAsync(cancellationToken);
         return new(items, page, pageSize, totalCount, MessageOrdering);
     }
@@ -215,10 +224,20 @@ public sealed class DirectConversationService : IDirectConversationService
         Guid conversationId,
         Guid userId,
         string? content,
+        CancellationToken cancellationToken = default) =>
+        await SendWithAttachmentsAsync(
+            conversationId, userId, content, [], cancellationToken);
+
+    public async Task<DirectMessageDto> SendWithAttachmentsAsync(
+        Guid conversationId,
+        Guid userId,
+        string? content,
+        IReadOnlyList<PendingCollaborationAttachmentDto> attachments,
         CancellationToken cancellationToken = default)
     {
         var conversation = await AuthorizeConversationAsync(conversationId, userId, cancellationToken);
-        var normalizedContent = NormalizeContent(content);
+        ValidateAttachments(attachments);
+        var normalizedContent = NormalizeContent(content, attachments.Count > 0);
         var recipientId = conversation.UserLowId == userId
             ? conversation.UserHighId
             : conversation.UserLowId;
@@ -232,6 +251,20 @@ public sealed class DirectConversationService : IDirectConversationService
             Content = normalizedContent,
             SentAt = sentAt
         };
+        foreach (var attachment in attachments)
+        {
+            message.Attachments.Add(new CollaborationMessageAttachment
+            {
+                Id = attachment.AttachmentId,
+                DirectMessageId = message.Id,
+                StorageKey = attachment.StorageKey,
+                OriginalFileName = attachment.OriginalFileName,
+                ContentType = attachment.ContentType,
+                SizeBytes = attachment.SizeBytes,
+                UploadedByUserId = userId,
+                CreatedAt = sentAt
+            });
+        }
 
         if (_context.Database.IsRelational())
         {
@@ -259,7 +292,16 @@ public sealed class DirectConversationService : IDirectConversationService
                     item.SenderId,
                     item.Sender != null ? item.Sender.FullName : "Unknown user",
                     item.Sender != null ? item.Sender.AvatarUrl : null),
-                item.SentAt))
+                item.SentAt,
+                item.Attachments
+                    .OrderBy(attachment => attachment.CreatedAt)
+                    .ThenBy(attachment => attachment.Id)
+                    .Select(attachment => new CollaborationAttachmentDto(
+                        attachment.Id,
+                        attachment.OriginalFileName,
+                        attachment.ContentType,
+                        attachment.SizeBytes))
+                    .ToList()))
             .SingleAsync(cancellationToken);
     }
 
@@ -461,10 +503,13 @@ public sealed class DirectConversationService : IDirectConversationService
     private static (Guid LowId, Guid HighId) CanonicalPair(Guid first, Guid second) =>
         first.CompareTo(second) < 0 ? (first, second) : (second, first);
 
-    private static string NormalizeContent(string? content)
+    private static string NormalizeContent(string? content, bool hasAttachments)
     {
         if (string.IsNullOrWhiteSpace(content))
+        {
+            if (hasAttachments) return string.Empty;
             throw new ArgumentException("Message content is required.", nameof(content));
+        }
         var normalized = content.Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n')
             .Trim();
@@ -473,6 +518,21 @@ public sealed class DirectConversationService : IDirectConversationService
                 $"Message content cannot exceed {MaximumContentLength} characters.",
                 nameof(content));
         return normalized;
+    }
+
+    private static void ValidateAttachments(IReadOnlyList<PendingCollaborationAttachmentDto> attachments)
+    {
+        ArgumentNullException.ThrowIfNull(attachments);
+        if (attachments.Count > 5)
+            throw new ArgumentException("A message can contain at most 5 attachments.", nameof(attachments));
+        if (attachments.Any(item =>
+                item.AttachmentId == Guid.Empty ||
+                string.IsNullOrWhiteSpace(item.StorageKey) ||
+                item.StorageKey != Path.GetFileName(item.StorageKey) ||
+                string.IsNullOrWhiteSpace(item.OriginalFileName) ||
+                string.IsNullOrWhiteSpace(item.ContentType) ||
+                item.SizeBytes is <= 0 or > 10 * 1024 * 1024))
+            throw new ArgumentException("Attachment metadata is invalid.", nameof(attachments));
     }
 
     private static void ValidatePage(int page, int pageSize)

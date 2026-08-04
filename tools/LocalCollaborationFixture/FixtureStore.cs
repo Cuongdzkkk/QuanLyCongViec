@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using TaskManagement.API.Services;
+using TaskManagement.Application.DTOs.Collaboration;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 
@@ -187,12 +189,30 @@ internal sealed class FixtureStore
     {
         await using var scope = _services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var attachmentStorage = scope.ServiceProvider.GetRequiredService<ICollaborationAttachmentStorage>();
         RequireSqlServer(context);
+        var storedAttachments = await context.CollaborationMessageAttachments.AsNoTracking()
+            .Where(item =>
+                (item.ChannelMessage != null && item.ChannelMessage.CollaborationChannelId == _identity.ChannelAId) ||
+                (item.DirectMessage != null && item.DirectMessage.ConversationId == _identity.ConversationAbId))
+            .Select(item => new PendingCollaborationAttachmentDto(
+                item.Id,
+                item.StorageKey,
+                item.OriginalFileName,
+                item.ContentType,
+                item.SizeBytes))
+            .ToListAsync(cancellationToken);
         var strategy = context.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
             await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
             await VerifyCleanupOwnershipAsync(context, cancellationToken);
+
+            await context.CollaborationMessageAttachments
+                .Where(item =>
+                    (item.ChannelMessage != null && item.ChannelMessage.CollaborationChannelId == _identity.ChannelAId) ||
+                    (item.DirectMessage != null && item.DirectMessage.ConversationId == _identity.ConversationAbId))
+                .ExecuteDeleteAsync(cancellationToken);
 
             await context.DirectConversationReadStates
                 .Where(item => item.ConversationId == _identity.ConversationAbId)
@@ -249,6 +269,9 @@ internal sealed class FixtureStore
 
             await transaction.CommitAsync(cancellationToken);
         });
+        attachmentStorage.Delete(storedAttachments);
+        if (storedAttachments.Any(item => File.Exists(attachmentStorage.ResolvePath(item.StorageKey))))
+            throw new InvalidOperationException("Cleanup left a run-scoped collaboration attachment file.");
     }
 
     public async Task AssertCleanAsync(CancellationToken cancellationToken = default)
@@ -262,6 +285,9 @@ internal sealed class FixtureStore
             await context.Projects.IgnoreQueryFilters().CountAsync(item => item.Id == _identity.ProjectAId, cancellationToken) +
             await context.CollaborationChannels.IgnoreQueryFilters().CountAsync(item => item.Id == _identity.ChannelAId, cancellationToken) +
             await context.DirectConversations.CountAsync(item => item.Id == _identity.ConversationAbId, cancellationToken) +
+            await context.CollaborationMessageAttachments.CountAsync(item =>
+                (item.ChannelMessage != null && item.ChannelMessage.CollaborationChannelId == _identity.ChannelAId) ||
+                (item.DirectMessage != null && item.DirectMessage.ConversationId == _identity.ConversationAbId), cancellationToken) +
             await context.CollaborationChannelReadStates.CountAsync(item => item.ChannelId == _identity.ChannelAId, cancellationToken) +
             await context.DirectConversationReadStates.CountAsync(item => item.ConversationId == _identity.ConversationAbId, cancellationToken);
         if (remaining != 0)

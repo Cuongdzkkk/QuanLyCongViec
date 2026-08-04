@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using TaskManagement.API.Controllers;
+using TaskManagement.API.Services;
 using TaskManagement.Application.DTOs.Collaboration;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
@@ -213,7 +214,8 @@ public sealed class DirectConversationServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         var controller = new DirectConversationsController(
-            service.Object, readStateService.Object, publisher.Object)
+            service.Object, readStateService.Object, publisher.Object,
+            Mock.Of<ICollaborationAttachmentStorage>())
         {
             ControllerContext = new ControllerContext
             {

@@ -8,6 +8,7 @@ public interface IDirectConversationService
     Task<DirectConversationPageDto> ListAsync(Guid userId, int page, int pageSize, CancellationToken cancellationToken = default);
     Task<DirectMessagePageDto> GetHistoryAsync(Guid conversationId, Guid userId, int page, int pageSize, CancellationToken cancellationToken = default);
     Task<DirectMessageDto> SendAsync(Guid conversationId, Guid userId, string? content, CancellationToken cancellationToken = default);
+    Task<DirectMessageDto> SendWithAttachmentsAsync(Guid conversationId, Guid userId, string? content, IReadOnlyList<PendingCollaborationAttachmentDto> attachments, CancellationToken cancellationToken = default);
 }
 
 public sealed class DirectConversationNotFoundException : Exception

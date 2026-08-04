@@ -128,6 +128,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<CollaborationChannelMember> CollaborationChannelMembers { get; set; }
         public DbSet<CollaborationChannelReadState> CollaborationChannelReadStates { get; set; }
         public DbSet<DirectConversationReadState> DirectConversationReadStates { get; set; }
+        public DbSet<CollaborationMessageAttachment> CollaborationMessageAttachments { get; set; }
 
         public DbSet<CustomFieldDefinition> CustomFieldDefinitions { get; set; }
         public DbSet<CustomFieldValue> CustomFieldValues { get; set; }
@@ -1212,6 +1213,31 @@ namespace TaskManagement.Infrastructure.Data
                 .WithMany()
                 .HasForeignKey(cm => cm.SenderId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<CollaborationMessageAttachment>(entity =>
+            {
+                entity.ToTable(table => table.HasCheckConstraint(
+                    "CK_CollaborationMessageAttachments_ExactlyOneMessage",
+                    "([ChannelMessageId] IS NOT NULL AND [DirectMessageId] IS NULL) OR ([ChannelMessageId] IS NULL AND [DirectMessageId] IS NOT NULL)"));
+                entity.Property(item => item.StorageKey).HasMaxLength(80).IsRequired();
+                entity.Property(item => item.OriginalFileName).HasMaxLength(255).IsRequired();
+                entity.Property(item => item.ContentType).HasMaxLength(120).IsRequired();
+                entity.HasIndex(item => item.StorageKey).IsUnique();
+                entity.HasIndex(item => item.ChannelMessageId);
+                entity.HasIndex(item => item.DirectMessageId);
+                entity.HasIndex(item => new { item.UploadedByUserId, item.CreatedAt });
+                entity.HasOne(item => item.ChannelMessage)
+                    .WithMany(message => message.Attachments)
+                    .HasForeignKey(item => item.ChannelMessageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(item => item.DirectMessage)
+                    .WithMany(message => message.Attachments)
+                    .HasForeignKey(item => item.DirectMessageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(item => item.UploadedByUser).WithMany()
+                    .HasForeignKey(item => item.UploadedByUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
 
             modelBuilder.Entity<ChannelMessage>()
                 .HasOne(cm => cm.LegacyDepartment)

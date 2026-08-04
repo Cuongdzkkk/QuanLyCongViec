@@ -16,6 +16,13 @@ public interface IChannelTextService
         Guid userId,
         string? content,
         CancellationToken cancellationToken = default);
+
+    Task<ChannelMessageDto> SendWithAttachmentsAsync(
+        Guid channelId,
+        Guid userId,
+        string? content,
+        IReadOnlyList<PendingCollaborationAttachmentDto> attachments,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ChannelNotFoundException : Exception

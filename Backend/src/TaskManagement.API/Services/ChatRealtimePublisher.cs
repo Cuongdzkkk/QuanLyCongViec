@@ -29,7 +29,8 @@ public sealed class ChatRealtimePublisher : ICollaborationRealtimePublisher
                 message.ChannelId,
                 message.Content,
                 message.Sender,
-                message.CreatedAt),
+                message.CreatedAt,
+                message.Attachments),
             message.MessageId,
             cancellationToken);
 
@@ -44,7 +45,8 @@ public sealed class ChatRealtimePublisher : ICollaborationRealtimePublisher
                 message.ConversationId,
                 message.Content,
                 message.Sender,
-                message.CreatedAt),
+                message.CreatedAt,
+                message.Attachments),
             message.MessageId,
             cancellationToken);
 

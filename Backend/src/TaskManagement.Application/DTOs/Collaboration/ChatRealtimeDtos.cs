@@ -18,11 +18,13 @@ public sealed record ChannelMessageCreatedEventDto(
     Guid ChannelId,
     string Content,
     ChannelMessageSenderDto Sender,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    IReadOnlyList<CollaborationAttachmentDto>? Attachments = null);
 
 public sealed record DirectMessageCreatedEventDto(
     Guid MessageId,
     Guid ConversationId,
     string Content,
     DirectMessageSenderDto Sender,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    IReadOnlyList<CollaborationAttachmentDto>? Attachments = null);

@@ -49,6 +49,7 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<ICollaborationReadStateService, CollaborationReadStateService>();
             services.AddScoped<ICollaborationRealtimeAuthorizationService, CollaborationRealtimeAuthorizationService>();
             services.AddSingleton<ICollaborationRealtimePublisher, TaskManagement.API.Services.ChatRealtimePublisher>();
+            services.AddScoped<TaskManagement.API.Services.ICollaborationAttachmentStorage, TaskManagement.API.Services.CollaborationAttachmentStorage>();
             services.AddScoped<ITaskDependencyService, TaskDependencyService>();
             
             services.AddMemoryCache();

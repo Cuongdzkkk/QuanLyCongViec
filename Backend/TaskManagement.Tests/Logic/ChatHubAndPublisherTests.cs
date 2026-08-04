@@ -212,11 +212,13 @@ public sealed class ChatHubAndPublisherTests
             .ThrowsAsync(new DirectConversationNotFoundException());
         var channelController = WithUser(
             new ChannelMessagesController(
-                channelService.Object, readStateService.Object, publisher.Object),
+                channelService.Object, readStateService.Object, publisher.Object,
+                Mock.Of<ICollaborationAttachmentStorage>()),
             userId);
         var directController = WithUser(
             new DirectConversationsController(
-                directService.Object, readStateService.Object, publisher.Object),
+                directService.Object, readStateService.Object, publisher.Object,
+                Mock.Of<ICollaborationAttachmentStorage>()),
             userId);
 
         await channelController.Invoking(item => item.Send(

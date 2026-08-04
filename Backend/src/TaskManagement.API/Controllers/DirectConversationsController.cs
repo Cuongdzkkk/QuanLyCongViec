@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using TaskManagement.Application.DTOs.Collaboration;
 using TaskManagement.Application.DTOs.Common;
 using TaskManagement.Application.Interfaces;
+using TaskManagement.API.Security;
+using TaskManagement.API.Services;
 
 namespace TaskManagement.API.Controllers;
 
@@ -15,15 +17,18 @@ public sealed class DirectConversationsController : ControllerBase
     private readonly IDirectConversationService _service;
     private readonly ICollaborationReadStateService _readStateService;
     private readonly ICollaborationRealtimePublisher _realtimePublisher;
+    private readonly ICollaborationAttachmentStorage _attachmentStorage;
 
     public DirectConversationsController(
         IDirectConversationService service,
         ICollaborationReadStateService readStateService,
-        ICollaborationRealtimePublisher realtimePublisher)
+        ICollaborationRealtimePublisher realtimePublisher,
+        ICollaborationAttachmentStorage attachmentStorage)
     {
         _service = service;
         _readStateService = readStateService;
         _realtimePublisher = realtimePublisher;
+        _attachmentStorage = attachmentStorage;
     }
 
     [HttpPost]
@@ -99,6 +104,7 @@ public sealed class DirectConversationsController : ControllerBase
     }
 
     [HttpPost("{conversationId:guid}/messages")]
+    [Consumes("application/json")]
     public async Task<IActionResult> Send(
         Guid conversationId,
         [FromBody] SendDirectMessageRequestDto request,
@@ -109,20 +115,7 @@ public sealed class DirectConversationsController : ControllerBase
         {
             var result = await _service.SendAsync(
                 conversationId, userId, request.Content, cancellationToken);
-            await _realtimePublisher.PublishDirectMessageCreatedAsync(
-                result,
-                cancellationToken);
-            var unreadUpdates = await _readStateService
-                .GetDirectUnreadUpdatesForMessageAsync(
-                    result.MessageId,
-                    cancellationToken);
-            foreach (var update in unreadUpdates)
-            {
-                await _realtimePublisher.PublishReadStateChangedAsync(
-                    update.UserId,
-                    update.State,
-                    cancellationToken);
-            }
+            await PublishCreatedAsync(result, cancellationToken);
             return StatusCode(
                 StatusCodes.Status201Created,
                 ApiResponse<DirectMessageDto>.Created(result, "Message sent."));
@@ -138,6 +131,61 @@ public sealed class DirectConversationsController : ControllerBase
         catch (DirectParticipantNotFoundException exception)
         {
             return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+    }
+
+    [HttpPost("{conversationId:guid}/messages")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(53 * 1024 * 1024)]
+    public async Task<IActionResult> SendWithAttachments(
+        Guid conversationId,
+        [FromForm] CollaborationMessageForm request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        if (request.Files.Count is < 1 or > 5)
+            return BadRequest(ApiResponse<object>.Error("A message must contain between 1 and 5 attachments."));
+
+        IReadOnlyList<PendingCollaborationAttachmentDto> stored = [];
+        var persisted = false;
+        try
+        {
+            var validated = new List<ValidatedUpload>(request.Files.Count);
+            foreach (var file in request.Files)
+                validated.Add(await UploadSecurity.ReadCollaborationFileAsync(file, cancellationToken));
+            stored = await _attachmentStorage.StoreAsync(validated, cancellationToken);
+            var result = await _service.SendWithAttachmentsAsync(
+                conversationId, userId, request.Content, stored, cancellationToken);
+            persisted = true;
+            await PublishCreatedAsync(result, cancellationToken);
+            return StatusCode(
+                StatusCodes.Status201Created,
+                ApiResponse<DirectMessageDto>.Created(result, "Message sent."));
+        }
+        catch (InvalidDataException exception)
+        {
+            if (!persisted) _attachmentStorage.Delete(stored);
+            return BadRequest(ApiResponse<object>.Error(exception.Message));
+        }
+        catch (ArgumentException exception)
+        {
+            if (!persisted) _attachmentStorage.Delete(stored);
+            return BadRequest(ApiResponse<object>.Error(exception.Message));
+        }
+        catch (DirectConversationNotFoundException exception)
+        {
+            if (!persisted) _attachmentStorage.Delete(stored);
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+        catch (DirectParticipantNotFoundException exception)
+        {
+            if (!persisted) _attachmentStorage.Delete(stored);
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+        catch
+        {
+            if (!persisted) _attachmentStorage.Delete(stored);
+            return StatusCode(500, ApiResponse<object>.Error("The attachment message could not be stored.", 500));
         }
     }
 
@@ -174,4 +222,16 @@ public sealed class DirectConversationsController : ControllerBase
 
     private bool TryGetCurrentUserId(out Guid userId) =>
         Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out userId);
+
+    private async Task PublishCreatedAsync(
+        DirectMessageDto result,
+        CancellationToken cancellationToken)
+    {
+        await _realtimePublisher.PublishDirectMessageCreatedAsync(result, cancellationToken);
+        var unreadUpdates = await _readStateService.GetDirectUnreadUpdatesForMessageAsync(
+            result.MessageId, cancellationToken);
+        foreach (var update in unreadUpdates)
+            await _realtimePublisher.PublishReadStateChangedAsync(
+                update.UserId, update.State, cancellationToken);
+    }
 }

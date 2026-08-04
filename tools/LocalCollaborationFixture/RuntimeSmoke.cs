@@ -40,7 +40,97 @@ internal sealed class RuntimeSmoke
         await CheckChannelRestAsync(clientA, clientB, clientC, cancellationToken);
         await CheckDirectRestAsync(clientA, clientB, clientC, cancellationToken);
         await CheckSignalRAsync(clientA, clientB, cancellationToken);
+        await CheckAttachmentsAsync(clientA, clientB, clientC, cancellationToken);
         await AssertDatabaseShapeAsync(cancellationToken);
+    }
+
+    private async Task CheckAttachmentsAsync(
+        HttpClient clientA,
+        HttpClient clientB,
+        HttpClient clientC,
+        CancellationToken cancellationToken)
+    {
+        await using var connectionB = CreateConnection(new TokenSlot(_tokenB));
+        var channelEvents = new EventProbe<ChannelMessageCreatedEventDto>();
+        connectionB.On<ChannelMessageCreatedEventDto>(
+            ChatRealtimeEvents.ChannelMessageCreated,
+            channelEvents.Record);
+        await connectionB.StartAsync(cancellationToken);
+        await connectionB.InvokeAsync("JoinChannel", _identity.ChannelAId, cancellationToken);
+
+        var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3 };
+        var pdf = "%PDF-1.7\nfixture"u8.ToArray();
+        var channelMessage = await SendAttachmentMessageAsync<ChannelMessageDto>(
+            clientA,
+            $"/api/channels/{_identity.ChannelAId:D}/messages",
+            $"{_identity.Prefix}-channel-attachments",
+            [(png, "../Ảnh kiểm thử.png", "image/svg+xml"), (pdf, "fixture.pdf", "text/html")],
+            cancellationToken);
+        var channelAttachments = channelMessage.Attachments
+            ?? throw new InvalidOperationException("Channel response omitted attachment metadata.");
+        Require(channelAttachments.Count == 2, "Channel response did not include two attachment metadata records.");
+        Require(channelAttachments.All(item => !item.OriginalFileName.Contains("..", StringComparison.Ordinal)),
+            "Channel attachment filename was not sanitized.");
+        await WaitForAsync(
+            () => channelEvents.Count(item => item.MessageId == channelMessage.MessageId && item.Attachments?.Count == 2) == 1,
+            "Channel realtime event did not carry safe attachment metadata.",
+            cancellationToken);
+
+        var channelHistory = await GetChannelHistoryAsync(clientB, 1, 50, cancellationToken);
+        var persistedChannel = channelHistory.Items.Single(item => item.MessageId == channelMessage.MessageId);
+        var persistedAttachments = persistedChannel.Attachments
+            ?? throw new InvalidOperationException("Channel reload omitted attachment metadata.");
+        Require(persistedAttachments.Count == 2, "Channel reload lost attachment metadata.");
+        foreach (var attachment in persistedAttachments)
+        {
+            using var download = await clientB.GetAsync(attachment.DownloadUrl, cancellationToken);
+            Require(download.IsSuccessStatusCode, "USER_B could not download a Channel attachment.");
+            Require(download.Content.Headers.ContentDisposition?.DispositionType == "attachment",
+                "Channel download was not forced through Content-Disposition attachment.");
+            await RequireStatusAsync(
+                await clientC.GetAsync(attachment.DownloadUrl, cancellationToken),
+                HttpStatusCode.NotFound,
+                "USER_C Channel attachment enumeration");
+        }
+        using (var rangeRequest = new HttpRequestMessage(
+                   HttpMethod.Get,
+                   persistedAttachments[0].DownloadUrl))
+        {
+            rangeRequest.Headers.Range = new RangeHeaderValue(0, 3);
+            using var rangeResponse = await clientB.SendAsync(rangeRequest, cancellationToken);
+            Require(rangeResponse.StatusCode == HttpStatusCode.PartialContent,
+                "Authorized attachment range request did not return 206 Partial Content.");
+        }
+
+        var directMessage = await SendAttachmentMessageAsync<DirectMessageDto>(
+            clientA,
+            $"/api/direct-conversations/{_identity.ConversationAbId:D}/messages",
+            string.Empty,
+            [("Nội dung Unicode"u8.ToArray(), "../../Tài liệu Việt Nam.txt", "application/x-msdownload")],
+            cancellationToken);
+        Require(directMessage.Attachments?.Single().OriginalFileName == "Tài liệu Việt Nam.txt",
+            "DM path traversal filename was not reduced to a sanitized Unicode leaf name.");
+        var directHistory = await GetDirectHistoryAsync(clientB, 1, 50, cancellationToken);
+        var directAttachment = directHistory.Items.Single(item => item.MessageId == directMessage.MessageId).Attachments?.Single()
+            ?? throw new InvalidOperationException("DM reload lost attachment metadata.");
+        using (var download = await clientB.GetAsync(directAttachment.DownloadUrl, cancellationToken))
+            Require(download.IsSuccessStatusCode, "USER_B could not download a DM attachment.");
+        await RequireStatusAsync(
+            await clientC.GetAsync(directAttachment.DownloadUrl, cancellationToken),
+            HttpStatusCode.NotFound,
+            "USER_C DM attachment enumeration");
+
+        await RequireMultipartStatusAsync(clientA, $"/api/channels/{_identity.ChannelAId:D}/messages",
+            Enumerable.Range(0, 6).Select(index => ("ok"u8.ToArray(), $"{index}.txt", "text/plain")).ToArray(),
+            HttpStatusCode.BadRequest, "six attachments", cancellationToken);
+        await RequireMultipartStatusAsync(clientA, $"/api/channels/{_identity.ChannelAId:D}/messages",
+            [(new byte[10 * 1024 * 1024 + 1], "large.pdf", "application/pdf")],
+            HttpStatusCode.BadRequest, "oversized attachment", cancellationToken);
+        await RequireMultipartStatusAsync(clientA, $"/api/channels/{_identity.ChannelAId:D}/messages",
+            [("<svg><script/></svg>"u8.ToArray(), "payload.svg", "image/svg+xml")],
+            HttpStatusCode.BadRequest, "SVG attachment", cancellationToken);
+
+        Console.WriteLine("PASS Attachments: Channel/DM SQL metadata, private download, realtime, Unicode/path sanitization, validation, C denial");
     }
 
     private async Task CheckChannelRestAsync(
@@ -372,9 +462,18 @@ internal sealed class RuntimeSmoke
             .Where(item => item.ConversationId == _identity.ConversationAbId)
             .Select(item => item.UserId)
             .ToListAsync(cancellationToken);
+        var attachments = await context.CollaborationMessageAttachments.AsNoTracking()
+            .Where(item =>
+                (item.ChannelMessage != null && item.ChannelMessage.CollaborationChannelId == _identity.ChannelAId) ||
+                (item.DirectMessage != null && item.DirectMessage.ConversationId == _identity.ConversationAbId))
+            .ToListAsync(cancellationToken);
         Require(conversations == 1, "Database contains a duplicate AB conversation.");
         Require(participants.Count == 2 && participants.Contains(_identity.UserAId) && participants.Contains(_identity.UserBId),
             "Database conversation participants are not exactly USER_A and USER_B.");
+        Require(attachments.Count == 3 && attachments.All(item =>
+                (item.ChannelMessageId != null) != (item.DirectMessageId != null) &&
+                item.UploadedByUserId == _identity.UserAId),
+            "Attachment SQL metadata did not preserve one owner and JWT uploader identity.");
     }
 
     private HttpClient CreateClient(string token)
@@ -497,6 +596,53 @@ internal sealed class RuntimeSmoke
     {
         var response = await client.PostAsJsonAsync(path, body, cancellationToken);
         return await ReadDataAsync<T>(response, cancellationToken);
+    }
+
+    private static async Task<T> SendAttachmentMessageAsync<T>(
+        HttpClient client,
+        string path,
+        string content,
+        IReadOnlyList<(byte[] Bytes, string FileName, string ContentType)> files,
+        CancellationToken cancellationToken) where T : class
+    {
+        using var form = CreateMultipart(content, files);
+        using var response = await client.PostAsync(path, form, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(
+                $"Attachment send expected success but received {(int)response.StatusCode}: {body[..Math.Min(body.Length, 300)]}");
+        }
+        var envelope = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(
+            cancellationToken: cancellationToken);
+        return envelope?.Data ?? throw new InvalidOperationException("Attachment response data was empty.");
+    }
+
+    private static async Task RequireMultipartStatusAsync(
+        HttpClient client,
+        string path,
+        IReadOnlyList<(byte[] Bytes, string FileName, string ContentType)> files,
+        HttpStatusCode expected,
+        string label,
+        CancellationToken cancellationToken)
+    {
+        using var form = CreateMultipart("fixture validation", files);
+        await RequireStatusAsync(await client.PostAsync(path, form, cancellationToken), expected, label);
+    }
+
+    private static MultipartFormDataContent CreateMultipart(
+        string content,
+        IReadOnlyList<(byte[] Bytes, string FileName, string ContentType)> files)
+    {
+        var form = new MultipartFormDataContent();
+        form.Add(new StringContent(content), "content");
+        foreach (var file in files)
+        {
+            var fileContent = new ByteArrayContent(file.Bytes);
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType);
+            form.Add(fileContent, "files", file.FileName);
+        }
+        return form;
     }
 
     private static async Task<T> GetDataAsync<T>(

@@ -20,7 +20,8 @@ public sealed record ChannelMessageDto(
     string Content,
     ChannelMessageSenderDto Sender,
     DateTime CreatedAt,
-    Guid OrderingId);
+    Guid OrderingId,
+    IReadOnlyList<CollaborationAttachmentDto>? Attachments = null);
 
 public sealed record ChannelMessagePageDto(
     IReadOnlyList<ChannelMessageDto> Items,

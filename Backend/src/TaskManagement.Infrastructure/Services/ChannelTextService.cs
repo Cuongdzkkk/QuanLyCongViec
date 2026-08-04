@@ -53,7 +53,16 @@ public sealed class ChannelTextService : IChannelTextService
                         : "Unknown user",
                     message.Sender != null ? message.Sender.AvatarUrl : null),
                 message.SentAt,
-                message.Id))
+                message.Id,
+                message.Attachments
+                    .OrderBy(attachment => attachment.CreatedAt)
+                    .ThenBy(attachment => attachment.Id)
+                    .Select(attachment => new CollaborationAttachmentDto(
+                        attachment.Id,
+                        attachment.OriginalFileName,
+                        attachment.ContentType,
+                        attachment.SizeBytes))
+                    .ToList()))
             .ToListAsync(cancellationToken);
 
         return new ChannelMessagePageDto(
@@ -68,10 +77,20 @@ public sealed class ChannelTextService : IChannelTextService
         Guid channelId,
         Guid userId,
         string? content,
+        CancellationToken cancellationToken = default) =>
+        await SendWithAttachmentsAsync(
+            channelId, userId, content, [], cancellationToken);
+
+    public async Task<ChannelMessageDto> SendWithAttachmentsAsync(
+        Guid channelId,
+        Guid userId,
+        string? content,
+        IReadOnlyList<PendingCollaborationAttachmentDto> attachments,
         CancellationToken cancellationToken = default)
     {
         await AuthorizeAsync(channelId, userId, requireSend: true, cancellationToken);
-        var normalizedContent = NormalizeContent(content);
+        ValidateAttachments(attachments);
+        var normalizedContent = NormalizeContent(content, attachments.Count > 0);
 
         var message = new ChannelMessage
         {
@@ -81,6 +100,20 @@ public sealed class ChannelTextService : IChannelTextService
             Content = normalizedContent,
             SentAt = DateTime.UtcNow
         };
+        foreach (var attachment in attachments)
+        {
+            message.Attachments.Add(new CollaborationMessageAttachment
+            {
+                Id = attachment.AttachmentId,
+                ChannelMessageId = message.Id,
+                StorageKey = attachment.StorageKey,
+                OriginalFileName = attachment.OriginalFileName,
+                ContentType = attachment.ContentType,
+                SizeBytes = attachment.SizeBytes,
+                UploadedByUserId = userId,
+                CreatedAt = message.SentAt
+            });
+        }
         _context.ChannelMessages.Add(message);
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -98,7 +131,16 @@ public sealed class ChannelTextService : IChannelTextService
                         : "Unknown user",
                     item.Sender != null ? item.Sender.AvatarUrl : null),
                 item.SentAt,
-                item.Id))
+                item.Id,
+                item.Attachments
+                    .OrderBy(attachment => attachment.CreatedAt)
+                    .ThenBy(attachment => attachment.Id)
+                    .Select(attachment => new CollaborationAttachmentDto(
+                        attachment.Id,
+                        attachment.OriginalFileName,
+                        attachment.ContentType,
+                        attachment.SizeBytes))
+                    .ToList()))
             .SingleAsync(cancellationToken);
     }
 
@@ -150,10 +192,13 @@ public sealed class ChannelTextService : IChannelTextService
             throw new ChannelSendForbiddenException();
     }
 
-    private static string NormalizeContent(string? content)
+    private static string NormalizeContent(string? content, bool hasAttachments)
     {
         if (string.IsNullOrWhiteSpace(content))
+        {
+            if (hasAttachments) return string.Empty;
             throw new ArgumentException("Message content is required.", nameof(content));
+        }
 
         var normalized = content
             .Replace("\r\n", "\n", StringComparison.Ordinal)
@@ -164,6 +209,21 @@ public sealed class ChannelTextService : IChannelTextService
                 $"Message content cannot exceed {MaximumContentLength} characters.",
                 nameof(content));
         return normalized;
+    }
+
+    private static void ValidateAttachments(IReadOnlyList<PendingCollaborationAttachmentDto> attachments)
+    {
+        ArgumentNullException.ThrowIfNull(attachments);
+        if (attachments.Count > 5)
+            throw new ArgumentException("A message can contain at most 5 attachments.", nameof(attachments));
+        if (attachments.Any(item =>
+                item.AttachmentId == Guid.Empty ||
+                string.IsNullOrWhiteSpace(item.StorageKey) ||
+                item.StorageKey != Path.GetFileName(item.StorageKey) ||
+                string.IsNullOrWhiteSpace(item.OriginalFileName) ||
+                string.IsNullOrWhiteSpace(item.ContentType) ||
+                item.SizeBytes is <= 0 or > 10 * 1024 * 1024))
+            throw new ArgumentException("Attachment metadata is invalid.", nameof(attachments));
     }
 
     private static void ValidatePage(int page, int pageSize)

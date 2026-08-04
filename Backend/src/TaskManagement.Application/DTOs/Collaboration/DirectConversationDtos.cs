@@ -23,7 +23,8 @@ public sealed record DirectMessageDto(
     Guid ConversationId,
     string Content,
     DirectMessageSenderDto Sender,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    IReadOnlyList<CollaborationAttachmentDto>? Attachments = null);
 public sealed record DirectMessagePageDto(
     IReadOnlyList<DirectMessageDto> Items,
     int Page,

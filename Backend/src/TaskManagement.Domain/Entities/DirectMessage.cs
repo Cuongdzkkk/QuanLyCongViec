@@ -15,5 +15,6 @@ namespace TaskManagement.Domain.Entities
         public DateTime SentAt { get; set; } = DateTime.UtcNow;
         public bool IsRead { get; set; } = false;
         public string? AttachmentUrl { get; set; }
+        public ICollection<CollaborationMessageAttachment> Attachments { get; set; } = new List<CollaborationMessageAttachment>();
     }
 }

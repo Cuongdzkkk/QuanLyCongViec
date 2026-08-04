@@ -14,5 +14,6 @@ namespace TaskManagement.Domain.Entities
         public string Content { get; set; } = string.Empty;
         public DateTime SentAt { get; set; } = DateTime.UtcNow;
         public string? AttachmentUrl { get; set; }
+        public ICollection<CollaborationMessageAttachment> Attachments { get; set; } = new List<CollaborationMessageAttachment>();
     }
 }
