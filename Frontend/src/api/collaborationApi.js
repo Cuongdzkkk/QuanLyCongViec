@@ -2,6 +2,13 @@ import axiosClient from '@/api/axiosClient'
 
 const unwrapData = (response) => response?.data?.data ?? response?.data
 
+const messageForm = (content, files) => {
+  const form = new FormData()
+  if (content) form.append('content', content)
+  files.forEach(file => form.append('files', file))
+  return form
+}
+
 export const collaborationApi = {
   async getProjectChannels(projectId, options = {}) {
     const response = await axiosClient.get(`/projects/${projectId}/channels`, {
@@ -40,10 +47,14 @@ export const collaborationApi = {
   },
 
   async sendChannelMessage(channelId, payload, options = {}) {
+    const files = Array.isArray(payload.files) ? payload.files : []
     const response = await axiosClient.post(
       `/channels/${channelId}/messages`,
-      { content: payload.content },
-      { signal: options.signal }
+      files.length ? messageForm(payload.content, files) : { content: payload.content },
+      {
+        signal: options.signal,
+        headers: files.length ? { 'Content-Type': 'multipart/form-data' } : undefined
+      }
     )
     return unwrapData(response)
   },
@@ -109,12 +120,24 @@ export const collaborationApi = {
   },
 
   async sendDirectMessage(conversationId, content, options = {}) {
+    const files = Array.isArray(options.files) ? options.files : []
     const response = await axiosClient.post(
       `/direct-conversations/${conversationId}/messages`,
-      { content },
-      { signal: options.signal }
+      files.length ? messageForm(content, files) : { content },
+      {
+        signal: options.signal,
+        headers: files.length ? { 'Content-Type': 'multipart/form-data' } : undefined
+      }
     )
     return unwrapData(response)
+  },
+
+  async downloadAttachment(attachmentId, options = {}) {
+    const response = await axiosClient.get(
+      `/collaboration-attachments/${attachmentId}/content`,
+      { responseType: 'blob', signal: options.signal }
+    )
+    return response.data
   },
 
   async markDirectConversationRead(conversationId, messageId, options = {}) {

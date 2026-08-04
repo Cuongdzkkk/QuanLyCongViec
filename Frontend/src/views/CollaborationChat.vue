@@ -351,20 +351,31 @@
                 <div class="message-content">
                   <p>{{ msg.content }}</p>
                   
-                  <!-- File Attachment Preview -->
-                  <div v-if="currentTab !== 'dm' && msg.attachment" class="attachment-preview-container mt-2">
-                    <div v-if="isImageFile(msg.attachment.name)" class="image-attachment">
-                      <img :src="msg.attachment.url" class="max-w-xs max-h-48 rounded border border-slate-700/50" />
-                    </div>
-                    <div v-else class="attachment-preview flex items-center p-2 rounded bg-slate-800/60 border border-slate-700/40">
-                      <i :class="getFileIconClass(msg.attachment.name)" class="text-2xl mr-2"></i>
-                      <div class="flex flex-col overflow-hidden min-w-0">
-                        <span class="text-xs font-semibold truncate text-primary">{{ msg.attachment.name }}</span>
-                        <span class="text-xxs text-muted">{{ msg.attachment.size }}</span>
+                  <div v-if="msg.attachments.length" class="attachment-preview-container mt-2">
+                    <div v-for="attachment in msg.attachments" :key="attachment.attachmentId" class="message-attachment">
+                      <button
+                        v-if="attachment.isImage && attachment.previewUrl"
+                        type="button"
+                        class="image-attachment"
+                        :aria-label="`Tải ảnh ${attachment.originalFileName}`"
+                        @click="downloadAttachment(attachment)"
+                      >
+                        <img :src="attachment.previewUrl" :alt="attachment.originalFileName" />
+                      </button>
+                      <div v-else class="attachment-preview flex items-center p-2 rounded">
+                        <i :class="getFileIconClass(attachment.originalFileName)" class="text-2xl mr-2"></i>
+                        <div class="flex flex-col overflow-hidden min-w-0">
+                          <span class="text-xs font-semibold truncate text-primary">{{ attachment.originalFileName }}</span>
+                          <span class="text-xxs text-muted">{{ formatFileSize(attachment.sizeBytes) }}</span>
+                        </div>
+                        <button
+                          type="button"
+                          class="attachment-download-btn"
+                          :disabled="attachment.downloading"
+                          :aria-label="`Tải ${attachment.originalFileName}`"
+                          @click="downloadAttachment(attachment)"
+                        ><i :class="attachment.downloading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-download'"></i> Tải xuống</button>
                       </div>
-                      <a :href="msg.attachment.url" :download="msg.attachment.name" class="ml-auto text-xs text-primary hover:underline" style="display: flex; align-items: center; gap: 4px;">
-                        <i class="fa-solid fa-download"></i> Tải xuống
-                      </a>
                     </div>
                   </div>
                 </div>
@@ -379,17 +390,22 @@
               type="file" 
               ref="fileInputRef" 
               style="display: none;" 
+              multiple
+              accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.docx,.xlsx"
               @change="handleFileChange" 
             />
 
             <!-- Attached File Preview Bar -->
-            <div v-if="attachedFile" class="attached-file-preview-bar">
-              <i :class="getFileIconClass(attachedFile.name)" class="text-xl"></i>
-              <span class="text-xs truncate font-semibold text-secondary" style="max-width: 260px; margin-left: 6px; margin-right: 6px;">{{ attachedFile.name }}</span>
-              <span class="text-xxs text-muted">({{ attachedFile.size }})</span>
-              <button class="remove-attachment-btn ml-auto" @click="removeAttachedFile" title="Gỡ file đính kèm">
-                <i class="fa-solid fa-xmark"></i>
-              </button>
+            <div v-if="attachedFiles.length" class="attached-files-preview" aria-label="File đã chọn">
+              <div v-for="file in attachedFiles" :key="file.id" class="attached-file-preview-bar">
+                <img v-if="file.previewUrl" :src="file.previewUrl" alt="" class="selected-file-thumbnail" />
+                <i v-else :class="getFileIconClass(file.name)" class="text-xl"></i>
+                <span class="text-xs truncate font-semibold text-secondary">{{ file.name }}</span>
+                <span class="text-xxs text-muted">({{ formatFileSize(file.sizeBytes) }})</span>
+                <button type="button" class="remove-attachment-btn ml-auto" @click="removeAttachedFile(file.id)" :aria-label="`Gỡ ${file.name}`" title="Gỡ file đính kèm">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
             </div>
 
             <div class="input-actions-bar">
@@ -397,7 +413,8 @@
                 size="small"
                 class="btn-secondary"
                 title="Đính kèm file"
-                :disabled="true"
+                :disabled="composerDisabled || attachedFiles.length >= 5"
+                aria-label="Chọn file đính kèm"
                 @click="triggerAttachment"
               >
                 <i class="fa-solid fa-paperclip"></i>
@@ -440,7 +457,7 @@
               ></textarea>
               <button
                 class="btn-send"
-                :disabled="composerDisabled || !newMessage.trim()"
+                :disabled="composerDisabled || (!newMessage.trim() && attachedFiles.length === 0)"
                 :aria-label="sendingMessage ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'"
                 :title="sendingMessage ? 'Đang gửi...' : 'Gửi tin nhắn'"
                 @click="sendMessage"
@@ -1424,6 +1441,28 @@ const mapChannel = (item, expectedProjectId) => {
   }
 }
 
+const mapAttachment = (item) => {
+  if (
+    !item?.attachmentId ||
+    typeof item?.originalFileName !== 'string' ||
+    typeof item?.contentType !== 'string' ||
+    !Number.isFinite(Number(item?.sizeBytes)) ||
+    'storageKey' in item
+  ) {
+    throw new Error('Invalid collaboration attachment metadata.')
+  }
+  return {
+    attachmentId: item.attachmentId,
+    originalFileName: item.originalFileName,
+    contentType: item.contentType,
+    sizeBytes: Number(item.sizeBytes),
+    isImage: item.contentType.startsWith('image/'),
+    previewUrl: '',
+    previewLoading: false,
+    downloading: false
+  }
+}
+
 const mapChannelMessage = (item, expectedChannelId) => {
   if (
     !item?.messageId ||
@@ -1443,7 +1482,8 @@ const mapChannelMessage = (item, expectedChannelId) => {
     senderName: item.sender.displayName || 'Unknown user',
     senderAvatar: item.sender.avatarUrl || '',
     content: item.content,
-    sentAt: item.createdAt
+    sentAt: item.createdAt,
+    attachments: Array.isArray(item.attachments) ? item.attachments.map(mapAttachment) : []
   }
 }
 
@@ -1485,7 +1525,8 @@ const mapDirectMessage = (item, expectedConversationId) => {
     senderName: item.sender.displayName || 'Unknown user',
     senderAvatar: item.sender.avatarUrl || '',
     content: item.content,
-    sentAt: item.createdAt
+    sentAt: item.createdAt,
+    attachments: Array.isArray(item.attachments) ? item.attachments.map(mapAttachment) : []
   }
 }
 
@@ -1503,6 +1544,64 @@ const mergeMessages = (...collections) => {
     if (message?.messageId) unique.set(message.messageId, message)
   })
   return Array.from(unique.values()).sort(compareMessages)
+}
+
+const messageAttachmentObjectUrls = new Set()
+
+const revokeMessageAttachmentUrls = () => {
+  messageAttachmentObjectUrls.forEach(url => URL.revokeObjectURL(url))
+  messageAttachmentObjectUrls.clear()
+}
+
+const hydrateImagePreviews = async (messages) => {
+  const attachments = messages
+    .flatMap(message => message.attachments || [])
+    .filter(attachment => attachment.isImage && !attachment.previewUrl && !attachment.previewLoading)
+  await Promise.all(attachments.map(async (attachment) => {
+    attachment.previewLoading = true
+    try {
+      const blob = await collaborationApi.downloadAttachment(attachment.attachmentId)
+      if (!blob?.type?.startsWith('image/')) return
+      const url = URL.createObjectURL(blob)
+      attachment.previewUrl = url
+      messageAttachmentObjectUrls.add(url)
+    } catch {
+      // The file card remains usable; authorization is checked again on explicit download.
+    } finally {
+      attachment.previewLoading = false
+    }
+  }))
+}
+
+const downloadAttachment = async (attachment) => {
+  if (!attachment?.attachmentId || attachment.downloading) return
+  attachment.downloading = true
+  try {
+    const blob = await collaborationApi.downloadAttachment(attachment.attachmentId)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = attachment.originalFileName
+    link.rel = 'noopener'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    const status = error?.response?.status
+    ElMessage.error(status === 404
+      ? 'File không tồn tại hoặc bạn không còn quyền tải.'
+      : 'Không thể tải file đính kèm.')
+  } finally {
+    attachment.downloading = false
+  }
+}
+
+const formatFileSize = (bytes) => {
+  if (!Number.isFinite(Number(bytes)) || Number(bytes) < 0) return '0 B'
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${bytes} B`
 }
 
 const formatUnreadCount = (count) => count > 99 ? '99+' : `${count}`
@@ -1597,6 +1696,7 @@ const appendRealtimeMessage = async (message) => {
   if (activeMessages.value.some(item => item.messageId === message.messageId)) return
   const shouldScroll = isNearMessageBottom()
   activeMessages.value = mergeMessages(activeMessages.value, [message])
+  void hydrateImagePreviews([message])
   messagePagination.value.totalCount = Math.max(
     messagePagination.value.totalCount + 1,
     activeMessages.value.length
@@ -1611,6 +1711,7 @@ const clearMessageHistory = () => {
   messageAbortController.value = null
   messageRequestId += 1
   chatSelectionId += 1
+  revokeMessageAttachmentUrls()
   activeMessages.value = []
   historyLoading.value = false
   historyLoadingOlder.value = false
@@ -2028,6 +2129,7 @@ const loadChannelHistory = async (channel, {
       : []
     const chronologicalPage = [...newestFirst].reverse()
     activeMessages.value = mergeMessages(chronologicalPage, activeMessages.value)
+    void hydrateImagePreviews(activeMessages.value)
     messagePagination.value = {
       page: Number(result?.page || page),
       pageSize: Number(result?.pageSize || 50),
@@ -2112,6 +2214,7 @@ const loadDirectHistory = async (conversation, {
       : []
     const chronologicalPage = [...newestFirst].reverse()
     activeMessages.value = mergeMessages(chronologicalPage, activeMessages.value)
+    void hydrateImagePreviews(activeMessages.value)
     messagePagination.value = {
       page: Number(result?.page || page),
       pageSize: Number(result?.pageSize || 50),
@@ -2497,6 +2600,8 @@ onBeforeUnmount(() => {
     connectionNoticeTimer = null
   }
   cancelPendingMarkRead()
+  removeAttachedFile()
+  revokeMessageAttachmentUrls()
   void collaborationRealtime.stop()
   createChannelAbortController.value?.abort()
   channelAbortController.value?.abort()
@@ -2555,7 +2660,9 @@ const activeServerMembers = computed(() => {
 })
 
 const fileInputRef = ref(null)
-const attachedFile = ref(null)
+const attachedFiles = ref([])
+const allowedAttachmentExtensions = new Set(['png', 'jpg', 'jpeg', 'webp', 'pdf', 'txt', 'docx', 'xlsx'])
+const maximumAttachmentBytes = 10 * 1024 * 1024
 
 const triggerAttachment = () => {
   if (fileInputRef.value) {
@@ -2564,37 +2671,51 @@ const triggerAttachment = () => {
 }
 
 const handleFileChange = (e) => {
-  const file = e.target.files[0]
-  if (!file) return
-  
-  let sizeStr = `${(file.size / 1024).toFixed(1)} KB`
-  if (file.size > 1024 * 1024) {
-    sizeStr = `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+  const candidates = Array.from(e.target.files || [])
+  const remaining = 5 - attachedFiles.value.length
+  if (candidates.length > remaining) {
+    ElMessage.warning('Mỗi tin nhắn chỉ được đính kèm tối đa 5 file.')
   }
-  
-  const fileUrl = URL.createObjectURL(file)
-  attachedFile.value = {
-    name: file.name,
-    size: sizeStr,
-    type: file.type,
-    url: fileUrl,
-    rawFile: file
-  }
-  
+  candidates.slice(0, remaining).forEach((file) => {
+    const extension = file.name.split('.').pop()?.toLowerCase() || ''
+    if (!allowedAttachmentExtensions.has(extension)) {
+      ElMessage.warning(`${file.name}: loại file không được hỗ trợ.`)
+      return
+    }
+    if (file.size <= 0 || file.size > maximumAttachmentBytes) {
+      ElMessage.warning(`${file.name}: file phải lớn hơn 0 B và không quá 10 MB.`)
+      return
+    }
+    const previewUrl = isImageFile(file.name) ? URL.createObjectURL(file) : ''
+    attachedFiles.value.push({
+      id: typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      name: file.name,
+      sizeBytes: file.size,
+      previewUrl,
+      rawFile: file
+    })
+  })
   e.target.value = ''
 }
 
-const removeAttachedFile = () => {
-  if (attachedFile.value && attachedFile.value.url) {
-    URL.revokeObjectURL(attachedFile.value.url)
+const removeAttachedFile = (fileId) => {
+  const removed = fileId
+    ? attachedFiles.value.filter(file => file.id === fileId)
+    : attachedFiles.value
+  removed.forEach((file) => {
+    if (file.previewUrl) URL.revokeObjectURL(file.previewUrl)
+  })
+  if (fileId) {
+    attachedFiles.value = attachedFiles.value.filter(file => file.id !== fileId)
+  } else {
+    attachedFiles.value = []
   }
-  attachedFile.value = null
 }
 
 const isImageFile = (fileName) => {
   if (!fileName) return false
   const ext = fileName.split('.').pop().toLowerCase()
-  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)
+  return ['jpg', 'jpeg', 'png', 'webp'].includes(ext)
 }
 
 const getFileIconClass = (fileName) => {
@@ -2635,7 +2756,7 @@ const sendDirectMessage = async () => {
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .trim()
-  if (!content) return
+  if (!content && attachedFiles.value.length === 0) return
   if (content.length > 4000) {
     ElMessage.warning('Tin nhắn không được vượt quá 4.000 ký tự.')
     return
@@ -2650,7 +2771,10 @@ const sendDirectMessage = async () => {
     const result = await collaborationApi.sendDirectMessage(
       conversation.id,
       content,
-      { signal: controller.signal }
+      {
+        signal: controller.signal,
+        files: attachedFiles.value.map(file => file.rawFile)
+      }
     )
     if (activeDirectConversation.value?.id !== conversation.id) return
     const message = mapDirectMessage(result, conversation.id)
@@ -2662,6 +2786,7 @@ const sendDirectMessage = async () => {
       messagePagination.value.totalCount += 1
     }
     newMessage.value = ''
+    removeAttachedFile()
     await loadDirectConversations({ page: 1, selectFirst: false })
     await nextTick()
     if (shouldScroll) scrollToBottom()
@@ -2697,7 +2822,7 @@ const sendChannelMessage = async () => {
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .trim()
-  if (!content) return
+  if (!content && attachedFiles.value.length === 0) return
   if (content.length > 4000) {
     ElMessage.warning('Tin nhắn không được vượt quá 4.000 ký tự.')
     return
@@ -2710,7 +2835,10 @@ const sendChannelMessage = async () => {
   try {
     const result = await collaborationApi.sendChannelMessage(
       channel.id,
-      { content },
+      {
+        content,
+        files: attachedFiles.value.map(file => file.rawFile)
+      },
       { signal: controller.signal }
     )
     if (activeChannel.value?.id !== channel.id) return
@@ -2723,6 +2851,7 @@ const sendChannelMessage = async () => {
       messagePagination.value.totalCount += 1
     }
     newMessage.value = ''
+    removeAttachedFile()
     await nextTick()
     scrollToBottom()
   } catch (error) {
@@ -4578,13 +4707,61 @@ background-color: #111c2d !important;
 /* Custom styles for attachment cards in messages */
 .attachment-preview-container {
   margin-top: 8px;
+  display: grid;
+  gap: 8px;
+  max-width: min(420px, 100%);
+}
+
+.message-attachment {
+  min-width: 0;
+}
+
+.attachment-preview {
+  gap: 8px;
+  background: color-mix(in srgb, var(--color-surface) 88%, var(--color-primary) 12%);
+  border: 1px solid var(--color-border);
+}
+
+.image-attachment {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  max-width: 100%;
 }
 
 .image-attachment img {
+  display: block;
+  max-width: min(320px, 100%);
+  max-height: 240px;
+  object-fit: contain;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   transition: transform 0.2s ease;
   cursor: pointer;
+}
+
+.attachment-download-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.attached-files-preview {
+  display: grid;
+  gap: 4px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding: 6px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .image-attachment img:hover {
@@ -4595,9 +4772,23 @@ background-color: #111c2d !important;
   display: flex;
   align-items: center;
   background-color: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
-  border-radius: 8px 8px 0 0;
+  border-radius: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--color-border);
+  border: 1px solid var(--color-border);
+  gap: 7px;
+  min-width: 0;
+}
+
+.attached-file-preview-bar .truncate {
+  max-width: min(260px, 45vw);
+}
+
+.selected-file-thumbnail {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  object-fit: cover;
 }
 
 .remove-attachment-btn {
@@ -4610,6 +4801,22 @@ background-color: #111c2d !important;
 
 .remove-attachment-btn:hover {
   color: var(--color-danger);
+}
+
+@media (max-width: 390px) {
+  .attachment-preview {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .attachment-download-btn {
+    width: 100%;
+    margin-left: 32px;
+  }
+
+  .attached-file-preview-bar .truncate {
+    max-width: 130px;
+  }
 }
 </style>
 
