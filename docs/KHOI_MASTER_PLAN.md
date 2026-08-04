@@ -796,7 +796,7 @@ AI phải cập nhật phần này sau mỗi batch.
 | Collaboration foundation | PASS | Nhiều commit | 287/287 tại checkpoint gần nhất | Không | Trước 2026-08-04 |
 | OAuth runtime | DEFERRED | Chưa chốt | UI fallback hoạt động | External credentials/console | 2026-08-04 |
 | P0 Integration Hub + Intakes | PASS | feat(p0): secure intakes and integration permissions | 290/290 backend; frontend build PASS; runtime A/B/C PASS | BLOCKED_EXTERNAL: provider credentials/console | 2026-08-04 |
-| P1 AI usage/credit | NOT STARTED | — | — | Product/payment có thể deferred | — |
+| P1 AI usage/credit | PASS | fix(p1): align AI credit usage and quota | 294/294 backend; frontend build PASS; runtime pricing/DI PASS | AI_CREDIT_PURCHASE_DEFERRED | 2026-08-04 |
 | P2 Landing 3D | NOT STARTED | — | — | Giá thật cần quyết định | — |
 | P3 Final release | NOT STARTED | — | — | Phụ thuộc P0–P2 | — |
 

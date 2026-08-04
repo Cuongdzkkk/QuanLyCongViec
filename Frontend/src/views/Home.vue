@@ -127,6 +127,7 @@ const copy = computed(() => isVi.value ? {
   usageFail: 'Không tải được usage hiện tại.',
   includedUsers: 'người dùng bao gồm',
   includedCredits: 'AI credits bao gồm',
+  remainingCredits: 'AI credits còn lại',
   pending: 'Chưa công bố',
   monthly: 'Theo tháng',
   serverPricing: 'Dữ liệu từ server',
@@ -164,6 +165,7 @@ const copy = computed(() => isVi.value ? {
   usageFail: 'Could not load current usage.',
   includedUsers: 'included users',
   includedCredits: 'included AI credits',
+  remainingCredits: 'AI credits remaining',
   pending: 'Not published',
   monthly: 'Monthly',
   serverPricing: 'Server-backed pricing',
@@ -530,6 +532,7 @@ onBeforeUnmount(() => {
             <div class="usage-values">
               <b>{{ usage.usedCredits ?? 0 }}</b><span>/</span><b>{{ usage.includedCredits ?? 0 }}</b>
             </div>
+            <div><span>{{ copy.remainingCredits }}</span><b>{{ usage.remainingCredits ?? 0 }}</b></div>
           </div>
           <div v-else-if="usageError" class="api-state">{{ copy.usageFail }}</div>
         </div>

@@ -711,6 +711,7 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<AiPricingPlan>().HasIndex(x => x.Code).IsUnique();
             modelBuilder.Entity<AiPricingPlan>().Property(x => x.Code).HasMaxLength(64);
             modelBuilder.Entity<AiPricingPlan>().Property(x => x.Name).HasMaxLength(128);
+            modelBuilder.Entity<AiPricingPlan>().Property(x => x.MonthlyPriceVnd).HasPrecision(18, 2);
             modelBuilder.Entity<AiPricingPlan>().Property(x => x.PricingStatus).HasMaxLength(64);
             modelBuilder.Entity<AiCreditRule>().HasIndex(x => x.ActionType).IsUnique();
             modelBuilder.Entity<AiCreditRule>().Property(x => x.ActionType).HasMaxLength(128);

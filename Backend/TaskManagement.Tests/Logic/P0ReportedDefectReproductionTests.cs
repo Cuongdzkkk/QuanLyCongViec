@@ -238,6 +238,7 @@ public sealed class P0ReportedDefectReproductionTests
 
         var controller = new AiController(
             Mock.Of<IAiService>(),
+            Mock.Of<IAiCreditUsageService>(),
             Mock.Of<IAiAttachmentService>(),
             Mock.Of<IWorkTaskService>(),
             Mock.Of<IProjectService>(),
