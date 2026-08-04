@@ -130,7 +130,7 @@
 
           <div class="social-login">
             <div
-              v-if="isGoogleConfigured"
+              v-if="shouldShowGoogleIdentityShell"
               class="google-identity-shell"
               :class="{ 'is-busy': googleVerifying || isLoading }"
               :aria-busy="googleVerifying || isLoading"
@@ -138,7 +138,7 @@
               <div
                 ref="googleButtonContainer"
                 class="google-identity-button"
-                :class="{ 'is-hidden': googleSdkState !== 'ready' }"
+                :class="{ 'is-hidden': !isGoogleConfigured }"
               ></div>
               <el-button
                 v-if="googleSdkState === 'loading'"
@@ -193,7 +193,7 @@
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -219,7 +219,12 @@ import googleIcon from '../assets/Icongoogle.png'
 import githubIcon from '../assets/Icongithub.png'
 
 const router = useRouter()
-const { t, tr } = useI18n()
+const { t, language } = useI18n()
+const tr = (en, vi) => {
+  const fallback = 'Google Sign-In chưa được cấu hình.'
+  if (language?.value === 'vi') return vi || en || fallback
+  return en || vi || fallback
+}
 
 const form = reactive({
   email: '',
@@ -301,13 +306,12 @@ const handleLogin2FA = async () => {
 }
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
-const isGoogleConfigured = googleClientId && googleClientId !== 'CHANGE_ME_USE_LOCAL_ENV'
+const hasGoogleClientId = Boolean(googleClientId && googleClientId !== 'CHANGE_ME_USE_LOCAL_ENV')
+const isGoogleConfigured = computed(() => hasGoogleClientId && googleSdkState.value === 'ready')
+const shouldShowGoogleIdentityShell = computed(() => hasGoogleClientId)
 
 const handleGoogleLoginNotConfigured = () => {
-  ElMessage.error(tr(
-    'Google sign-in is not configured.',
-    'Đăng nhập Google chưa được cấu hình.'
-  ))
+  ElMessage.error(tr('Google sign-in is not configured.', 'Google Sign-In chưa được cấu hình.'))
 }
 
 const fingerprintCredential = (credential) => {
@@ -442,7 +446,7 @@ const handleGoogleLogin = async (response) => {
 }
 
 const setupGoogleIdentity = async () => {
-  if (!isGoogleConfigured || !componentActive) return
+  if (!hasGoogleClientId || !componentActive) return
   googleSdkState.value = 'loading'
   googleError.value = null
 
