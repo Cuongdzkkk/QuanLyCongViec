@@ -1,16 +1,188 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import axiosClient from '@/api/axiosClient'
 
 import { useActivityStore } from '@/store/useActivityStore'
 import apexchart from 'vue3-apexcharts'
-import { ElNotification } from 'element-plus'
+import { ElNotification, ElMessage } from 'element-plus'
 import { useI18nStore } from '@/store/useI18nStore'
+import { useProjectStore } from '@/store/useProjectStore'
+import { useWorkTaskStore } from '@/store/useWorkTaskStore'
+import TaskDetailModal from '@/components/TaskDetailModal.vue'
+import { translateDemoText } from '@/utils/demoContentLocale'
+import { useRouter } from 'vue-router'
 
+const router = useRouter()
 const i18nStore = useI18nStore()
 const t = (key) => i18nStore.t(key)
+const projectStore = useProjectStore()
+const workTaskStore = useWorkTaskStore()
 const activeTab = ref('Summary')
-const tabs = ['Summary', 'Assigned', 'Created', 'Subscribed', 'Activity']
+const tabs = ['Summary', 'Assigned', 'Created', 'Subscribed', 'Starred', 'Activity']
+
+// ── Chức năng từ For You ──────────────────────────────────────
+// Recommended Spaces
+const spaces = ref([])
+const loadingSpaces = ref(false)
+const language = computed(() => i18nStore.language || 'vi')
+const demoText = (value) => translateDemoText(value, language.value)
+
+const sortedSpaces = computed(() => {
+  return spaces.value.map(space => {
+    const spaceTasks = myTasks.value.filter(t => t.projectId === space.id || (t.projectName && t.projectName === space.name)).length
+    return { ...space, displayTaskCount: spaceTasks > 0 ? spaceTasks : (space.taskCount || 0) }
+  }).sort((a, b) => {
+    const aStarred = projectStore.favoriteProjects.some(p => p.id === a.id)
+    const bStarred = projectStore.favoriteProjects.some(p => p.id === b.id)
+    if (aStarred !== bStarred) return aStarred ? -1 : 1
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+  })
+})
+
+const fetchSpaces = async () => {
+  loadingSpaces.value = true
+  try {
+    const list = await projectStore.fetchAllProjects(true)
+    spaces.value = list.map((p, index) => ({
+      id: p.id,
+      name: p.name,
+      key: p.key || p.name.substring(0, 4).toUpperCase(),
+      description: p.description || 'Project space',
+      cover: p.cover || '#3b82f6',
+      icon: p.icon || '📦',
+      taskCount: p.taskCount ?? p.TotalTasks ?? p.totalTasks ?? 0,
+      createdAt: p.createdAt || null,
+    }))
+  } catch (e) {
+    console.error('fetchSpaces error:', e)
+  } finally {
+    loadingSpaces.value = false
+  }
+}
+
+const toggleSpaceStar = async (space) => {
+  try {
+    const isCurrentlyFav = projectStore.favoriteProjects.some(p => p.id === space.id)
+    await projectStore.updateFavorite(space.id, !isCurrentlyFav)
+    ElMessage.success(isCurrentlyFav ? 'Đã bỏ đánh dấu Space' : 'Đã đánh dấu Space')
+  } catch {
+    ElMessage.error('Không thể cập nhật')
+  }
+}
+
+// Task starring
+const toggleTaskStar = (task) => {
+  workTaskStore.toggleTaskStar(task)
+  ElMessage.success(workTaskStore.isTaskStarred(task.id) ? 'Đã đánh dấu task' : 'Đã bỏ đánh dấu task')
+}
+const isTaskStarred = (taskId) => workTaskStore.isTaskStarred(taskId)
+
+// Task Detail Modal
+const selectedTask = ref(null)
+const taskDetailHistory = ref([])
+const projectMembers = ref([])
+const currentProjectRole = ref('member')
+
+const timeAgo = (dateStr) => {
+  if (!dateStr || dateStr.startsWith('0001-01-01')) return 'vừa xong'
+  const date = new Date(dateStr)
+  if (isNaN(date.getTime()) || date.getFullYear() <= 1970) return 'vừa xong'
+  const seconds = Math.floor((new Date() - date) / 1000)
+  if (seconds < 0) return 'vừa xong'
+  let interval = seconds / 31536000
+  if (interval >= 1) return `${Math.floor(interval)} năm trước`
+  interval = seconds / 2592000
+  if (interval >= 1) return `${Math.floor(interval)} tháng trước`
+  interval = seconds / 86400
+  if (interval >= 1) return `${Math.floor(interval)} ngày trước`
+  interval = seconds / 3600
+  if (interval >= 1) return `${Math.floor(interval)} giờ trước`
+  interval = seconds / 60
+  if (interval >= 1) return `${Math.floor(interval)} phút trước`
+  return 'vừa xong'
+}
+
+const openTaskDetail = async (task) => {
+  try {
+    const mRes = await axiosClient.get(`/projects/${task.projectId}/members`)
+    projectMembers.value = (mRes.data?.data || []).map(member => ({
+      ...member,
+      userId: member.userId || member.id,
+      fullName: member.fullName || member.name || member.email,
+      projectRole: member.projectRole || member.ProjectRole || member.myRole || ''
+    }))
+  } catch {
+    projectMembers.value = []
+  }
+  taskDetailHistory.value = []
+  selectedTask.value = workTaskStore.normalizeTaskRecord(task, task.projectId)
+}
+
+const openTaskDetailFromModal = (task, options = {}) => {
+  const previousTask = options?.fromTask || selectedTask.value
+  if (previousTask?.id && previousTask.id !== task?.id) {
+    const cachedPrevious = myTasks.value.find(item => item.id === previousTask.id) || previousTask
+    taskDetailHistory.value = [...taskDetailHistory.value, cachedPrevious]
+  }
+  selectedTask.value = workTaskStore.normalizeTaskRecord(task, task.projectId)
+}
+
+const goBackTaskDetail = () => {
+  const history = [...taskDetailHistory.value]
+  const previousTask = history.pop()
+  if (!previousTask) return
+  taskDetailHistory.value = history
+  selectedTask.value = myTasks.value.find(item => item.id === previousTask.id) || previousTask
+}
+
+const closeTaskDetail = () => {
+  taskDetailHistory.value = []
+  selectedTask.value = null
+}
+
+const updateTaskFromModal = async (task, field, value) => {
+  if (!task?.id) return
+  try {
+    const usesPut = ['title', 'description', 'priority', 'assignedUserId'].includes(field)
+    let payload = { [field]: value }
+    if (usesPut) {
+      payload = {
+        title: task.title || '',
+        description: task.description || '',
+        priority: task.priority || 3,
+        assignedUserId: task.assignedUserId || null,
+        statusName: task.statusName || 'TO DO',
+        sprintId: task.sprintId || null,
+        plannedStartDate: task.plannedStartDate || null,
+        plannedEndDate: task.plannedEndDate || null,
+        dueDate: task.dueDate || null,
+        ...{ [field]: value }
+      }
+    }
+    if (usesPut) {
+      await axiosClient.put(`/projects/${task.projectId}/WorkTasks/${task.id}`, payload)
+    } else {
+      await axiosClient.patch(`/projects/${task.projectId}/WorkTasks/${task.id}`, payload)
+    }
+    const idx = myTasks.value.findIndex(item => item.id === task.id)
+    if (idx !== -1) myTasks.value[idx][field] = value
+    if (selectedTask.value?.id === task.id) selectedTask.value[field] = value
+  } catch {
+    ElMessage.error('Không thể cập nhật công việc')
+  }
+}
+
+// Search / Filter / Sort for task tabs
+const taskSearch = ref('')
+const statusFilter = ref('all')
+const sortOption = ref('updated')
+
+watch(activeTab, () => {
+  taskSearch.value = ''
+  statusFilter.value = 'all'
+  sortOption.value = 'updated'
+})
+// ── Kết thúc chức năng từ For You ────────────────────────────
 const tabLabel = (tab) => t(`yourWork.tabs.${tab.toLowerCase()}`)
 
 const myTasks = ref([])
@@ -120,6 +292,8 @@ onMounted(async () => {
   await fetchProjects()
   fetchProfile()
   fetchMyTasks()
+  fetchSpaces()
+  workTaskStore.fetchStarredTasks().catch(() => {})
 })
 
 const overview = computed(() => ({
@@ -219,7 +393,39 @@ const listData = computed(() => {
     list = myTasks.value.filter(task => task.reporterId === currentUserId.value)
   } else if (activeTab.value === 'Subscribed') {
     list = myTasks.value.filter(task => task.isSubscribed)
+  } else if (activeTab.value === 'Starred') {
+    const starred = workTaskStore.starredTasks.map(v => myTasks.value.find(t => t.id === (v.itemId || v.id))).filter(Boolean)
+    list = starred
   }
+
+  // Search filter
+  if (taskSearch.value.trim()) {
+    const q = taskSearch.value.toLowerCase().trim()
+    list = list.filter(task =>
+      (task.title || '').toLowerCase().includes(q) ||
+      (task.sequenceId || '').toLowerCase().includes(q) ||
+      (task.projectName || '').toLowerCase().includes(q)
+    )
+  }
+
+  // Status filter
+  if (statusFilter.value !== 'all') {
+    const sf = statusFilter.value.toUpperCase().replace(/\s+/g, '')
+    list = list.filter(task => {
+      const ts = (task.statusName || 'BACKLOG').toUpperCase().replace(/\s+/g, '')
+      if (sf === 'TODO') return ts.includes('TODO') || ts.includes('BACKLOG')
+      if (sf === 'INPROGRESS') return ts.includes('PROGRESS') || ts.includes('REVIEW')
+      if (sf === 'DONE') return ts.includes('DONE') || ts.includes('COMPLETE')
+      return true
+    })
+  }
+
+  // Sort
+  list = [...list].sort((a, b) => {
+    if (sortOption.value === 'created') return new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+    if (sortOption.value === 'priority') return (a.priority || 3) - (b.priority || 3)
+    return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)
+  })
 
   return list.map(task => ({
     id: task.sequenceId || task.id.substring(0, 8).toUpperCase(),
@@ -318,6 +524,44 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
           <span class="yw-title"><i class="fa-regular fa-user"></i> Your work</span>
         </header>
 
+        <!-- ── Recommended Spaces (từ For You) ── -->
+        <section class="yw-spaces-section">
+          <div class="yw-spaces-header">
+            <h2 class="yw-spaces-title"><i class="fa-solid fa-layer-group"></i> Không gian làm việc</h2>
+            <a class="yw-spaces-viewall" @click.prevent="router.push('/spaces')" href="#">Xem tất cả</a>
+          </div>
+          <div v-if="loadingSpaces" class="yw-spaces-loading">
+            <i class="fa-solid fa-spinner fa-spin"></i> Đang tải...
+          </div>
+          <div v-else-if="sortedSpaces.length === 0" class="yw-spaces-empty">
+            <i class="fa-solid fa-folder-open"></i>
+            <span>Chưa có project nào</span>
+          </div>
+          <div v-else class="yw-spaces-row">
+            <div
+              v-for="space in sortedSpaces.slice(0, 4)"
+              :key="space.id"
+              class="yw-space-card"
+              @click="router.push(`/space/${space.id}`)"
+            >
+              <div class="yw-sc-icon" :style="{ backgroundColor: space.cover }">
+                <span>{{ space.icon || '📦' }}</span>
+              </div>
+              <div class="yw-sc-info">
+                <h3 class="yw-sc-name" :title="demoText(space.name)">{{ demoText(space.name) }}</h3>
+                <p class="yw-sc-desc">{{ demoText(space.description) }} · {{ space.displayTaskCount }} tasks</p>
+              </div>
+              <button
+                class="yw-sc-star"
+                :class="{ starred: projectStore.favoriteProjects.some(p => p.id === space.id) }"
+                @click.stop="toggleSpaceStar(space)"
+                :title="projectStore.favoriteProjects.some(p => p.id === space.id) ? 'Bỏ đánh dấu' : 'Đánh dấu'"
+              >
+                <i :class="projectStore.favoriteProjects.some(p => p.id === space.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+              </button>
+            </div>
+          </div>
+        </section>
 
         <div class="yw-tabs">
           <button
@@ -327,7 +571,15 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
             :class="{ active: activeTab === tab }"
             @click="activeTab = tab"
           >
-            {{ tabLabel(tab) }}
+            <span>{{ tabLabel(tab) }}</span>
+            <span
+              v-if="tab === 'Starred' && workTaskStore.starredTasks.length > 0"
+              class="yw-tab-badge"
+            >{{ workTaskStore.starredTasks.length }}</span>
+            <span
+              v-if="tab === 'Assigned' && myTasks.filter(t => t.assignedUserId === currentUserId).length > 0"
+              class="yw-tab-badge"
+            >{{ myTasks.filter(t => t.assignedUserId === currentUserId).length }}</span>
           </button>
         </div>
 
@@ -428,7 +680,26 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
           </div>
         </div>
 
-        <div class="yw-scrollable" v-else-if="['Assigned', 'Created', 'Subscribed'].includes(activeTab)">
+        <div class="yw-scrollable" v-else-if="['Assigned', 'Created', 'Subscribed', 'Starred'].includes(activeTab)">
+          <!-- ── Search / Filter / Sort Toolbar (từ For You) ── -->
+          <div class="yw-task-toolbar">
+            <div class="yw-search-input">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" v-model="taskSearch" placeholder="Tìm kiếm công việc..." />
+            </div>
+            <select v-model="statusFilter" class="yw-jira-select">
+              <option value="all">Tất cả trạng thái</option>
+              <option value="todo">To Do / Backlog</option>
+              <option value="inprogress">In Progress</option>
+              <option value="done">Done</option>
+            </select>
+            <select v-model="sortOption" class="yw-jira-select">
+              <option value="updated">Mới cập nhật</option>
+              <option value="created">Mới tạo</option>
+              <option value="priority">Độ ưu tiên</option>
+            </select>
+          </div>
+
           <div class="list-header mt-4">
             <i class="fa-solid fa-circle-dashed f-icon"></i>
             <span class="lh-title">{{ t('yourWork.allWorkItems') }}</span>
@@ -436,12 +707,16 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
           </div>
 
           <div class="list-body mt-4">
-            <div class="list-row" v-for="item in listData" :key="item.id">
+            <div v-if="listData.length === 0" class="yw-empty-state">
+              <i class="fa-solid fa-inbox"></i>
+              <p>Không có công việc nào</p>
+            </div>
+            <div class="list-row" v-for="item in listData" :key="item.id" @click="openTaskDetail(item.task)">
               <div class="lr-left">
                 <span class="lr-id">{{ item.id }}</span>
-                <span class="lr-title">{{ item.title }}</span>
+                <span class="lr-title">{{ demoText(item.title) }}</span>
               </div>
-              <div class="lr-right">
+              <div class="lr-right" @click.stop>
                 <el-dropdown trigger="click" @command="value => updateTaskProperty(item.task, 'statusName', value)">
                   <div class="lr-badge cursor-pointer hover:bg-[var(--color-bg-secondary)]">
                     <i class="fa-solid fa-circle-check" v-if="item.state.toUpperCase() === 'DONE'"></i>
@@ -477,13 +752,21 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
                   </template>
                 </el-dropdown>
 
+                <!-- Nút ⭐ Star (từ For You) -->
+                <button
+                  class="yw-star-btn"
+                  :class="{ starred: isTaskStarred(item.task.id) }"
+                  @click.stop="toggleTaskStar(item.task)"
+                  :title="isTaskStarred(item.task.id) ? 'Bỏ đánh dấu' : 'Đánh dấu'"
+                >
+                  <i :class="isTaskStarred(item.task.id) ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star'"></i>
+                </button>
+
                 <UserAvatar v-if="item.assigneeName" :user="{ avatarColor: item.assigneeAvatarColor || getAvatarBg(item.assigneeName), initials: item.assigneeInitials || getInitials(item.assigneeName), fullName: item.assigneeName }" :size="24" :fontSize="10" />
                 <div class="lr-badge cursor-not-allowed" v-else>
                   <i class="fa-regular fa-user"></i>
                 </div>
-                <div class="lr-badge cursor-not-allowed"><i class="fa-regular fa-calendar"></i></div>
-                <div class="lr-badge cursor-not-allowed"><i class="fa-solid fa-table-cells-large"></i> {{ item.modules }}</div>
-                <div class="lr-badge cursor-not-allowed"><i class="fa-solid fa-arrows-spin"></i> {{ item.cycle }}</div>
+                <span class="lr-time">{{ timeAgo(item.task.updatedAt || item.task.createdAt) }}</span>
               </div>
             </div>
           </div>
@@ -510,6 +793,21 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
           </div>
         </div>
       </div>
+
+      <!-- Task Detail Modal (từ For You) -->
+      <TaskDetailModal
+        v-if="selectedTask"
+        :selectedTask="selectedTask"
+        :projectId="selectedTask.projectId"
+        :projectMembers="projectMembers"
+        :currentProjectRole="currentProjectRole"
+        :canGoBack="taskDetailHistory.length > 0"
+        @close="closeTaskDetail"
+        @back="goBackTaskDetail"
+        @open-task="openTaskDetailFromModal"
+        @updateTask="updateTaskFromModal"
+        @refresh-tasks="fetchMyTasks"
+      />
 
       <div class="yw-sidebar">
         <div class="cover-image">
@@ -1233,6 +1531,248 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
   .yw-tabs {
     overflow-x: auto !important;
   }
+}
+
+/* ── Recommended Spaces Section (từ For You) ─────────────── */
+.yw-spaces-section {
+  margin: 18px 0 0;
+  padding-bottom: 6px;
+}
+
+.yw-spaces-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.yw-spaces-title {
+  font-size: 15px;
+  font-weight: 900;
+  color: #0f172a;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.yw-spaces-title i { color: #0284c7; }
+
+.yw-spaces-viewall {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0284c7;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.yw-spaces-viewall:hover { color: #0052cc; text-decoration: underline; }
+
+.yw-spaces-loading,
+.yw-spaces-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #64748b;
+  font-size: 13px;
+  padding: 16px;
+  border: 1px dashed rgba(148, 163, 184, 0.4);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.6);
+}
+
+.yw-spaces-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.yw-space-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(255,255,255,0.78));
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  padding: 14px 16px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+  position: relative;
+  overflow: hidden;
+}
+.yw-space-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(14, 165, 233, 0.4);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.1);
+}
+
+.yw-sc-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+
+.yw-sc-info {
+  flex: 1;
+  min-width: 0;
+  padding-right: 24px;
+}
+
+.yw-sc-name {
+  font-size: 13px;
+  font-weight: 800;
+  margin: 0 0 2px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #0f172a;
+}
+
+.yw-sc-desc {
+  font-size: 11px;
+  color: #64748b;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yw-sc-star {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 13px;
+  padding: 5px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.yw-sc-star.starred { color: #f5cd47; }
+.yw-sc-star:hover { color: #0f172a; background: rgba(9, 30, 66, 0.06); }
+
+[data-theme='dark'] .yw-space-card {
+  background: linear-gradient(180deg, rgba(30,41,59,0.92), rgba(15,23,42,0.86));
+  border-color: rgba(148, 163, 184, 0.2);
+}
+[data-theme='dark'] .yw-sc-name { color: #f8fafc; }
+[data-theme='dark'] .yw-spaces-title { color: #f8fafc; }
+
+/* ── Task Toolbar (Search / Filter / Sort) ────────────────── */
+.yw-task-toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 18px;
+  margin-bottom: 6px;
+  padding: 12px 16px;
+  background: rgba(248, 250, 252, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+}
+
+.yw-search-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 9px;
+  padding: 7px 12px;
+  flex: 1;
+  min-width: 180px;
+  transition: border-color 0.2s;
+}
+.yw-search-input:focus-within { border-color: #0284c7; }
+.yw-search-input i { color: #94a3b8; font-size: 12px; }
+.yw-search-input input {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: #0f172a;
+  width: 100%;
+}
+.yw-search-input input::placeholder { color: #94a3b8; }
+
+.yw-jira-select {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 9px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #475569;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  outline: none;
+}
+.yw-jira-select:focus { border-color: #0284c7; }
+
+[data-theme='dark'] .yw-task-toolbar { background: rgba(15,23,42,0.7); border-color: rgba(148,163,184,0.2); }
+[data-theme='dark'] .yw-search-input, [data-theme='dark'] .yw-jira-select { background: rgba(30,41,59,0.9); border-color: rgba(148,163,184,0.2); color: #e2e8f0; }
+[data-theme='dark'] .yw-search-input input { color: #e2e8f0; }
+
+/* ── Star Button in Task Row ──────────────────────────────── */
+.yw-star-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 13px;
+  padding: 5px 7px;
+  border-radius: 7px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+}
+.yw-star-btn.starred { color: #f5cd47; }
+.yw-star-btn:hover { background: rgba(9, 30, 66, 0.06); color: #475569; }
+
+/* ── Tab Badge ────────────────────────────────────────────── */
+.yw-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 800;
+  background: #0284c7;
+  color: white;
+  border-radius: 8px;
+  margin-left: 4px;
+}
+
+/* ── Empty state & Time ────────────────────────────────────── */
+.yw-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 12px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+.yw-empty-state i { font-size: 32px; opacity: 0.4; }
+
+.lr-time {
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
 }
 </style>
 
