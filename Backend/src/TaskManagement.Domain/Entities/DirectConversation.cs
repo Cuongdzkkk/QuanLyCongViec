@@ -14,4 +14,6 @@ public sealed class DirectConversation
     public ICollection<DirectConversationParticipant> Participants { get; set; } =
         new List<DirectConversationParticipant>();
     public ICollection<DirectMessage> Messages { get; set; } = new List<DirectMessage>();
+    public ICollection<DirectConversationReadState> ReadStates { get; set; } =
+        new List<DirectConversationReadState>();
 }

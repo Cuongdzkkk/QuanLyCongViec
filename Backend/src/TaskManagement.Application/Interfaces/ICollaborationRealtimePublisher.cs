@@ -11,4 +11,9 @@ public interface ICollaborationRealtimePublisher
     Task PublishDirectMessageCreatedAsync(
         DirectMessageDto message,
         CancellationToken cancellationToken = default);
+
+    Task PublishReadStateChangedAsync(
+        Guid userId,
+        CollaborationReadStateDto state,
+        CancellationToken cancellationToken = default);
 }

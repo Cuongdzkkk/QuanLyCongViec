@@ -27,7 +27,9 @@ public sealed record CollaborationChannelDto(
     bool CanSend,
     bool CanManage,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    int UnreadCount = 0,
+    Guid? LastReadMessageId = null);
 
 public sealed record CollaborationChannelPageDto(
     IReadOnlyList<CollaborationChannelDto> Items,

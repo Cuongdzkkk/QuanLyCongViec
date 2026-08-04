@@ -126,6 +126,8 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<ChannelMessage> ChannelMessages { get; set; }
         public DbSet<CollaborationChannel> CollaborationChannels { get; set; }
         public DbSet<CollaborationChannelMember> CollaborationChannelMembers { get; set; }
+        public DbSet<CollaborationChannelReadState> CollaborationChannelReadStates { get; set; }
+        public DbSet<DirectConversationReadState> DirectConversationReadStates { get; set; }
 
         public DbSet<CustomFieldDefinition> CustomFieldDefinitions { get; set; }
         public DbSet<CustomFieldValue> CustomFieldValues { get; set; }
@@ -1091,6 +1093,23 @@ namespace TaskManagement.Infrastructure.Data
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
+            modelBuilder.Entity<DirectConversationReadState>(entity =>
+            {
+                entity.HasKey(state => new { state.ConversationId, state.UserId });
+                entity.HasIndex(state => new { state.UserId, state.ConversationId });
+                entity.HasIndex(state => state.LastReadMessageId);
+                entity.HasOne(state => state.Conversation)
+                    .WithMany(conversation => conversation.ReadStates)
+                    .HasForeignKey(state => state.ConversationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(state => state.User).WithMany()
+                    .HasForeignKey(state => state.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(state => state.LastReadMessage).WithMany()
+                    .HasForeignKey(state => state.LastReadMessageId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
             modelBuilder.Entity<DirectMessage>(entity =>
             {
                 entity.Property(message => message.Content).HasMaxLength(4000).IsRequired();
@@ -1153,6 +1172,23 @@ namespace TaskManagement.Infrastructure.Data
                 entity.HasOne(member => member.User)
                     .WithMany()
                     .HasForeignKey(member => member.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<CollaborationChannelReadState>(entity =>
+            {
+                entity.HasKey(state => new { state.ChannelId, state.UserId });
+                entity.HasIndex(state => new { state.UserId, state.ChannelId });
+                entity.HasIndex(state => state.LastReadMessageId);
+                entity.HasOne(state => state.Channel)
+                    .WithMany(channel => channel.ReadStates)
+                    .HasForeignKey(state => state.ChannelId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(state => state.User).WithMany()
+                    .HasForeignKey(state => state.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(state => state.LastReadMessage).WithMany()
+                    .HasForeignKey(state => state.LastReadMessageId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
 

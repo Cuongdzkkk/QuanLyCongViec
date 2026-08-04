@@ -355,7 +355,9 @@ public sealed class CollaborationChannelServiceTests
                 "CanSend",
                 "CanManage",
                 "CreatedAt",
-                "UpdatedAt"
+                "UpdatedAt",
+                "UnreadCount",
+                "LastReadMessageId"
             ]);
     }
 

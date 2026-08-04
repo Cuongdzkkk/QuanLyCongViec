@@ -64,13 +64,20 @@ internal sealed class RuntimeSmoke
             $"{_identity.Prefix}-channel-three"
         };
         var sentIds = new HashSet<Guid>();
+        var sentOrder = new List<Guid>();
         foreach (var content in contents)
         {
             var sent = await SendChannelAsync(clientA, content, cancellationToken);
             Require(sent.Sender.UserId == _identity.UserAId, "Channel sender was not taken from USER_A JWT.");
             Require(sent.Content == content, "Channel content changed in transit.");
             sentIds.Add(sent.MessageId);
+            sentOrder.Add(sent.MessageId);
         }
+
+        var discoveryA = await GetProjectChannelsAsync(clientA, cancellationToken);
+        var discoveryB = await GetProjectChannelsAsync(clientB, cancellationToken);
+        Require(discoveryA.Items.Single().UnreadCount == 0, "USER_A counted own Channel messages as unread.");
+        Require(discoveryB.Items.Single().UnreadCount == 3, "USER_B Channel unread count did not increase to three.");
 
         var page1 = await GetChannelHistoryAsync(clientB, 1, 2, cancellationToken);
         var page2 = await GetChannelHistoryAsync(clientB, 2, 2, cancellationToken);
@@ -96,7 +103,24 @@ internal sealed class RuntimeSmoke
             HttpStatusCode.NotFound,
             "USER_C channel send");
 
-        Console.WriteLine("PASS Channel REST: discovery, JWT sender, A->B persistence, C denial, pagination, Unicode");
+        await RequireStatusAsync(
+            await clientC.PostAsJsonAsync(
+                $"/api/channels/{_identity.ChannelAId:D}/read",
+                new { messageId = sentOrder[^1] },
+                cancellationToken),
+            HttpStatusCode.NotFound,
+            "USER_C channel mark read");
+        var channelRead = await MarkChannelReadAsync(clientB, sentOrder[^1], cancellationToken);
+        Require(channelRead.UnreadCount == 0, "USER_B Channel unread count did not clear.");
+        var repeatedChannelRead = await MarkChannelReadAsync(clientB, sentOrder[^1], cancellationToken);
+        var regressedChannelRead = await MarkChannelReadAsync(clientB, sentOrder[0], cancellationToken);
+        Require(repeatedChannelRead.LastReadMessageId == sentOrder[^1], "Repeated Channel mark read changed the cursor.");
+        Require(regressedChannelRead.LastReadMessageId == sentOrder[^1], "Channel cursor moved backwards.");
+        using var freshReadClientB = CreateClient(_tokenB);
+        var freshDiscoveryB = await GetProjectChannelsAsync(freshReadClientB, cancellationToken);
+        Require(freshDiscoveryB.Items.Single().UnreadCount == 0, "Fresh USER_B client lost persisted Channel read state.");
+
+        Console.WriteLine("PASS Channel REST: unread, monotonic read cursor, persistence, C denial, pagination, Unicode");
     }
 
     private async Task CheckDirectRestAsync(
@@ -119,13 +143,20 @@ internal sealed class RuntimeSmoke
             $"{_identity.Prefix}-dm-three"
         };
         var sentIds = new HashSet<Guid>();
+        var sentOrder = new List<Guid>();
         foreach (var content in contents)
         {
             var sent = await SendDirectAsync(clientA, content, cancellationToken);
             Require(sent.Sender.UserId == _identity.UserAId, "DM sender was not taken from USER_A JWT.");
             Require(sent.Content == content, "DM content changed in transit.");
             sentIds.Add(sent.MessageId);
+            sentOrder.Add(sent.MessageId);
         }
+
+        var listA = await GetDirectConversationsAsync(clientA, cancellationToken);
+        var listB = await GetDirectConversationsAsync(clientB, cancellationToken);
+        Require(listA.Items.Single().UnreadCount == 0, "USER_A counted own DM messages as unread.");
+        Require(listB.Items.Single().UnreadCount == 3, "USER_B DM unread count did not increase to three.");
 
         var page1 = await GetDirectHistoryAsync(clientB, 1, 2, cancellationToken);
         var page2 = await GetDirectHistoryAsync(clientB, 2, 2, cancellationToken);
@@ -152,7 +183,24 @@ internal sealed class RuntimeSmoke
             HttpStatusCode.NotFound,
             "USER_C DM send");
 
-        Console.WriteLine("PASS DM REST: reverse find/create, JWT sender, A->B persistence, C denial, no duplicate");
+        await RequireStatusAsync(
+            await clientC.PostAsJsonAsync(
+                $"/api/direct-conversations/{_identity.ConversationAbId:D}/read",
+                new { messageId = sentOrder[^1] },
+                cancellationToken),
+            HttpStatusCode.NotFound,
+            "USER_C DM mark read");
+        var directRead = await MarkDirectReadAsync(clientB, sentOrder[^1], cancellationToken);
+        Require(directRead.UnreadCount == 0, "USER_B DM unread count did not clear.");
+        var repeatedDirectRead = await MarkDirectReadAsync(clientB, sentOrder[^1], cancellationToken);
+        var regressedDirectRead = await MarkDirectReadAsync(clientB, sentOrder[0], cancellationToken);
+        Require(repeatedDirectRead.LastReadMessageId == sentOrder[^1], "Repeated DM mark read changed the cursor.");
+        Require(regressedDirectRead.LastReadMessageId == sentOrder[^1], "DM cursor moved backwards.");
+        using var freshReadClientB = CreateClient(_tokenB);
+        var freshListB = await GetDirectConversationsAsync(freshReadClientB, cancellationToken);
+        Require(freshListB.Items.Single().UnreadCount == 0, "Fresh USER_B client lost persisted DM read state.");
+
+        Console.WriteLine("PASS DM REST: unread, monotonic read cursor, persistence, C denial, no duplicate");
     }
 
     private async Task CheckSignalRAsync(
@@ -170,12 +218,18 @@ internal sealed class RuntimeSmoke
         var directA = new EventProbe<DirectMessageCreatedEventDto>();
         var directB = new EventProbe<DirectMessageCreatedEventDto>();
         var directC = new EventProbe<DirectMessageCreatedEventDto>();
+        var readA = new EventProbe<CollaborationReadStateDto>();
+        var readB = new EventProbe<CollaborationReadStateDto>();
+        var readC = new EventProbe<CollaborationReadStateDto>();
         connectionA.On<ChannelMessageCreatedEventDto>(ChatRealtimeEvents.ChannelMessageCreated, channelA.Record);
         connectionB.On<ChannelMessageCreatedEventDto>(ChatRealtimeEvents.ChannelMessageCreated, channelB.Record);
         connectionC.On<ChannelMessageCreatedEventDto>(ChatRealtimeEvents.ChannelMessageCreated, channelC.Record);
         connectionA.On<DirectMessageCreatedEventDto>(ChatRealtimeEvents.DirectMessageCreated, directA.Record);
         connectionB.On<DirectMessageCreatedEventDto>(ChatRealtimeEvents.DirectMessageCreated, directB.Record);
         connectionC.On<DirectMessageCreatedEventDto>(ChatRealtimeEvents.DirectMessageCreated, directC.Record);
+        connectionA.On<CollaborationReadStateDto>(ChatRealtimeEvents.CollaborationReadStateChanged, readA.Record);
+        connectionB.On<CollaborationReadStateDto>(ChatRealtimeEvents.CollaborationReadStateChanged, readB.Record);
+        connectionC.On<CollaborationReadStateDto>(ChatRealtimeEvents.CollaborationReadStateChanged, readC.Record);
 
         await Task.WhenAll(
             connectionA.StartAsync(cancellationToken),
@@ -193,13 +247,28 @@ internal sealed class RuntimeSmoke
             cancellationToken);
         await WaitForAsync(
             () => channelA.Count(item => item.MessageId == channelMessage.MessageId) == 1 &&
-                channelB.Count(item => item.MessageId == channelMessage.MessageId) == 1,
-            "A/B did not both receive the Channel event exactly once.",
+                channelB.Count(item => item.MessageId == channelMessage.MessageId) == 1 &&
+                readB.Count(item =>
+                    item.ResourceType == CollaborationReadResourceTypes.Channel &&
+                    item.ResourceId == _identity.ChannelAId &&
+                    item.UnreadCount == 1) == 1,
+            "A/B Channel delivery or USER_B private unread update was incorrect.",
             cancellationToken);
         await Task.Delay(200, cancellationToken);
         Require(channelA.Count(item => item.MessageId == channelMessage.MessageId) == 1, "USER_A received a duplicate Channel event.");
         Require(channelB.Count(item => item.MessageId == channelMessage.MessageId) == 1, "USER_B received a duplicate Channel event.");
         Require(channelC.Count(item => item.MessageId == channelMessage.MessageId) == 0, "Channel event leaked to USER_C.");
+        Require(readA.Count(item => item.ResourceId == _identity.ChannelAId) == 0, "Channel unread update leaked to sender USER_A.");
+        Require(readC.Count(item => item.ResourceId == _identity.ChannelAId) == 0, "Channel unread update leaked to USER_C.");
+        await MarkChannelReadAsync(clientB, channelMessage.MessageId, cancellationToken);
+        await WaitForAsync(
+            () => readB.Count(item =>
+                item.ResourceType == CollaborationReadResourceTypes.Channel &&
+                item.ResourceId == _identity.ChannelAId &&
+                item.LastReadMessageId == channelMessage.MessageId &&
+                item.UnreadCount == 0) == 1,
+            "USER_B did not receive its private Channel read-state update.",
+            cancellationToken);
 
         await connectionA.InvokeAsync("JoinDirectConversation", _identity.ConversationAbId.ToString(), cancellationToken);
         await connectionB.InvokeAsync("JoinDirectConversation", _identity.ConversationAbId.ToString(), cancellationToken);
@@ -213,13 +282,28 @@ internal sealed class RuntimeSmoke
             cancellationToken);
         await WaitForAsync(
             () => directA.Count(item => item.MessageId == directMessage.MessageId) == 1 &&
-                directB.Count(item => item.MessageId == directMessage.MessageId) == 1,
-            "A/B did not both receive the DM event exactly once.",
+                directB.Count(item => item.MessageId == directMessage.MessageId) == 1 &&
+                readB.Count(item =>
+                    item.ResourceType == CollaborationReadResourceTypes.DirectConversation &&
+                    item.ResourceId == _identity.ConversationAbId &&
+                    item.UnreadCount == 1) == 1,
+            "A/B DM delivery or USER_B private unread update was incorrect.",
             cancellationToken);
         await Task.Delay(200, cancellationToken);
         Require(directA.Count(item => item.MessageId == directMessage.MessageId) == 1, "USER_A received a duplicate DM event.");
         Require(directB.Count(item => item.MessageId == directMessage.MessageId) == 1, "USER_B received a duplicate DM event.");
         Require(directC.Count(item => item.MessageId == directMessage.MessageId) == 0, "DM event leaked to USER_C.");
+        Require(readA.Count(item => item.ResourceId == _identity.ConversationAbId) == 0, "DM unread update leaked to sender USER_A.");
+        Require(readC.Count(item => item.ResourceId == _identity.ConversationAbId) == 0, "DM unread update leaked to USER_C.");
+        await MarkDirectReadAsync(clientB, directMessage.MessageId, cancellationToken);
+        await WaitForAsync(
+            () => readB.Count(item =>
+                item.ResourceType == CollaborationReadResourceTypes.DirectConversation &&
+                item.ResourceId == _identity.ConversationAbId &&
+                item.LastReadMessageId == directMessage.MessageId &&
+                item.UnreadCount == 0) == 1,
+            "USER_B did not receive its private DM read-state update.",
+            cancellationToken);
 
         await connectionB.StopAsync(cancellationToken);
         await connectionB.StartAsync(cancellationToken);
@@ -274,7 +358,7 @@ internal sealed class RuntimeSmoke
         await Task.Delay(350, cancellationToken);
         Require(directA.Count(item => item.MessageId == accountSwitchProbe.MessageId) == 0, "USER_C inherited USER_A's DM group after token switch.");
 
-        Console.WriteLine("PASS SignalR: separate tokens, A/B delivery once, C denial, isolation, reconnect, account switch");
+        Console.WriteLine("PASS SignalR: delivery, private unread/read updates, C isolation, reconnect, account switch");
     }
 
     private async Task AssertDatabaseShapeAsync(CancellationToken cancellationToken)
@@ -365,6 +449,44 @@ internal sealed class RuntimeSmoke
             client,
             "/api/direct-conversations",
             new { participantUserId },
+            cancellationToken);
+
+    private Task<CollaborationChannelPageDto> GetProjectChannelsAsync(
+        HttpClient client,
+        CancellationToken cancellationToken) =>
+        GetDataAsync<CollaborationChannelPageDto>(
+            client.GetAsync(
+                $"/api/projects/{_identity.ProjectAId:D}/channels?page=1&pageSize=20",
+                cancellationToken),
+            cancellationToken);
+
+    private Task<DirectConversationPageDto> GetDirectConversationsAsync(
+        HttpClient client,
+        CancellationToken cancellationToken) =>
+        GetDataAsync<DirectConversationPageDto>(
+            client.GetAsync(
+                "/api/direct-conversations?page=1&pageSize=20",
+                cancellationToken),
+            cancellationToken);
+
+    private Task<CollaborationReadStateDto> MarkChannelReadAsync(
+        HttpClient client,
+        Guid messageId,
+        CancellationToken cancellationToken) =>
+        PostDataAsync<CollaborationReadStateDto>(
+            client,
+            $"/api/channels/{_identity.ChannelAId:D}/read",
+            new { messageId },
+            cancellationToken);
+
+    private Task<CollaborationReadStateDto> MarkDirectReadAsync(
+        HttpClient client,
+        Guid messageId,
+        CancellationToken cancellationToken) =>
+        PostDataAsync<CollaborationReadStateDto>(
+            client,
+            $"/api/direct-conversations/{_identity.ConversationAbId:D}/read",
+            new { messageId },
             cancellationToken);
 
     private static async Task<T> PostDataAsync<T>(

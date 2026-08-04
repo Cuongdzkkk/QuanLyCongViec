@@ -208,6 +208,7 @@ public sealed class ChannelTextServiceTests
             $$"""{"content":"hello","senderId":"{{userBId}}"}""",
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
         var service = new Mock<IChannelTextService>();
+        var readStateService = new Mock<ICollaborationReadStateService>();
         var publisher = new Mock<ICollaborationRealtimePublisher>();
         ChannelMessageDto? persistedMessage = null;
         service.Setup(item => item.SendAsync(channelId, userAId, "hello", It.IsAny<CancellationToken>()))
@@ -222,7 +223,12 @@ public sealed class ChannelTextServiceTests
                 persistedMessage,
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
-        var controller = new ChannelMessagesController(service.Object, publisher.Object)
+        readStateService.Setup(item => item.GetChannelUnreadUpdatesForMessageAsync(
+                persistedMessage.MessageId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var controller = new ChannelMessagesController(
+            service.Object, readStateService.Object, publisher.Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -240,6 +246,7 @@ public sealed class ChannelTextServiceTests
         response.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status201Created);
         service.VerifyAll();
+        readStateService.VerifyAll();
         publisher.VerifyAll();
         typeof(SendChannelMessageRequestDto).GetProperty("SenderId").Should().BeNull();
     }

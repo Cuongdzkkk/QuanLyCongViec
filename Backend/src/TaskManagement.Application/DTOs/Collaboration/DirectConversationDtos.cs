@@ -8,7 +8,9 @@ public sealed record DirectConversationDto(
     DirectParticipantDto OtherParticipant,
     string? LastMessagePreview,
     DateTime? LastMessageAt,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    int UnreadCount = 0,
+    Guid? LastReadMessageId = null);
 public sealed record DirectConversationPageDto(
     IReadOnlyList<DirectConversationDto> Items,
     int Page,

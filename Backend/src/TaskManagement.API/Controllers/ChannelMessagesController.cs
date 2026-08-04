@@ -13,13 +13,16 @@ namespace TaskManagement.API.Controllers;
 public sealed class ChannelMessagesController : ControllerBase
 {
     private readonly IChannelTextService _channelTextService;
+    private readonly ICollaborationReadStateService _readStateService;
     private readonly ICollaborationRealtimePublisher _realtimePublisher;
 
     public ChannelMessagesController(
         IChannelTextService channelTextService,
+        ICollaborationReadStateService readStateService,
         ICollaborationRealtimePublisher realtimePublisher)
     {
         _channelTextService = channelTextService;
+        _readStateService = readStateService;
         _realtimePublisher = realtimePublisher;
     }
 
@@ -68,6 +71,17 @@ public sealed class ChannelMessagesController : ControllerBase
             await _realtimePublisher.PublishChannelMessageCreatedAsync(
                 result,
                 cancellationToken);
+            var unreadUpdates = await _readStateService
+                .GetChannelUnreadUpdatesForMessageAsync(
+                    result.MessageId,
+                    cancellationToken);
+            foreach (var update in unreadUpdates)
+            {
+                await _realtimePublisher.PublishReadStateChangedAsync(
+                    update.UserId,
+                    update.State,
+                    cancellationToken);
+            }
             return StatusCode(
                 StatusCodes.Status201Created,
                 ApiResponse<ChannelMessageDto>.Created(result, "Message sent."));
@@ -85,6 +99,33 @@ public sealed class ChannelMessagesController : ControllerBase
             return StatusCode(
                 StatusCodes.Status403Forbidden,
                 ApiResponse<object>.Error(exception.Message, 403));
+        }
+    }
+
+    [HttpPost("/api/channels/{channelId:guid}/read")]
+    public async Task<IActionResult> MarkRead(
+        Guid channelId,
+        [FromBody] MarkCollaborationReadRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        if (request.MessageId == Guid.Empty)
+            return BadRequest(ApiResponse<object>.Error("MessageId is required."));
+        try
+        {
+            var result = await _readStateService.MarkChannelReadAsync(
+                channelId, userId, request.MessageId, cancellationToken);
+            await _realtimePublisher.PublishReadStateChangedAsync(
+                userId, result, cancellationToken);
+            return Ok(ApiResponse<CollaborationReadStateDto>.Success(result));
+        }
+        catch (ChannelNotFoundException exception)
+        {
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+        catch (CollaborationMessageNotFoundException exception)
+        {
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
         }
     }
 

@@ -18,4 +18,6 @@ public sealed class CollaborationChannel
     public bool IsDeleted { get; set; }
     public ICollection<CollaborationChannelMember> Members { get; set; } = new List<CollaborationChannelMember>();
     public ICollection<ChannelMessage> Messages { get; set; } = new List<ChannelMessage>();
+    public ICollection<CollaborationChannelReadState> ReadStates { get; set; } =
+        new List<CollaborationChannelReadState>();
 }

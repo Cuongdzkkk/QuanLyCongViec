@@ -13,13 +13,16 @@ namespace TaskManagement.API.Controllers;
 public sealed class DirectConversationsController : ControllerBase
 {
     private readonly IDirectConversationService _service;
+    private readonly ICollaborationReadStateService _readStateService;
     private readonly ICollaborationRealtimePublisher _realtimePublisher;
 
     public DirectConversationsController(
         IDirectConversationService service,
+        ICollaborationReadStateService readStateService,
         ICollaborationRealtimePublisher realtimePublisher)
     {
         _service = service;
+        _readStateService = readStateService;
         _realtimePublisher = realtimePublisher;
     }
 
@@ -109,6 +112,17 @@ public sealed class DirectConversationsController : ControllerBase
             await _realtimePublisher.PublishDirectMessageCreatedAsync(
                 result,
                 cancellationToken);
+            var unreadUpdates = await _readStateService
+                .GetDirectUnreadUpdatesForMessageAsync(
+                    result.MessageId,
+                    cancellationToken);
+            foreach (var update in unreadUpdates)
+            {
+                await _realtimePublisher.PublishReadStateChangedAsync(
+                    update.UserId,
+                    update.State,
+                    cancellationToken);
+            }
             return StatusCode(
                 StatusCodes.Status201Created,
                 ApiResponse<DirectMessageDto>.Created(result, "Message sent."));
@@ -122,6 +136,37 @@ public sealed class DirectConversationsController : ControllerBase
             return NotFound(ApiResponse<object>.Error(exception.Message, 404));
         }
         catch (DirectParticipantNotFoundException exception)
+        {
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+    }
+
+    [HttpPost("{conversationId:guid}/read")]
+    public async Task<IActionResult> MarkRead(
+        Guid conversationId,
+        [FromBody] MarkCollaborationReadRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        if (request.MessageId == Guid.Empty)
+            return BadRequest(ApiResponse<object>.Error("MessageId is required."));
+        try
+        {
+            var result = await _readStateService.MarkDirectConversationReadAsync(
+                conversationId, userId, request.MessageId, cancellationToken);
+            await _realtimePublisher.PublishReadStateChangedAsync(
+                userId, result, cancellationToken);
+            return Ok(ApiResponse<CollaborationReadStateDto>.Success(result));
+        }
+        catch (DirectConversationNotFoundException exception)
+        {
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+        catch (DirectParticipantNotFoundException exception)
+        {
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+        catch (CollaborationMessageNotFoundException exception)
         {
             return NotFound(ApiResponse<object>.Error(exception.Message, 404));
         }

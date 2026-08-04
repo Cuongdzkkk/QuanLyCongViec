@@ -86,8 +86,69 @@ public sealed class CollaborationChannelService : ICollaborationChannelService
                 channel.UpdatedAt))
             .ToListAsync(cancellationToken);
 
+        var readMetadata = await BuildReadMetadataAsync(
+            items.Select(item => item.ChannelId).ToList(),
+            userId,
+            cancellationToken);
+        items = items.Select(item => readMetadata.TryGetValue(item.ChannelId, out var metadata)
+                ? item with
+                {
+                    UnreadCount = metadata.UnreadCount,
+                    LastReadMessageId = metadata.LastReadMessageId
+                }
+                : item)
+            .ToList();
+
         return new(items, page, pageSize, totalCount, Ordering);
     }
+
+    private async Task<IReadOnlyDictionary<Guid, ReadMetadata>> BuildReadMetadataAsync(
+        IReadOnlyCollection<Guid> channelIds,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        if (channelIds.Count == 0) return new Dictionary<Guid, ReadMetadata>();
+        var states = await _context.CollaborationChannelReadStates.AsNoTracking()
+            .Where(state => channelIds.Contains(state.ChannelId) && state.UserId == userId)
+            .ToDictionaryAsync(
+                state => state.ChannelId,
+                state => state.LastReadMessageId,
+                cancellationToken);
+        var messages = await _context.ChannelMessages.AsNoTracking()
+            .Where(message =>
+                message.CollaborationChannelId != null &&
+                channelIds.Contains(message.CollaborationChannelId.Value))
+            .OrderBy(message => message.CollaborationChannelId)
+            .ThenBy(message => message.SentAt)
+            .ThenBy(message => message.Id)
+            .Select(message => new ReadMessage(
+                message.CollaborationChannelId!.Value,
+                message.Id,
+                message.SenderId))
+            .ToListAsync(cancellationToken);
+        var messagesByChannel = messages
+            .GroupBy(message => message.ResourceId)
+            .ToDictionary(group => group.Key, group => group.ToList());
+
+        var result = new Dictionary<Guid, ReadMetadata>(channelIds.Count);
+        foreach (var channelId in channelIds)
+        {
+            states.TryGetValue(channelId, out var cursorId);
+            messagesByChannel.TryGetValue(channelId, out var channelMessages);
+            channelMessages ??= [];
+            var cursorIndex = cursorId == null
+                ? -1
+                : channelMessages.FindIndex(message => message.MessageId == cursorId.Value);
+            var unreadCount = channelMessages
+                .Skip(cursorIndex + 1)
+                .Count(message => message.SenderId != userId);
+            result[channelId] = new ReadMetadata(cursorId, unreadCount);
+        }
+        return result;
+    }
+
+    private sealed record ReadMessage(Guid ResourceId, Guid MessageId, Guid SenderId);
+    private sealed record ReadMetadata(Guid? LastReadMessageId, int UnreadCount);
 
     public async Task<ProvisionCollaborationChannelResult> CreateAsync(
         Guid projectId,

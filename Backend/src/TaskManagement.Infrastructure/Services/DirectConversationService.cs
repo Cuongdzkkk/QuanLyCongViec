@@ -32,8 +32,6 @@ public sealed class DirectConversationService : IDirectConversationService
         var (lowId, highId) = CanonicalPair(userId, participantUserId);
         var existing = await FindPairAsync(lowId, highId, userId, cancellationToken);
         if (existing != null) return existing;
-        if (await PairExistsAsync(lowId, highId, cancellationToken))
-            throw new DirectParticipantNotFoundException();
 
         await FindSharedWorkspaceAsync(userId, participantUserId, cancellationToken);
 
@@ -177,6 +175,8 @@ public sealed class DirectConversationService : IDirectConversationService
                 conversation.LastMessageAt,
                 conversation.CreatedAt))
             .ToListAsync(cancellationToken);
+
+        items = await ApplyReadMetadataAsync(items, userId, cancellationToken);
 
         return new(items, page, pageSize, totalCount, ConversationOrdering);
     }
@@ -338,8 +338,9 @@ public sealed class DirectConversationService : IDirectConversationService
         Guid lowId,
         Guid highId,
         Guid currentUserId,
-        CancellationToken cancellationToken) =>
-        await VisibleConversations(currentUserId)
+        CancellationToken cancellationToken)
+    {
+        var conversation = await VisibleConversations(currentUserId)
             .Where(conversation => conversation.UserLowId == lowId && conversation.UserHighId == highId)
             .Select(conversation => new DirectConversationDto(
                 conversation.Id,
@@ -355,6 +356,64 @@ public sealed class DirectConversationService : IDirectConversationService
                 conversation.LastMessageAt,
                 conversation.CreatedAt))
             .SingleOrDefaultAsync(cancellationToken);
+        if (conversation == null) return null;
+        return (await ApplyReadMetadataAsync(
+            [conversation], currentUserId, cancellationToken))[0];
+    }
+
+    private async Task<List<DirectConversationDto>> ApplyReadMetadataAsync(
+        IReadOnlyCollection<DirectConversationDto> conversations,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        if (conversations.Count == 0) return [];
+        var conversationIds = conversations.Select(item => item.ConversationId).ToList();
+        var states = await _context.DirectConversationReadStates.AsNoTracking()
+            .Where(state =>
+                conversationIds.Contains(state.ConversationId) &&
+                state.UserId == userId)
+            .ToDictionaryAsync(
+                state => state.ConversationId,
+                state => state.LastReadMessageId,
+                cancellationToken);
+        var messages = await _context.DirectMessages.AsNoTracking()
+            .Where(message =>
+                message.ConversationId != null &&
+                conversationIds.Contains(message.ConversationId.Value))
+            .OrderBy(message => message.ConversationId)
+            .ThenBy(message => message.SentAt)
+            .ThenBy(message => message.Id)
+            .Select(message => new ReadMessage(
+                message.ConversationId!.Value,
+                message.Id,
+                message.SenderId))
+            .ToListAsync(cancellationToken);
+        var messagesByConversation = messages
+            .GroupBy(message => message.ResourceId)
+            .ToDictionary(group => group.Key, group => group.ToList());
+
+        return conversations.Select(conversation =>
+        {
+            states.TryGetValue(conversation.ConversationId, out var cursorId);
+            messagesByConversation.TryGetValue(
+                conversation.ConversationId,
+                out var conversationMessages);
+            conversationMessages ??= [];
+            var cursorIndex = cursorId == null
+                ? -1
+                : conversationMessages.FindIndex(message => message.MessageId == cursorId.Value);
+            var unreadCount = conversationMessages
+                .Skip(cursorIndex + 1)
+                .Count(message => message.SenderId != userId);
+            return conversation with
+            {
+                UnreadCount = unreadCount,
+                LastReadMessageId = cursorId
+            };
+        }).ToList();
+    }
+
+    private sealed record ReadMessage(Guid ResourceId, Guid MessageId, Guid SenderId);
 
     private Task<bool> PairExistsAsync(
         Guid lowId,

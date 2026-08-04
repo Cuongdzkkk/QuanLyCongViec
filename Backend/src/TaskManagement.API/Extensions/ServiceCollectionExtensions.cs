@@ -46,6 +46,7 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<IChannelTextService, ChannelTextService>();
             services.AddScoped<ICollaborationChannelService, CollaborationChannelService>();
             services.AddScoped<IDirectConversationService, DirectConversationService>();
+            services.AddScoped<ICollaborationReadStateService, CollaborationReadStateService>();
             services.AddScoped<ICollaborationRealtimeAuthorizationService, CollaborationRealtimeAuthorizationService>();
             services.AddSingleton<ICollaborationRealtimePublisher, TaskManagement.API.Services.ChatRealtimePublisher>();
             services.AddScoped<ITaskDependencyService, TaskDependencyService>();

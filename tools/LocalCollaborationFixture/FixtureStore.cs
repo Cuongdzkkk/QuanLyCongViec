@@ -194,6 +194,9 @@ internal sealed class FixtureStore
             await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
             await VerifyCleanupOwnershipAsync(context, cancellationToken);
 
+            await context.DirectConversationReadStates
+                .Where(item => item.ConversationId == _identity.ConversationAbId)
+                .ExecuteDeleteAsync(cancellationToken);
             await context.DirectMessages
                 .Where(item => item.ConversationId == _identity.ConversationAbId)
                 .ExecuteDeleteAsync(cancellationToken);
@@ -204,6 +207,9 @@ internal sealed class FixtureStore
                 .Where(item => item.Id == _identity.ConversationAbId)
                 .ExecuteDeleteAsync(cancellationToken);
 
+            await context.CollaborationChannelReadStates
+                .Where(item => item.ChannelId == _identity.ChannelAId)
+                .ExecuteDeleteAsync(cancellationToken);
             await context.ChannelMessages
                 .Where(item => item.CollaborationChannelId == _identity.ChannelAId)
                 .ExecuteDeleteAsync(cancellationToken);
@@ -255,7 +261,9 @@ internal sealed class FixtureStore
             await context.Workspaces.IgnoreQueryFilters().CountAsync(item => item.Id == _identity.WorkspaceAId, cancellationToken) +
             await context.Projects.IgnoreQueryFilters().CountAsync(item => item.Id == _identity.ProjectAId, cancellationToken) +
             await context.CollaborationChannels.IgnoreQueryFilters().CountAsync(item => item.Id == _identity.ChannelAId, cancellationToken) +
-            await context.DirectConversations.CountAsync(item => item.Id == _identity.ConversationAbId, cancellationToken);
+            await context.DirectConversations.CountAsync(item => item.Id == _identity.ConversationAbId, cancellationToken) +
+            await context.CollaborationChannelReadStates.CountAsync(item => item.ChannelId == _identity.ChannelAId, cancellationToken) +
+            await context.DirectConversationReadStates.CountAsync(item => item.ConversationId == _identity.ConversationAbId, cancellationToken);
         if (remaining != 0)
             throw new InvalidOperationException($"Cleanup left {remaining} fixture root rows.");
     }

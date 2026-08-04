@@ -4,6 +4,7 @@ public static class ChatRealtimeEvents
 {
     public const string ChannelMessageCreated = nameof(ChannelMessageCreated);
     public const string DirectMessageCreated = nameof(DirectMessageCreated);
+    public const string CollaborationReadStateChanged = nameof(CollaborationReadStateChanged);
 }
 
 public static class ChatRealtimeGroups

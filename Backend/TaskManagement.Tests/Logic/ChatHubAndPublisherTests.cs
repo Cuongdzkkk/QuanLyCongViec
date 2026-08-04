@@ -196,6 +196,7 @@ public sealed class ChatHubAndPublisherTests
         var entityId = Guid.NewGuid();
         var channelService = new Mock<IChannelTextService>();
         var directService = new Mock<IDirectConversationService>();
+        var readStateService = new Mock<ICollaborationReadStateService>();
         var publisher = new Mock<ICollaborationRealtimePublisher>();
         channelService.Setup(item => item.SendAsync(
                 entityId,
@@ -210,10 +211,12 @@ public sealed class ChatHubAndPublisherTests
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new DirectConversationNotFoundException());
         var channelController = WithUser(
-            new ChannelMessagesController(channelService.Object, publisher.Object),
+            new ChannelMessagesController(
+                channelService.Object, readStateService.Object, publisher.Object),
             userId);
         var directController = WithUser(
-            new DirectConversationsController(directService.Object, publisher.Object),
+            new DirectConversationsController(
+                directService.Object, readStateService.Object, publisher.Object),
             userId);
 
         await channelController.Invoking(item => item.Send(
