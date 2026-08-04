@@ -338,7 +338,8 @@
               v-for="msg in activeMessages"
               :key="messageKey(msg)"
               class="message-card"
-              :class="{ 'mine': msg.senderId === currentUser.id }"
+              :class="{ 'mine': msg.senderId === currentUser.id, 'mention-target': route.query.messageId === msg.messageId }"
+              :data-message-id="msg.messageId"
             >
               <el-avatar :size="32" :src="msg.senderAvatar" class="flex-shrink-0">
                 {{ msg.senderName?.charAt(0) || '?' }}
@@ -349,7 +350,7 @@
                   <span class="send-time">{{ formatTime(msg.sentAt) }}</span>
                 </div>
                 <div class="message-content">
-                  <p>{{ msg.content }}</p>
+                  <p><template v-for="(segment, index) in msg.contentSegments" :key="`${msg.messageId}-${index}`"><span v-if="segment.isMention" class="message-mention">{{ segment.text }}</span><span v-else>{{ segment.text }}</span></template></p>
                   
                   <div v-if="msg.attachments.length" class="attachment-preview-container mt-2">
                     <div v-for="attachment in msg.attachments" :key="attachment.attachmentId" class="message-attachment">
@@ -445,16 +446,40 @@
               </el-popover>
 
             </div>
-            <div class="input-form">
+            <div class="input-form mention-composer">
               <textarea
+                ref="composerInput"
                 v-model="newMessage" 
                 :placeholder="composerPlaceholder"
                 class="chat-input w-full"
                 rows="1"
                 :maxlength="4000"
                 :disabled="composerDisabled"
-                @keydown.enter.exact.prevent="sendMessage"
+                @input="handleComposerInput"
+                @keydown="handleComposerKeydown"
               ></textarea>
+              <div
+                v-if="mentionMenuOpen"
+                class="mention-menu"
+                role="listbox"
+                aria-label="Channel members"
+              >
+                <div v-if="mentionLoading" class="mention-menu-state">Đang tìm thành viên...</div>
+                <button
+                  v-for="(member, index) in mentionSuggestions"
+                  :key="member.userId"
+                  type="button"
+                  class="mention-option"
+                  :class="{ active: index === mentionActiveIndex }"
+                  role="option"
+                  :aria-selected="index === mentionActiveIndex"
+                  @mousedown.prevent="selectMention(member)"
+                >
+                  <el-avatar :size="26" :src="member.avatarUrl || ''">{{ member.displayName?.charAt(0) || '?' }}</el-avatar>
+                  <span>{{ member.displayName }}</span>
+                </button>
+                <div v-if="!mentionLoading && mentionSuggestions.length === 0" class="mention-menu-state">Không có thành viên phù hợp.</div>
+              </div>
               <button
                 class="btn-send"
                 :disabled="composerDisabled || (!newMessage.trim() && attachedFiles.length === 0)"
@@ -1315,6 +1340,17 @@ const activeDirectConversation = computed(() =>
   activeChat.value?.type === 'dm' ? activeChat.value : null
 )
 const newMessage = ref('')
+const composerInput = ref(null)
+const selectedMentions = ref([])
+const mentionSuggestions = ref([])
+const mentionMenuOpen = ref(false)
+const mentionLoading = ref(false)
+const mentionActiveIndex = ref(0)
+const mentionRange = ref(null)
+const mentionAbortController = ref(null)
+let mentionRequestId = 0
+let mentionDebounceTimer = null
+let previousComposerValue = ''
 const messageThread = ref(null)
 const historyLoading = ref(false)
 const historyLoadingOlder = ref(false)
@@ -1463,6 +1499,49 @@ const mapAttachment = (item) => {
   }
 }
 
+const mapMentions = (items, content) => {
+  if (!Array.isArray(items)) return []
+  const seenUsers = new Set()
+  return items
+    .filter(item => {
+      const start = Number(item?.startIndex)
+      const length = Number(item?.length)
+      const valid = item?.userId &&
+        !seenUsers.has(item.userId) &&
+        Number.isInteger(start) && start >= 0 &&
+        Number.isInteger(length) && length >= 2 &&
+        start + length <= content.length &&
+        content.slice(start, start + length) === item.displayText &&
+        item.displayText.startsWith('@')
+      if (valid) seenUsers.add(item.userId)
+      return valid
+    })
+    .map(item => ({
+      userId: item.userId,
+      displayText: item.displayText,
+      startIndex: Number(item.startIndex),
+      length: Number(item.length)
+    }))
+    .sort((left, right) => left.startIndex - right.startIndex)
+}
+
+const buildContentSegments = (content, mentions) => {
+  const segments = []
+  let cursor = 0
+  mentions.forEach(mention => {
+    if (mention.startIndex < cursor) return
+    if (mention.startIndex > cursor) {
+      segments.push({ text: content.slice(cursor, mention.startIndex), isMention: false })
+    }
+    segments.push({ text: mention.displayText, isMention: true })
+    cursor = mention.startIndex + mention.length
+  })
+  if (cursor < content.length || segments.length === 0) {
+    segments.push({ text: content.slice(cursor), isMention: false })
+  }
+  return segments
+}
+
 const mapChannelMessage = (item, expectedChannelId) => {
   if (
     !item?.messageId ||
@@ -1474,6 +1553,7 @@ const mapChannelMessage = (item, expectedChannelId) => {
     throw new Error('Invalid Channel message response scope.')
   }
 
+  const mentions = mapMentions(item.mentions, item.content)
   return {
     messageId: item.messageId,
     channelId: item.channelId,
@@ -1482,6 +1562,8 @@ const mapChannelMessage = (item, expectedChannelId) => {
     senderName: item.sender.displayName || 'Unknown user',
     senderAvatar: item.sender.avatarUrl || '',
     content: item.content,
+    mentions,
+    contentSegments: buildContentSegments(item.content, mentions),
     sentAt: item.createdAt,
     attachments: Array.isArray(item.attachments) ? item.attachments.map(mapAttachment) : []
   }
@@ -1525,6 +1607,8 @@ const mapDirectMessage = (item, expectedConversationId) => {
     senderName: item.sender.displayName || 'Unknown user',
     senderAvatar: item.sender.avatarUrl || '',
     content: item.content,
+    mentions: [],
+    contentSegments: [{ text: item.content, isMention: false }],
     sentAt: item.createdAt,
     attachments: Array.isArray(item.attachments) ? item.attachments.map(mapAttachment) : []
   }
@@ -1734,6 +1818,7 @@ const clearChannelSelection = () => {
     activeChat.value = null
   }
   newMessage.value = ''
+  resetMentionComposer()
   removeAttachedFile()
 }
 
@@ -1750,6 +1835,7 @@ const clearDirectSelection = ({ clearComposer = true } = {}) => {
   }
   selectedRecipientId.value = ''
   if (clearComposer) newMessage.value = ''
+  resetMentionComposer()
   removeAttachedFile()
 }
 
@@ -1892,7 +1978,8 @@ const loadChannels = async ({
       currentTab.value === 'channel' &&
       channels.value.length > 0
     ) {
-      await selectChat(channels.value[0], 'channel')
+      const linkedChannel = channels.value.find(item => item.id === route.query.channelId)
+      await selectChat(linkedChannel || channels.value[0], 'channel')
     }
   } catch (error) {
     if (
@@ -2147,6 +2234,10 @@ const loadChannelHistory = async (channel, {
     }
     if (page === 1 && !older) {
       markRenderedLatestMessageRead('channel', channel.id)
+      const targetMessageId = `${route.query.messageId || ''}`
+      if (targetMessageId && targetMessageId === activeMessages.value.find(item => item.messageId === targetMessageId)?.messageId) {
+        messageThread.value?.querySelector(`[data-message-id="${targetMessageId}"]`)?.scrollIntoView({ block: 'center' })
+      }
     }
   } catch (error) {
     if (
@@ -2382,6 +2473,13 @@ const handleReadStateChanged = (payload) => {
   applyReadState(payload)
 }
 
+const receivedMentionNotificationIds = new Set()
+const handleMentionCreated = (payload) => {
+  if (!payload?.notificationId || receivedMentionNotificationIds.has(payload.notificationId)) return
+  receivedMentionNotificationIds.add(payload.notificationId)
+  window.dispatchEvent(new CustomEvent('collaboration-mention-created', { detail: payload }))
+}
+
 const leaveActiveRealtimeGroup = async (chat = activeChat.value) => {
   if (chat?.type === 'channel') {
     await collaborationRealtime.leaveChannel(chat.id)
@@ -2445,6 +2543,7 @@ const handleRealtimeReconnected = async ({ errors }) => {
     await handleRealtimeGroupFailure(errors[0])
     return
   }
+  window.dispatchEvent(new CustomEvent('collaboration-notifications-refresh'))
   const chat = activeChat.value
   if (!chat?.id) return
   if (chat.type === 'channel') {
@@ -2465,6 +2564,7 @@ const registerRealtimeHandlers = () => {
     collaborationRealtime.subscribeChannelMessage(handleChannelRealtimeMessage),
     collaborationRealtime.subscribeDirectMessage(handleDirectRealtimeMessage),
     collaborationRealtime.subscribeReadState(handleReadStateChanged),
+    collaborationRealtime.subscribeMention(handleMentionCreated),
     collaborationRealtime.subscribeState(handleRealtimeState),
     collaborationRealtime.subscribeReconnected(handleRealtimeReconnected)
   )
@@ -2507,7 +2607,10 @@ const initializeCollaborationContext = async ({ forceProjects = false } = {}) =>
   if (!componentMounted || version !== collaborationContextVersion) return
   await loadProjects({ force: forceProjects })
   if (!componentMounted || version !== collaborationContextVersion) return
-  if (!activeProjectId.value && projectOptions.value.length > 0) {
+  const linkedProjectId = `${route.query.projectId || ''}`
+  if (linkedProjectId && projectOptions.value.some(project => project.id === linkedProjectId)) {
+    activeProjectId.value = linkedProjectId
+  } else if (!activeProjectId.value && projectOptions.value.length > 0) {
     activeProjectId.value = projectOptions.value[0].id
   } else if (currentTab.value === 'dm') {
     if (activeProjectId.value) {
@@ -2575,6 +2678,8 @@ watch(() => authStore.token, async (token, previousToken) => {
   collaborationContextVersion += 1
   await collaborationRealtime.stop()
   clearCollaborationState()
+  receivedMentionNotificationIds.clear()
+  window.dispatchEvent(new CustomEvent('collaboration-notifications-reset'))
   projectStore.allProjects = []
   setConnectionNotice('')
   if (token && componentMounted) {
@@ -2602,7 +2707,7 @@ onBeforeUnmount(() => {
   cancelPendingMarkRead()
   removeAttachedFile()
   revokeMessageAttachmentUrls()
-  void collaborationRealtime.stop()
+  void leaveActiveRealtimeGroup()
   createChannelAbortController.value?.abort()
   channelAbortController.value?.abort()
   memberAbortController.value?.abort()
@@ -2610,6 +2715,7 @@ onBeforeUnmount(() => {
   findConversationAbortController.value?.abort()
   messageAbortController.value?.abort()
   sendMessageAbortController.value?.abort()
+  closeMentionMenu()
   channelRequestId += 1
   memberRequestId += 1
   conversationRequestId += 1
@@ -2746,8 +2852,167 @@ const emojiList = [
   '🤔', '💡', '🔥', '✨', '🎉', '🚀', '👀', '👍', '👎', '❤️'
 ]
 
+const closeMentionMenu = () => {
+  mentionAbortController.value?.abort()
+  mentionAbortController.value = null
+  mentionRequestId += 1
+  if (mentionDebounceTimer) {
+    window.clearTimeout(mentionDebounceTimer)
+    mentionDebounceTimer = null
+  }
+  mentionMenuOpen.value = false
+  mentionLoading.value = false
+  mentionSuggestions.value = []
+  mentionRange.value = null
+  mentionActiveIndex.value = 0
+}
+
+const resetMentionComposer = () => {
+  closeMentionMenu()
+  selectedMentions.value = []
+  previousComposerValue = newMessage.value
+}
+
+const reconcileMentionSpans = (oldValue, nextValue) => {
+  let prefix = 0
+  while (prefix < oldValue.length && prefix < nextValue.length && oldValue[prefix] === nextValue[prefix]) prefix += 1
+  let suffix = 0
+  while (
+    suffix < oldValue.length - prefix &&
+    suffix < nextValue.length - prefix &&
+    oldValue[oldValue.length - 1 - suffix] === nextValue[nextValue.length - 1 - suffix]
+  ) suffix += 1
+  const oldEnd = oldValue.length - suffix
+  const delta = nextValue.length - oldValue.length
+  selectedMentions.value = selectedMentions.value.flatMap(mention => {
+    const mentionEnd = mention.startIndex + mention.length
+    if (mentionEnd <= prefix) return [mention]
+    if (mention.startIndex >= oldEnd) {
+      const shifted = { ...mention, startIndex: mention.startIndex + delta }
+      return nextValue.slice(shifted.startIndex, shifted.startIndex + shifted.length) === shifted.displayText
+        ? [shifted]
+        : []
+    }
+    return []
+  })
+}
+
+const loadMentionSuggestions = (query, range, channelId) => {
+  if (mentionDebounceTimer) window.clearTimeout(mentionDebounceTimer)
+  mentionMenuOpen.value = true
+  mentionLoading.value = true
+  mentionRange.value = range
+  mentionDebounceTimer = window.setTimeout(async () => {
+    mentionAbortController.value?.abort()
+    const controller = new AbortController()
+    mentionAbortController.value = controller
+    const requestId = ++mentionRequestId
+    try {
+      const result = await collaborationApi.searchChannelMembers(channelId, query, {
+        limit: 20,
+        signal: controller.signal
+      })
+      if (
+        requestId !== mentionRequestId ||
+        activeChannel.value?.id !== channelId ||
+        mentionRange.value?.start !== range.start
+      ) return
+      const selectedIds = new Set(selectedMentions.value.map(item => item.userId))
+      mentionSuggestions.value = (Array.isArray(result) ? result : [])
+        .filter(item => item?.userId && item?.displayName && !selectedIds.has(item.userId))
+        .slice(0, 20)
+      mentionActiveIndex.value = 0
+    } catch (error) {
+      if (!isCanceledRequest(error) && requestId === mentionRequestId) {
+        mentionSuggestions.value = []
+      }
+    } finally {
+      if (requestId === mentionRequestId) {
+        mentionLoading.value = false
+        mentionAbortController.value = null
+      }
+    }
+  }, 180)
+}
+
+const handleComposerInput = (event) => {
+  const nextValue = newMessage.value
+  reconcileMentionSpans(previousComposerValue, nextValue)
+  previousComposerValue = nextValue
+  if (currentTab.value !== 'channel' || !activeChannel.value?.id) {
+    closeMentionMenu()
+    return
+  }
+  const caret = Number(event.target?.selectionStart ?? nextValue.length)
+  const beforeCaret = nextValue.slice(0, caret)
+  const match = beforeCaret.match(/(?:^|\s)@([^\s@]{0,100})$/u)
+  if (!match || selectedMentions.value.length >= 20) {
+    closeMentionMenu()
+    return
+  }
+  const query = match[1]
+  const start = caret - query.length - 1
+  loadMentionSuggestions(query, { start, end: caret }, activeChannel.value.id)
+}
+
+const selectMention = async (member) => {
+  const range = mentionRange.value
+  if (!range || !member?.userId || selectedMentions.value.some(item => item.userId === member.userId)) return
+  const token = `@${member.displayName}`
+  const nextValue = `${newMessage.value.slice(0, range.start)}${token} ${newMessage.value.slice(range.end)}`
+  const delta = nextValue.length - newMessage.value.length
+  selectedMentions.value = selectedMentions.value.map(mention =>
+    mention.startIndex >= range.end
+      ? { ...mention, startIndex: mention.startIndex + delta }
+      : mention
+  )
+  selectedMentions.value.push({
+    userId: member.userId,
+    displayText: token,
+    startIndex: range.start,
+    length: token.length
+  })
+  newMessage.value = nextValue
+  previousComposerValue = nextValue
+  closeMentionMenu()
+  await nextTick()
+  const caret = range.start + token.length + 1
+  composerInput.value?.focus()
+  composerInput.value?.setSelectionRange(caret, caret)
+}
+
+const handleComposerKeydown = (event) => {
+  if (mentionMenuOpen.value) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const count = mentionSuggestions.value.length
+      if (count) {
+        const direction = event.key === 'ArrowDown' ? 1 : -1
+        mentionActiveIndex.value = (mentionActiveIndex.value + direction + count) % count
+      }
+      return
+    }
+    if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault()
+      const member = mentionSuggestions.value[mentionActiveIndex.value]
+      if (member) void selectMention(member)
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeMentionMenu()
+      return
+    }
+  }
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault()
+    void sendMessage()
+  }
+}
+
 const insertEmoji = (emoji) => {
   newMessage.value += emoji
+  previousComposerValue = newMessage.value
 }
 
 const sendDirectMessage = async () => {
@@ -2818,10 +3083,11 @@ const sendDirectMessage = async () => {
 
 const sendChannelMessage = async () => {
   if (sendingMessage.value || !activeChannel.value?.canSend) return
-  const content = newMessage.value
+  const normalizedInput = newMessage.value
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
-    .trim()
+  const leadingWhitespace = normalizedInput.length - normalizedInput.trimStart().length
+  const content = normalizedInput.trim()
   if (!content && attachedFiles.value.length === 0) return
   if (content.length > 4000) {
     ElMessage.warning('Tin nhắn không được vượt quá 4.000 ký tự.')
@@ -2829,6 +3095,13 @@ const sendChannelMessage = async () => {
   }
 
   const channel = activeChannel.value
+  const mentions = selectedMentions.value.flatMap(mention => {
+    const adjusted = { ...mention, startIndex: mention.startIndex - leadingWhitespace }
+    return adjusted.startIndex >= 0 &&
+      content.slice(adjusted.startIndex, adjusted.startIndex + adjusted.length) === adjusted.displayText
+      ? [{ userId: adjusted.userId, startIndex: adjusted.startIndex, length: adjusted.length }]
+      : []
+  })
   const controller = new AbortController()
   sendMessageAbortController.value = controller
   sendingMessage.value = true
@@ -2837,6 +3110,7 @@ const sendChannelMessage = async () => {
       channel.id,
       {
         content,
+        mentions,
         files: attachedFiles.value.map(file => file.rawFile)
       },
       { signal: controller.signal }
@@ -2851,6 +3125,7 @@ const sendChannelMessage = async () => {
       messagePagination.value.totalCount += 1
     }
     newMessage.value = ''
+    resetMentionComposer()
     removeAttachedFile()
     await nextTick()
     scrollToBottom()
@@ -2963,6 +3238,7 @@ const selectChat = async (item, type) => {
   await leaveActiveRealtimeGroup(previousChat)
   clearMessageHistory()
   removeAttachedFile()
+  resetMentionComposer()
   const selectionId = chatSelectionId
   activeChat.value = {
     id: item.id,
@@ -4714,6 +4990,68 @@ background-color: #111c2d !important;
 
 .message-attachment {
   min-width: 0;
+}
+
+.message-mention {
+  display: inline;
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  border-radius: 4px;
+  padding: 1px 3px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.message-card.mention-target {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.mention-composer {
+  position: relative;
+}
+
+.mention-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  width: min(340px, calc(100vw - 32px));
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.mention-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.mention-option:hover,
+.mention-option.active,
+.mention-option:focus-visible {
+  background: color-mix(in srgb, var(--color-primary) 13%, var(--color-surface));
+  outline: none;
+}
+
+.mention-menu-state {
+  padding: 9px;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .attachment-preview {

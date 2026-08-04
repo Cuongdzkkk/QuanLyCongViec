@@ -2,10 +2,15 @@ import axiosClient from '@/api/axiosClient'
 
 const unwrapData = (response) => response?.data?.data ?? response?.data
 
-const messageForm = (content, files) => {
+const messageForm = (content, files, mentions = []) => {
   const form = new FormData()
   if (content) form.append('content', content)
   files.forEach(file => form.append('files', file))
+  mentions.forEach((mention, index) => {
+    form.append(`mentions[${index}].userId`, mention.userId)
+    form.append(`mentions[${index}].startIndex`, `${mention.startIndex}`)
+    form.append(`mentions[${index}].length`, `${mention.length}`)
+  })
   return form
 }
 
@@ -48,14 +53,25 @@ export const collaborationApi = {
 
   async sendChannelMessage(channelId, payload, options = {}) {
     const files = Array.isArray(payload.files) ? payload.files : []
+    const mentions = Array.isArray(payload.mentions) ? payload.mentions : []
     const response = await axiosClient.post(
       `/channels/${channelId}/messages`,
-      files.length ? messageForm(payload.content, files) : { content: payload.content },
+      files.length
+        ? messageForm(payload.content, files, mentions)
+        : { content: payload.content, mentions },
       {
         signal: options.signal,
         headers: files.length ? { 'Content-Type': 'multipart/form-data' } : undefined
       }
     )
+    return unwrapData(response)
+  },
+
+  async searchChannelMembers(channelId, query, options = {}) {
+    const response = await axiosClient.get(`/channels/${channelId}/members`, {
+      params: { query, limit: options.limit ?? 10 },
+      signal: options.signal
+    })
     return unwrapData(response)
   },
 
