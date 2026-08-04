@@ -4,6 +4,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Moq;
 using TaskManagement.API.Controllers;
 using TaskManagement.API.Services;
@@ -154,6 +155,109 @@ public sealed class ChannelTextServiceTests
     }
 
     [Fact]
+    public async Task AuthorizedMentionPersistsOnceAndHistoryKeepsIdentitySpan()
+    {
+        await using var context = CreateContext();
+        var seed = await ChannelSeed.InsertAsync(context);
+        var service = CreateService(context);
+        var mentions = new[]
+        {
+            new ChannelMessageMentionRequestDto { UserId = seed.UserBId, StartIndex = 0, Length = 7 },
+            new ChannelMessageMentionRequestDto { UserId = seed.UserBId, StartIndex = 0, Length = 7 },
+            new ChannelMessageMentionRequestDto { UserId = seed.UserAId, StartIndex = 0, Length = 7 }
+        };
+
+        var result = await service.SendWithMentionsAsync(
+            seed.ChannelAId, seed.UserAId, "@User b xin chào", mentions, []);
+
+        result.MentionNotifications.Should().ContainSingle()
+            .Which.RecipientUserId.Should().Be(seed.UserBId);
+        (await context.ChannelMessageMentions.ToListAsync()).Should().ContainSingle();
+        var notification = await context.Notifications.SingleAsync();
+        notification.UserId.Should().Be(seed.UserBId);
+        notification.TriggeredByUserId.Should().Be(seed.UserAId);
+        notification.NotificationType.Should().Be("collaboration_channel_mention");
+        notification.ChannelMessageId.Should().Be(result.Message.MessageId);
+        notification.CollaborationChannelId.Should().Be(seed.ChannelAId);
+        notification.Content.ToLowerInvariant().Should().NotContain("<script");
+
+        var history = await service.GetHistoryAsync(seed.ChannelAId, seed.UserBId, 1, 20);
+        history.Items.Single().Mentions.Should().ContainSingle().Which.Should().Be(
+            new ChannelMessageMentionDto(seed.UserBId, "@User b", 0, 7));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OutsiderOrInactiveMentionIsRejectedWithoutPersistence(bool inactive)
+    {
+        await using var context = CreateContext();
+        var seed = await ChannelSeed.InsertAsync(context);
+        var targetId = inactive ? seed.InactiveUserId : seed.OutsiderId;
+        var content = inactive ? "@inactive" : "@outsider";
+        var request = new ChannelMessageMentionRequestDto
+        {
+            UserId = targetId,
+            StartIndex = 0,
+            Length = content.Length
+        };
+
+        await CreateService(context).Invoking(service => service.SendWithMentionsAsync(
+                seed.ChannelAId, seed.UserAId, content, [request], []))
+            .Should().ThrowAsync<ChannelMentionForbiddenException>();
+        (await context.ChannelMessages.CountAsync()).Should().Be(0);
+        (await context.ChannelMessageMentions.CountAsync()).Should().Be(0);
+        (await context.Notifications.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task MemberDiscoveryIsChannelScopedAndOmitsInactiveUsers()
+    {
+        await using var context = CreateContext();
+        var seed = await ChannelSeed.InsertAsync(context);
+
+        var members = await CreateService(context).SearchMembersAsync(
+            seed.ChannelAId, seed.UserAId, "User", 20);
+
+        members.Select(item => item.UserId).Should().BeEquivalentTo([seed.UserAId, seed.UserBId]);
+        members.Select(item => item.UserId).Should().NotContain(seed.OutsiderId);
+        members.Select(item => item.UserId).Should().NotContain(seed.InactiveUserId);
+        typeof(ChannelMemberSuggestionDto).GetProperties().Select(item => item.Name)
+            .Should().BeEquivalentTo(["UserId", "DisplayName", "AvatarUrl"]);
+    }
+
+    [Fact]
+    public async Task NotificationSaveFailureRollsBackMessageMentionAndNotification()
+    {
+        var databaseName = $"mention-rollback-{Guid.NewGuid():N}";
+        ChannelSeed seed;
+        await using (var setup = CreateContext(databaseName))
+            seed = await ChannelSeed.InsertAsync(setup);
+
+        var failingOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(databaseName)
+            .AddInterceptors(new ThrowOnSaveInterceptor())
+            .Options;
+        await using (var failing = new ApplicationDbContext(failingOptions))
+        {
+            var request = new ChannelMessageMentionRequestDto
+            {
+                UserId = seed.UserBId,
+                StartIndex = 0,
+                Length = 7
+            };
+            await CreateService(failing).Invoking(service => service.SendWithMentionsAsync(
+                    seed.ChannelAId, seed.UserAId, "@User b rollback", [request], []))
+                .Should().ThrowAsync<DbUpdateException>();
+        }
+
+        await using var verify = CreateContext(databaseName);
+        (await verify.ChannelMessages.CountAsync()).Should().Be(0);
+        (await verify.ChannelMessageMentions.CountAsync()).Should().Be(0);
+        (await verify.Notifications.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
     public async Task PaginationHasStableTieBreakerWithoutLossOrDuplicates()
     {
         await using var context = CreateContext();
@@ -212,14 +316,15 @@ public sealed class ChannelTextServiceTests
         var readStateService = new Mock<ICollaborationReadStateService>();
         var publisher = new Mock<ICollaborationRealtimePublisher>();
         ChannelMessageDto? persistedMessage = null;
-        service.Setup(item => item.SendAsync(channelId, userAId, "hello", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(persistedMessage = new ChannelMessageDto(
+        persistedMessage = new ChannelMessageDto(
                 Guid.NewGuid(),
                 channelId,
                 "hello",
                 new ChannelMessageSenderDto(userAId, "User A", null),
                 DateTime.UtcNow,
-                Guid.NewGuid()));
+                Guid.NewGuid());
+        service.Setup(item => item.SendAsync(channelId, userAId, "hello", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(persistedMessage);
         publisher.Setup(item => item.PublishChannelMessageCreatedAsync(
                 persistedMessage,
                 It.IsAny<CancellationToken>()))
@@ -279,6 +384,16 @@ public sealed class ChannelTextServiceTests
         Content = content,
         SentAt = DateTime.UtcNow
     };
+}
+
+internal sealed class ThrowOnSaveInterceptor : SaveChangesInterceptor
+{
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromException<InterceptionResult<int>>(
+            new DbUpdateException("Simulated notification transaction failure."));
 }
 
 internal sealed record ChannelSeed(

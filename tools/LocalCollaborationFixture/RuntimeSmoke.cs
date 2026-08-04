@@ -40,8 +40,108 @@ internal sealed class RuntimeSmoke
         await CheckChannelRestAsync(clientA, clientB, clientC, cancellationToken);
         await CheckDirectRestAsync(clientA, clientB, clientC, cancellationToken);
         await CheckSignalRAsync(clientA, clientB, cancellationToken);
+        await CheckMentionsAsync(clientA, clientB, clientC, cancellationToken);
         await CheckAttachmentsAsync(clientA, clientB, clientC, cancellationToken);
         await AssertDatabaseShapeAsync(cancellationToken);
+    }
+
+    private async Task CheckMentionsAsync(
+        HttpClient clientA,
+        HttpClient clientB,
+        HttpClient clientC,
+        CancellationToken cancellationToken)
+    {
+        await using var connectionB = CreateConnection(new TokenSlot(_tokenB));
+        await using var connectionC = CreateConnection(new TokenSlot(_tokenC));
+        var eventsB = new EventProbe<CollaborationMentionCreatedEventDto>();
+        var eventsC = new EventProbe<CollaborationMentionCreatedEventDto>();
+        connectionB.On<CollaborationMentionCreatedEventDto>(ChatRealtimeEvents.CollaborationMentionCreated, eventsB.Record);
+        connectionC.On<CollaborationMentionCreatedEventDto>(ChatRealtimeEvents.CollaborationMentionCreated, eventsC.Record);
+        await connectionB.StartAsync(cancellationToken);
+        await connectionC.StartAsync(cancellationToken);
+
+        var members = await GetDataAsync<List<ChannelMemberSuggestionDto>>(
+            clientA.GetAsync($"/api/channels/{_identity.ChannelAId:D}/members?query={_identity.Prefix}&limit=20", cancellationToken),
+            cancellationToken);
+        Require(members.Select(item => item.UserId).ToHashSet().SetEquals([_identity.UserAId, _identity.UserBId]),
+            "Mention member discovery leaked an outsider or omitted an active Channel member.");
+
+        var tokenB = $"@{_identity.Prefix}-USER_B";
+        var content = $"{tokenB} kiểm tra mention Unicode";
+        var mention = new { userId = _identity.UserBId, startIndex = 0, length = tokenB.Length };
+        var message = await PostDataAsync<ChannelMessageDto>(
+            clientA,
+            $"/api/channels/{_identity.ChannelAId:D}/messages",
+            new { content, mentions = new[] { mention, mention } },
+            cancellationToken);
+        await WaitForAsync(
+            () => eventsB.Count(item => item.MessageId == message.MessageId) == 1,
+            "USER_B did not receive exactly one private mention event.",
+            cancellationToken);
+        Require(eventsC.Count(item => item.MessageId == message.MessageId) == 0,
+            "USER_C received another user's private mention event.");
+        Require(message.Mentions?.Single().UserId == _identity.UserBId,
+            "Mention response lost persisted internal UserId metadata.");
+
+        var history = await GetChannelHistoryAsync(clientB, 1, 50, cancellationToken);
+        Require(history.Items.Single(item => item.MessageId == message.MessageId).Mentions?.Single().DisplayText == tokenB,
+            "Mention metadata did not survive history reload.");
+        using var freshB = CreateClient(_tokenB);
+        var notificationsB = await GetDataAsync<List<FixtureNotificationDto>>(
+            freshB.GetAsync("/api/notifications", cancellationToken), cancellationToken);
+        Require(notificationsB.Count(item =>
+                item.NotificationType == "collaboration_channel_mention" &&
+                item.ChannelMessageId == message.MessageId &&
+                item.CollaborationChannelId == _identity.ChannelAId) == 1,
+            "USER_B reload did not return exactly one persisted mention notification.");
+
+        var tokenC = $"@{_identity.Prefix}-USER_C";
+        await RequireStatusAsync(
+            await clientA.PostAsJsonAsync(
+                $"/api/channels/{_identity.ChannelAId:D}/messages",
+                new
+                {
+                    content = tokenC,
+                    mentions = new[] { new { userId = _identity.UserCId, startIndex = 0, length = tokenC.Length } }
+                },
+                cancellationToken),
+            HttpStatusCode.Forbidden,
+            "USER_C forged mention");
+        var notificationsC = await GetDataAsync<List<FixtureNotificationDto>>(
+            clientC.GetAsync("/api/notifications", cancellationToken), cancellationToken);
+        Require(notificationsC.All(item => item.NotificationType != "collaboration_channel_mention"),
+            "USER_C received a mention notification despite being outside CHANNEL_A.");
+
+        var tokenA = $"@{_identity.Prefix}-USER_A";
+        var self = await PostDataAsync<ChannelMessageDto>(
+            clientA,
+            $"/api/channels/{_identity.ChannelAId:D}/messages",
+            new
+            {
+                content = tokenA,
+                mentions = new[] { new { userId = _identity.UserAId, startIndex = 0, length = tokenA.Length } }
+            },
+            cancellationToken);
+        Require(self.Mentions?.Count == 0, "Self mention was not ignored by policy.");
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var userB = await context.Users.IgnoreQueryFilters().SingleAsync(item => item.Id == _identity.UserBId, cancellationToken);
+            userB.IsActive = false;
+            await context.SaveChangesAsync(cancellationToken);
+            await RequireStatusAsync(
+                await clientA.PostAsJsonAsync(
+                    $"/api/channels/{_identity.ChannelAId:D}/messages",
+                    new { content, mentions = new[] { mention } },
+                    cancellationToken),
+                HttpStatusCode.Forbidden,
+                "inactive member mention");
+            userB.IsActive = true;
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        Console.WriteLine("PASS Mentions: UserId identity, member discovery, SQL reload, private SignalR, duplicate/self/C/inactive policy");
     }
 
     private async Task CheckAttachmentsAsync(
@@ -60,15 +160,24 @@ internal sealed class RuntimeSmoke
 
         var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3 };
         var pdf = "%PDF-1.7\nfixture"u8.ToArray();
+        var attachmentMentionToken = $"@{_identity.Prefix}-USER_B";
         var channelMessage = await SendAttachmentMessageAsync<ChannelMessageDto>(
             clientA,
             $"/api/channels/{_identity.ChannelAId:D}/messages",
-            $"{_identity.Prefix}-channel-attachments",
+            $"{attachmentMentionToken} {_identity.Prefix}-channel-attachments",
             [(png, "../Ảnh kiểm thử.png", "image/svg+xml"), (pdf, "fixture.pdf", "text/html")],
-            cancellationToken);
+            cancellationToken,
+            [new ChannelMessageMentionRequestDto
+            {
+                UserId = _identity.UserBId,
+                StartIndex = 0,
+                Length = attachmentMentionToken.Length
+            }]);
         var channelAttachments = channelMessage.Attachments
             ?? throw new InvalidOperationException("Channel response omitted attachment metadata.");
         Require(channelAttachments.Count == 2, "Channel response did not include two attachment metadata records.");
+        Require(channelMessage.Mentions?.Single().UserId == _identity.UserBId,
+            "Channel attachment message lost mention metadata.");
         Require(channelAttachments.All(item => !item.OriginalFileName.Contains("..", StringComparison.Ordinal)),
             "Channel attachment filename was not sanitized.");
         await WaitForAsync(
@@ -467,6 +576,14 @@ internal sealed class RuntimeSmoke
                 (item.ChannelMessage != null && item.ChannelMessage.CollaborationChannelId == _identity.ChannelAId) ||
                 (item.DirectMessage != null && item.DirectMessage.ConversationId == _identity.ConversationAbId))
             .ToListAsync(cancellationToken);
+        var mentions = await context.ChannelMessageMentions.AsNoTracking()
+            .Where(item => item.ChannelMessage.CollaborationChannelId == _identity.ChannelAId)
+            .ToListAsync(cancellationToken);
+        var mentionNotifications = await context.Notifications.AsNoTracking()
+            .Where(item =>
+                item.CollaborationChannelId == _identity.ChannelAId &&
+                item.NotificationType == "collaboration_channel_mention")
+            .ToListAsync(cancellationToken);
         Require(conversations == 1, "Database contains a duplicate AB conversation.");
         Require(participants.Count == 2 && participants.Contains(_identity.UserAId) && participants.Contains(_identity.UserBId),
             "Database conversation participants are not exactly USER_A and USER_B.");
@@ -474,6 +591,11 @@ internal sealed class RuntimeSmoke
                 (item.ChannelMessageId != null) != (item.DirectMessageId != null) &&
                 item.UploadedByUserId == _identity.UserAId),
             "Attachment SQL metadata did not preserve one owner and JWT uploader identity.");
+        Require(mentions.Count == 2 && mentions.All(item => item.MentionedUserId == _identity.UserBId),
+            "Mention SQL metadata was duplicated or targeted outside USER_B.");
+        Require(mentionNotifications.Count == 2 && mentionNotifications.All(item =>
+                item.UserId == _identity.UserBId && item.TriggeredByUserId == _identity.UserAId),
+            "Mention notifications were duplicated or escaped the intended actor/recipient pair.");
     }
 
     private HttpClient CreateClient(string token)
@@ -603,9 +725,10 @@ internal sealed class RuntimeSmoke
         string path,
         string content,
         IReadOnlyList<(byte[] Bytes, string FileName, string ContentType)> files,
-        CancellationToken cancellationToken) where T : class
+        CancellationToken cancellationToken,
+        IReadOnlyList<ChannelMessageMentionRequestDto>? mentions = null) where T : class
     {
-        using var form = CreateMultipart(content, files);
+        using var form = CreateMultipart(content, files, mentions);
         using var response = await client.PostAsync(path, form, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -632,10 +755,20 @@ internal sealed class RuntimeSmoke
 
     private static MultipartFormDataContent CreateMultipart(
         string content,
-        IReadOnlyList<(byte[] Bytes, string FileName, string ContentType)> files)
+        IReadOnlyList<(byte[] Bytes, string FileName, string ContentType)> files,
+        IReadOnlyList<ChannelMessageMentionRequestDto>? mentions = null)
     {
         var form = new MultipartFormDataContent();
         form.Add(new StringContent(content), "content");
+        if (mentions != null)
+        {
+            for (var index = 0; index < mentions.Count; index++)
+            {
+                form.Add(new StringContent(mentions[index].UserId.ToString()), $"mentions[{index}].userId");
+                form.Add(new StringContent(mentions[index].StartIndex.ToString()), $"mentions[{index}].startIndex");
+                form.Add(new StringContent(mentions[index].Length.ToString()), $"mentions[{index}].length");
+            }
+        }
         foreach (var file in files)
         {
             var fileContent = new ByteArrayContent(file.Bytes);
@@ -722,6 +855,13 @@ internal sealed class RuntimeSmoke
     {
         public string Value { get; set; } = value;
     }
+
+    private sealed record FixtureNotificationDto(
+        Guid Id,
+        string NotificationType,
+        Guid? CollaborationChannelId,
+        Guid? ChannelMessageId,
+        bool IsRead);
 
     private sealed class EventProbe<T>
     {

@@ -5,6 +5,7 @@ public static class ChatRealtimeEvents
     public const string ChannelMessageCreated = nameof(ChannelMessageCreated);
     public const string DirectMessageCreated = nameof(DirectMessageCreated);
     public const string CollaborationReadStateChanged = nameof(CollaborationReadStateChanged);
+    public const string CollaborationMentionCreated = nameof(CollaborationMentionCreated);
 }
 
 public static class ChatRealtimeGroups
@@ -19,7 +20,8 @@ public sealed record ChannelMessageCreatedEventDto(
     string Content,
     ChannelMessageSenderDto Sender,
     DateTime CreatedAt,
-    IReadOnlyList<CollaborationAttachmentDto>? Attachments = null);
+    IReadOnlyList<CollaborationAttachmentDto>? Attachments = null,
+    IReadOnlyList<ChannelMessageMentionDto>? Mentions = null);
 
 public sealed record DirectMessageCreatedEventDto(
     Guid MessageId,

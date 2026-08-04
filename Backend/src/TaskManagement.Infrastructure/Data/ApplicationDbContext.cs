@@ -124,6 +124,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<DirectConversation> DirectConversations { get; set; }
         public DbSet<DirectConversationParticipant> DirectConversationParticipants { get; set; }
         public DbSet<ChannelMessage> ChannelMessages { get; set; }
+        public DbSet<ChannelMessageMention> ChannelMessageMentions { get; set; }
         public DbSet<CollaborationChannel> CollaborationChannels { get; set; }
         public DbSet<CollaborationChannelMember> CollaborationChannelMembers { get; set; }
         public DbSet<CollaborationChannelReadState> CollaborationChannelReadStates { get; set; }
@@ -523,6 +524,20 @@ namespace TaskManagement.Infrastructure.Data
                 .WithMany()
                 .HasForeignKey(n => n.TriggeredByUserId)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<Notification>(entity =>
+            {
+                entity.HasIndex(n => new { n.UserId, n.ChannelMessageId })
+                    .IsUnique()
+                    .HasFilter("[ChannelMessageId] IS NOT NULL");
+                entity.HasIndex(n => new { n.CollaborationChannelId, n.CreatedAt });
+                entity.HasOne(n => n.CollaborationChannel).WithMany()
+                    .HasForeignKey(n => n.CollaborationChannelId)
+                    .OnDelete(DeleteBehavior.NoAction);
+                entity.HasOne(n => n.ChannelMessage).WithMany()
+                    .HasForeignKey(n => n.ChannelMessageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
 
             modelBuilder.Entity<SystemAuditLog>()
                 .HasOne(sal => sal.User)
@@ -1205,6 +1220,21 @@ namespace TaskManagement.Infrastructure.Data
                 entity.HasOne(message => message.CollaborationChannel)
                     .WithMany(channel => channel.Messages)
                     .HasForeignKey(message => message.CollaborationChannelId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<ChannelMessageMention>(entity =>
+            {
+                entity.Property(mention => mention.DisplayText).HasMaxLength(200).IsRequired();
+                entity.HasIndex(mention => new { mention.ChannelMessageId, mention.MentionedUserId })
+                    .IsUnique();
+                entity.HasIndex(mention => new { mention.MentionedUserId, mention.CreatedAt });
+                entity.HasOne(mention => mention.ChannelMessage)
+                    .WithMany(message => message.Mentions)
+                    .HasForeignKey(mention => mention.ChannelMessageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(mention => mention.MentionedUser).WithMany()
+                    .HasForeignKey(mention => mention.MentionedUserId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
 

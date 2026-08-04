@@ -230,6 +230,12 @@ internal sealed class FixtureStore
             await context.CollaborationChannelReadStates
                 .Where(item => item.ChannelId == _identity.ChannelAId)
                 .ExecuteDeleteAsync(cancellationToken);
+            await context.Notifications
+                .Where(item => item.CollaborationChannelId == _identity.ChannelAId)
+                .ExecuteDeleteAsync(cancellationToken);
+            await context.ChannelMessageMentions
+                .Where(item => item.ChannelMessage.CollaborationChannelId == _identity.ChannelAId)
+                .ExecuteDeleteAsync(cancellationToken);
             await context.ChannelMessages
                 .Where(item => item.CollaborationChannelId == _identity.ChannelAId)
                 .ExecuteDeleteAsync(cancellationToken);
@@ -288,6 +294,10 @@ internal sealed class FixtureStore
             await context.CollaborationMessageAttachments.CountAsync(item =>
                 (item.ChannelMessage != null && item.ChannelMessage.CollaborationChannelId == _identity.ChannelAId) ||
                 (item.DirectMessage != null && item.DirectMessage.ConversationId == _identity.ConversationAbId), cancellationToken) +
+            await context.ChannelMessageMentions.CountAsync(item =>
+                item.ChannelMessage.CollaborationChannelId == _identity.ChannelAId, cancellationToken) +
+            await context.Notifications.CountAsync(item =>
+                item.CollaborationChannelId == _identity.ChannelAId, cancellationToken) +
             await context.CollaborationChannelReadStates.CountAsync(item => item.ChannelId == _identity.ChannelAId, cancellationToken) +
             await context.DirectConversationReadStates.CountAsync(item => item.ConversationId == _identity.ConversationAbId, cancellationToken);
         if (remaining != 0)

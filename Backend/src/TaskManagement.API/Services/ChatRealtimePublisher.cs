@@ -30,7 +30,8 @@ public sealed class ChatRealtimePublisher : ICollaborationRealtimePublisher
                 message.Content,
                 message.Sender,
                 message.CreatedAt,
-                message.Attachments),
+                message.Attachments,
+                message.Mentions),
             message.MessageId,
             cancellationToken);
 
@@ -59,6 +60,17 @@ public sealed class ChatRealtimePublisher : ICollaborationRealtimePublisher
             ChatRealtimeEvents.CollaborationReadStateChanged,
             state,
             state.LastReadMessageId ?? state.ResourceId,
+            cancellationToken);
+
+    public Task PublishMentionCreatedAsync(
+        Guid userId,
+        CollaborationMentionCreatedEventDto notification,
+        CancellationToken cancellationToken = default) =>
+        PublishSafelyAsync(
+            _hubContext.Clients.User(userId.ToString()),
+            ChatRealtimeEvents.CollaborationMentionCreated,
+            notification,
+            notification.NotificationId,
             cancellationToken);
 
     private async Task PublishSafelyAsync<TPayload>(

@@ -59,6 +59,30 @@ public sealed class ChannelMessagesController : ControllerBase
         }
     }
 
+    [HttpGet("/api/channels/{channelId:guid}/members")]
+    public async Task<IActionResult> SearchMembers(
+        Guid channelId,
+        [FromQuery] string? query = null,
+        [FromQuery] int limit = 10,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        try
+        {
+            var result = await _channelTextService.SearchMembersAsync(
+                channelId, userId, query, limit, cancellationToken);
+            return Ok(ApiResponse<IReadOnlyList<ChannelMemberSuggestionDto>>.Success(result));
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(ApiResponse<object>.Error(exception.Message));
+        }
+        catch (ChannelNotFoundException exception)
+        {
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+    }
+
     [HttpPost]
     [Consumes("application/json")]
     public async Task<IActionResult> Send(
@@ -69,15 +93,17 @@ public sealed class ChannelMessagesController : ControllerBase
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
         try
         {
-            var result = await _channelTextService.SendAsync(
-                channelId,
-                userId,
-                request.Content,
-                cancellationToken);
-            await PublishCreatedAsync(result, cancellationToken);
+            var sendResult = request.Mentions.Count == 0
+                ? new SendChannelMessageResult(
+                    await _channelTextService.SendAsync(
+                        channelId, userId, request.Content, cancellationToken),
+                    [])
+                : await _channelTextService.SendWithMentionsAsync(
+                    channelId, userId, request.Content, request.Mentions, [], cancellationToken);
+            await PublishCreatedAsync(sendResult, cancellationToken);
             return StatusCode(
                 StatusCodes.Status201Created,
-                ApiResponse<ChannelMessageDto>.Created(result, "Message sent."));
+                ApiResponse<ChannelMessageDto>.Created(sendResult.Message, "Message sent."));
         }
         catch (ArgumentException exception)
         {
@@ -92,6 +118,10 @@ public sealed class ChannelMessagesController : ControllerBase
             return StatusCode(
                 StatusCodes.Status403Forbidden,
                 ApiResponse<object>.Error(exception.Message, 403));
+        }
+        catch (ChannelMentionForbiddenException exception)
+        {
+            return StatusCode(403, ApiResponse<object>.Error(exception.Message, 403));
         }
     }
 
@@ -115,13 +145,18 @@ public sealed class ChannelMessagesController : ControllerBase
             foreach (var file in request.Files)
                 validated.Add(await UploadSecurity.ReadCollaborationFileAsync(file, cancellationToken));
             stored = await _attachmentStorage.StoreAsync(validated, cancellationToken);
-            var result = await _channelTextService.SendWithAttachmentsAsync(
-                channelId, userId, request.Content, stored, cancellationToken);
+            var sendResult = request.Mentions.Count == 0
+                ? new SendChannelMessageResult(
+                    await _channelTextService.SendWithAttachmentsAsync(
+                        channelId, userId, request.Content, stored, cancellationToken),
+                    [])
+                : await _channelTextService.SendWithMentionsAsync(
+                    channelId, userId, request.Content, request.Mentions, stored, cancellationToken);
             persisted = true;
-            await PublishCreatedAsync(result, cancellationToken);
+            await PublishCreatedAsync(sendResult, cancellationToken);
             return StatusCode(
                 StatusCodes.Status201Created,
-                ApiResponse<ChannelMessageDto>.Created(result, "Message sent."));
+                ApiResponse<ChannelMessageDto>.Created(sendResult.Message, "Message sent."));
         }
         catch (InvalidDataException exception)
         {
@@ -139,6 +174,11 @@ public sealed class ChannelMessagesController : ControllerBase
             return NotFound(ApiResponse<object>.Error(exception.Message, 404));
         }
         catch (ChannelSendForbiddenException exception)
+        {
+            if (!persisted) _attachmentStorage.Delete(stored);
+            return StatusCode(403, ApiResponse<object>.Error(exception.Message, 403));
+        }
+        catch (ChannelMentionForbiddenException exception)
         {
             if (!persisted) _attachmentStorage.Delete(stored);
             return StatusCode(403, ApiResponse<object>.Error(exception.Message, 403));
@@ -181,12 +221,17 @@ public sealed class ChannelMessagesController : ControllerBase
         Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out userId);
 
     private async Task PublishCreatedAsync(
-        ChannelMessageDto result,
+        SendChannelMessageResult result,
         CancellationToken cancellationToken)
     {
-        await _realtimePublisher.PublishChannelMessageCreatedAsync(result, cancellationToken);
+        await _realtimePublisher.PublishChannelMessageCreatedAsync(result.Message, cancellationToken);
+        foreach (var notification in result.MentionNotifications)
+            await _realtimePublisher.PublishMentionCreatedAsync(
+                notification.RecipientUserId,
+                notification.Notification,
+                cancellationToken);
         var unreadUpdates = await _readStateService.GetChannelUnreadUpdatesForMessageAsync(
-            result.MessageId, cancellationToken);
+            result.Message.MessageId, cancellationToken);
         foreach (var update in unreadUpdates)
             await _realtimePublisher.PublishReadStateChangedAsync(
                 update.UserId, update.State, cancellationToken);
@@ -197,4 +242,5 @@ public sealed class CollaborationMessageForm
 {
     public string? Content { get; set; }
     public List<IFormFile> Files { get; set; } = [];
+    public List<ChannelMessageMentionRequestDto> Mentions { get; set; } = [];
 }

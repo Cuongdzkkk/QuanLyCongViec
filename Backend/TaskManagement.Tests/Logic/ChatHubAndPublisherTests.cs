@@ -190,6 +190,42 @@ public sealed class ChatHubAndPublisherTests
     }
 
     [Fact]
+    public async Task MentionEventIsSentOnceOnlyToRecipientUser()
+    {
+        var recipientId = Guid.NewGuid();
+        var notificationId = Guid.NewGuid();
+        var proxy = new Mock<IClientProxy>();
+        var clients = new Mock<IHubClients>();
+        clients.Setup(item => item.User(recipientId.ToString())).Returns(proxy.Object);
+        var context = new Mock<IHubContext<ChatHub>>();
+        context.SetupGet(item => item.Clients).Returns(clients.Object);
+        proxy.Setup(item => item.SendCoreAsync(
+                ChatRealtimeEvents.CollaborationMentionCreated,
+                It.IsAny<object?[]>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var notification = new CollaborationMentionCreatedEventDto(
+            notificationId,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            new ChannelMessageSenderDto(Guid.NewGuid(), "Actor", null),
+            "safe preview",
+            DateTime.UtcNow);
+
+        await new ChatRealtimePublisher(context.Object, Mock.Of<ILogger<ChatRealtimePublisher>>())
+            .PublishMentionCreatedAsync(recipientId, notification);
+
+        clients.Verify(item => item.User(recipientId.ToString()), Times.Once);
+        clients.Verify(item => item.Group(It.IsAny<string>()), Times.Never);
+        proxy.Verify(item => item.SendCoreAsync(
+            ChatRealtimeEvents.CollaborationMentionCreated,
+            It.Is<object?[]>(arguments =>
+                arguments.Length == 1 &&
+                ReferenceEquals(arguments[0], notification)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task PersistenceAndPermissionFailuresDoNotPublishEvents()
     {
         var userId = Guid.NewGuid();

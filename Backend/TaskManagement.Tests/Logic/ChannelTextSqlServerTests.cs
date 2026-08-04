@@ -9,7 +9,7 @@ namespace TaskManagement.Tests.Logic;
 public sealed class ChannelTextSqlServerTests
 {
     private const string ConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=SprintACollabText01IntegrationV3;" +
+        "Server=(localdb)\\MSSQLLocalDB;Database=SprintACollabText01IntegrationV4;" +
         "Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
 
     [Fact]

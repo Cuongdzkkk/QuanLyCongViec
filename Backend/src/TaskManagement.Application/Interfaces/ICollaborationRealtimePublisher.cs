@@ -16,4 +16,9 @@ public interface ICollaborationRealtimePublisher
         Guid userId,
         CollaborationReadStateDto state,
         CancellationToken cancellationToken = default);
+
+    Task PublishMentionCreatedAsync(
+        Guid userId,
+        CollaborationMentionCreatedEventDto notification,
+        CancellationToken cancellationToken = default);
 }
