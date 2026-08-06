@@ -231,6 +231,12 @@
 
           </div>
         </div>
+        
+        <!-- Daily Focus Integration -->
+        <div style="margin-top: 24px; padding-top: 24px; border-top: 1px dashed rgba(148, 163, 184, 0.4);">
+          <DailyFocusView />
+        </div>
+
       </div>
   </ProjectPageContainer>
 </template>
@@ -240,6 +246,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
+import DailyFocusView from '@/views/DailyFocusView.vue'
 
 import { useI18nStore } from '@/store/useI18nStore'
 
