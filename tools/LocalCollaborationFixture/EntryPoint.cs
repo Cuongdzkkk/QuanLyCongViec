@@ -12,7 +12,7 @@ public static class EntryPoint
             using var startupClient = factory.CreateClient();
             var store = new FixtureStore(factory.Services, identity);
 
-            Console.WriteLine($"Target verified: KHOI\\SQLEXPRESS / TaskManagementDB / Integrated Security / {options.EnvironmentName}");
+            Console.WriteLine($"Target verified: configured local SQL Server / TaskManagementDB / Integrated Security / {options.EnvironmentName}");
             Console.WriteLine($"Fixture prefix: {options.Prefix}");
 
             switch (options.Command)

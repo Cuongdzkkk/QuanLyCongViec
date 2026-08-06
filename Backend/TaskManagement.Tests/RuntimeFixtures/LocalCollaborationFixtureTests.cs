@@ -13,11 +13,15 @@ public sealed class LocalCollaborationFixtureTests : IDisposable
 {
     private const string ConnectionVariable = "QLCV_E2E_FIXTURE_TEST_CONNECTION";
     private const string ApprovedConnection =
-        "Server=KHOI\\SQLEXPRESS;Database=TaskManagementDB;Trusted_Connection=True;TrustServerCertificate=True";
+        "Server=localhost\\SQLEXPRESS;Database=TaskManagementDB;Trusted_Connection=True;TrustServerCertificate=True";
     private readonly string? _originalValue = Environment.GetEnvironmentVariable(ConnectionVariable);
+    private readonly string? _originalServer = Environment.GetEnvironmentVariable("DEV_SQL_SERVER");
 
-    public LocalCollaborationFixtureTests() =>
+    public LocalCollaborationFixtureTests()
+    {
+        Environment.SetEnvironmentVariable("DEV_SQL_SERVER", @"localhost\SQLEXPRESS");
         Environment.SetEnvironmentVariable(ConnectionVariable, ApprovedConnection);
+    }
 
     [Fact]
     public void Parse_AcceptsExplicitTestingTargetWithoutPuttingConnectionStringInArguments()
@@ -47,7 +51,7 @@ public sealed class LocalCollaborationFixtureTests : IDisposable
     {
         Environment.SetEnvironmentVariable(
             ConnectionVariable,
-            "Server=KHOI\\SQLEXPRESS;Database=AnotherDatabase;Trusted_Connection=True");
+            "Server=localhost\\SQLEXPRESS;Database=AnotherDatabase;Trusted_Connection=True");
 
         var exception = Assert.Throws<FixtureSafetyException>(
             () => FixtureOptions.Parse(Arguments("cleanup", "audit01", "Testing")));
@@ -88,8 +92,11 @@ public sealed class LocalCollaborationFixtureTests : IDisposable
         Assert.All(first.UserIds, id => Assert.NotEqual(Guid.Empty, id));
     }
 
-    public void Dispose() =>
+    public void Dispose()
+    {
         Environment.SetEnvironmentVariable(ConnectionVariable, _originalValue);
+        Environment.SetEnvironmentVariable("DEV_SQL_SERVER", _originalServer);
+    }
 
     private static string[] Arguments(string command, string runId, string environment) =>
     [

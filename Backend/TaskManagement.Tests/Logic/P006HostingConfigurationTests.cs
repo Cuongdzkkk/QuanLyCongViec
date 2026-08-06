@@ -34,7 +34,7 @@ public sealed class P006HostingConfigurationTests
         var services = new ServiceCollection();
         var configuration = Configuration(new Dictionary<string, string?>
         {
-            ["ConnectionStrings:DefaultConnection"] = "Server=KHOI\\SQLEXPRESS;Database=SprintA;User Id=sa;Password=not-a-real-secret;Encrypt=False"
+            ["ConnectionStrings:DefaultConnection"] = "Server=localhost\\SQLEXPRESS;Database=SprintA;User Id=sa;Password=not-a-real-secret;Encrypt=False"
         });
         var action = () => services.AddEnvironmentSafeDatabase(configuration, Environment("Production"));
         action.Should().Throw<InvalidOperationException>().WithMessage("*encryption cannot be disabled*");
@@ -304,7 +304,7 @@ public sealed class P006MigrationDeploymentTests
 
     private static DbContextOptions<ApplicationDbContext> SqlOptions(string databaseName) =>
         new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlServer($"Server=KHOI\\SQLEXPRESS;Database={databaseName};Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False;Connect Timeout=30")
+            .UseSqlServer(SqlServerTestConfiguration.ConnectionString(databaseName))
             .Options;
 
     private static async Task<bool> TableExistsAsync(ApplicationDbContext context, string tableName) =>

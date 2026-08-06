@@ -85,9 +85,11 @@ internal sealed record FixtureOptions(
             throw new FixtureSafetyException("The configured SQL connection string is invalid.", exception);
         }
 
+        var expectedServer = Environment.GetEnvironmentVariable("DEV_SQL_SERVER")
+            ?? @"localhost\SQLEXPRESS";
         if (!string.Equals(
                 builder.DataSource.Trim(),
-                @"KHOI\SQLEXPRESS",
+                expectedServer,
                 StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(
                 builder.InitialCatalog.Trim(),
@@ -96,7 +98,7 @@ internal sealed record FixtureOptions(
             !builder.IntegratedSecurity)
         {
             throw new FixtureSafetyException(
-                "Refusing target: expected KHOI\\SQLEXPRESS / TaskManagementDB / Integrated Security.");
+                "Refusing target: expected the DEV_SQL_SERVER target, TaskManagementDB, and Integrated Security.");
         }
     }
 
