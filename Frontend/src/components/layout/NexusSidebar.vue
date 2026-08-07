@@ -70,21 +70,9 @@
           </router-link>
         </li>
         <li class="nav-item">
-          <router-link to="/chat?tab=dm" class="nav-link" :class="{ active: $route.path === '/chat' && $route.query.tab === 'dm' }">
-            <i class="fa-solid fa-message" style="color: #0ea5e9;"></i>
-            <span>{{ t('Direct Chat') || 'Chat trực tiếp' }}</span>
-          </router-link>
-        </li>
-        <li class="nav-item">
-          <router-link to="/chat?tab=channel" class="nav-link" :class="{ active: $route.path === '/chat' && ($route.query.tab === 'channel' || !$route.query.tab) }">
+          <router-link to="/chat" class="nav-link" :class="{ active: $route.path === '/chat' }">
             <i class="fa-solid fa-comments" style="color: #3b82f6;"></i>
-            <span>{{ t('Team Chat') || 'Chat nhóm' }}</span>
-          </router-link>
-        </li>
-        <li class="nav-item">
-          <router-link to="/feed" class="nav-link">
-            <i class="fa-solid fa-bolt" style="color: #eab308;"></i>
-            <span>{{ t('Activity Feed') || 'Hoạt động nhóm' }}</span>
+            <span>{{ t('Discussion Channel') }}</span>
           </router-link>
         </li>
         <li class="nav-item">
