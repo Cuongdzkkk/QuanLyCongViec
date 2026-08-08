@@ -1065,7 +1065,7 @@ const actionDetails = (action) => {
   return details
 }
 
-const cancelAiAction = (action) => {
+const cancelAiAction = async (action) => {
   if (action.loading || action.uiStatus === 'success') return
   if (action.serverActionId) {
     await axiosClient.post(`/ai/actions/${action.serverActionId}/cancel`)
@@ -1108,16 +1108,6 @@ const executeAiAction = async (action) => {
   action.uiStatus = 'loading'
   action.error = ''
   try {
-<<<<<<< HEAD
-    action.idempotencyKey ||= `${action.type}-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    const response = await axiosClient.post('/ai/actions/execute', {
-      type: action.type,
-      idempotencyKey: action.idempotencyKey,
-      workspaceId: currentWorkspaceId.value || null,
-      projectId: currentProjectId.value || actionPayload(action).projectId || null,
-      payload: actionPayload(action)
-    })
-=======
     action.idempotencyKey ||= `${action.type}-${crypto.randomUUID()}`
     if (!action.serverActionId) {
       const previewResponse = await axiosClient.post('/ai/actions/preview', {
@@ -1128,11 +1118,10 @@ const executeAiAction = async (action) => {
         payload: actionPayload(action)
       })
       action.serverActionId = previewResponse.data?.data?.actionId
-      if (!action.serverActionId) throw new Error('Backend khÃ´ng táº¡o Ä‘Æ°á»£c action preview.')
+      if (!action.serverActionId) throw new Error('Backend không tạo được action preview.')
       await persistConversation()
     }
     const response = await axiosClient.post(`/ai/actions/${action.serverActionId}/confirm`)
->>>>>>> 9c7eaac12b01586c5aa15e8da7a28c475185ecc9
     const root = response.data || {}
     const payload = root?.data ?? root
     const actionResult = payload?.result ?? payload

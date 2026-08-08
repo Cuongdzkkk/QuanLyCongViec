@@ -1,28 +1,56 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, onBeforeUnmount, computed, watch } from 'vue'
 import axiosClient from '@/api/axiosClient'
-
-import { useActivityStore } from '@/store/useActivityStore'
-import apexchart from 'vue3-apexcharts'
 import { ElNotification } from 'element-plus'
 import { useI18nStore } from '@/store/useI18nStore'
+import { usePersonalWork } from '@/composables/usePersonalWork'
+import { PERSONAL_WORK_SCOPES } from '@/api/personalWorkApi'
+import { useAuthStore } from '@/store/useAuthStore'
+import { useSiteStore } from '@/store/useSiteStore'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 
 const i18nStore = useI18nStore()
+const authStore = useAuthStore()
+const siteStore = useSiteStore()
 const t = (key) => i18nStore.t(key)
 const activeTab = ref('Summary')
-const tabs = ['Summary', 'Assigned', 'Created', 'Subscribed', 'Activity']
+const tabs = ['Summary', 'Assigned', 'Created', 'Following', 'Worked', 'Activity']
 const tabLabel = (tab) => t(`yourWork.tabs.${tab.toLowerCase()}`)
 
-const myTasks = ref([])
-const loading = ref(false)
-const actStore = useActivityStore()
 const selectedProjectId = ref(null)
 const projectList = ref([])
+const currentPage = ref(1)
+const pageSize = ref(10)
 
-const currentUserId = computed(() => {
-  const userStr = localStorage.getItem('user')
-  return userStr ? JSON.parse(userStr).id : null
-})
+const {
+  items: myTasks,
+  totalCount,
+  loading,
+  error,
+  summary,
+  summaryLoading,
+  summaryError,
+  activities,
+  activityLoading,
+  activityError,
+  fetchPage,
+  fetchSummary,
+  fetchActivity,
+  reset
+} = usePersonalWork()
+
+const tabScopes = {
+  Assigned: PERSONAL_WORK_SCOPES.assigned,
+  Created: PERSONAL_WORK_SCOPES.created,
+  Following: PERSONAL_WORK_SCOPES.following,
+  Worked: PERSONAL_WORK_SCOPES.worked
+}
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
+const contextKey = computed(() => [
+  authStore.userId || '',
+  authStore.token || '',
+  siteStore.activeSite?.id || siteStore.activeSite?.Id || ''
+].join(':'))
 
 const userProfile = ref({
   fullName: '—',
@@ -89,53 +117,19 @@ const getAvatarUrl = (path) => {
 }
 
 const fetchMyTasks = async () => {
-  try {
-    loading.value = true
-    const res = await axiosClient.get('/tasks/search')
-    myTasks.value = res.data?.data || []
-    actStore.fetchRecentActivities()
-
-    const existingIds = new Set(actStore.activities.map(activity => activity.id))
-    let added = false
-    myTasks.value.forEach(task => {
-      const id = `db-${task.id}`
-      if (!existingIds.has(id)) {
-        const action = task.reporterId === currentUserId.value ? 'Created' : 'Assigned to'
-        actStore.activities.push({
-          id,
-          icon: 'fa-solid fa-list-check',
-          text: `${action} work item`,
-          bold: `"${task.title}"`,
-          time: new Date(task.createdAt).toLocaleString(),
-          _ts: new Date(task.createdAt).getTime()
-        })
-        added = true
-      }
-    })
-
-    if (added) {
-      actStore.activities.forEach(activity => {
-        if (!activity._ts) {
-          const ts = Date.parse(activity.time)
-          activity._ts = Number.isNaN(ts) ? Date.now() : ts
-        }
-      })
-      actStore.activities.sort((left, right) => right._ts - left._ts)
-      actStore.activities = actStore.activities.slice(0, 50)
-      localStorage.setItem('nexus_activities', JSON.stringify(actStore.activities))
-    }
-  } catch (error) {
-    console.error('Failed to load tasks:', error)
-  } finally {
-    loading.value = false
-  }
+  const scope = tabScopes[activeTab.value]
+  if (!scope) return null
+  return fetchPage({
+    scope,
+    page: currentPage.value,
+    pageSize: pageSize.value
+  }).catch(() => null)
 }
 
 let timeInterval = null
 onMounted(async () => {
   await fetchProjects()
   fetchProfile()
-  fetchMyTasks()
   timeInterval = setInterval(() => {
     currentTime.value = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
   }, 1000)
@@ -161,111 +155,36 @@ const calculateMemberFor = (dateStr) => {
 }
 
 const completionRate = computed(() => {
-  const total = workload.value.backlog + workload.value.notStarted + workload.value.workingOn + workload.value.completed + workload.value.canceled
+  const total = (workload.value.suggested || 0) + (workload.value.workedOn || 0) + (workload.value.overdue || 0) + (workload.value.completed || 0)
   if (total === 0) return 0
-  return Math.round((workload.value.completed / total) * 100)
+  return Math.round(((workload.value.completed || 0) / total) * 100)
 })
 
 const overview = computed(() => ({
-  created: myTasks.value.filter(task => task.reporterId === currentUserId.value).length,
-  assigned: myTasks.value.filter(task => task.assignedUserId === currentUserId.value).length,
-  subscribed: myTasks.value.filter(task => task.isSubscribed).length
+  created: summary.value?.created ?? 0,
+  assigned: summary.value?.assigned ?? 0,
+  following: summary.value?.following ?? 0
 }))
 
 const workload = computed(() => {
-  let backlog = 0
-  let notStarted = 0
-  let workingOn = 0
-  let completed = 0
-  let canceled = 0
-
-  myTasks.value.forEach(task => {
-    const status = (task.statusName || 'BACKLOG').toUpperCase().trim()
-    if (status === 'BACKLOG') backlog += 1
-    else if (status === 'TODO' || status === 'TO DO') notStarted += 1
-    else if (status === 'IN PROGRESS' || status === 'INPROGRESS') workingOn += 1
-    else if (status === 'DONE') completed += 1
-    else if (status === 'CANCELLED' || status === 'CANCELED') canceled += 1
-    else backlog += 1
-  })
-
-  return { backlog, notStarted, workingOn, completed, canceled }
+  return {
+    suggested: summary.value?.suggested ?? 0,
+    workedOn: summary.value?.workedOn ?? 0,
+    overdue: summary.value?.overdue ?? 0,
+    completed: summary.value?.completed ?? 0
+  }
 })
 
-const prioritySeries = computed(() => [
-  myTasks.value.filter(task => task.priority === 1).length,
-  myTasks.value.filter(task => task.priority === 2).length,
-  myTasks.value.filter(task => task.priority === 3).length,
-  myTasks.value.filter(task => task.priority === 4).length
-])
-
-const priorityChartOptions = computed(() => ({
-  chart: { type: 'pie', toolbar: { show: false }, background: 'transparent' },
-  theme: { mode: 'light' },
-  labels: ['Urgent', 'High', 'Medium', 'Low'],
-  dataLabels: {
-    enabled: true,
-    style: { fontSize: '11px', fontWeight: 800, colors: ['#ffffff'] },
-    dropShadow: { enabled: false }
-  },
-  legend: {
-    position: 'bottom',
-    labels: { colors: '#64748b' }
-  },
-  colors: ['#f43f5e', '#f97316', '#38bdf8', '#94a3b8'],
-  stroke: { colors: ['#ffffff'], width: 3 },
-  tooltip: { theme: 'light' }
-}))
-
-const stateSeries = computed(() => [{
-  name: 'Work items',
-  data: [
-    workload.value.backlog,
-    workload.value.notStarted,
-    workload.value.workingOn,
-    workload.value.completed
-  ]
-}])
-
-const stateChartOptions = computed(() => ({
-  chart: { type: 'bar', toolbar: { show: false }, background: 'transparent' },
-  theme: { mode: 'light' },
-  plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '48%', distributed: true } },
-  dataLabels: { enabled: false },
-  legend: { show: false },
-  colors: ['#94a3b8', '#a78bfa', '#38bdf8', '#22c55e'],
-  grid: { borderColor: '#e2e8f0', strokeDashArray: 4 },
-  xaxis: {
-    categories: ['Backlog', 'Not Started', 'In Progress', 'Completed'],
-    labels: { style: { colors: '#64748b' } },
-    axisBorder: { show: false },
-    axisTicks: { show: false }
-  },
-  yaxis: {
-    labels: { style: { colors: '#94a3b8' } }
-  },
-  tooltip: { theme: 'light' }
-}))
-
 const recentActivity = computed(() => {
-  return actStore.activities.map(activity => ({
+  return pageActivities.value.slice(0, 5).map(activity => ({
     id: activity.id,
-    text: `${activity.text} ${activity.bold || ''}`.trim(),
+    text: activity.text,
     time: activity.time
   }))
 })
 
 const listData = computed(() => {
-  let list = myTasks.value
-  if (activeTab.value === 'Assigned') {
-    list = myTasks.value.filter(task => task.assignedUserId === currentUserId.value)
-  } else if (activeTab.value === 'Created') {
-    list = myTasks.value.filter(task => task.reporterId === currentUserId.value)
-  } else if (activeTab.value === 'Subscribed') {
-    list = myTasks.value.filter(task => task.isSubscribed)
-  }
-
-  return list.map(task => ({
+  return myTasks.value.map(task => ({
     id: task.sequenceId || task.id.substring(0, 8).toUpperCase(),
     rawId: task.id,
     title: task.title,
@@ -291,19 +210,68 @@ const updateTaskProperty = async (task, field, value) => {
         await axiosClient.patch(`/projects/${task.projectId}/WorkTasks/${task.id}`, updatePayload)
       }
 
-      let activityText = `Updated ${field} to ${value}`
-      if (field === 'statusName') activityText = `Changed status to ${value}`
-      if (field === 'priority') {
-        activityText = `Changed priority to ${value === 1 ? 'Urgent' : value === 2 ? 'High' : value === 3 ? 'Normal' : 'Low'}`
-      }
-      actStore.logActivity(activityText, `on ${task.sequenceId || task.id}`, 'fa-solid fa-pen-to-square')
+      await fetchActivity({ limit: 50 }).catch(() => null)
     }
   } catch (error) {
     console.error('Failed to update task:', error)
   }
 }
 
-const pageActivities = computed(() => actStore.activities)
+const pageActivities = computed(() => activities.value.map(activity => ({
+  id: activity.id,
+  icon: 'fa-solid fa-clock-rotate-left',
+  text: activity.summary || `${activity.action || ''} ${activity.resource || ''}`.trim(),
+  bold: '',
+  time: activity.timestamp ? new Date(activity.timestamp).toLocaleString() : ''
+})))
+
+const retryCurrentView = () => {
+  if (activeTab.value === 'Summary') {
+    fetchSummary().catch(() => null)
+    fetchActivity({ limit: 50 }).catch(() => null)
+    return
+  }
+  if (activeTab.value === 'Activity') {
+    fetchActivity({ limit: 50 }).catch(() => null)
+    return
+  }
+  fetchMyTasks()
+}
+
+watch(activeTab, () => {
+  currentPage.value = 1
+  myTasks.value = []
+  totalCount.value = 0
+
+  if (activeTab.value === 'Summary') {
+    fetchSummary().catch(() => null)
+    fetchActivity({ limit: 50 }).catch(() => null)
+    return
+  }
+  if (activeTab.value === 'Activity') {
+    fetchActivity({ limit: 50 }).catch(() => null)
+    return
+  }
+  fetchMyTasks()
+})
+
+watch(currentPage, () => {
+  if (tabScopes[activeTab.value]) fetchMyTasks()
+})
+
+watch(contextKey, () => {
+  reset()
+  currentPage.value = 1
+  if (!authStore.token || !authStore.userId) return
+
+  fetchSummary().catch(() => null)
+  fetchActivity({ limit: 50 }).catch(() => null)
+  if (tabScopes[activeTab.value]) fetchMyTasks()
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  reset()
+})
 
 const downloadWordActivity = () => {
   let htmlContent = `
@@ -313,7 +281,7 @@ const downloadWordActivity = () => {
   <ul>
   `
 
-  actStore.activities.forEach(activity => {
+  pageActivities.value.forEach(activity => {
     htmlContent += `<li><strong>${activity.time}</strong> - ${activity.text} <em>${activity.bold || ''}</em></li>`
   })
 
@@ -351,7 +319,6 @@ const getInitials = (name) => {
   }
   return name[0]?.toUpperCase() || 'U'
 }
-import UserAvatar from '@/components/common/UserAvatar.vue'
 </script>
 
 <template>
@@ -381,36 +348,42 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
             </button>
           </div>
 
-          <div class="yw-scrollable" v-if="activeTab === 'Summary'">
-          <section class="yw-section">
-            <h3 class="yw-section-title">
-              <span class="yw-section-icon"><i class="fa-solid fa-chart-pie"></i></span>
-              {{ t('yourWork.overview') }}
-            </h3>
-          <div class="yw-cards-row">
-            <div class="yw-card">
-              <div class="card-icon"><i class="fa-solid fa-plus"></i></div>
-              <div class="card-info">
-                <div class="card-lbl">{{ t('yourWork.created') }}</div>
-                <div class="card-val">{{ overview.created }}</div>
-              </div>
-            </div>
-            <div class="yw-card">
-              <div class="card-icon"><i class="fa-regular fa-circle-user"></i></div>
-              <div class="card-info">
-                <div class="card-lbl">{{ t('yourWork.assigned') }}</div>
-                <div class="card-val">{{ overview.assigned }}</div>
-              </div>
-            </div>
-            <div class="yw-card">
-              <div class="card-icon"><i class="fa-solid fa-inbox"></i></div>
-              <div class="card-info">
-                <div class="card-lbl">{{ t('yourWork.subscribed') }}</div>
-                <div class="card-val">{{ overview.subscribed }}</div>
-              </div>
-            </div>
+        <div class="yw-scrollable" v-if="activeTab === 'Summary'">
+          <div v-if="summaryLoading" class="personal-state mt-4">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <span>{{ t('yourWork.loading') }}</span>
           </div>
-          </section>
+          <div v-else-if="summaryError" class="personal-state personal-state-error mt-4">
+            <span>{{ t('yourWork.loadFailed') }}</span>
+            <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
+          </div>
+          <template v-else>
+            <section class="yw-section">
+              <h3 class="section-title mt-4">{{ t('yourWork.overview') }}</h3>
+              <div class="yw-cards-row">
+                <div class="yw-card">
+                  <div class="card-icon"><i class="fa-solid fa-plus"></i></div>
+                  <div class="card-info">
+                    <div class="card-lbl">{{ t('yourWork.created') }}</div>
+                    <div class="card-val">{{ overview.created }}</div>
+                  </div>
+                </div>
+                <div class="yw-card">
+                  <div class="card-icon"><i class="fa-regular fa-circle-user"></i></div>
+                  <div class="card-info">
+                    <div class="card-lbl">{{ t('yourWork.assigned') }}</div>
+                    <div class="card-val">{{ overview.assigned }}</div>
+                  </div>
+                </div>
+                <div class="yw-card">
+                  <div class="card-icon"><i class="fa-solid fa-inbox"></i></div>
+                  <div class="card-info">
+                    <div class="card-lbl">{{ t('yourWork.following') }}</div>
+                    <div class="card-val">{{ overview.following }}</div>
+                  </div>
+                </div>
+              </div>
+            </section>
 
           <section class="yw-section">
             <h3 class="yw-section-title">
@@ -419,71 +392,37 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
             </h3>
             <div class="yw-workload-row">
             <div class="wl-card">
-              <div class="wl-lbl"><span class="dbox bg-gray"></span> {{ t('yourWork.backlog') }}</div>
-              <div class="wl-val">{{ workload.backlog }}</div>
+              <div class="wl-lbl"><span class="dbox bg-blue"></span> {{ t('yourWork.suggested') }}</div>
+              <div class="wl-val">{{ workload.suggested }}</div>
             </div>
             <div class="wl-card">
-              <div class="wl-lbl"><span class="dbox bg-blue"></span> {{ t('yourWork.notStarted') }}</div>
-              <div class="wl-val">{{ workload.notStarted }}</div>
+              <div class="wl-lbl"><span class="dbox bg-gray"></span> {{ t('yourWork.workedOn') }}</div>
+              <div class="wl-val">{{ workload.workedOn }}</div>
             </div>
             <div class="wl-card">
-              <div class="wl-lbl"><span class="dbox bg-orange"></span> {{ t('yourWork.inProgress') }}</div>
-              <div class="wl-val">{{ workload.workingOn }}</div>
+              <div class="wl-lbl"><span class="dbox bg-orange"></span> {{ t('yourWork.overdue') }}</div>
+              <div class="wl-val">{{ workload.overdue }}</div>
             </div>
             <div class="wl-card">
               <div class="wl-lbl"><span class="dbox bg-green"></span> {{ t('yourWork.completed') }}</div>
               <div class="wl-val">{{ workload.completed }}</div>
             </div>
-            <div class="wl-card">
-              <div class="wl-lbl"><span class="dbox bg-red"></span> {{ t('yourWork.canceled') }}</div>
-              <div class="wl-val">{{ workload.canceled }}</div>
-            </div>
           </div>
           </section>
 
-          <div class="yw-two-cols">
-            <section class="chart-col flex-1">
-              <h3 class="yw-section-title">
-                <span class="yw-section-icon"><i class="fa-solid fa-angles-up"></i></span>
-                {{ t('yourWork.byPriority') }}
-              </h3>
-              <div class="empty-chart" v-if="myTasks.length === 0">
-                <i class="fa-solid fa-chart-simple chart-icon"></i>
-                <span>{{ t('yourWork.empty') }}</span>
-              </div>
-              <apexchart
-                v-else
-                type="pie"
-                height="220"
-                :options="priorityChartOptions"
-                :series="prioritySeries"
-              </apexchart>
-            </section>
-            <section class="chart-col flex-1">
-              <h3 class="yw-section-title">
-                <span class="yw-section-icon"><i class="fa-solid fa-bars-progress"></i></span>
-                {{ t('yourWork.byState') }}
-              </h3>
-              <div class="empty-chart" v-if="myTasks.length === 0">
-                <i class="fa-solid fa-chart-column chart-icon"></i>
-                <span>{{ t('yourWork.empty') }}</span>
-              </div>
-              <apexchart
-                v-else
-                type="bar"
-                height="170"
-                :options="stateChartOptions"
-                :series="stateSeries"
-              </apexchart>
-            </section>
-          </div>
-
-          <section class="yw-section">
-            <h3 class="yw-section-title">
-              <span class="yw-section-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
-              {{ t('yourWork.recentActivity') }}
-            </h3>
-            <div class="list-body">
+          <h3 class="section-title mt-4">{{ t('yourWork.recentActivity') }}</h3>
+          <div class="list-body">
+            <div v-if="activityLoading" class="personal-state">
+              <i class="fa-solid fa-spinner fa-spin"></i>
+              <span>{{ t('yourWork.loadingActivity') }}</span>
+            </div>
+            <div v-else-if="activityError" class="personal-state personal-state-error">
+              <span>{{ t('yourWork.activityFailed') }}</span>
+              <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
+            </div>
+            <div v-else-if="recentActivity.length === 0" class="personal-state">
+              {{ t('yourWork.noActivity') }}
+            </div>
             <div class="list-row" style="cursor: default;" v-for="activity in recentActivity" :key="activity.id">
               <div class="lr-left">
                 <span class="lr-id" style="min-width: 30px;"><i class="fa-solid fa-clock-rotate-left" style="color: #A1A1AA"></i></span>
@@ -495,19 +434,29 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
                 </div>
               </div>
             </div>
-            </div>
-          </section>
+          </div>
+          </template>
         </div>
 
-        <div class="yw-scrollable" v-else-if="['Assigned', 'Created', 'Subscribed'].includes(activeTab)">
-          <section class="yw-section">
-            <div class="list-header">
-            <span class="yw-section-icon"><i class="fa-solid fa-circle-dashed"></i></span>
+        <div class="yw-scrollable" v-else-if="['Assigned', 'Created', 'Following', 'Worked'].includes(activeTab)">
+          <div class="list-header mt-4">
+            <i class="fa-solid fa-circle-dashed f-icon"></i>
             <span class="lh-title">{{ t('yourWork.allWorkItems') }}</span>
-            <span class="lh-count">{{ listData.length }}</span>
+            <span class="lh-count">{{ totalCount }}</span>
           </div>
 
           <div class="list-body mt-4">
+            <div v-if="loading" class="personal-state">
+              <i class="fa-solid fa-spinner fa-spin"></i>
+              <span>{{ t('yourWork.loading') }}</span>
+            </div>
+            <div v-else-if="error" class="personal-state personal-state-error">
+              <span>{{ t('yourWork.loadFailed') }}</span>
+              <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
+            </div>
+            <div v-else-if="listData.length === 0" class="personal-state">
+              {{ t(`yourWork.empty.${activeTab.toLowerCase()}`) }}
+            </div>
             <div class="list-row" v-for="item in listData" :key="item.id">
               <div class="lr-left">
                 <span class="lr-id">{{ item.id }}</span>
@@ -557,9 +506,17 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
                 <div class="lr-badge cursor-not-allowed"><i class="fa-solid fa-table-cells-large"></i> {{ item.modules }}</div>
                 <div class="lr-badge cursor-not-allowed"><i class="fa-solid fa-arrows-spin"></i> {{ item.cycle }}</div>
               </div>
-              </div>
             </div>
-          </section>
+          </div>
+          <div class="personal-pagination" v-if="!loading && !error && totalPages > 1">
+            <button class="jira-btn-subtle" :disabled="currentPage === 1" @click="currentPage -= 1">
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <span>{{ currentPage }} / {{ totalPages }}</span>
+            <button class="jira-btn-subtle" :disabled="currentPage === totalPages" @click="currentPage += 1">
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
         </div>
 
         <div class="yw-scrollable" v-else-if="activeTab === 'Activity'">
@@ -573,7 +530,18 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
           </div>
 
           <div class="list-body mt-4">
-            <div class="list-row" style="cursor: default;" v-for="(activity, index) in pageActivities" :key="index">
+            <div v-if="activityLoading" class="personal-state">
+              <i class="fa-solid fa-spinner fa-spin"></i>
+              <span>{{ t('yourWork.loadingActivity') }}</span>
+            </div>
+            <div v-else-if="activityError" class="personal-state personal-state-error">
+              <span>{{ t('yourWork.activityFailed') }}</span>
+              <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
+            </div>
+            <div v-else-if="pageActivities.length === 0" class="personal-state">
+              {{ t('yourWork.noActivity') }}
+            </div>
+            <div class="list-row" style="cursor: default;" v-for="activity in pageActivities" :key="activity.id">
               <div class="lr-left">
                 <span class="lr-id" style="min-width: 30px;"><i :class="activity.icon || 'fa-solid fa-bell'"></i></span>
                 <span class="lr-title">{{ activity.text }} <span class="p-ac-bold text-white">{{ activity.bold }}</span></span>
@@ -584,7 +552,7 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
                 </div>
               </div>
             </div>
-            </div>
+          </div>
           </section>
         </div>
         </section>
@@ -822,7 +790,7 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
 
 .yw-workload-row {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
 }
 
@@ -887,6 +855,30 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
 .lh-count { font-size: 12px; font-weight: 400; color: var(--color-text-muted); }
 
 .list-body { border-top: none; }
+.personal-state {
+  min-height: 96px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+.personal-state-error {
+  flex-direction: column;
+  color: var(--color-danger);
+}
+.personal-pagination {
+  min-height: 44px;
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
 .list-row {
   display: flex;
   justify-content: space-between;
@@ -1473,6 +1465,35 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
   .yw-tabs {
     overflow-x: auto !important;
   }
+
+  .yw-cards-row,
+  .yw-workload-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .list-row,
+  .lr-left,
+  .lr-right {
+    min-width: 0;
+  }
+
+  .list-row {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .lr-left {
+    flex: 1;
+  }
+
+  .lr-title {
+    overflow-wrap: anywhere;
+  }
+
+  .lr-right {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 }
 
 /* Match For You page wrapper spacing exactly; Your Work only adds a two-column grid inside it. */
@@ -2019,7 +2040,3 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
   }
 }
 </style>
-
-
-
-

@@ -82,8 +82,16 @@
               <td @click.stop="toggleFollow(proj.id)">
                 <span class="following-text" style="cursor: pointer;">{{ proj.isFollowing ? labels.following : labels.follow }}</span>
               </td>
-              <td @click.stop="toggleStar(proj.id)">
-                <i :class="proj.isStarred ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'" style="cursor: pointer;"></i>
+              <td @click.stop>
+                <button
+                  class="icon-btn"
+                  type="button"
+                  :disabled="starredStore.isPending('Project', proj.id)"
+                  :aria-label="proj.isStarred ? labels.unstar : labels.starred"
+                  @click="toggleStar(proj.id)"
+                >
+                  <i :class="proj.isStarred ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'"></i>
+                </button>
               </td>
               <td>
                 <span class="updated-text">{{ formatDate(proj.updatedAt || proj.createdAt) }}</span>
@@ -115,7 +123,13 @@
                 <i class="fa-regular fa-eye"></i>
                 {{ proj.isFollowing ? labels.following : labels.follow }}
               </button>
-              <button class="row-action-btn icon-only" @click.stop="toggleStar(proj.id)">
+              <button
+                class="row-action-btn icon-only"
+                type="button"
+                :disabled="starredStore.isPending('Project', proj.id)"
+                :aria-label="proj.isStarred ? labels.unstar : labels.starred"
+                @click.stop="toggleStar(proj.id)"
+              >
                 <i :class="proj.isStarred ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'"></i>
               </button>
             </div>
@@ -195,6 +209,7 @@ import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { useStarredStore } from '@/store/useStarredStore'
 import { useFollowerStore } from '@/store/useFollowerStore'
 import { useI18nStore } from '@/store/useI18nStore'
+import { ElMessage } from 'element-plus'
 import { useSiteStore } from '@/store/useSiteStore'
 import { isValidEntityId } from '@/utils/contextIds'
 import UserAvatar from '@/components/common/UserAvatar.vue'
@@ -413,7 +428,7 @@ const pageTitle = computed(() => {
 onMounted(async () => {
   await siteStore.fetchSites()
   await projectStore.fetchProjects()
-  await starredStore.fetchStarredItems()
+  await starredStore.fetchStarredItems({ page: 1, pageSize: 100 })
   await followerStore.fetchFollowedItems()
   window.addEventListener('global-create-click', openCreateModal)
 })
@@ -471,7 +486,7 @@ const filteredProjects = computed(() => {
     ...p,
     key: p.key || (p.title ? p.title.substring(0, 3).toUpperCase() : 'PRJ'),
     status: p.status === true ? labels.value.pending : (p.status === false ? labels.value.archived : (p.status || labels.value.pending)),
-    isStarred: starredStore.starredItems?.some(i => i.itemId === p.id) || false,
+    isStarred: starredStore.isStarred('Project', p.id),
     isFollowing: followerStore.followedItems?.some(i => i.entityId === p.id) || false
   }))
 })
@@ -481,7 +496,11 @@ const goToProject = (id) => {
 }
 
 const toggleStar = async (id) => {
-  await starredStore.toggleStar('Project', id)
+  try {
+    await starredStore.setStarred('Project', id, !starredStore.isStarred('Project', id))
+  } catch {
+    ElMessage.error(starredStore.error || labels.value.loadFailed)
+  }
 }
 
 const toggleFollow = async (id) => {
@@ -811,15 +830,19 @@ const isCompletedStatus = (status) => {
 }
 
 .icon-btn {
-  background: none;
-  border: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 0;
   font-size: 14px;
+  font-family: inherit;
   color: #6B778C;
   cursor: pointer;
   padding: 6px;
   border-radius: 3px;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.2s, background-color 0.2s;
+  touch-action: manipulation;
 }
 
 .icon-btn.starred {
@@ -833,6 +856,24 @@ const isCompletedStatus = (status) => {
 
 .icon-btn:hover {
   background-color: rgba(9, 30, 66, 0.08);
+}
+
+.icon-btn:focus-visible,
+.row-action-btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--home-accent, #0c66e4) 42%, transparent);
+  outline-offset: 2px;
+}
+
+.icon-btn:disabled,
+.row-action-btn:disabled {
+  cursor: wait;
+}
+
+.icon-btn i {
+  display: block;
+  width: 1em;
+  line-height: 1;
+  text-align: center;
 }
 
 /* Empty State Table */
@@ -1497,6 +1538,8 @@ const isCompletedStatus = (status) => {
 }
 
 .row-action-btn {
+  appearance: none;
+  -webkit-appearance: none;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1508,7 +1551,9 @@ const isCompletedStatus = (status) => {
   color: var(--home-text, #172b4d);
   font-size: 12px;
   font-weight: 800;
+  font-family: inherit;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .row-action-btn:hover {
@@ -1537,4 +1582,3 @@ const isCompletedStatus = (status) => {
   }
 }
 </style>
-

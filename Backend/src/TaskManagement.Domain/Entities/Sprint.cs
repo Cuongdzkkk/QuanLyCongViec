@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TaskManagement.Domain.Rules;
 
 namespace TaskManagement.Domain.Entities
 {
@@ -12,6 +13,10 @@ namespace TaskManagement.Domain.Entities
         public DateTime StartDate { get; set; }
         public DateTime EndDate { get; set; }
         public bool Status { get; set; } = false;
+        public string State { get; set; } = SprintStates.Planned;
+        public DateTime? StartedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public bool IsDeleted { get; set; }
         public bool IsFavorite { get; set; } = false;
         public DateTime CreatedAt { get; set; }
 

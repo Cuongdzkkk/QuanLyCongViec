@@ -542,6 +542,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { useGoalStore } from '@/store/useGoalStore'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import axiosClient from '@/api/axiosClient'
 import DOMPurify from 'dompurify'
 import RichTextEditor from '@/components/common/RichTextEditor.vue'
@@ -554,6 +556,7 @@ import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 const route = useRoute()
 const projectStore = useHomeProjectStore()
 const goalStore = useGoalStore()
+const starredStore = useStarredStore()
 
 const currentTab = ref('overview')
 const activityTab = ref('comments')
@@ -856,14 +859,7 @@ const formatDate = (value) => {
 const recordRecentView = async () => {
   if (!project.value?.id) return
   try {
-    await axiosClient.post('/recentviews', {
-      entityType: 'Project',
-      entityId: project.value.id,
-      title: project.value.name || project.value.title || 'Project',
-      subtitle: 'Project',
-      url: `/home/projects/${project.value.id}`,
-      icon: 'fa-solid fa-rocket'
-    })
+    await starredStore.recordViewed(STARRED_ENTITY_TYPES.PROJECT, project.value.id)
   } catch (err) {
     console.warn('Failed to record recent project view', err)
   }
@@ -1795,4 +1791,3 @@ onMounted(async () => {
   background-color: #FAFBFC;
 }
 </style>
-

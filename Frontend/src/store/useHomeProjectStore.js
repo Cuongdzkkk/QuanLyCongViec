@@ -3,6 +3,8 @@ import axiosClient from '@/api/axiosClient'
 import { useSiteStore } from '@/store/useSiteStore'
 import { ElMessage } from 'element-plus'
 import { ensureWorkspaceIdFromState, resolveWorkspaceIdFromState } from '@/utils/contextIds'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 
 export const useHomeProjectStore = defineStore('homeProject', {
   state: () => ({
@@ -194,17 +196,15 @@ export const useHomeProjectStore = defineStore('homeProject', {
     async toggleStar() {
       if (!this.currentProject) return
       try {
-        const workspaceId = await this.ensureWorkspaceId()
-        if (!workspaceId) throw new Error('No workspace selected')
-        const res = await axiosClient.post(`/workspaces/${workspaceId}/starreditems/toggle`, null, {
-          params: { itemType: 'Project', itemId: this.currentProject.id }
-        })
-        const status = res.data?.data?.status ?? res.data?.status
-        this.currentProject.isStarred = status === 'starred'
+        const starredStore = useStarredStore()
+        const nextValue = !starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, this.currentProject.id)
+        await starredStore.setStarred(STARRED_ENTITY_TYPES.PROJECT, this.currentProject.id, nextValue)
+        this.currentProject.isStarred = nextValue
         const target = this.projects.find(p => p.id === this.currentProject.id)
         if (target) target.isStarred = this.currentProject.isStarred
       } catch (err) {
         console.error('Failed to toggle star', err)
+        throw err
       }
     },
     async toggleFollow(projectId) {

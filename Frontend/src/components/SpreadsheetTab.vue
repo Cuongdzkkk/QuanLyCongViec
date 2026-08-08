@@ -6,10 +6,12 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
 const props = defineProps({
   tasks: { type: Array, default: () => [] },
   projectId: { type: String, default: '' },
-  projectMembers: { type: Array, default: () => [] }
+  projectMembers: { type: Array, default: () => [] },
+  serverPagination: { type: Object, default: null },
+  readonly: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['task-click', 'update-task', 'create-task'])
+const emit = defineEmits(['task-click', 'update-task', 'create-task', 'page-change', 'page-size-change'])
 
 const modules = ref([])
 const cycles = ref([])
@@ -22,6 +24,7 @@ const displayOptionsOpen = ref(false)
 const showOnlyAssigned = ref(false)
 const hideDone = ref(false)
 const showOnlyScheduled = ref(false)
+const usesServerPagination = computed(() => Boolean(props.serverPagination))
 
 const fetchOptions = async () => {
   if (!props.projectId) return
@@ -207,8 +210,11 @@ const normalizedTasks = computed(() => {
   })
 })
 
-const totalPages = computed(() => Math.max(1, Math.ceil(normalizedTasks.value.length / pageSize.value)))
+const totalPages = computed(() => usesServerPagination.value
+  ? Math.max(1, Number(props.serverPagination?.totalPages) || 1)
+  : Math.max(1, Math.ceil(normalizedTasks.value.length / pageSize.value)))
 const pagedTasks = computed(() => {
+  if (usesServerPagination.value) return normalizedTasks.value
   const start = (page.value - 1) * pageSize.value
   return normalizedTasks.value.slice(start, start + pageSize.value)
 })
@@ -220,6 +226,32 @@ watch([searchQuery, statusFilter, showOnlyAssigned, hideDone, showOnlyScheduled,
 watch(totalPages, (next) => {
   if (page.value > next) page.value = next
 })
+
+watch(
+  () => [props.serverPagination?.page, props.serverPagination?.pageSize],
+  ([nextPage, nextPageSize]) => {
+    if (!usesServerPagination.value) return
+    page.value = Number(nextPage) || 1
+    pageSize.value = Number(nextPageSize) || 20
+  },
+  { immediate: true }
+)
+
+const changePage = (nextPage) => {
+  if (nextPage < 1 || nextPage > totalPages.value || nextPage === page.value) return
+  if (usesServerPagination.value) {
+    emit('page-change', nextPage)
+    return
+  }
+  page.value = nextPage
+}
+
+const changePageSize = (event) => {
+  const nextPageSize = Number(event.target.value) || 20
+  pageSize.value = nextPageSize
+  page.value = 1
+  if (usesServerPagination.value) emit('page-size-change', nextPageSize)
+}
 
 onMounted(fetchOptions)
 watch(() => props.projectId, fetchOptions)
@@ -250,7 +282,8 @@ watch(() => props.projectId, fetchOptions)
           </div>
         </div>
 
-        <select v-model.number="pageSize" class="toolbar-select small">
+        <select :value="pageSize" class="toolbar-select small" @change="changePageSize">
+          <option :value="20">20 rows</option>
           <option :value="25">25 rows</option>
           <option :value="50">50 rows</option>
           <option :value="100">100 rows</option>
@@ -278,13 +311,21 @@ watch(() => props.projectId, fetchOptions)
       </thead>
 
       <tbody>
-        <tr v-for="(task, index) in pagedTasks" :key="task.id || index" :class="getStatusTone(task.statusName)">
+        <tr v-for="task in pagedTasks" :key="task.id" :class="getStatusTone(task.statusName)">
           <td class="sticky-work-item">
-            <div class="wi-cell" @click="emit('task-click', task)">
-              <span class="wi-id">{{ task.sequenceId || `CUN-${index + 1}` }}</span>
+            <div
+              class="wi-cell"
+              role="button"
+              tabindex="0"
+              :aria-label="`Open work item ${task.sequenceId || task.id}: ${task.title}`"
+              :title="task.title"
+              @click="emit('task-click', task)"
+              @keydown.enter.self="emit('task-click', task)"
+            >
+              <span class="wi-id">{{ task.sequenceId || String(task.id).slice(0, 8).toUpperCase() }}</span>
               <span
                 class="wi-title"
-                contenteditable="true"
+                :contenteditable="!readonly"
                 @click.stop
                 @blur="updateTaskTitle(task, $event)"
                 @keydown.enter.prevent="$event.target.blur()"
@@ -293,7 +334,7 @@ watch(() => props.projectId, fetchOptions)
           </td>
 
           <td>
-            <el-dropdown trigger="click" @command="value => updateField(task, 'statusName', value)">
+            <el-dropdown trigger="click" :disabled="readonly" @command="value => updateField(task, 'statusName', value)">
               <button class="cell-btn state-badge" :class="getStatusTone(task.statusName)">
                 <i :class="getStatusDisplay(task.statusName).class"></i>
                 <span>{{ getStatusDisplay(task.statusName).label }}</span>
@@ -311,7 +352,7 @@ watch(() => props.projectId, fetchOptions)
           </td>
 
           <td>
-            <el-dropdown trigger="click" @command="value => updateField(task, 'priority', value)">
+            <el-dropdown trigger="click" :disabled="readonly" @command="value => updateField(task, 'priority', value)">
               <button class="cell-btn priority-badge" :class="`priority-${task.priority || 0}`">
                 <i :class="getPrioIcon(task.priority).class"></i>
                 <span>{{ getPrioIcon(task.priority).label }}</span>
@@ -328,7 +369,7 @@ watch(() => props.projectId, fetchOptions)
           </td>
 
           <td>
-            <el-popover placement="bottom" trigger="click" width="260" popper-class="plane-popover">
+            <el-popover placement="bottom" trigger="click" width="260" popper-class="plane-popover" :disabled="readonly">
               <template #reference>
                 <button class="cell-btn" style="gap: 6px;">
                   <div v-if="!getTaskAssigneeIds(task).length" style="width: 18px; height: 18px; border-radius: 50%; background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center; border: 1px dashed #cbd5e1; flex-shrink: 0;">
@@ -365,11 +406,11 @@ watch(() => props.projectId, fetchOptions)
           </td>
 
           <td><span class="muted-text">{{ createdByLabel(task) }}</span></td>
-          <td><input class="date-input" type="date" :value="toInputDate(task.plannedStartDate || task.startDate)" @change="updateDateField(task, 'plannedStartDate', $event)" /></td>
-          <td><input class="date-input" type="date" :value="toInputDate(task.dueDate)" @change="updateDateField(task, 'dueDate', $event)" /></td>
+          <td><input class="date-input" type="date" :disabled="readonly" :value="toInputDate(task.plannedStartDate || task.startDate)" @change="updateDateField(task, 'plannedStartDate', $event)" /></td>
+          <td><input class="date-input" type="date" :disabled="readonly" :value="toInputDate(task.dueDate)" @change="updateDateField(task, 'dueDate', $event)" /></td>
 
           <td>
-            <el-dropdown trigger="click" @command="value => updateField(task, 'moduleId', value)">
+            <el-dropdown trigger="click" :disabled="readonly" @command="value => updateField(task, 'moduleId', value)">
               <button class="cell-btn">{{ moduleLabel(task) }}</button>
               <template #dropdown>
                 <el-dropdown-menu class="plane-dropdown">
@@ -381,7 +422,7 @@ watch(() => props.projectId, fetchOptions)
           </td>
 
           <td>
-            <el-dropdown trigger="click" @command="value => updateField(task, 'sprintId', value)">
+            <el-dropdown trigger="click" :disabled="readonly" @command="value => updateField(task, 'sprintId', value)">
               <button class="cell-btn">{{ cycleLabel(task) }}</button>
               <template #dropdown>
                 <el-dropdown-menu class="plane-dropdown">
@@ -411,14 +452,14 @@ watch(() => props.projectId, fetchOptions)
     </table>
 
     <div class="table-footer">
-      <button class="add-btn" type="button" @click="emit('create-task', { statusName: 'TO DO' })">
+      <button v-if="!readonly" class="add-btn" type="button" @click="emit('create-task', { statusName: 'TO DO' })">
         <i class="fa-solid fa-plus"></i> Add work item
       </button>
 
       <div class="pagination">
-        <button class="page-btn" type="button" :disabled="page <= 1" @click="page -= 1">Prev</button>
+        <button class="page-btn" type="button" aria-label="Previous page" :disabled="page <= 1" @click="changePage(page - 1)">Prev</button>
         <span>{{ page }} / {{ totalPages }}</span>
-        <button class="page-btn" type="button" :disabled="page >= totalPages" @click="page += 1">Next</button>
+        <button class="page-btn" type="button" aria-label="Next page" :disabled="page >= totalPages" @click="changePage(page + 1)">Next</button>
       </div>
     </div>
   </div>
@@ -659,6 +700,12 @@ th.sticky-work-item {
   gap: 12px;
   min-width: 0;
   cursor: pointer;
+}
+
+.wi-cell:focus-visible {
+  border-radius: 6px;
+  outline: 3px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+  outline-offset: 2px;
 }
 
 .wi-id {
@@ -904,7 +951,3 @@ th.sticky-work-item {
   border-color: color-mix(in srgb, var(--sa-primary, var(--color-accent)) 24%, var(--color-border));
 }
 </style>
-
-
-
-

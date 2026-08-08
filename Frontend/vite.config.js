@@ -76,6 +76,9 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     strictPort: false,
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups'
+    },
     allowedHosts: ['sprinta.io.vn'],
     proxy: {
       '/api': {

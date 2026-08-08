@@ -229,6 +229,12 @@
 
           </div>
         </div>
+        
+        <!-- Compact Daily Focus integration; the full page remains at /priority. -->
+        <div style="margin-top: 24px; padding-top: 24px; border-top: 1px dashed rgba(148, 163, 184, 0.4);">
+          <DailyFocusWidget :tasks="allTasks" :project-id="projectId" />
+        </div>
+
       </div>
   </ProjectPageContainer>
 </template>
@@ -239,6 +245,7 @@ import { useRoute, useRouter } from 'vue-router'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import DailyFocusWidget from '@/components/DailyFocusWidget.vue'
 
 import { useI18nStore } from '@/store/useI18nStore'
 

@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
+using TaskManagement.Application.Auth;
 using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.Auth;
 using TaskManagement.Application.Interfaces;
@@ -18,17 +20,20 @@ namespace TaskManagement.API.Controllers
         private readonly IOtpService _otpService;
         private readonly IEmailService _emailService;
         private readonly ApplicationDbContext _context;
+        private readonly ILogger<AuthController> _logger;
 
         public AuthController(
             IAuthService authService,
             IOtpService otpService,
             IEmailService emailService,
-            ApplicationDbContext context)
+            ApplicationDbContext context,
+            ILogger<AuthController>? logger = null)
         {
             _authService = authService;
             _otpService = otpService;
             _emailService = emailService;
             _context = context;
+            _logger = logger ?? NullLogger<AuthController>.Instance;
         }
 
         [HttpPost("send-otp")]
@@ -359,12 +364,54 @@ namespace TaskManagement.API.Controllers
                 Response.Cookies.Append("refreshToken", refreshToken, cookieOptions);
 
                 await RecordLoginActivityAsync(response.Id, "Google SSO");
+                _logger.LogInformation("Google sign-in succeeded for internal user {UserId}", response.Id);
                 return Ok(new { statusCode = 200, message = "Success", data = response });
+            }
+            catch (ArgumentException)
+            {
+                _logger.LogWarning("Google sign-in rejected: invalid request");
+                return BadRequest(new { statusCode = 400, message = "Google credential is required." });
+            }
+            catch (GoogleCredentialException)
+            {
+                _logger.LogWarning("Google sign-in rejected: invalid credential");
+                return Unauthorized(new { statusCode = 401, message = "Google credential is invalid or expired." });
+            }
+            catch (GoogleAccountForbiddenException)
+            {
+                _logger.LogWarning("Google sign-in rejected: account unavailable");
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    statusCode = StatusCodes.Status403Forbidden,
+                    message = "This account cannot sign in with Google."
+                });
+            }
+            catch (GoogleAccountConflictException)
+            {
+                _logger.LogWarning("Google sign-in rejected: account linking conflict");
+                return Conflict(new
+                {
+                    statusCode = StatusCodes.Status409Conflict,
+                    message = "This email is already associated with another sign-in method."
+                });
+            }
+            catch (GoogleProviderUnavailableException)
+            {
+                _logger.LogWarning("Google sign-in failed: provider unavailable");
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    statusCode = StatusCodes.Status503ServiceUnavailable,
+                    message = "Google authentication is temporarily unavailable."
+                });
             }
             catch (Exception ex)
             {
-                Console.WriteLine("GoogleLogin failure: " + ex);
-                return BadRequest(new { statusCode = 400, message = "Không thể xác thực với Google: " + ex.Message });
+                _logger.LogError(ex, "Google sign-in failed unexpectedly");
+                return StatusCode(StatusCodes.Status500InternalServerError, new
+                {
+                    statusCode = StatusCodes.Status500InternalServerError,
+                    message = "Google sign-in could not be completed."
+                });
             }
         }
 

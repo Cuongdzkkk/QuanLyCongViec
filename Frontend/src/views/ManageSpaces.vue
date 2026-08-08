@@ -69,7 +69,17 @@
                    @click="openAppearanceEditor(space)"
                  ><i class="bi bi-pencil"></i></button>
                  <button class="card-icon-btn" type="button" @click="copySpaceLink(space)"><i class="fa-solid fa-link"></i></button>
-                 <button class="card-icon-btn" type="button" :class="{ 'starred': space.starred }" @click="toggleStar(space)"><i :class="space.starred ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i></button>
+                 <button
+                   class="card-icon-btn"
+                   type="button"
+                   :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, space.id)"
+                   :class="{ starred: space.starred }"
+                   :aria-pressed="space.starred"
+                   :aria-label="space.starred ? 'Bỏ gắn sao không gian' : 'Gắn sao không gian'"
+                   @click="toggleStar(space)"
+                 >
+                   <i :class="space.starred ? 'fa-solid fa-star' : 'fa-regular fa-star'" aria-hidden="true"></i>
+                 </button>
                </div>
             </div>
 
@@ -127,7 +137,7 @@
             <tbody>
               <tr v-for="(space, index) in filteredSpaces" :key="'table-' + space.id" @click="goToSpace(space.id)" style="border-bottom: 1px solid var(--color-border); cursor: pointer; transition: background 0.2s;" class="table-row-hover">
                 <td style="padding: 12px 16px;" @click.stop>
-                  <button class="card-icon-btn transparent-btn" style="background: transparent; border: none; color: var(--color-text-muted);" :class="{ 'starred': space.starred }" @click="toggleStar(space)">
+                  <button class="card-icon-btn transparent-btn" type="button" :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, space.id)" :class="{ starred: space.starred }" :aria-pressed="space.starred" :aria-label="space.starred ? 'Bỏ gắn sao không gian' : 'Gắn sao không gian'" @click="toggleStar(space)">
                     <i :class="space.starred ? 'fa-solid fa-star' : 'fa-regular fa-star'" :style="{ color: space.starred ? '#EAB308' : '' }"></i>
                   </button>
                 </td>
@@ -199,6 +209,8 @@ import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import ProjectAppearanceDialog from '@/components/project/ProjectAppearanceDialog.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useProjectStore } from '@/store/useProjectStore'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { canAccessProjectSettings, getProjectSettingsDeniedMessage, getStoredUser } from '@/utils/permissions'
 import { subscribeAdminRealtime } from '@/utils/adminRealtime'
 import { getProjectSettingsWindowName, openNamedAppWindow, PROJECT_ADMIN_WINDOW_NAME } from '@/utils/windowTabs'
@@ -212,6 +224,7 @@ const handleSwitchSettings = (path) => {
 }
 
 const projectStore = useProjectStore()
+const starredStore = useStarredStore()
 const { language, t } = useI18n()
 const loading = ref(false)
 const spaces = ref([])
@@ -284,14 +297,14 @@ const copySpaceLink = async (space) => {
 }
 
 const toggleStar = async (space) => {
-  const nextFavorite = !space.starred
+  const nextFavorite = !starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, space.id)
   space.starred = nextFavorite
   try {
     await projectStore.updateFavorite(space.id, nextFavorite)
     ElMessage.success(nextFavorite ? 'Project starred' : 'Project unstarred')
   } catch (error) {
     space.starred = !nextFavorite
-    ElMessage.error('Could not update favorite project')
+    ElMessage.error(starredStore.error || t('projects.favoriteFailed'))
   }
 }
 
@@ -307,13 +320,15 @@ const emojiList = ['👇', '🚀', '⚡', '💡', '🔥', '🎯']
 const fetchSpaces = async () => {
   loading.value = true
   try {
-    const response = await axiosClient.get('/projects/discovery')
-    const data = response.data.data || response.data || []
+    const [, data] = await Promise.all([
+      starredStore.fetchStarredItems({ page: 1, pageSize: 100 }).catch(() => []),
+      projectStore.fetchAllProjects(true)
+    ])
 
     // Transform data
     spaces.value = data.map(p => ({
       id: p.id,
-      starred: Boolean(p.isFavorite),
+      starred: starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, p.id),
       name: p.name,
       key: p.key || p.identifier || p.name.substring(0, 4).toUpperCase(),
       myRole: p.myRole || p.MyRole || null,
@@ -708,6 +723,8 @@ const filterLabel = computed(() => ({
 }
 
 .card-icon-btn {
+  appearance: none;
+  -webkit-appearance: none;
   width: 32px;
   height: 32px;
   border-radius: 8px;
@@ -722,6 +739,7 @@ const filterLabel = computed(() => ({
   transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
   backdrop-filter: blur(8px);
   box-shadow: 0 5px 14px rgba(15, 23, 42, 0.14);
+  touch-action: manipulation;
 }
 .card-icon-btn:hover {
   background: #ffffff;
@@ -731,6 +749,12 @@ const filterLabel = computed(() => ({
 }
 .card-icon-btn.starred { color: #EAB308; }
 .card-icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.card-icon-btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 48%, transparent);
+  outline-offset: 2px;
+}
+.card-icon-btn i { display: block; width: 1em; line-height: 1; text-align: center; }
+.card-icon-btn.transparent-btn { background: transparent; border-color: transparent; color: var(--color-text-muted); }
 
 .card-body {
   padding: 0 20px 20px 20px;

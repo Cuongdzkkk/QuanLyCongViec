@@ -558,6 +558,57 @@ namespace TaskManagement.API.Controllers
             }
         }
 
+        [HttpGet("tasks/personal-work")]
+        public async Task<IActionResult> GetPersonalWork(
+            [FromQuery] string scope,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 50)
+        {
+            var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdString, out var userId))
+            {
+                return Unauthorized(new { statusCode = 401, message = "Unauthorized." });
+            }
+
+            try
+            {
+                var result = await _workTaskService.GetPersonalWorkPageAsync(
+                    userId,
+                    scope,
+                    page,
+                    pageSize);
+                return Ok(new { statusCode = 200, message = "Success", data = result });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { statusCode = 400, message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new { statusCode = 403, message = ex.Message });
+            }
+        }
+
+        [HttpGet("tasks/personal-summary")]
+        public async Task<IActionResult> GetPersonalWorkSummary()
+        {
+            var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdString, out var userId))
+            {
+                return Unauthorized(new { statusCode = 401, message = "Unauthorized." });
+            }
+
+            try
+            {
+                var result = await _workTaskService.GetPersonalWorkSummaryAsync(userId);
+                return Ok(new { statusCode = 200, message = "Success", data = result });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new { statusCode = 403, message = ex.Message });
+            }
+        }
+
         [HttpGet("projects/{projectId}/task-statuses")]
         [ProjectAuthorize("")]
         public async Task<IActionResult> GetProjectTaskStatuses(Guid projectId, [FromServices] ApplicationDbContext context)

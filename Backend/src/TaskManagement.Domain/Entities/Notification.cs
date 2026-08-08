@@ -26,6 +26,11 @@ namespace TaskManagement.Domain.Entities
         /// <summary>Related project ID for context</summary>
         public Guid? RelatedProjectId { get; set; }
 
+        public Guid? CollaborationChannelId { get; set; }
+        public CollaborationChannel? CollaborationChannel { get; set; }
+        public Guid? ChannelMessageId { get; set; }
+        public ChannelMessage? ChannelMessage { get; set; }
+
         /// <summary>Who triggered this notification</summary>
         public Guid? TriggeredByUserId { get; set; }
         public User? TriggeredByUser { get; set; }

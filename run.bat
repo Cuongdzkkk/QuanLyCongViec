@@ -2,8 +2,8 @@
 title Start Task Management System
 cd /d "%~dp0"
 
-set "DEV_SQL_SERVER=.\SQLEXPRESS01"
-set "DEV_SQL_DATABASE=TaskManagementDB_V4"
+if not defined DEV_SQL_SERVER set "DEV_SQL_SERVER=.\SQLEXPRESS01"
+if not defined DEV_SQL_DATABASE set "DEV_SQL_DATABASE=TaskManagementDB_V4"
 set "DOTNET_EF_VERSION=10.0.9"
 set "RUN_LOCK=%TEMP%\sprinta-task-management-startup.lock"
 set "RUN_LOCK_OWNER=%RUN_LOCK%\owner.pid"

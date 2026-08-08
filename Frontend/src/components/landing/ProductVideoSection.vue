@@ -28,6 +28,18 @@ const copy = computed(() => languageCode.value === 'vi'
     })
 
 const loadVideo = () => { isLoaded.value = true }
+
+const setTilt = (event) => {
+  const target = event.currentTarget
+  const rect = target.getBoundingClientRect()
+  target.style.setProperty('--tilt-x', `${((((event.clientX - rect.left) / rect.width) - 0.5) * 6).toFixed(2)}deg`)
+  target.style.setProperty('--tilt-y', `${((((event.clientY - rect.top) / rect.height) - 0.5) * -6).toFixed(2)}deg`)
+}
+
+const resetTilt = (event) => {
+  event.currentTarget.style.setProperty('--tilt-x', '0deg')
+  event.currentTarget.style.setProperty('--tilt-y', '0deg')
+}
 </script>
 
 <template>
@@ -45,7 +57,7 @@ const loadVideo = () => { isLoaded.value = true }
       </div>
     </div>
 
-    <div class="video-shell">
+    <div class="video-shell" @pointermove="setTilt" @pointerleave="resetTilt">
       <div v-if="!isLoaded" class="video-poster" role="img" :aria-label="props.title">
         <img src="/videos/sprinta-product-demo-poster.webp" :alt="props.title" />
         <button class="video-play" type="button" @click="loadVideo" :aria-label="copy.play">
@@ -69,7 +81,7 @@ const loadVideo = () => { isLoaded.value = true }
 <style scoped>
 .product-video-section {
   display: block;
-  width: min(1100px, 100%);
+  width: min(1240px, 100%);
   margin-inline: auto;
 }
 
@@ -88,7 +100,7 @@ const loadVideo = () => { isLoaded.value = true }
 .video-copy > p {
   max-width: 680px;
   margin: 0 auto;
-  color: var(--muted);
+  color: var(--ink-secondary, var(--muted));
   line-height: 1.7;
 }
 
@@ -123,16 +135,20 @@ const loadVideo = () => { isLoaded.value = true }
 
 .video-shell {
   position: relative;
-  width: min(1040px, 100%);
+  width: min(1180px, 100%);
   margin: 42px auto 0;
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid color-mix(in srgb, #41C0F2 34%, var(--line));
   border-radius: 22px;
   background: var(--navy);
-  box-shadow: 0 26px 70px rgba(4, 28, 46, .22);
+  box-shadow: inset 0 1px rgba(255,255,255,.12), 0 4px 10px rgba(4,17,31,.08), 0 18px 40px rgba(4,17,31,.14), 0 34px 90px rgba(4,17,31,.22);
+  transform: perspective(1200px) rotateX(calc(2deg + var(--tilt-y, 0deg))) rotateY(calc(-2deg + var(--tilt-x, 0deg))) translateZ(10px);
+  transform-style: preserve-3d;
+  transition: transform .3s cubic-bezier(.16,1,.3,1), border-color .2s ease, box-shadow .2s ease;
 }
 
-.video-shell::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; border: 1px solid rgba(255,255,255,.14); border-radius: inherit; }
+.video-shell:hover { border-color: #41C0F2; box-shadow: inset 0 1px rgba(255,255,255,.16), 0 6px 14px rgba(4,17,31,.10), 0 22px 48px rgba(4,17,31,.18), 0 42px 100px rgba(4,17,31,.28); }
+.video-shell::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; border: 1px solid rgba(255,255,255,.16); border-radius: inherit; background: linear-gradient(128deg, color-mix(in srgb, #41C0F2 15%, transparent), transparent 24% 78%, color-mix(in srgb, #0B4FD9 9%, transparent)); }
 .video-poster,
 .video-frame {
   display: block;
@@ -160,18 +176,21 @@ const loadVideo = () => { isLoaded.value = true }
   gap: 9px;
   padding: 15px 20px;
   transform: translate(-50%, -50%);
-  color: white;
-  border: 1px solid #ffffff55;
+  color: #FFFFFF;
+  border: 1px solid color-mix(in srgb, #F4F8FC 42%, transparent);
   border-radius: 999px;
-  background: #008fb8ee;
-  box-shadow: 0 16px 34px rgba(0,143,184,.34);
+  background: #0B4FD9;
+  box-shadow: 0 16px 34px color-mix(in srgb, #0B4FD9 38%, transparent);
   cursor: pointer;
   font-weight: 850;
+  transition: transform .2s ease, background-color .2s ease, box-shadow .2s ease;
 }
+
+.video-play:hover { transform: translate(-50%, -50%) scale(1.05); background: #08428C; box-shadow: 0 22px 44px color-mix(in srgb, #0B4FD9 46%, transparent); }
 
 .video-play:focus-visible,
 .video-fallback:focus-visible {
-  outline: 3px solid #66d9ef;
+  outline: 3px solid #41C0F2;
   outline-offset: 4px;
 }
 
@@ -182,20 +201,25 @@ const loadVideo = () => { isLoaded.value = true }
 .video-fallback {
   display: block;
   padding: 13px 16px;
-  color: #c4dbe5;
+  color: #DDE8F2;
   background: var(--navy);
   font-size: 12px;
   text-decoration: underline;
 }
 
 .video-fallback:hover {
-  color: white;
+  color: #FFFFFF;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-shell { transform: none !important; transition: none !important; }
 }
 
 @media (max-width: 900px) {
   .product-video-section {
     width: 100%;
   }
+  .video-shell { transform: none; }
 }
 
 @media (max-width: 640px) {

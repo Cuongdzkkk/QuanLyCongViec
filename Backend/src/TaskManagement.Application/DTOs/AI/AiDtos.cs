@@ -148,5 +148,11 @@ namespace TaskManagement.Application.DTOs.AI
         public long UsedTokensThisMonth { get; set; }
         public long MonthlyTokenQuota { get; set; }
         public long RemainingTokens => Math.Max(0, MonthlyTokenQuota - UsedTokensThisMonth);
+        public string PlanCode { get; set; } = string.Empty;
+        public string EntitlementSource { get; set; } = string.Empty;
+        public int IncludedCredits { get; set; }
+        public int UsedCredits { get; set; }
+        public int RemainingCredits => Math.Max(0, IncludedCredits - UsedCredits);
+        public bool IsCreditQuotaExceeded { get; set; }
     }
 }

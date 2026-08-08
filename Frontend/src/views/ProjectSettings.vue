@@ -1144,7 +1144,7 @@
                     <input v-model="sprint.endDate" type="date" :min="sprint.startDate || todayDate" />
                   </label>
                   <div class="meta-strip compact">
-                    <span>State: {{ sprint.state }}</span>
+                    <span>State: {{ getSprintStateMeta(sprint.state).label }}</span>
                     <span>Favorite: {{ sprint.isFavorite ? 'Yes' : 'No' }}</span>
                     <span>Progress: {{ sprint.progressPercent || 0 }}%</span>
                     <span>Tasks: {{ sprint.taskCount || 0 }}</span>
@@ -1155,8 +1155,26 @@
                   <button class="secondary-btn" type="button" @click="toggleFavoriteCycle(sprint)">
                     {{ sprint.isFavorite ? 'Unfavorite' : 'Favorite' }}
                   </button>
-                  <button v-if="canManageSprint && sprint.state !== 'Active'" class="secondary-btn" type="button" @click="startCycle(sprint)">Start</button>
-                  <button v-if="canManageSprint && sprint.state === 'Active'" class="secondary-btn" type="button" @click="closeCycleToBacklog(sprint)">Close to backlog</button>
+                  <button
+                    v-if="canManageSprint && getSprintStateMeta(sprint.state).canStart"
+                    class="secondary-btn"
+                    type="button"
+                    :disabled="isCycleTransitioning('start', sprint.id)"
+                    :aria-label="`Start Cycle ${sprint.name}`"
+                    @click="startCycle(sprint)"
+                  >
+                    {{ isCycleTransitioning('start', sprint.id) ? 'Starting...' : 'Start' }}
+                  </button>
+                  <button
+                    v-if="canManageSprint && getSprintStateMeta(sprint.state).canClose"
+                    class="secondary-btn"
+                    type="button"
+                    :disabled="isCycleTransitioning('close', sprint.id)"
+                    :aria-label="`Close Cycle ${sprint.name}`"
+                    @click="closeCycleToBacklog(sprint)"
+                  >
+                    {{ isCycleTransitioning('close', sprint.id) ? 'Closing...' : 'Close to backlog' }}
+                  </button>
                   <button v-if="canManageSprint" class="secondary-btn" type="button" @click="openCycleCarryOver(sprint)">Carry-over</button>
                 </div>
               </div>
@@ -1391,17 +1409,20 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 import axiosClient from '@/api/axiosClient'
 import { useProjectStore } from '@/store/useProjectStore'
+import { useSprintStore } from '@/store/useSprintStore'
 import { broadcastAdminRealtime, subscribeAdminRealtime } from '@/utils/adminRealtime'
 import { signalRService } from '@/api/signalrService'
 
 import { getStoredUserSession } from '@/utils/authSession'
 import { getDefaultPermissionMatrix, normalizeRole } from '@/utils/permissionGuard'
 import { hasProjectWritePermission } from '@/utils/permissions'
+import { getSprintApiError, getSprintErrorMessage, getSprintStateMeta, normalizeSprintState } from '@/utils/sprintState'
 import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
 
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
+const sprintStore = useSprintStore()
 const projectId = route.params.id
 
 const tabs = [
@@ -1565,6 +1586,8 @@ const currentUserProjectRole = computed(() => {
 const canManageSprint = computed(() => {
   return hasProjectWritePermission(currentUserProjectRole.value)
 })
+const isCycleTransitioning = (action, sprintId) =>
+  sprintStore.isTransitioning(action, projectId, sprintId)
 
 const canEditPermissions = computed(() => {
   const user = currentUser.value
@@ -1877,6 +1900,7 @@ const loadProjectSettings = async () => {
     }))
     sprints.value = (cyclesRes.data?.data || []).map(sprint => ({
       ...sprint,
+      state: normalizeSprintState(sprint.state),
       startDate: normalizeDateInput(sprint.startDate),
       endDate: normalizeDateInput(sprint.endDate)
     }))
@@ -2685,32 +2709,57 @@ const saveCycle = async (sprint) => {
 }
 
 const startCycle = async (sprint) => {
-  if (!canManageSprint.value) return
+  if (
+    !canManageSprint.value ||
+    !getSprintStateMeta(sprint.state).canStart ||
+    isCycleTransitioning('start', sprint.id)
+  ) return
+
   try {
-    await axiosClient.post(`/projects/${projectId}/sprints/${sprint.id}/start`)
-    ElMessage.success('Cycle started')
-    await loadProjectSettings()
-    notifyProjectSettingsRealtime()
+    const result = await sprintStore.startSprint(projectId, sprint.id)
+    if (result?.data) {
+      ElMessage.success('Cycle started')
+      await loadProjectSettings()
+      notifyProjectSettingsRealtime()
+    }
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || 'Could not start cycle')
+    if ([404, 409].includes(getSprintApiError(error).status)) {
+      await loadProjectSettings()
+    }
+    ElMessage.error(getSprintErrorMessage(error))
   }
 }
 
 const closeCycleToBacklog = async (sprint) => {
-  if (!canManageSprint.value) return
+  if (
+    !canManageSprint.value ||
+    !getSprintStateMeta(sprint.state).canClose ||
+    isCycleTransitioning('close', sprint.id)
+  ) return
+
   try {
     await ElMessageBox.confirm(
       `Close "${sprint.name}" and move unfinished work items to backlog?`,
       'Close cycle',
-      { type: 'warning' }
+      {
+        type: 'warning',
+        confirmButtonText: 'Close Cycle',
+        cancelButtonText: 'Cancel',
+        closeOnClickModal: false
+      }
     )
-    await axiosClient.post(`/projects/${projectId}/sprints/${sprint.id}/close`, { targetSprintId: null })
-    ElMessage.success('Cycle closed and unfinished work moved to backlog')
-    await loadProjectSettings()
-    notifyProjectSettingsRealtime()
+    const result = await sprintStore.closeSprint(projectId, sprint.id, null)
+    if (result?.data) {
+      ElMessage.success('Cycle closed and unfinished work moved to backlog')
+      await loadProjectSettings()
+      notifyProjectSettingsRealtime()
+    }
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || 'Could not close cycle')
+      if ([404, 409].includes(getSprintApiError(error).status)) {
+        await loadProjectSettings()
+      }
+      ElMessage.error(getSprintErrorMessage(error))
     }
   }
 }

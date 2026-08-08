@@ -11,6 +11,9 @@ public class AiPricingPlan
     public int? IncludedUsers { get; set; }
     public int IncludedAiCredits { get; set; }
     public bool ExtraAiCreditsEnabled { get; set; }
+    public string Audience { get; set; } = "Personal";
+    public bool IsRecommended { get; set; }
+    public bool IsPublished { get; set; } = true;
     public string PricingStatus { get; set; } = "PendingConfirmation";
     public string? FeaturesJson { get; set; }
     public DateTime CreatedAt { get; set; }

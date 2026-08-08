@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
@@ -8,6 +8,12 @@ import TaskDetailModal from '@/components/TaskDetailModal.vue'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
 import { useI18n } from '@/composables/useI18n'
+import { usePersonalWork } from '@/composables/usePersonalWork'
+import { PERSONAL_WORK_SCOPES } from '@/api/personalWorkApi'
+import { useAuthStore } from '@/store/useAuthStore'
+import { useSiteStore } from '@/store/useSiteStore'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import { DEFAULT_PROJECT_BACKGROUND, DEFAULT_PROJECT_ICON } from '@/config/projectAppearance'
@@ -16,6 +22,9 @@ const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
 const workTaskStore = useWorkTaskStore()
+const authStore = useAuthStore()
+const siteStore = useSiteStore()
+const starredStore = useStarredStore()
 const { t, language } = useI18n()
 const demoText = (value) => translateDemoText(value, language.value)
 
@@ -23,13 +32,10 @@ const currentProjectId = computed(() => route.params.id || null)
 
 // Loading, empty & error states
 const loadingSpaces = ref(false)
-const loadingTasks = ref(false)
 const errorSpaces = ref(null)
-const errorTasks = ref(null)
 
 // Data refs
 const spaces = ref([])
-const myTasks = ref([])
 const projectMembers = ref([])
 const currentProjectRole = ref('member')
 const activeTab = ref('assigned') // recommended, assigned, starred, worked, viewed
@@ -39,14 +45,49 @@ const sortOption = ref('updated') // updated, created, priority
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
 
+const {
+  items: personalTasks,
+  totalCount,
+  loading: personalLoading,
+  error: personalError,
+  summary,
+  fetchPage,
+  fetchSummary,
+  reset
+} = usePersonalWork()
+
+const personalTabScopes = {
+  recommended: PERSONAL_WORK_SCOPES.suggested,
+  assigned: PERSONAL_WORK_SCOPES.assigned,
+  worked: PERSONAL_WORK_SCOPES.worked
+}
+const isPersonalApiTab = computed(() => Boolean(personalTabScopes[activeTab.value]))
+const collectionTasks = computed(() => {
+  const source = activeTab.value === 'starred' ? starredStore.starredItems : starredStore.recentItems
+  return source.map(item => ({
+    id: item.itemId || item.entityId,
+    entityType: item.itemType || item.entityType,
+    title: item.itemName || item.title || t('forYou.untitled'),
+    projectId: item.projectId,
+    projectName: item.subtitle,
+    url: item.url,
+    createdAt: item.createdAt || item.viewedAt,
+    updatedAt: item.updatedAt || item.viewedAt,
+    statusName: item.statusName || ''
+  }))
+})
+const myTasks = computed(() => isPersonalApiTab.value ? personalTasks.value : collectionTasks.value)
+const loadingTasks = computed(() => isPersonalApiTab.value ? personalLoading.value : (activeTab.value === 'starred' ? starredStore.loading : starredStore.recentLoading))
+const errorTasks = computed(() => isPersonalApiTab.value ? personalError.value : (activeTab.value === 'starred' ? starredStore.error : starredStore.recentError))
+const contextKey = computed(() => [
+  authStore.userId || '',
+  authStore.token || '',
+  siteStore.activeSite?.id || siteStore.activeSite?.Id || ''
+].join(':'))
+
 // Task details modal interaction
 const selectedTask = ref(null)
 const taskDetailHistory = ref([])
-
-const currentUserId = computed(() => {
-  const user = localStorage.getItem('user')
-  return user ? JSON.parse(user).id : null
-})
 
 const emojiList = ['📦', '🚀', '⚡', '💡', '🔥', '🎯']
 
@@ -78,23 +119,29 @@ const fetchSpaces = async () => {
 
 // 2. Fetch User Personal Tasks
 const fetchMyTasks = async () => {
-  loadingTasks.value = true
-  errorTasks.value = null
-  try {
-    const res = await axiosClient.get('/tasks/search')
-    myTasks.value = res.data?.data || []
-  } catch (error) {
-    errorTasks.value = t('forYou.loadTasksFailed')
-    console.error('Failed to load personal tasks:', error)
-  } finally {
-    loadingTasks.value = false
+  const scope = personalTabScopes[activeTab.value]
+  if (activeTab.value === 'starred') {
+    return starredStore.fetchStarredItems({ page: currentPage.value, pageSize: itemsPerPage.value }).catch(() => null)
   }
+  if (activeTab.value === 'viewed') {
+    return starredStore.fetchRecentItems({ page: currentPage.value, pageSize: itemsPerPage.value }).catch(() => null)
+  }
+  return fetchPage({
+    scope,
+    page: currentPage.value,
+    pageSize: itemsPerPage.value
+  }).catch(() => null)
 }
 
 // 3. Task Starring (Client-side localized)
-const toggleTaskStar = (task) => {
-  workTaskStore.toggleTaskStar(task)
-  ElMessage.success(workTaskStore.isTaskStarred(task.id) ? t('forYou.taskStarred') : t('forYou.taskUnstarred'))
+const toggleTaskStar = async (task) => {
+  const wasStarred = starredStore.isStarred(STARRED_ENTITY_TYPES.WORK_TASK, task.id)
+  try {
+    await starredStore.setStarred(STARRED_ENTITY_TYPES.WORK_TASK, task.id, !wasStarred)
+    ElMessage.success(wasStarred ? t('forYou.taskUnstarred') : t('forYou.taskStarred'))
+  } catch {
+    ElMessage.error(starredStore.error || t('forYou.updateTaskStarFailed'))
+  }
 }
 
 // 4. Space Starring
@@ -104,7 +151,7 @@ const toggleSpaceStar = async (space) => {
     await projectStore.updateFavorite(space.id, !isCurrentlyFav)
     ElMessage.success(isCurrentlyFav ? t('forYou.spaceUnstarred') : t('forYou.spaceStarred'))
   } catch {
-    ElMessage.error(t('forYou.updateSpaceStarFailed'))
+    ElMessage.error(starredStore.error || t('forYou.updateSpaceStarFailed'))
   }
 }
 
@@ -136,21 +183,10 @@ const sortedSpaces = computed(() => {
 const filteredTasksList = computed(() => {
   let list = []
   
-  if (activeTab.value === 'assigned') {
-    list = myTasks.value.filter(task => task.assignedUserId === currentUserId.value || (task.assignees || []).some(a => a.userId === currentUserId.value || a.id === currentUserId.value))
-  } else if (activeTab.value === 'worked') {
-    list = myTasks.value.filter(task => task.reporterId === currentUserId.value || task.assignedUserId === currentUserId.value || (task.assignees || []).some(a => a.userId === currentUserId.value || a.id === currentUserId.value))
-  } else if (activeTab.value === 'recommended') {
-    list = myTasks.value.filter(task => {
-      const isMine = task.assignedUserId === currentUserId.value || task.reporterId === currentUserId.value
-      const isDone = (task.statusName || '').toUpperCase().includes('DONE')
-      return isMine && !isDone
-    })
-  } else if (activeTab.value === 'starred') {
-    list = workTaskStore.starredTasks.map(v => myTasks.value.find(t => t.id === (v.itemId || v.id))).filter(Boolean)
-  } else if (activeTab.value === 'viewed') {
-    const viewed = JSON.parse(localStorage.getItem('recently_viewed_tasks') || '[]')
-    list = viewed.map(v => myTasks.value.find(t => t.id === v.id)).filter(Boolean)
+  if (isPersonalApiTab.value) {
+    list = myTasks.value
+  } else {
+    list = myTasks.value
   }
 
   // Status filter
@@ -192,10 +228,19 @@ const filteredTasksList = computed(() => {
 })
 
 // Pagination
-const totalPages = computed(() => Math.ceil(filteredTasksList.value.length / itemsPerPage.value))
+const totalPages = computed(() => Math.max(
+  1,
+  Math.ceil(
+    (isPersonalApiTab.value
+      ? totalCount.value
+      : activeTab.value === 'starred'
+        ? starredStore.starredPagination.totalCount
+        : starredStore.recentPagination.totalCount) /
+    itemsPerPage.value
+  )
+))
 const paginatedTasks = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value
-  return filteredTasksList.value.slice(start, start + itemsPerPage.value)
+  return filteredTasksList.value
 })
 
 // Accordion state
@@ -223,7 +268,10 @@ const groupedTasks = computed(() => {
 
 // Task Details Dialog
 const openTaskDetail = async (task) => {
-  logViewedTask(task)
+  if (task.url && (task.entityType === STARRED_ENTITY_TYPES.PROJECT || !task.projectId)) {
+    await router.push(task.url)
+    return
+  }
   
   try {
     const mRes = await axiosClient.get(`/projects/${task.projectId}/members`)
@@ -239,6 +287,7 @@ const openTaskDetail = async (task) => {
 
   taskDetailHistory.value = []
   selectedTask.value = workTaskStore.normalizeTaskRecord(task, task.projectId)
+  starredStore.recordViewed(STARRED_ENTITY_TYPES.WORK_TASK, task.id).catch(() => {})
 }
 
 const openTaskDetailFromModal = (task, options = {}) => {
@@ -299,11 +348,6 @@ const updateTask = async (task, field, value) => {
   }
 }
 
-// Log viewed task vào store (reactive) + localStorage
-const logViewedTask = (task) => {
-  workTaskStore.logViewedTask(task, spaces.value)
-}
-
 const getTaskIcon = (task) => {
   const ts = (task.statusName || '').toUpperCase()
   if (ts.includes('DONE')) return 'fa-solid fa-square-check text-green-500'
@@ -334,8 +378,7 @@ const timeAgo = (dateStr) => {
 
 onMounted(() => {
   fetchSpaces()
-  fetchMyTasks()
-  workTaskStore.fetchStarredTasks().catch(() => {})
+  starredStore.fetchStarredItems({ page: 1, pageSize: 100 }).catch(() => {})
 })
 
 watch(() => route.query.tab, (tab) => {
@@ -343,7 +386,27 @@ watch(() => route.query.tab, (tab) => {
 }, { immediate: true })
 
 watch(activeTab, () => {
+  if (currentPage.value !== 1) {
+    currentPage.value = 1
+    return
+  }
+  fetchMyTasks()
+})
+
+watch(currentPage, () => {
+  fetchMyTasks()
+})
+
+watch(contextKey, () => {
+  reset()
   currentPage.value = 1
+  if (!authStore.token || !authStore.userId) return
+  fetchSummary().catch(() => null)
+  fetchMyTasks()
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  reset()
 })
 
 </script>
@@ -399,7 +462,10 @@ watch(activeTab, () => {
               <!-- Star button for Space -->
               <button 
                 class="sc-star-btn"
+                type="button"
                 :class="{ starred: projectStore.favoriteProjects.some(p => p.id === space.id) }"
+                :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, space.id)"
+                :aria-pressed="projectStore.favoriteProjects.some(p => p.id === space.id)"
                 @click.stop="toggleSpaceStar(space)"
                 :title="projectStore.favoriteProjects.some(p => p.id === space.id) ? 'Bỏ đánh dấu' : 'Đánh dấu'"
               >
@@ -429,10 +495,10 @@ watch(activeTab, () => {
               >
                 <span>{{ tab.label }}</span>
                 <span 
-                  v-if="tab.id === 'assigned' && myTasks.filter(t => t.assignedUserId === currentUserId).length > 0" 
+                  v-if="tab.id === 'assigned' && summary?.assigned > 0"
                   class="tab-badge"
                 >
-                  {{ myTasks.filter(t => t.assignedUserId === currentUserId).length }}
+                  {{ summary.assigned }}
                 </span>
               </button>
             </div>
@@ -459,6 +525,11 @@ watch(activeTab, () => {
 
           <div v-if="loadingTasks" class="loading-state">
             <i class="fa-solid fa-spinner fa-spin"></i> {{ t('forYou.loadingYourWork') }}
+          </div>
+
+          <div v-else-if="errorTasks" class="empty-state">
+            <h3 class="text-sm font-semibold text-gray-700 dark:text-neutral-300">{{ t('forYou.loadTasksFailed') }}</h3>
+            <button class="jira-btn-subtle mt-4" @click="fetchMyTasks">{{ t('common.retry') }}</button>
           </div>
           
           <!-- Premium Empty State for Tasks -->
@@ -509,7 +580,14 @@ watch(activeTab, () => {
                     </div>
                   </div>
                   <div class="jtr-actions" @click.stop>
-                    <button class="star-btn" :class="{ starred: isTaskStarred(task.id) }" @click.stop="toggleTaskStar(task)">
+                    <button
+                      class="star-btn"
+                      type="button"
+                      :class="{ starred: isTaskStarred(task.id) }"
+                      :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.WORK_TASK, task.id)"
+                      :aria-label="isTaskStarred(task.id) ? t('forYou.taskUnstarred') : t('forYou.taskStarred')"
+                      @click.stop="toggleTaskStar(task)"
+                    >
                       <i :class="isTaskStarred(task.id) ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star'"></i>
                     </button>
                   </div>
@@ -632,18 +710,25 @@ watch(activeTab, () => {
 }
 
 .sc-star-btn {
+  appearance: none;
+  -webkit-appearance: none;
   background: transparent;
-  border: none;
+  border: 0;
   cursor: pointer;
-  color: #cbd5e1;
-  font-size: 16px;
-  padding: 8px;
+  color: var(--color-text-muted, #6b778c);
+  font-size: 14px;
+  font-family: inherit;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   border-radius: 6px;
   opacity: 0;
   transition: all 0.2s ease;
   position: absolute;
-  right: 12px;
-  top: 12px;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  touch-action: manipulation;
 }
 .space-card:hover .sc-star-btn {
   opacity: 1;
@@ -656,6 +741,15 @@ watch(activeTab, () => {
   color: var(--color-text-primary, #172b4d);
   background: rgba(9, 30, 66, 0.08);
 }
+.sc-star-btn:focus-visible,
+.star-btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 42%, transparent);
+  outline-offset: 2px;
+}
+.sc-star-btn:disabled,
+.star-btn:disabled { cursor: wait; }
+.sc-star-btn i,
+.star-btn i { display: block; width: 1em; line-height: 1; text-align: center; }
 
 /* Premium Space Empty Card */
 .empty-spaces-card {
@@ -935,7 +1029,7 @@ watch(activeTab, () => {
 }
 
 .jtr-actions {
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.2s ease;
   margin-right: 16px;
 }
@@ -944,14 +1038,20 @@ watch(activeTab, () => {
 }
 
 .star-btn {
+  appearance: none;
+  -webkit-appearance: none;
   background: transparent;
-  border: none;
+  border: 0;
   cursor: pointer;
   color: var(--color-text-muted, #6b778c);
   font-size: 14px;
-  padding: 4px;
+  font-family: inherit;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   border-radius: 4px;
   transition: color 0.15s ease;
+  touch-action: manipulation;
 }
 .star-btn:hover {
   color: var(--color-text-primary, #172b4d);
@@ -2106,4 +2206,3 @@ watch(activeTab, () => {
   }
 }
 </style>
-

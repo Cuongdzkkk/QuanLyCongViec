@@ -82,6 +82,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<AiAttachment> AiAttachments { get; set; }
         public DbSet<AiAttachmentChunk> AiAttachmentChunks { get; set; }
         public DbSet<IntegrationAccount> IntegrationAccounts { get; set; }
+        public DbSet<ExternalLogin> ExternalLogins { get; set; }
         public DbSet<InboxItem> InboxItems { get; set; }
         public DbSet<SyncHistory> SyncHistories { get; set; }
 
@@ -120,7 +121,15 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<EntityFollower> EntityFollowers { get; set; }
 
         public DbSet<DirectMessage> DirectMessages { get; set; }
+        public DbSet<DirectConversation> DirectConversations { get; set; }
+        public DbSet<DirectConversationParticipant> DirectConversationParticipants { get; set; }
         public DbSet<ChannelMessage> ChannelMessages { get; set; }
+        public DbSet<ChannelMessageMention> ChannelMessageMentions { get; set; }
+        public DbSet<CollaborationChannel> CollaborationChannels { get; set; }
+        public DbSet<CollaborationChannelMember> CollaborationChannelMembers { get; set; }
+        public DbSet<CollaborationChannelReadState> CollaborationChannelReadStates { get; set; }
+        public DbSet<DirectConversationReadState> DirectConversationReadStates { get; set; }
+        public DbSet<CollaborationMessageAttachment> CollaborationMessageAttachments { get; set; }
 
         public DbSet<CustomFieldDefinition> CustomFieldDefinitions { get; set; }
         public DbSet<CustomFieldValue> CustomFieldValues { get; set; }
@@ -137,6 +146,7 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<Department>().HasQueryFilter(d => !d.IsDeleted);
             modelBuilder.Entity<Project>().HasQueryFilter(p => !p.IsDeleted);
             modelBuilder.Entity<WorkTask>().HasQueryFilter(wt => !wt.IsDeleted);
+            modelBuilder.Entity<Sprint>().HasQueryFilter(sprint => !sprint.IsDeleted);
             modelBuilder.Entity<Workspace>().HasQueryFilter(w => !w.IsDeleted);
             modelBuilder.Entity<CustomFieldDefinition>().HasQueryFilter(cfd => !cfd.IsDeleted);
             modelBuilder.Entity<StickyNote>().HasQueryFilter(note => !note.IsDeleted);
@@ -253,6 +263,11 @@ namespace TaskManagement.Infrastructure.Data
                     .OnDelete(DeleteBehavior.Cascade);
             });
             modelBuilder.Entity<IntegrationAccount>().HasIndex(ia => new { ia.UserId, ia.Provider }).IsUnique();
+            modelBuilder.Entity<ExternalLogin>().HasIndex(login => new { login.Provider, login.ProviderSubject }).IsUnique();
+            modelBuilder.Entity<ExternalLogin>().HasIndex(login => new { login.UserId, login.Provider }).IsUnique();
+            modelBuilder.Entity<ExternalLogin>().Property(login => login.Provider).HasMaxLength(32).IsRequired();
+            modelBuilder.Entity<ExternalLogin>().Property(login => login.ProviderSubject).HasMaxLength(255).IsRequired();
+            modelBuilder.Entity<ExternalLogin>().Property(login => login.ProviderEmail).HasMaxLength(450).IsRequired();
             modelBuilder.Entity<InboxItem>().HasIndex(ii => new { ii.UserId, ii.Provider, ii.ExternalId }).IsUnique();
             modelBuilder.Entity<InboxItem>().HasIndex(ii => new { ii.UserId, ii.Source, ii.CreatedAt });
             modelBuilder.Entity<InboxItem>().HasIndex(ii => new { ii.UserId, ii.IsRead });
@@ -339,6 +354,21 @@ namespace TaskManagement.Infrastructure.Data
                 .WithMany(p => p.Sprints)
                 .HasForeignKey(s => s.ProjectId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Sprint>()
+                .Property(sprint => sprint.State)
+                .HasMaxLength(20)
+                .HasDefaultValue(TaskManagement.Domain.Rules.SprintStates.Planned);
+
+            modelBuilder.Entity<Sprint>()
+                .HasIndex(sprint => sprint.ProjectId)
+                .IsUnique()
+                .HasDatabaseName("UX_Sprints_Project_Active")
+                .HasFilter("[State] = N'Active' AND [IsDeleted] = 0");
+
+            modelBuilder.Entity<Sprint>()
+                .HasIndex(sprint => new { sprint.ProjectId, sprint.State, sprint.StartDate, sprint.CreatedAt, sprint.Id })
+                .HasDatabaseName("IX_Sprints_Project_State_Order");
 
             modelBuilder.Entity<TaskType>()
                 .HasOne(tt => tt.Project)
@@ -495,6 +525,20 @@ namespace TaskManagement.Infrastructure.Data
                 .HasForeignKey(n => n.TriggeredByUserId)
                 .OnDelete(DeleteBehavior.NoAction);
 
+            modelBuilder.Entity<Notification>(entity =>
+            {
+                entity.HasIndex(n => new { n.UserId, n.ChannelMessageId })
+                    .IsUnique()
+                    .HasFilter("[ChannelMessageId] IS NOT NULL");
+                entity.HasIndex(n => new { n.CollaborationChannelId, n.CreatedAt });
+                entity.HasOne(n => n.CollaborationChannel).WithMany()
+                    .HasForeignKey(n => n.CollaborationChannelId)
+                    .OnDelete(DeleteBehavior.NoAction);
+                entity.HasOne(n => n.ChannelMessage).WithMany()
+                    .HasForeignKey(n => n.ChannelMessageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
             modelBuilder.Entity<SystemAuditLog>()
                 .HasOne(sal => sal.User)
                 .WithMany(u => u.SystemAuditLogs)
@@ -505,6 +549,12 @@ namespace TaskManagement.Infrastructure.Data
                 .HasOne(ia => ia.User)
                 .WithMany()
                 .HasForeignKey(ia => ia.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ExternalLogin>()
+                .HasOne(login => login.User)
+                .WithMany(user => user.ExternalLogins)
+                .HasForeignKey(login => login.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<InboxItem>()
@@ -628,6 +678,15 @@ namespace TaskManagement.Infrastructure.Data
                 .HasIndex(rv => new { rv.UserId, rv.EntityType, rv.EntityId })
                 .IsUnique();
 
+            modelBuilder.Entity<RecentView>()
+                .HasIndex(rv => new { rv.UserId, rv.ViewedAt, rv.Id })
+                .IsDescending(false, true, false);
+
+            modelBuilder.Entity<RecentView>()
+                .ToTable("RecentViews", table => table.HasCheckConstraint(
+                    "CK_RecentViews_EntityType",
+                    "[EntityType] IN ('Goal', 'Project', 'Team', 'User', 'WorkTask')"));
+
             modelBuilder.Entity<KudoReaction>()
                 .HasOne(kr => kr.Kudo)
                 .WithMany()
@@ -652,6 +711,8 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<AiPricingPlan>().HasIndex(x => x.Code).IsUnique();
             modelBuilder.Entity<AiPricingPlan>().Property(x => x.Code).HasMaxLength(64);
             modelBuilder.Entity<AiPricingPlan>().Property(x => x.Name).HasMaxLength(128);
+            modelBuilder.Entity<AiPricingPlan>().Property(x => x.MonthlyPriceVnd).HasPrecision(18, 2);
+            modelBuilder.Entity<AiPricingPlan>().Property(x => x.Audience).HasMaxLength(32);
             modelBuilder.Entity<AiPricingPlan>().Property(x => x.PricingStatus).HasMaxLength(64);
             modelBuilder.Entity<AiCreditRule>().HasIndex(x => x.ActionType).IsUnique();
             modelBuilder.Entity<AiCreditRule>().Property(x => x.ActionType).HasMaxLength(128);
@@ -980,9 +1041,13 @@ namespace TaskManagement.Infrastructure.Data
                 .HasIndex(si => si.UserId);
 
             modelBuilder.Entity<StarredItem>()
+                .HasIndex(si => new { si.UserId, si.WorkspaceId, si.CreatedAt, si.Id })
+                .IsDescending(false, false, true, false);
+
+            modelBuilder.Entity<StarredItem>()
                 .ToTable("StarredItems", table => table.HasCheckConstraint(
                     "CK_StarredItems_ItemType",
-                    "[ItemType] IN ('Goal', 'Project', 'Team', 'User')"));
+                    "[ItemType] IN ('Goal', 'Project', 'Team', 'User', 'WorkTask')"));
 
             modelBuilder.Entity<ProjectLink>()
                 .HasOne(pl => pl.Project)
@@ -1019,6 +1084,60 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.ApplyConfiguration(new Configurations.RefreshTokenConfiguration());
 
 
+            modelBuilder.Entity<DirectConversation>(entity =>
+            {
+                entity.HasIndex(conversation => new { conversation.UserLowId, conversation.UserHighId }).IsUnique();
+                entity.HasIndex(conversation => new { conversation.WorkspaceId, conversation.LastMessageAt, conversation.CreatedAt, conversation.Id });
+                entity.HasOne(conversation => conversation.Workspace).WithMany()
+                    .HasForeignKey(conversation => conversation.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(conversation => conversation.UserLow).WithMany()
+                    .HasForeignKey(conversation => conversation.UserLowId).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(conversation => conversation.UserHigh).WithMany()
+                    .HasForeignKey(conversation => conversation.UserHighId).OnDelete(DeleteBehavior.Restrict);
+                entity.ToTable("DirectConversations", table =>
+                    table.HasCheckConstraint("CK_DirectConversations_DistinctUsers", "[UserLowId] <> [UserHighId]"));
+            });
+
+            modelBuilder.Entity<DirectConversationParticipant>(entity =>
+            {
+                entity.HasKey(participant => new { participant.ConversationId, participant.UserId });
+                entity.HasIndex(participant => new { participant.UserId, participant.ConversationId });
+                entity.HasOne(participant => participant.Conversation)
+                    .WithMany(conversation => conversation.Participants)
+                    .HasForeignKey(participant => participant.ConversationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(participant => participant.User).WithMany()
+                    .HasForeignKey(participant => participant.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<DirectConversationReadState>(entity =>
+            {
+                entity.HasKey(state => new { state.ConversationId, state.UserId });
+                entity.HasIndex(state => new { state.UserId, state.ConversationId });
+                entity.HasIndex(state => state.LastReadMessageId);
+                entity.HasOne(state => state.Conversation)
+                    .WithMany(conversation => conversation.ReadStates)
+                    .HasForeignKey(state => state.ConversationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(state => state.User).WithMany()
+                    .HasForeignKey(state => state.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(state => state.LastReadMessage).WithMany()
+                    .HasForeignKey(state => state.LastReadMessageId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<DirectMessage>(entity =>
+            {
+                entity.Property(message => message.Content).HasMaxLength(4000).IsRequired();
+                entity.HasIndex(message => new { message.ConversationId, message.SentAt, message.Id });
+                entity.HasOne(message => message.Conversation)
+                    .WithMany(conversation => conversation.Messages)
+                    .HasForeignKey(message => message.ConversationId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
            modelBuilder.Entity<DirectMessage>()
                 .HasOne(dm => dm.Sender)
                 .WithMany()
@@ -1031,16 +1150,131 @@ namespace TaskManagement.Infrastructure.Data
                 .HasForeignKey(dm => dm.ReceiverId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            modelBuilder.Entity<CollaborationChannel>(entity =>
+            {
+                entity.Property(channel => channel.Name).HasMaxLength(100).IsRequired();
+                entity.Property(channel => channel.Description).HasMaxLength(500);
+                entity.Property(channel => channel.ProvisioningKey).HasMaxLength(100);
+                entity.HasIndex(channel => new { channel.WorkspaceId, channel.ProjectId });
+                entity.HasIndex(channel => new { channel.ProjectId, channel.IsDeleted, channel.IsArchived });
+                entity.HasIndex(channel => new
+                    {
+                        channel.ProjectId,
+                        channel.CreatedByUserId,
+                        channel.ProvisioningKey
+                    })
+                    .IsUnique()
+                    .HasFilter("[ProvisioningKey] IS NOT NULL");
+                entity.HasOne(channel => channel.Workspace)
+                    .WithMany()
+                    .HasForeignKey(channel => channel.WorkspaceId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(channel => channel.Project)
+                    .WithMany()
+                    .HasForeignKey(channel => channel.ProjectId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(channel => channel.CreatedByUser)
+                    .WithMany()
+                    .HasForeignKey(channel => channel.CreatedByUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<CollaborationChannelMember>(entity =>
+            {
+                entity.HasKey(member => new { member.ChannelId, member.UserId });
+                entity.HasIndex(member => new { member.UserId, member.IsActive });
+                entity.HasOne(member => member.Channel)
+                    .WithMany(channel => channel.Members)
+                    .HasForeignKey(member => member.ChannelId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(member => member.User)
+                    .WithMany()
+                    .HasForeignKey(member => member.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<CollaborationChannelReadState>(entity =>
+            {
+                entity.HasKey(state => new { state.ChannelId, state.UserId });
+                entity.HasIndex(state => new { state.UserId, state.ChannelId });
+                entity.HasIndex(state => state.LastReadMessageId);
+                entity.HasOne(state => state.Channel)
+                    .WithMany(channel => channel.ReadStates)
+                    .HasForeignKey(state => state.ChannelId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(state => state.User).WithMany()
+                    .HasForeignKey(state => state.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(state => state.LastReadMessage).WithMany()
+                    .HasForeignKey(state => state.LastReadMessageId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<ChannelMessage>(entity =>
+            {
+                entity.Property(message => message.LegacyDepartmentId).HasColumnName("ChannelId");
+                entity.HasIndex(message => new
+                {
+                    message.CollaborationChannelId,
+                    message.SentAt,
+                    message.Id
+                });
+                entity.HasOne(message => message.CollaborationChannel)
+                    .WithMany(channel => channel.Messages)
+                    .HasForeignKey(message => message.CollaborationChannelId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<ChannelMessageMention>(entity =>
+            {
+                entity.Property(mention => mention.DisplayText).HasMaxLength(200).IsRequired();
+                entity.HasIndex(mention => new { mention.ChannelMessageId, mention.MentionedUserId })
+                    .IsUnique();
+                entity.HasIndex(mention => new { mention.MentionedUserId, mention.CreatedAt });
+                entity.HasOne(mention => mention.ChannelMessage)
+                    .WithMany(message => message.Mentions)
+                    .HasForeignKey(mention => mention.ChannelMessageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(mention => mention.MentionedUser).WithMany()
+                    .HasForeignKey(mention => mention.MentionedUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
             modelBuilder.Entity<ChannelMessage>()
                 .HasOne(cm => cm.Sender)
                 .WithMany()
                 .HasForeignKey(cm => cm.SenderId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            modelBuilder.Entity<CollaborationMessageAttachment>(entity =>
+            {
+                entity.ToTable(table => table.HasCheckConstraint(
+                    "CK_CollaborationMessageAttachments_ExactlyOneMessage",
+                    "([ChannelMessageId] IS NOT NULL AND [DirectMessageId] IS NULL) OR ([ChannelMessageId] IS NULL AND [DirectMessageId] IS NOT NULL)"));
+                entity.Property(item => item.StorageKey).HasMaxLength(80).IsRequired();
+                entity.Property(item => item.OriginalFileName).HasMaxLength(255).IsRequired();
+                entity.Property(item => item.ContentType).HasMaxLength(120).IsRequired();
+                entity.HasIndex(item => item.StorageKey).IsUnique();
+                entity.HasIndex(item => item.ChannelMessageId);
+                entity.HasIndex(item => item.DirectMessageId);
+                entity.HasIndex(item => new { item.UploadedByUserId, item.CreatedAt });
+                entity.HasOne(item => item.ChannelMessage)
+                    .WithMany(message => message.Attachments)
+                    .HasForeignKey(item => item.ChannelMessageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(item => item.DirectMessage)
+                    .WithMany(message => message.Attachments)
+                    .HasForeignKey(item => item.DirectMessageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(item => item.UploadedByUser).WithMany()
+                    .HasForeignKey(item => item.UploadedByUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
             modelBuilder.Entity<ChannelMessage>()
-                .HasOne(cm => cm.Channel)
+                .HasOne(cm => cm.LegacyDepartment)
                 .WithMany()
-                .HasForeignKey(cm => cm.ChannelId)
+                .HasForeignKey(cm => cm.LegacyDepartmentId)
                 .OnDelete(DeleteBehavior.Cascade);
             // Custom Fields Configurations
             modelBuilder.Entity<CustomFieldDefinition>(entity =>

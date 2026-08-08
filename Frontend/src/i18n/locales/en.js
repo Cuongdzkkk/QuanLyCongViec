@@ -1161,6 +1161,8 @@ export default {
     'Get started by creating a new task in your board or backlog.': 'Get started by creating a new task in your board or backlog.',
     'Team Workload': 'Team Workload',
     'Workload distribution': 'Workload distribution',
-    'Assign tasks to your team members to see their workload here.': 'Assign tasks to your team members to see their workload here.'
-  
+    'Assign tasks to your team members to see their workload here.': 'Assign tasks to your team members to see their workload here.',
+    'Discussion Channel': 'Discussion Channel',
+    'Group Chat': 'Group Chat',
+    'Direct Chat': 'Direct Chat'
 }

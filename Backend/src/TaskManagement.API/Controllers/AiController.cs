@@ -28,6 +28,7 @@ namespace TaskManagement.API.Controllers
     public class AiController : ControllerBase
     {
         private readonly IAiService _aiService;
+        private readonly IAiCreditUsageService _aiCreditUsageService;
         private readonly IAiAttachmentService _aiAttachmentService;
         private readonly IWorkTaskService _workTaskService;
         private readonly IProjectService _projectService;
@@ -48,6 +49,7 @@ namespace TaskManagement.API.Controllers
 
         public AiController(
             IAiService aiService,
+            IAiCreditUsageService aiCreditUsageService,
             IAiAttachmentService aiAttachmentService,
             IWorkTaskService workTaskService,
             IProjectService projectService,
@@ -56,6 +58,7 @@ namespace TaskManagement.API.Controllers
             IResourceAuthorizationService authorizationService)
         {
             _aiService = aiService;
+            _aiCreditUsageService = aiCreditUsageService;
             _aiAttachmentService = aiAttachmentService;
             _workTaskService = workTaskService;
             _projectService = projectService;
@@ -111,23 +114,28 @@ namespace TaskManagement.API.Controllers
                 .ToListAsync();
 
             var totalTokens = tokenRows.Sum(row => row.tokensUsed);
-            var totalCredits = ledgerRows.Count > 0
-                ? ledgerRows.Sum(row => row.creditsConsumed)
-                : EstimateCredits(totalTokens);
+            var creditUsage = await _aiCreditUsageService.GetUsageAsync(userId, start, end);
             return Ok(ApiResponse<object>.Success(new
             {
                 period = new { from = start, to = end },
                 totalRequests = ledgerRows.Count > 0 ? ledgerRows.Sum(row => row.requests) : tokenRows.Sum(row => row.requests),
                 totalTokens,
-                creditsConsumed = totalCredits,
-                remainingIncludedCredits = Math.Max(0, 100 - totalCredits),
+                planCode = creditUsage.PlanCode,
+                entitlementSource = creditUsage.EntitlementSource,
+                usageSource = creditUsage.UsageSource,
+                entitlementConfigured = creditUsage.HasConfiguredEntitlement,
+                includedCredits = creditUsage.IncludedCredits,
+                usedCredits = creditUsage.UsedCredits,
+                remainingCredits = creditUsage.RemainingCredits,
+                isQuotaExceeded = creditUsage.IsQuotaExceeded,
+                // Compatibility aliases for clients that consumed the pre-P1 response.
+                creditsConsumed = creditUsage.UsedCredits,
+                remainingIncludedCredits = creditUsage.RemainingCredits,
                 calculation = new
                 {
                     tokenUnit = 1000,
                     rounding = "ceil",
-                    note = ledgerRows.Count > 0
-                        ? "Credits are read from real AiUsageLedgerEntries rows. Provider cost is not guessed."
-                        : "No usage ledger rows found for this period; credits are estimated from real AITokenUsages rows."
+                    note = "Usage is reconciled from AiUsageLedgerEntries and AITokenUsages; the larger recorded total is used so incomplete historical ledger rows cannot hide consumption."
                 },
                 byAction = ledgerRows,
                 byFeature = tokenRows.Select(row => new
@@ -1467,10 +1475,10 @@ namespace TaskManagement.API.Controllers
             }
 
             return
-                "Gemini hiá»‡n chÆ°a pháº£n há»“i á»•n Ä‘á»‹nh, nÃªn SprintA Ä‘ang dÃ¹ng xá»­ lÃ½ cá»¥c bá»™.\n\n" +
-                $"YÃªu cáº§u cá»§a báº¡n: \"{message}\"\n\n" +
-                "Báº¡n cÃ³ thá»ƒ nháº­p: táº¡o task <tiÃªu Ä‘á»> Ä‘á»ƒ AI táº¡o task tháº­t. " +
-                "Báº¡n cÅ©ng cÃ³ thá»ƒ yÃªu cáº§u: thá»‘ng kÃª dá»± Ã¡n, tÃ³m táº¯t cÃ´ng viá»‡c, Ä‘á» xuáº¥t Æ°u tiÃªn, hoáº·c breakdown task.";
+                "Gemini hiện chưa phản hồi ổn định, nên SprintA đang dùng xử lý cục bộ.\n\n" +
+                $"Yêu cầu của bạn: \"{message}\"\n\n" +
+                "Bạn có thể nhập: tạo task <tiêu đề> để AI tạo task thật. " +
+                "Bạn cũng có thể yêu cầu: thống kê dự án, tóm tắt công việc, đề xuất ưu tiên, hoặc breakdown task.";
         }
 
         private static bool ContainsAny(string text, params string[] keywords)
@@ -1482,8 +1490,8 @@ namespace TaskManagement.API.Controllers
         {
             var patterns = new[]
             {
-                @"(?:táº¡o|tao|create|add)\s+(?:task|cÃ´ng viá»‡c|cong viec)\s*[:\-]?\s*(?<title>.+)",
-                @"(?:task|cÃ´ng viá»‡c|cong viec)\s*[:\-]\s*(?<title>.+)"
+                @"(?:tạo|tao|create|add)\s+(?:task|công việc|cong viec)\s*[:\-]?\s*(?<title>.+)",
+                @"(?:task|công việc|cong viec)\s*[:\-]\s*(?<title>.+)"
             };
 
             foreach (var pattern in patterns)
@@ -1505,9 +1513,9 @@ namespace TaskManagement.API.Controllers
 
         private static int InferPromptPriority(string loweredPrompt)
         {
-            if (ContainsAny(loweredPrompt, "kháº©n", "khan", "urgent", "gáº¥p", "gap", "p1")) return 1;
+            if (ContainsAny(loweredPrompt, "khẩn", "khan", "urgent", "gấp", "gap", "p1")) return 1;
             if (ContainsAny(loweredPrompt, "cao", "high", "p2")) return 2;
-            if (ContainsAny(loweredPrompt, "tháº¥p", "thap", "low", "p4")) return 4;
+            if (ContainsAny(loweredPrompt, "thấp", "thap", "low", "p4")) return 4;
             return 3;
         }
 
@@ -1535,7 +1543,7 @@ namespace TaskManagement.API.Controllers
                 !string.IsNullOrWhiteSpace(status) &&
                 (status.Contains("progress", StringComparison.OrdinalIgnoreCase) ||
                  status.Contains("doing", StringComparison.OrdinalIgnoreCase) ||
-                 status.Contains("Ä‘ang", StringComparison.OrdinalIgnoreCase) ||
+                 status.Contains("đang", StringComparison.OrdinalIgnoreCase) ||
                  status.Contains("dang", StringComparison.OrdinalIgnoreCase));
 
             var done = tasks.Count(task => IsDone(task.StatusName));
