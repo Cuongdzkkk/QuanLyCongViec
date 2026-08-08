@@ -1157,6 +1157,15 @@ const router = useRouter()
 const projectStore = useProjectStore()
 const authStore = useAuthStore()
 const currentTab = computed(() => route.query.tab === 'dm' ? 'dm' : 'channel')
+const switchTab = (tab) => {
+  const nextTab = tab === 'dm' ? 'dm' : 'channel'
+  if (currentTab.value === nextTab) return
+
+  router.push({
+    path: '/chat',
+    query: { ...route.query, tab: nextTab }
+  })
+}
 const projectOptions = computed(() => projectStore.sidebarProjects)
 const activeProjectId = ref('')
 const activeProject = computed(() =>
