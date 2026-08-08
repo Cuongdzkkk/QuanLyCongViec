@@ -20,12 +20,42 @@
 
     <!-- Chat Sidebar (Channels & Direct Messages) -->
     <div class="chat-sidebar">
+
+      <div class="sidebar-header" style="display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); margin-bottom: 14px;">
+        <div class="flex items-center justify-between" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+          <h3 class="font-bold truncate" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0;">
+            <i class="fa-solid fa-comments text-primary text-lg" style="margin-right: 4px;"></i>
+            <span>{{ t('Discussion Channel') }}</span>
+          </h3>
+        </div>
+        
+        <!-- Toggle Tabs -->
+        <div class="tab-switcher">
+          <button 
+            @click="switchTab('channel')" 
+            class="tab-btn" 
+            :class="{ active: currentTab === 'channel' }"
+          >
+            <i class="fa-solid fa-server"></i>
+            <span>{{ t('Group Chat') }}</span>
+          </button>
+          <button 
+            @click="switchTab('dm')" 
+            class="tab-btn" 
+            :class="{ active: currentTab === 'dm' }"
+          >
+            <i class="fa-solid fa-message"></i>
+            <span>{{ t('Direct Chat') }}</span>
+          </button>
+        </div>
+
       <div class="sidebar-header">
         <h3 class="font-bold truncate" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0;">
           <i class="fa-solid fa-diagram-project text-primary text-base" v-if="currentTab === 'channel'"></i>
           <i class="fa-solid fa-comments text-primary text-lg" v-else style="margin-right: 8px;"></i>
           <span>{{ currentTab === 'channel' ? (activeProject?.name || 'Chọn Project') : 'Kênh Thảo Luận' }}</span>
         </h3>
+
       </div>
       <select
         v-if="currentTab === 'channel'"
@@ -43,6 +73,12 @@
       <div class="sidebar-lists-scrollable">
         <!-- Channels List -->
         <div class="sidebar-section" v-if="currentTab === 'channel'">
+          <!-- Server Name & Settings -->
+          <div class="server-name-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed var(--color-border);">
+            <span style="font-size: 13px; font-weight: 700; color: var(--color-text-primary);" class="truncate">{{ activeServer?.name }}</span>
+            <i class="fa-solid fa-gear text-xs text-muted hover-settings-icon" style="cursor: pointer; transition: color 0.2s;" @click.stop="openServerSettingsModal" title="Cài đặt Server"></i>
+          </div>
+
           <div class="flex items-center justify-between section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <span class="section-title" style="margin-bottom: 0;">CHANNELS</span>
             <button
@@ -538,17 +574,27 @@
 
       <div class="video-grid">
         <!-- Local User Feed -->
-        <div class="video-feed local" :class="{ 'camera-active': isCallCameraOn }">
-          <div v-if="isCallCameraOn" class="camera-stream-active">
-            <div class="simulated-camera-bg">
-              <div class="camera-scanner"></div>
-            </div>
+        <div class="video-feed local" :class="{ 'camera-active': (isCallCameraOn || isSharingScreen) }">
+          <div v-show="isCallCameraOn || isSharingScreen" class="camera-stream-active" style="width: 100%; height: 100%;">
+            <video 
+              ref="localVideoRef" 
+              autoplay 
+              playsinline 
+              muted 
+              :style="{ 
+                width: '100%', 
+                height: '100%', 
+                objectFit: 'cover', 
+                transform: isSharingScreen ? 'none' : 'scaleX(-1)', 
+                display: 'block' 
+              }"
+            ></video>
             <div class="feed-overlay">
               <span class="badge-live"><i class="fa-solid fa-circle text-danger animate-pulse"></i> LIVE</span>
               <span class="feed-name">Bạn (Quân)</span>
             </div>
           </div>
-          <div v-else class="feed-placeholder">
+          <div v-show="!isCallCameraOn && !isSharingScreen" class="feed-placeholder">
             <el-avatar :size="80" :src="currentUser.avatar">{{ currentUser.name.charAt(0) }}</el-avatar>
             <span class="feed-name">Bạn (Quân) (Camera tắt)</span>
           </div>
@@ -592,6 +638,17 @@
             :title="isCallCameraOn ? 'Tắt Camera' : 'Bật Camera'"
           >
             <i :class="isCallCameraOn ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'"></i>
+          </button>
+
+          <!-- Screen Share Toggle -->
+          <button 
+            class="call-control-circle-btn" 
+            :class="{ 'active-share': isSharingScreen }" 
+            @click="toggleScreenShare"
+            :title="isSharingScreen ? 'Tắt chia sẻ' : 'Chia sẻ màn hình'"
+            style="background-color: #4b5563; color: white;"
+          >
+            <i class="fa-solid fa-desktop" :style="{ color: isSharingScreen ? '#22c55e' : '#fff' }"></i>
           </button>
 
           <!-- Hang up -->
@@ -950,6 +1007,123 @@
         </div>
       </div>
     </div>
+
+    <!-- Group Voice Channel Call Dialog -->
+    <el-dialog
+      v-model="voiceChannelCallActive"
+      width="900px"
+      class="video-call-dialog group-call-dialog"
+      append-to-body
+    >
+      <template #header>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-volume-high text-primary"></i>
+          <span style="font-size: 15px; font-weight: 600; color: #f8fafc;">
+            Kênh thoại: {{ activeVoiceChannel?.name }}
+          </span>
+        </div>
+      </template>
+
+      <div class="video-grid group-video-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; height: auto; min-height: 320px;">
+        <!-- Render each user in the voice channel -->
+        <div 
+          v-for="user in activeVoiceChannel?.users" 
+          :key="user.id" 
+          class="video-feed"
+          :class="{ 'local-user': user.id === currentUser.id, 'camera-active': (user.id === currentUser.id && (isCallCameraOn || isSharingScreen)) }"
+          style="aspect-ratio: 4/3; height: auto;"
+        >
+          <!-- If local user and camera/screen share is on, render video element -->
+          <div v-if="user.id === currentUser.id" style="width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center;">
+            <div v-show="isCallCameraOn || isSharingScreen" style="width: 100%; height: 100%;">
+              <video 
+                :ref="el => { if (el) groupLocalVideoRef = el }" 
+                autoplay 
+                playsinline 
+                muted 
+                :style="{ 
+                  width: '100%', 
+                  height: '100%', 
+                  objectFit: 'cover', 
+                  transform: isSharingScreen ? 'none' : 'scaleX(-1)', 
+                  display: 'block' 
+                }"
+              ></video>
+            </div>
+            <div v-show="!isCallCameraOn && !isSharingScreen" class="feed-placeholder">
+              <el-avatar :size="80" :src="currentUser.avatar">{{ currentUser.name.charAt(0) }}</el-avatar>
+            </div>
+          </div>
+          
+          <!-- Remote user placeholder -->
+          <div v-else class="feed-placeholder">
+            <el-avatar :size="80" :src="user.avatar">{{ user.name?.charAt(0) }}</el-avatar>
+          </div>
+
+          <div class="feed-overlay">
+            <span class="badge-live" v-if="user.id === currentUser.id && (isCallCameraOn || isSharingScreen)">
+              <i class="fa-solid fa-circle text-danger animate-pulse"></i> LIVE
+            </span>
+            <span class="feed-name">{{ user.name }} {{ user.id === currentUser.id ? '(Bạn)' : '' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <!-- Left: minimize button -->
+          <el-button @click="voiceChannelCallActive = false" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
+            <i class="fa-solid fa-compress mr-1" style="margin-right: 6px;"></i> Thu nhỏ về nền
+          </el-button>
+
+          <!-- Center: Call controls -->
+          <div class="call-controls-container" style="margin: 0; display: flex; gap: 12px; justify-content: center; align-items: center;">
+            <!-- Mic Toggle -->
+            <button 
+              class="call-control-circle-btn" 
+              :class="{ 'inactive': isMuted }" 
+              @click="isMuted = !isMuted"
+              :title="isMuted ? 'Bật Micro' : 'Tắt Micro'"
+            >
+              <i :class="isMuted ? 'fa-solid fa-microphone-slash' : 'fa-solid fa-microphone'"></i>
+            </button>
+
+            <!-- Camera Toggle -->
+            <button 
+              class="call-control-circle-btn" 
+              :class="{ 'inactive': !isCallCameraOn }" 
+              @click="isCallCameraOn = !isCallCameraOn"
+              :title="isCallCameraOn ? 'Tắt Camera' : 'Bật Camera'"
+            >
+              <i :class="isCallCameraOn ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'"></i>
+            </button>
+
+            <!-- Screen Share Toggle -->
+            <button 
+              class="call-control-circle-btn" 
+              :class="{ 'active-share': isSharingScreen }" 
+              @click="toggleScreenShare"
+              :title="isSharingScreen ? 'Tắt chia sẻ' : 'Chia sẻ màn hình'"
+              style="background-color: #4b5563; color: white;"
+            >
+              <i class="fa-solid fa-desktop" :style="{ color: isSharingScreen ? '#22c55e' : '#fff' }"></i>
+            </button>
+
+            <!-- Disconnect -->
+            <button 
+              class="call-control-circle-btn hang-up" 
+              @click="leaveVoiceChannelAndClose"
+              title="Rời kênh thoại"
+            >
+              <i class="fa-solid fa-phone-slash"></i>
+            </button>
+          </div>
+          
+          <!-- Right: spacer to balance layout -->
+          <div style="width: 130px;"></div>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -958,6 +1132,14 @@ import { ref, onMounted, onBeforeUnmount, nextTick, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
+
+import { useI18n } from '@/composables/useI18n'
+
+const route = useRoute()
+const router = useRouter()
+const { t } = useI18n()
+const currentTab = computed(() => route.query.tab || 'channel')
+
 import { collaborationApi } from '@/api/collaborationApi'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -984,6 +1166,7 @@ const activeProject = computed(() =>
 )
 const projectsLoading = ref(false)
 const projectsError = ref('')
+
 
 const defaultServers = [
   { id: 'srv-sprinta', name: 'SprintA Workspace', color: '#6366f1', channels: [], voiceChannels: [
@@ -1407,8 +1590,145 @@ const activeVoiceChannel = ref(null)
 const isMuted = ref(false)
 const isCameraOn = ref(false)
 
+const localVideoRef = ref(null)
+let localStream = null
+const groupLocalVideoRef = ref(null)
+const voiceChannelCallActive = ref(false)
+const isSharingScreen = ref(false)
+let screenStream = null
+
+const startLocalCamera = async () => {
+  try {
+    if (localStream) {
+      stopLocalCamera()
+    }
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480 },
+      audio: false
+    })
+    if (localVideoRef.value) {
+      localVideoRef.value.srcObject = localStream
+    }
+  } catch (error) {
+    console.error('Error accessing webcam:', error)
+    ElMessage.error('Không thể truy cập camera của bạn!')
+  }
+}
+
+const stopLocalCamera = () => {
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop())
+    localStream = null
+  }
+  if (localVideoRef.value) {
+    localVideoRef.value.srcObject = null
+  }
+  const groupEl = getGroupVideoEl()
+  if (groupEl) {
+    groupEl.srcObject = null
+  }
+}
+
+const getGroupVideoEl = () => {
+  if (!groupLocalVideoRef.value) return null
+  return Array.isArray(groupLocalVideoRef.value) 
+    ? groupLocalVideoRef.value[0] 
+    : groupLocalVideoRef.value
+}
+
+const startLocalCameraOrGroup = async () => {
+  try {
+    if (localStream) {
+      stopLocalCamera()
+    }
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480 },
+      audio: false
+    })
+    
+    await nextTick()
+    const groupEl = getGroupVideoEl()
+    if (voiceChannelCallActive.value && groupEl) {
+      groupEl.srcObject = localStream
+    } else if (videoCallActive.value && localVideoRef.value) {
+      localVideoRef.value.srcObject = localStream
+    }
+  } catch (error) {
+    console.error('Error accessing webcam:', error)
+    ElMessage.error('Không thể truy cập camera của bạn!')
+    isCallCameraOn.value = false
+  }
+}
+
+const toggleScreenShare = async () => {
+  if (isSharingScreen.value) {
+    stopScreenShare()
+    isSharingScreen.value = false
+  } else {
+    try {
+      if (localStream) stopLocalCamera()
+      
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false
+      })
+      isSharingScreen.value = true
+      isCallCameraOn.value = false
+      
+      await nextTick()
+      const videoEl = getGroupVideoEl() || localVideoRef.value
+      if (videoEl) {
+        videoEl.srcObject = screenStream
+      }
+      
+      screenStream.getVideoTracks()[0].onended = () => {
+        stopScreenShare()
+        isSharingScreen.value = false
+      }
+    } catch (error) {
+      console.error('Error sharing screen:', error)
+      ElMessage.error('Không thể chia sẻ màn hình!')
+    }
+  }
+}
+
+const stopScreenShare = () => {
+  if (screenStream) {
+    screenStream.getTracks().forEach(track => track.stop())
+    screenStream = null
+  }
+  if (isCallCameraOn.value) {
+    startLocalCameraOrGroup()
+  } else {
+    const videoEl = getGroupVideoEl() || localVideoRef.value
+    if (videoEl) {
+      videoEl.srcObject = null
+    }
+  }
+}
+
+const leaveVoiceChannelAndClose = () => {
+  leaveVoiceChannel()
+  voiceChannelCallActive.value = false
+}
+
+watch([videoCallActive, voiceChannelCallActive, isCallCameraOn], async ([activeDm, activeGroup, camOn]) => {
+  if ((activeDm || activeGroup) && camOn) {
+    isSharingScreen.value = false
+    await nextTick()
+    await startLocalCameraOrGroup()
+  } else {
+    if (!isSharingScreen.value) {
+      stopLocalCamera()
+    }
+  }
+})
+
 const joinVoiceChannel = (vc) => {
-  if (activeVoiceChannel.value?.id === vc.id) return
+  if (activeVoiceChannel.value?.id === vc.id) {
+    voiceChannelCallActive.value = true
+    return
+  }
   
   if (activeVoiceChannel.value) {
     leaveVoiceChannel()
@@ -1421,6 +1741,7 @@ const joinVoiceChannel = (vc) => {
     avatar: currentUser.value.avatar
   })
   ElMessage.success(`Đã kết nối vào kênh thoại: ${vc.name}`)
+  voiceChannelCallActive.value = true
 }
 
 const leaveVoiceChannel = () => {
@@ -3397,7 +3718,26 @@ const confirmInviteToServer = () => {
   ElMessage.success(`Đã thêm ${selected.length} thành viên vào Server!`)
 }
 
+
+// Simulate receiving call after 15s if in DM
+onMounted(() => {
+  setTimeout(() => {
+    if (activeChat.value && activeChat.value.type === 'dm' && !videoCallActive.value && !outgoingCallActive.value) {
+      callingPartnerName.value = activeChat.value.name
+      callingPartnerAvatar.value = activeChat.value.avatar || ''
+      incomingCallActive.value = true
+    }
+  }, 15000)
+})
+
+import { onUnmounted } from 'vue'
+onUnmounted(() => {
+  stopLocalCamera()
+  stopScreenShare()
+})</script>
+
 </script>
+
 
 <style scoped>
 .server-bar {
