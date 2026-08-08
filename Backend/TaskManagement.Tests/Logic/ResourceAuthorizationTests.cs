@@ -98,6 +98,37 @@ public sealed class ResourceAuthorizationTests
             ResourcePermissionCodes.SprintManage)).Succeeded.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task InactiveOrDeletedUser_CannotManageSprint(bool isActive, bool isDeleted)
+    {
+        await using var fixture = await AuthorizationFixture.CreateAsync("PM");
+        var user = await fixture.Context.Users.SingleAsync(item => item.Id == fixture.UserId);
+        user.IsActive = isActive;
+        user.IsDeleted = isDeleted;
+        await fixture.Context.SaveChangesAsync();
+
+        (await fixture.Service.AuthorizeProjectAsync(
+            fixture.UserId,
+            fixture.ProjectId,
+            ResourcePermissionCodes.SprintManage)).Succeeded.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task InactiveProject_CannotManageSprint()
+    {
+        await using var fixture = await AuthorizationFixture.CreateAsync("PM");
+        var project = await fixture.Context.Projects.SingleAsync(item => item.Id == fixture.ProjectId);
+        project.Status = false;
+        await fixture.Context.SaveChangesAsync();
+
+        (await fixture.Service.AuthorizeProjectAsync(
+            fixture.UserId,
+            fixture.ProjectId,
+            ResourcePermissionCodes.SprintManage)).Succeeded.Should().BeFalse();
+    }
+
     [Fact]
     public async Task AdminSystemRoleWithoutProjectMembership_CannotBypassProjectFilter()
     {

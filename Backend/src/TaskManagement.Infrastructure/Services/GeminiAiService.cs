@@ -22,6 +22,7 @@ namespace TaskManagement.Infrastructure.Services
         private readonly HttpClient _httpClient;
         private readonly ZenMuxAiClient _zenMuxAiClient;
         private readonly IWorkTaskService _workTaskService;
+        private readonly IAiCreditUsageService _aiCreditUsageService;
         private readonly IConfiguration _configuration;
         private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
         private static readonly string[] RepositoryExecutionProjectRoles = { "PM", "PO", "SM", "Project Lead", "PROJECT_MANAGER", "PROJECT_LEAD", "Admin" };
@@ -33,12 +34,14 @@ namespace TaskManagement.Infrastructure.Services
             HttpClient httpClient,
             ZenMuxAiClient zenMuxAiClient,
             IWorkTaskService workTaskService,
+            IAiCreditUsageService aiCreditUsageService,
             IConfiguration configuration)
         {
             _context = context;
             _httpClient = httpClient;
             _zenMuxAiClient = zenMuxAiClient;
             _workTaskService = workTaskService;
+            _aiCreditUsageService = aiCreditUsageService;
             _configuration = configuration;
         }
 
@@ -855,23 +858,31 @@ namespace TaskManagement.Infrastructure.Services
         {
             var quota = GetMonthlyQuota();
             var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-            var used = await _context.AITokenUsages
-                .Where(x => x.UserId == userId && x.CreatedAt >= monthStart)
-                .SumAsync(x => (long?)x.TokensUsed) ?? 0;
+            var creditUsage = await _aiCreditUsageService.GetUsageAsync(userId, monthStart, DateTime.UtcNow);
 
             return new AiUsageDto
             {
-                UsedTokensThisMonth = used,
-                MonthlyTokenQuota = quota
+                UsedTokensThisMonth = creditUsage.TotalTokens,
+                MonthlyTokenQuota = quota,
+                PlanCode = creditUsage.PlanCode,
+                EntitlementSource = creditUsage.EntitlementSource,
+                IncludedCredits = creditUsage.IncludedCredits,
+                UsedCredits = creditUsage.UsedCredits,
+                IsCreditQuotaExceeded = creditUsage.IsQuotaExceeded
             };
         }
 
         private async Task EnsureQuotaAsync(Guid userId)
         {
             var usage = await GetUsageAsync(userId);
+            if (usage.IsCreditQuotaExceeded)
+            {
+                throw new InvalidOperationException(
+                    $"Bạn đã sử dụng hết {usage.IncludedCredits:N0} AI credits trong tháng này.");
+            }
             if (usage.UsedTokensThisMonth >= usage.MonthlyTokenQuota)
             {
-                throw new InvalidOperationException($"Ban da vuot han muc AI thang nay ({usage.MonthlyTokenQuota:N0} tokens).");
+                throw new InvalidOperationException($"Bạn đã vượt hạn mức AI tháng này ({usage.MonthlyTokenQuota:N0} tokens).");
             }
         }
 

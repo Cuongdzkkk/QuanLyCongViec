@@ -51,7 +51,11 @@ namespace TaskManagement.Infrastructure.Services
         {
             var project = await _dbContext.Projects
                 .AsNoTracking()
-                .Where(item => item.Id == projectId && !item.IsDeleted && !item.Workspace.IsDeleted)
+                .Where(item =>
+                    item.Id == projectId &&
+                    item.Status &&
+                    !item.IsDeleted &&
+                    !item.Workspace.IsDeleted)
                 .Select(item => new { item.WorkspaceId })
                 .FirstOrDefaultAsync();
             if (project == null)

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import axiosClient from '@/api/axiosClient'
 import { useSiteStore } from '@/store/useSiteStore'
 import { ensureWorkspaceIdFromState, resolveWorkspaceIdFromState } from '@/utils/contextIds'
+import { useStarredStore } from '@/store/useStarredStore'
 
 export const useGoalStore = defineStore('goal', {
   state: () => ({ lessons: [], risks: [], decisions: [],
@@ -199,16 +200,15 @@ export const useGoalStore = defineStore('goal', {
     async toggleStar() {
       if (!this.currentGoal) return
       try {
-        const workspaceId = await this.ensureWorkspaceId()
-        const response = await axiosClient.post(`/workspaces/${workspaceId}/starreditems/toggle`, null, { 
-          params: { itemId: this.currentGoal.id, itemType: 'Goal' }
-        })
-        const status = response.data?.data?.status ?? response.data?.status
-        this.currentGoal.isStarred = status === 'starred'
+        const starredStore = useStarredStore()
+        const nextValue = !starredStore.isStarred('Goal', this.currentGoal.id)
+        await starredStore.setStarred('Goal', this.currentGoal.id, nextValue)
+        this.currentGoal.isStarred = nextValue
         const target = this.goals.find(g => g.id === this.currentGoal.id)
         if (target) target.isStarred = this.currentGoal.isStarred
       } catch (err) {
         console.error('Failed to toggle star', err)
+        throw err
       }
     }
   }

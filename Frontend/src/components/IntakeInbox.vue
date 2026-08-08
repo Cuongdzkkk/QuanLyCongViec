@@ -16,6 +16,11 @@ const loading = ref(false)
 const showCreate = ref(false)
 const showDetail = ref(false)
 const selectedIntake = ref(null)
+const loadError = ref('')
+const intakePermissions = ref({
+  canCreate: false,
+  canReview: false
+})
 
 const newIntake = ref({
   title: '',
@@ -29,19 +34,28 @@ onMounted(() => loadIntakes())
 
 async function loadIntakes() {
   loading.value = true
+  loadError.value = ''
+  intakePermissions.value = { canCreate: false, canReview: false }
   try {
     const res = await axiosClient.get(`/projects/${props.projectId}/intakes`)
     intakes.value = res.data?.data || []
+    intakePermissions.value = {
+      canCreate: res.data?.permissions?.canCreate === true,
+      canReview: res.data?.permissions?.canReview === true
+    }
   } catch (e) {
     console.error('Failed to load intakes', e)
     intakes.value = []
+    loadError.value = e.response?.status === 403
+      ? 'Bạn không có quyền truy cập Intake của dự án này.'
+      : (e.response?.data?.message || 'Không tải được danh sách Intake.')
   } finally {
     loading.value = false
   }
 }
 
 async function createIntake() {
-  if (!newIntake.value.title.trim()) return
+  if (!intakePermissions.value.canCreate || !newIntake.value.title.trim()) return
   
   const payload = {
     title: newIntake.value.title,
@@ -63,6 +77,11 @@ async function createIntake() {
 }
 
 async function updateStatus(id, status) {
+  if (!intakePermissions.value.canReview) {
+    ElMessage.warning('Bạn không có quyền duyệt Intake.')
+    return
+  }
+
   try {
     await axiosClient.put(`/projects/${props.projectId}/intakes/${id}/review`, { status })
     ElMessage.success(status === 'Accepted' ? 'Đã duyệt yêu cầu và tạo công việc.' : 'Đã từ chối yêu cầu.')
@@ -133,22 +152,29 @@ function navigateToTask(taskId) {
         <h3>📥 Hộp thư yêu cầu (Intake Inbox)</h3>
         <p class="subtitle text-xs text-[var(--color-text-muted)] mt-1">Duyệt các yêu cầu công việc được gửi từ nhân viên và chuyển thành công việc chính thức</p>
       </div>
-      <button class="nexus-btn-primary" @click="showCreate = true">
+      <button v-if="intakePermissions.canCreate" class="nexus-btn-primary" @click="showCreate = true">
         <i class="fa-solid fa-plus mr-1"></i> Gửi yêu cầu mới
       </button>
     </div>
 
     <!-- Inbox List -->
     <div v-loading="loading" class="intake-content-area">
+      <div v-if="!loading && loadError" class="intake-empty-state" role="alert">
+        <div class="empty-icon-wrapper">
+          <i class="fa-solid fa-shield-halved text-4xl text-[var(--color-text-muted)]"></i>
+        </div>
+        <h4 class="font-bold text-sm text-[var(--color-text-primary)] mt-4">Không thể mở Intake</h4>
+        <p class="text-xs text-[var(--color-text-muted)] mt-1 max-w-sm">{{ loadError }}</p>
+      </div>
       
       <!-- Empty State -->
-      <div v-if="!loading && intakes.length === 0" class="intake-empty-state">
+      <div v-else-if="!loading && intakes.length === 0" class="intake-empty-state">
         <div class="empty-icon-wrapper">
           <i class="fa-regular fa-envelope-open text-4xl text-[var(--color-text-muted)]"></i>
         </div>
         <h4 class="font-bold text-sm text-[var(--color-text-primary)] mt-4">Chưa có yêu cầu nào</h4>
         <p class="text-xs text-[var(--color-text-muted)] mt-1 mb-4 max-w-sm">Hãy tạo form yêu cầu để nhân viên gửi công việc vào SprintA.</p>
-        <button class="nexus-btn-primary" @click="showCreate = true">
+        <button v-if="intakePermissions.canCreate" class="nexus-btn-primary" @click="showCreate = true">
           <i class="fa-solid fa-paper-plane mr-1"></i> Gửi yêu cầu mới
         </button>
       </div>
@@ -196,7 +222,7 @@ function navigateToTask(taskId) {
               <td class="actions-cell">
                 <el-button size="small" link type="primary" @click="viewDetail(item)">Chi tiết</el-button>
                 
-                <template v-if="item.status === 'Pending'">
+                <template v-if="item.status === 'Pending' && intakePermissions.canReview">
                   <el-button size="small" type="success" plain @click="updateStatus(item.id, 'Accepted')">Duyệt</el-button>
                   <el-button size="small" type="danger" plain @click="updateStatus(item.id, 'Declined')">Từ chối</el-button>
                 </template>
@@ -316,7 +342,7 @@ function navigateToTask(taskId) {
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="showDetail = false">Đóng lại</el-button>
-          <template v-if="selectedIntake && selectedIntake.status === 'Pending'">
+          <template v-if="selectedIntake && selectedIntake.status === 'Pending' && intakePermissions.canReview">
             <el-button type="danger" plain @click="updateStatus(selectedIntake.id, 'Declined'); showDetail = false">Từ chối</el-button>
             <el-button type="success" @click="updateStatus(selectedIntake.id, 'Accepted'); showDetail = false">Duyệt & Tạo việc</el-button>
           </template>

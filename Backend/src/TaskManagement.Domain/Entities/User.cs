@@ -60,5 +60,6 @@ namespace TaskManagement.Domain.Entities
         
         // Concurrent Sessions
         public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
+        public ICollection<ExternalLogin> ExternalLogins { get; set; } = new List<ExternalLogin>();
     }
 }

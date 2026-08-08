@@ -78,13 +78,21 @@ import axiosClient from '@/api/axiosClient'
 import * as signalR from '@microsoft/signalr'
 import { isExpectedNetworkError } from '@/utils/errorTelemetry'
 import { getStoredAccessToken } from '@/utils/authSession'
+import { useAuthStore } from '@/store/useAuthStore'
+import { collaborationRealtime } from '@/services/collaborationRealtime'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const notifications = ref([])
 const onlyUnread = ref(false)
 const loading = ref(false)
 const connection = ref(null)
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api'
+const collaborationMentionIds = new Set()
+let unsubscribeCollaborationMention = null
+let unsubscribeCollaborationReconnect = null
+let notificationRequestId = 0
+let notificationAbortController = null
 
 const unreadCount = computed(() => notifications.value.filter(item => !item.isRead).length)
 const filteredNotifications = computed(() => {
@@ -133,6 +141,7 @@ const getTypeClass = (type) => {
 }
 
 const normalizeLink = (notification) => {
+  if (notification.linkUrl?.startsWith('/chat')) return notification.linkUrl
   if (notification.linkUrl?.startsWith('/space/')) return notification.linkUrl
   if (notification.relatedProjectId && notification.relatedTaskId) return `/space/${notification.relatedProjectId}?task=${notification.relatedTaskId}`
   if (notification.relatedProjectId) return `/space/${notification.relatedProjectId}`
@@ -144,19 +153,29 @@ const normalizeLink = (notification) => {
 }
 
 const fetchNotifications = async () => {
+  notificationAbortController?.abort()
+  const controller = new AbortController()
+  notificationAbortController = controller
+  const requestId = ++notificationRequestId
+  const requestToken = authStore.token
   loading.value = true
   try {
     const response = await axiosClient.get('/notifications', {
-      params: onlyUnread.value ? { unreadOnly: true } : {}
+      params: onlyUnread.value ? { unreadOnly: true } : {},
+      signal: controller.signal
     })
+    if (requestId !== notificationRequestId || authStore.token !== requestToken) return
     notifications.value = (response.data?.data || []).map(item => ({
       ...item,
       linkUrl: normalizeLink(item)
     }))
   } catch (error) {
-    ElMessage.error('Could not load notifications')
+    if (error?.code !== 'ERR_CANCELED') ElMessage.error('Could not load notifications')
   } finally {
-    loading.value = false
+    if (requestId === notificationRequestId) {
+      loading.value = false
+      notificationAbortController = null
+    }
   }
 }
 
@@ -213,6 +232,7 @@ const initSignalR = () => {
     .build()
 
   connection.value.on('ReceiveNotification', (notification) => {
+    if (notifications.value.some(item => item.id === notification.id)) return
     notifications.value.unshift({
       ...notification,
       isRead: false,
@@ -231,13 +251,59 @@ watch(onlyUnread, () => {
   fetchNotifications()
 })
 
+watch(() => authStore.token, (token, previousToken) => {
+  if (token === previousToken) return
+  notificationAbortController?.abort()
+  notificationRequestId += 1
+  notifications.value = []
+  if (connection.value) {
+    void connection.value.stop()
+    connection.value = null
+  }
+  if (token) {
+    void fetchNotifications()
+    initSignalR()
+  }
+})
+
+const handleMentionRefresh = () => { void fetchNotifications() }
+const handleNotificationReset = () => {
+  notificationAbortController?.abort()
+  notificationRequestId += 1
+  notifications.value = []
+}
+const handlePrivateMention = (notification) => {
+  if (!notification?.notificationId || collaborationMentionIds.has(notification.notificationId)) return
+  collaborationMentionIds.add(notification.notificationId)
+  void fetchNotifications()
+}
+
 onMounted(() => {
+  window.addEventListener('collaboration-mention-created', handleMentionRefresh)
+  window.addEventListener('collaboration-notifications-refresh', handleMentionRefresh)
+  window.addEventListener('collaboration-notifications-reset', handleNotificationReset)
   fetchNotifications()
   initSignalR()
+  unsubscribeCollaborationMention = collaborationRealtime.subscribeMention(handlePrivateMention)
+  unsubscribeCollaborationReconnect = collaborationRealtime.subscribeReconnected(() => {
+    void fetchNotifications()
+  })
+  void collaborationRealtime.start().catch(() => {
+    // REST remains authoritative and refreshes whenever the dropdown opens.
+  })
 })
 
 onUnmounted(() => {
+  window.removeEventListener('collaboration-mention-created', handleMentionRefresh)
+  window.removeEventListener('collaboration-notifications-refresh', handleMentionRefresh)
+  window.removeEventListener('collaboration-notifications-reset', handleNotificationReset)
+  unsubscribeCollaborationMention?.()
+  unsubscribeCollaborationReconnect?.()
+  collaborationMentionIds.clear()
+  notificationAbortController?.abort()
+  notificationRequestId += 1
   if (connection.value) connection.value.stop()
+  void collaborationRealtime.stop()
 })
 </script>
 

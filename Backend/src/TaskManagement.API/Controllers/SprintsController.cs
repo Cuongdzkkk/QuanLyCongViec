@@ -86,9 +86,13 @@ namespace TaskManagement.API.Controllers
             {
                 return BadRequest(ApiResponse<object>.Error(ex.Message));
             }
-            catch (InvalidOperationException ex)
+            catch (SprintTransitionException ex)
             {
-                return BadRequest(ApiResponse<object>.Error(ex.Message));
+                return Conflict(new { statusCode = 409, message = ex.Message, code = ex.Code });
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(ApiResponse<object>.Error("Cycle khong ton tai trong du an nay.", 404));
             }
         }
 
@@ -104,8 +108,8 @@ namespace TaskManagement.API.Controllers
                     return Unauthorized(ApiResponse<object>.Error("Unauthorized.", 401));
                 }
 
-                await _sprintService.CloseAsync(id, dto, actorUserId);
-                return Ok(ApiResponse<object>.Success(null!, "Cycle da duoc dong va task ton dong da duoc xu ly."));
+                var result = await _sprintService.CloseAsync(projectId, id, dto, actorUserId);
+                return Ok(ApiResponse<SprintResponseDto>.Success(result, "Cycle da duoc dong va task ton dong da duoc xu ly."));
             }
             catch (ResourceScopeException ex)
             {
@@ -118,9 +122,13 @@ namespace TaskManagement.API.Controllers
             {
                 return BadRequest(ApiResponse<object>.Error(ex.Message));
             }
-            catch (InvalidOperationException ex)
+            catch (SprintTransitionException ex)
             {
-                return BadRequest(ApiResponse<object>.Error(ex.Message));
+                return Conflict(new { statusCode = 409, message = ex.Message, code = ex.Code });
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(ApiResponse<object>.Error("Cycle khong ton tai trong du an nay.", 404));
             }
         }
 

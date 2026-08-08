@@ -8,8 +8,22 @@ namespace TaskManagement.Domain.Entities
         public const string Project = "Project";
         public const string Team = "Team";
         public const string User = "User";
+        public const string WorkTask = "WorkTask";
 
-        public static readonly string[] Allowed = [Goal, Project, Team, User];
+        public static readonly string[] Allowed = [Goal, Project, Team, User, WorkTask];
+
+        public static string? Normalize(string? value)
+        {
+            return value?.Trim().ToLowerInvariant() switch
+            {
+                "goal" => Goal,
+                "project" => Project,
+                "team" => Team,
+                "user" => User,
+                "task" or "work-task" or "work_task" or "worktask" => WorkTask,
+                _ => null
+            };
+        }
     }
 
     public class StarredItem
@@ -26,5 +40,6 @@ namespace TaskManagement.Domain.Entities
         public Guid ItemId { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 }

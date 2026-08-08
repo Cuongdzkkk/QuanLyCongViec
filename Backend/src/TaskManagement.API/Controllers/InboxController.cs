@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.WorkTask;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
@@ -17,15 +18,18 @@ namespace TaskManagement.API.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IWorkTaskService _workTaskService;
         private readonly IAiIntegrationService _aiIntegrationService;
+        private readonly IResourceAuthorizationService _resourceAuthorizationService;
 
         public InboxController(
             ApplicationDbContext context,
             IWorkTaskService workTaskService,
-            IAiIntegrationService aiIntegrationService)
+            IAiIntegrationService aiIntegrationService,
+            IResourceAuthorizationService resourceAuthorizationService)
         {
             _context = context;
             _workTaskService = workTaskService;
             _aiIntegrationService = aiIntegrationService;
+            _resourceAuthorizationService = resourceAuthorizationService;
         }
 
         [HttpGet]
@@ -128,8 +132,15 @@ namespace TaskManagement.API.Controllers
                 .AsNoTracking()
                 .Where(member => member.UserId == userId.Value
                     && member.Status
+                    && member.LeftAt == null
+                    && member.User.IsActive
+                    && !member.User.IsDeleted
+                    && member.Project.Status
                     && !member.Project.IsDeleted
-                    && !member.Project.IsArchived)
+                    && !member.Project.IsArchived
+                    && !member.Project.Workspace.IsDeleted
+                    && member.Project.Workspace.Members.Any(workspaceMember =>
+                        workspaceMember.UserId == userId.Value && workspaceMember.IsActive))
                 .OrderBy(member => member.Project.Name)
                 .Select(member => new
                 {
@@ -180,6 +191,19 @@ namespace TaskManagement.API.Controllers
                 return BadRequest(new { message = "Bạn cần chọn hoặc tạo project trước khi tạo task từ inbox." });
             }
 
+            var authorization = await _resourceAuthorizationService.AuthorizeProjectAsync(
+                userId.Value,
+                projectId.Value,
+                ResourcePermissionCodes.ProjectRead);
+            if (!authorization.Succeeded)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    statusCode = StatusCodes.Status403Forbidden,
+                    message = "Active project membership is required to create a task from inbox."
+                });
+            }
+
             var created = await CreateWorkTaskFromInboxItem(userId.Value, item, projectId.Value);
             await _context.SaveChangesAsync();
 
@@ -195,6 +219,19 @@ namespace TaskManagement.API.Controllers
             if (request?.ProjectId == null)
             {
                 return BadRequest(new { message = "Bạn cần chọn project trước khi tạo nhiều task từ inbox." });
+            }
+
+            var authorization = await _resourceAuthorizationService.AuthorizeProjectAsync(
+                userId.Value,
+                request.ProjectId.Value,
+                ResourcePermissionCodes.ProjectRead);
+            if (!authorization.Succeeded)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    statusCode = StatusCodes.Status403Forbidden,
+                    message = "Active project membership is required to create tasks from inbox."
+                });
             }
 
             var requestedIds = (request.InboxItemIds ?? new List<Guid>())

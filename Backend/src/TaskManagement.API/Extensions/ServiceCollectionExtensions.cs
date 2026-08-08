@@ -24,6 +24,8 @@ namespace TaskManagement.API.Extensions
 
             // Đăng ký Application Services
             services.AddScoped<IJwtService, JwtService>();
+            services.AddSingleton<IGoogleTokenVerifier, GoogleTokenVerifier>();
+            services.AddScoped<IGoogleIdentityValidator, GoogleIdentityValidator>();
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IProjectMemberService, ProjectMemberService>();
             services.AddScoped<IWorkTaskService, WorkTaskService>();
@@ -32,6 +34,7 @@ namespace TaskManagement.API.Extensions
             {
                 client.Timeout = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("ZenMux:TimeoutSeconds", 30), 5, 120));
             });
+            services.AddScoped<IAiCreditUsageService, AiCreditUsageService>();
             services.AddScoped<IAiIntegrationService, AiIntegrationService>();
             services.AddHttpClient<IAiService, GeminiAiService>(client =>
             {
@@ -41,6 +44,13 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<IOtpService, OtpService>();
             services.AddScoped<IResourceAuthorizationService, ResourceAuthorizationService>();
+            services.AddScoped<IChannelTextService, ChannelTextService>();
+            services.AddScoped<ICollaborationChannelService, CollaborationChannelService>();
+            services.AddScoped<IDirectConversationService, DirectConversationService>();
+            services.AddScoped<ICollaborationReadStateService, CollaborationReadStateService>();
+            services.AddScoped<ICollaborationRealtimeAuthorizationService, CollaborationRealtimeAuthorizationService>();
+            services.AddSingleton<ICollaborationRealtimePublisher, TaskManagement.API.Services.ChatRealtimePublisher>();
+            services.AddScoped<TaskManagement.API.Services.ICollaborationAttachmentStorage, TaskManagement.API.Services.CollaborationAttachmentStorage>();
             services.AddScoped<ITaskDependencyService, TaskDependencyService>();
             
             services.AddMemoryCache();
@@ -73,6 +83,17 @@ namespace TaskManagement.API.Extensions
                 };
                 options.Events = new JwtBearerEvents
                 {
+                    OnMessageReceived = context =>
+                    {
+                        if (context.HttpContext.Request.Path.StartsWithSegments(
+                                TaskManagement.API.Hubs.ChatHub.Route) &&
+                            context.Request.Query.TryGetValue("access_token", out var accessToken) &&
+                            !string.IsNullOrWhiteSpace(accessToken))
+                        {
+                            context.Token = accessToken;
+                        }
+                        return Task.CompletedTask;
+                    },
                     OnTokenValidated = async context =>
                     {
                         var userIdValue = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -109,7 +130,9 @@ namespace TaskManagement.API.Extensions
             // Phase 1: SprintA Alignment Entities
             services.AddScoped<IGoalService, GoalService>();
             services.AddScoped<IProjectLinkService, ProjectLinkService>();
+            services.AddScoped<IPersonalEntityReferenceResolver, PersonalEntityReferenceResolver>();
             services.AddScoped<IStarredItemService, StarredItemService>();
+            services.AddScoped<IRecentViewService, RecentViewService>();
             services.AddScoped<IFollowerService, FollowerService>();
             
             return services;

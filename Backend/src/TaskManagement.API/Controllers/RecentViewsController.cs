@@ -1,100 +1,102 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using TaskManagement.Domain.Entities;
-using TaskManagement.Infrastructure.Data;
+using TaskManagement.Application.DTOs.StarredRecent;
+using TaskManagement.Application.Interfaces;
 
 namespace TaskManagement.API.Controllers
 {
     [ApiController]
     [Route("api/recentviews")]
     [Authorize]
-    public class RecentViewsController : ControllerBase
+    public sealed class RecentViewsController : ControllerBase
     {
-        private readonly ApplicationDbContext _context;
+        private readonly IRecentViewService _recentViewService;
 
-        public RecentViewsController(ApplicationDbContext context)
+        public RecentViewsController(IRecentViewService recentViewService)
         {
-            _context = context;
-        }
-
-        private Guid? CurrentUserId()
-        {
-            var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            return Guid.TryParse(claim, out var id) ? id : null;
+            _recentViewService = recentViewService;
         }
 
         [HttpGet]
-        public async Task<IActionResult> Get([FromQuery] int limit = 50)
+        public async Task<IActionResult> Get(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 50,
+            [FromQuery] int? limit = null)
         {
-            var userId = CurrentUserId();
-            if (!userId.HasValue) return Unauthorized();
+            if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+            if (limit.HasValue)
+            {
+                page = 1;
+                pageSize = limit.Value;
+            }
 
-            var items = await _context.RecentViews
-                .AsNoTracking()
-                .Where(rv => rv.UserId == userId.Value)
-                .OrderByDescending(rv => rv.ViewedAt)
-                .Take(Math.Clamp(limit, 1, 100))
-                .Select(rv => new
+            try
+            {
+                var result = await _recentViewService.GetAllAsync(
+                    userId,
+                    page,
+                    pageSize);
+                return Ok(new
                 {
-                    rv.Id,
-                    rv.EntityType,
-                    rv.EntityId,
-                    rv.Title,
-                    rv.Subtitle,
-                    rv.Url,
-                    rv.Icon,
-                    rv.ViewedAt
-                })
-                .ToListAsync();
-
-            return Ok(new { statusCode = 200, data = items });
+                    statusCode = 200,
+                    message = "Success",
+                    data = result.Items,
+                    pagination = new
+                    {
+                        result.TotalCount,
+                        result.Page,
+                        result.PageSize
+                    }
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    statusCode = 403,
+                    message = ex.Message
+                });
+            }
         }
 
         [HttpPost]
-        public async Task<IActionResult> Upsert([FromBody] RecentViewRequest request)
+        public async Task<IActionResult> Upsert([FromBody] RecentViewRequestDto request)
         {
-            var userId = CurrentUserId();
-            if (!userId.HasValue) return Unauthorized();
-            if (request.EntityId == Guid.Empty || string.IsNullOrWhiteSpace(request.EntityType) || string.IsNullOrWhiteSpace(request.Title))
-                return BadRequest(new { statusCode = 400, message = "Invalid recent view payload." });
+            if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
 
-            var entityType = request.EntityType.Trim();
-            var existing = await _context.RecentViews.FirstOrDefaultAsync(rv =>
-                rv.UserId == userId.Value &&
-                rv.EntityType == entityType &&
-                rv.EntityId == request.EntityId);
-
-            if (existing == null)
+            try
             {
-                existing = new RecentView
+                var result = await _recentViewService.RecordAsync(
+                    userId,
+                    request.EntityType,
+                    request.EntityId);
+                return Ok(new
                 {
-                    UserId = userId.Value,
-                    EntityType = entityType,
-                    EntityId = request.EntityId
-                };
-                _context.RecentViews.Add(existing);
+                    statusCode = 200,
+                    message = "Success",
+                    data = result
+                });
             }
-
-            existing.Title = request.Title.Trim();
-            existing.Subtitle = request.Subtitle;
-            existing.Url = request.Url;
-            existing.Icon = request.Icon;
-            existing.ViewedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-
-            return Ok(new { statusCode = 200, data = new { existing.Id } });
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { statusCode = 400, message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    statusCode = 403,
+                    message = ex.Message
+                });
+            }
         }
-    }
 
-    public class RecentViewRequest
-    {
-        public string EntityType { get; set; } = string.Empty;
-        public Guid EntityId { get; set; }
-        public string Title { get; set; } = string.Empty;
-        public string? Subtitle { get; set; }
-        public string? Url { get; set; }
-        public string? Icon { get; set; }
+        private bool TryGetCurrentUserId(out Guid userId)
+        {
+            return Guid.TryParse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier),
+                out userId);
+        }
     }
 }

@@ -46,6 +46,11 @@ public static class HostingConfigurationExtensions
         Func<string, string?> externalSecretReader)
     {
         RequireJwtSecret(configuration, environment, externalSecretReader);
+        if (configuration.GetValue<bool>("Google:Enabled"))
+        {
+            RequireSecret(configuration, "Google:ClientId", environment, 10);
+        }
+
         if (!environment.IsEnvironment("Testing") && configuration.GetValue("Features:AIEnabled", true))
         {
             RequireSecret(configuration, "ZenMux:ApiKey", environment, 20);

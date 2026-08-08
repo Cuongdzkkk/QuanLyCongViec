@@ -591,12 +591,16 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Property<string>("AttachmentUrl")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid>("ChannelId")
+                    b.Property<Guid?>("CollaborationChannelId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("LegacyDepartmentId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("ChannelId");
 
                     b.Property<Guid>("SenderId")
                         .HasColumnType("uniqueidentifier");
@@ -606,11 +610,207 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ChannelId");
+                    b.HasIndex("LegacyDepartmentId");
 
                     b.HasIndex("SenderId");
 
+                    b.HasIndex("CollaborationChannelId", "SentAt", "Id");
+
                     b.ToTable("ChannelMessages");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.ChannelMessageMention", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ChannelMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DisplayText")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("Length")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("MentionedUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("StartIndex")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChannelMessageId", "MentionedUserId")
+                        .IsUnique();
+
+                    b.HasIndex("MentionedUserId", "CreatedAt");
+
+                    b.ToTable("ChannelMessageMentions");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationChannel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProvisioningKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("WorkspaceId", "ProjectId");
+
+                    b.HasIndex("ProjectId", "CreatedByUserId", "ProvisioningKey")
+                        .IsUnique()
+                        .HasFilter("[ProvisioningKey] IS NOT NULL");
+
+                    b.HasIndex("ProjectId", "IsDeleted", "IsArchived");
+
+                    b.ToTable("CollaborationChannels");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationChannelMember", b =>
+                {
+                    b.Property<Guid>("ChannelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("CanSendMessages")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LeftAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChannelId", "UserId");
+
+                    b.HasIndex("UserId", "IsActive");
+
+                    b.ToTable("CollaborationChannelMembers");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationChannelReadState", b =>
+                {
+                    b.Property<Guid>("ChannelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("LastReadAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastReadMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("ChannelId", "UserId");
+
+                    b.HasIndex("LastReadMessageId");
+
+                    b.HasIndex("UserId", "ChannelId");
+
+                    b.ToTable("CollaborationChannelReadStates");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationMessageAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ChannelMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DirectMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<Guid>("UploadedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChannelMessageId");
+
+                    b.HasIndex("DirectMessageId");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.HasIndex("UploadedByUserId", "CreatedAt");
+
+                    b.ToTable("CollaborationMessageAttachments", t =>
+                        {
+                            t.HasCheckConstraint("CK_CollaborationMessageAttachments_ExactlyOneMessage", "([ChannelMessageId] IS NOT NULL AND [DirectMessageId] IS NULL) OR ([ChannelMessageId] IS NULL AND [DirectMessageId] IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Comment", b =>
@@ -969,6 +1169,83 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.ToTable("DepartmentMembers");
                 });
 
+            modelBuilder.Entity("TaskManagement.Domain.Entities.DirectConversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastMessageAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserHighId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserLowId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserHighId");
+
+                    b.HasIndex("UserLowId", "UserHighId")
+                        .IsUnique();
+
+                    b.HasIndex("WorkspaceId", "LastMessageAt", "CreatedAt", "Id");
+
+                    b.ToTable("DirectConversations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DirectConversations_DistinctUsers", "[UserLowId] <> [UserHighId]");
+                        });
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.DirectConversationParticipant", b =>
+                {
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ConversationId", "UserId");
+
+                    b.HasIndex("UserId", "ConversationId");
+
+                    b.ToTable("DirectConversationParticipants");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.DirectConversationReadState", b =>
+                {
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("LastReadAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastReadMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("ConversationId", "UserId");
+
+                    b.HasIndex("LastReadMessageId");
+
+                    b.HasIndex("UserId", "ConversationId");
+
+                    b.ToTable("DirectConversationReadStates");
+                });
+
             modelBuilder.Entity("TaskManagement.Domain.Entities.DirectMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -980,7 +1257,11 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.Property<string>("Content")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<Guid?>("ConversationId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("IsRead")
                         .HasColumnType("bit");
@@ -999,6 +1280,8 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("ReceiverId");
 
                     b.HasIndex("SenderId");
+
+                    b.HasIndex("ConversationId", "SentAt", "Id");
 
                     b.ToTable("DirectMessages");
                 });
@@ -1027,6 +1310,47 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("EntityFollowers");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.ExternalLogin", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("LastLoginAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ProviderEmail")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ProviderSubject")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Provider", "ProviderSubject")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "Provider")
+                        .IsUnique();
+
+                    b.ToTable("ExternalLogins");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Goal", b =>
@@ -1586,6 +1910,12 @@ namespace TaskManagement.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ChannelMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CollaborationChannelId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -1621,9 +1951,15 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ChannelMessageId");
+
                     b.HasIndex("TriggeredByUserId");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("CollaborationChannelId", "CreatedAt");
+
+                    b.HasIndex("UserId", "ChannelMessageId")
+                        .IsUnique()
+                        .HasFilter("[ChannelMessageId] IS NOT NULL");
 
                     b.ToTable("Notifications");
                 });
@@ -2309,7 +2645,13 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("UserId", "EntityType", "EntityId")
                         .IsUnique();
 
-                    b.ToTable("RecentViews");
+                    b.HasIndex("UserId", "ViewedAt", "Id")
+                        .IsDescending(false, true, false);
+
+                    b.ToTable("RecentViews", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RecentViews_EntityType", "[EntityType] IN ('Goal', 'Project', 'Team', 'User', 'WorkTask')");
+                        });
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.RefreshToken", b =>
@@ -2435,11 +2777,17 @@ namespace TaskManagement.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsFavorite")
                         .HasColumnType("bit");
@@ -2454,12 +2802,28 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Planned");
+
                     b.Property<bool>("Status")
                         .HasColumnType("bit");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ProjectId");
+                    b.HasIndex("ProjectId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Sprints_Project_Active")
+                        .HasFilter("[State] = N'Active' AND [IsDeleted] = 0");
+
+                    b.HasIndex("ProjectId", "State", "StartDate", "CreatedAt", "Id")
+                        .HasDatabaseName("IX_Sprints_Project_State_Order");
 
                     b.ToTable("Sprints");
                 });
@@ -2481,6 +2845,9 @@ namespace TaskManagement.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2493,12 +2860,15 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("WorkspaceId");
 
+                    b.HasIndex("UserId", "WorkspaceId", "CreatedAt", "Id")
+                        .IsDescending(false, false, true, false);
+
                     b.HasIndex("UserId", "WorkspaceId", "ItemType", "ItemId")
                         .IsUnique();
 
                     b.ToTable("StarredItems", null, t =>
                         {
-                            t.HasCheckConstraint("CK_StarredItems_ItemType", "[ItemType] IN ('Goal', 'Project', 'Team', 'User')");
+                            t.HasCheckConstraint("CK_StarredItems_ItemType", "[ItemType] IN ('Goal', 'Project', 'Team', 'User', 'WorkTask')");
                         });
                 });
 
@@ -3463,11 +3833,15 @@ namespace TaskManagement.Infrastructure.Migrations
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ChannelMessage", b =>
                 {
-                    b.HasOne("TaskManagement.Domain.Entities.Department", "Channel")
+                    b.HasOne("TaskManagement.Domain.Entities.CollaborationChannel", "CollaborationChannel")
+                        .WithMany("Messages")
+                        .HasForeignKey("CollaborationChannelId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("TaskManagement.Domain.Entities.Department", "LegacyDepartment")
                         .WithMany()
-                        .HasForeignKey("ChannelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("LegacyDepartmentId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("TaskManagement.Domain.Entities.User", "Sender")
                         .WithMany()
@@ -3475,9 +3849,127 @@ namespace TaskManagement.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Channel");
+                    b.Navigation("CollaborationChannel");
+
+                    b.Navigation("LegacyDepartment");
 
                     b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.ChannelMessageMention", b =>
+                {
+                    b.HasOne("TaskManagement.Domain.Entities.ChannelMessage", "ChannelMessage")
+                        .WithMany("Mentions")
+                        .HasForeignKey("ChannelMessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaskManagement.Domain.Entities.User", "MentionedUser")
+                        .WithMany()
+                        .HasForeignKey("MentionedUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ChannelMessage");
+
+                    b.Navigation("MentionedUser");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationChannel", b =>
+                {
+                    b.HasOne("TaskManagement.Domain.Entities.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TaskManagement.Domain.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TaskManagement.Domain.Entities.Workspace", "Workspace")
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Project");
+
+                    b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationChannelMember", b =>
+                {
+                    b.HasOne("TaskManagement.Domain.Entities.CollaborationChannel", "Channel")
+                        .WithMany("Members")
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaskManagement.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Channel");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationChannelReadState", b =>
+                {
+                    b.HasOne("TaskManagement.Domain.Entities.CollaborationChannel", "Channel")
+                        .WithMany("ReadStates")
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaskManagement.Domain.Entities.ChannelMessage", "LastReadMessage")
+                        .WithMany()
+                        .HasForeignKey("LastReadMessageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("TaskManagement.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Channel");
+
+                    b.Navigation("LastReadMessage");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationMessageAttachment", b =>
+                {
+                    b.HasOne("TaskManagement.Domain.Entities.ChannelMessage", "ChannelMessage")
+                        .WithMany("Attachments")
+                        .HasForeignKey("ChannelMessageId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("TaskManagement.Domain.Entities.DirectMessage", "DirectMessage")
+                        .WithMany("Attachments")
+                        .HasForeignKey("DirectMessageId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("TaskManagement.Domain.Entities.User", "UploadedByUser")
+                        .WithMany()
+                        .HasForeignKey("UploadedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ChannelMessage");
+
+                    b.Navigation("DirectMessage");
+
+                    b.Navigation("UploadedByUser");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Comment", b =>
@@ -3645,8 +4137,85 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("TaskManagement.Domain.Entities.DirectConversation", b =>
+                {
+                    b.HasOne("TaskManagement.Domain.Entities.User", "UserHigh")
+                        .WithMany()
+                        .HasForeignKey("UserHighId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TaskManagement.Domain.Entities.User", "UserLow")
+                        .WithMany()
+                        .HasForeignKey("UserLowId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TaskManagement.Domain.Entities.Workspace", "Workspace")
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("UserHigh");
+
+                    b.Navigation("UserLow");
+
+                    b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.DirectConversationParticipant", b =>
+                {
+                    b.HasOne("TaskManagement.Domain.Entities.DirectConversation", "Conversation")
+                        .WithMany("Participants")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaskManagement.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.DirectConversationReadState", b =>
+                {
+                    b.HasOne("TaskManagement.Domain.Entities.DirectConversation", "Conversation")
+                        .WithMany("ReadStates")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaskManagement.Domain.Entities.DirectMessage", "LastReadMessage")
+                        .WithMany()
+                        .HasForeignKey("LastReadMessageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("TaskManagement.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+
+                    b.Navigation("LastReadMessage");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("TaskManagement.Domain.Entities.DirectMessage", b =>
                 {
+                    b.HasOne("TaskManagement.Domain.Entities.DirectConversation", "Conversation")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("TaskManagement.Domain.Entities.User", "Receiver")
                         .WithMany()
                         .HasForeignKey("ReceiverId")
@@ -3659,6 +4228,8 @@ namespace TaskManagement.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Conversation");
+
                     b.Navigation("Receiver");
 
                     b.Navigation("Sender");
@@ -3668,6 +4239,17 @@ namespace TaskManagement.Infrastructure.Migrations
                 {
                     b.HasOne("TaskManagement.Domain.Entities.User", "User")
                         .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.ExternalLogin", b =>
+                {
+                    b.HasOne("TaskManagement.Domain.Entities.User", "User")
+                        .WithMany("ExternalLogins")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -3970,6 +4552,16 @@ namespace TaskManagement.Infrastructure.Migrations
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Notification", b =>
                 {
+                    b.HasOne("TaskManagement.Domain.Entities.ChannelMessage", "ChannelMessage")
+                        .WithMany()
+                        .HasForeignKey("ChannelMessageId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("TaskManagement.Domain.Entities.CollaborationChannel", "CollaborationChannel")
+                        .WithMany()
+                        .HasForeignKey("CollaborationChannelId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("TaskManagement.Domain.Entities.User", "TriggeredByUser")
                         .WithMany()
                         .HasForeignKey("TriggeredByUserId")
@@ -3980,6 +4572,10 @@ namespace TaskManagement.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("ChannelMessage");
+
+                    b.Navigation("CollaborationChannel");
 
                     b.Navigation("TriggeredByUser");
 
@@ -4694,6 +5290,22 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("Chunks");
                 });
 
+            modelBuilder.Entity("TaskManagement.Domain.Entities.ChannelMessage", b =>
+                {
+                    b.Navigation("Attachments");
+
+                    b.Navigation("Mentions");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationChannel", b =>
+                {
+                    b.Navigation("Members");
+
+                    b.Navigation("Messages");
+
+                    b.Navigation("ReadStates");
+                });
+
             modelBuilder.Entity("TaskManagement.Domain.Entities.Comment", b =>
                 {
                     b.Navigation("ChildComments");
@@ -4722,6 +5334,20 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("Projects");
 
                     b.Navigation("TeamGoals");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.DirectConversation", b =>
+                {
+                    b.Navigation("Messages");
+
+                    b.Navigation("Participants");
+
+                    b.Navigation("ReadStates");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.DirectMessage", b =>
+                {
+                    b.Navigation("Attachments");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Goal", b =>
@@ -4840,6 +5466,8 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("CreatedProjects");
 
                     b.Navigation("DepartmentMemberships");
+
+                    b.Navigation("ExternalLogins");
 
                     b.Navigation("ManagedDepartments");
 
