@@ -10,7 +10,6 @@ import 'element-plus/theme-chalk/dark/css-vars.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import router from './router'
-import vue3GoogleLogin from 'vue3-google-login'
 import VueApexCharts from 'vue3-apexcharts'
 
 const app = createApp(App)
@@ -23,9 +22,6 @@ app.use(createPinia())
 app.use(ElementPlus)
 app.use(router)
 app.use(VueApexCharts)
-app.use(vue3GoogleLogin, {
-  clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
-})
 app.mount('#app')
 
 // Register PWA Service Worker

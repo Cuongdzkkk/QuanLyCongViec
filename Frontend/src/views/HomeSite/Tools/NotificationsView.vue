@@ -65,7 +65,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
 import UserAvatar from '@/components/common/UserAvatar.vue'
@@ -78,20 +78,33 @@ const notifications = ref([])
 const loading = ref(false)
 const filter = ref('all')
 const showUnreadOnly = ref(false)
+let notificationRequestId = 0
+let notificationAbortController = null
 
 const visibleNotifications = computed(() => {
   return notifications.value.filter(item => filter.value !== 'unread' || !item.isRead)
 })
 
 const fetchNotifications = async () => {
+  notificationAbortController?.abort()
+  const controller = new AbortController()
+  notificationAbortController = controller
+  const requestId = ++notificationRequestId
   loading.value = true
   try {
     const response = await axiosClient.get('/notifications', {
-      params: { unreadOnly: showUnreadOnly.value || filter.value === 'unread' }
+      params: { unreadOnly: showUnreadOnly.value || filter.value === 'unread' },
+      signal: controller.signal
     })
+    if (requestId !== notificationRequestId) return
     notifications.value = response.data?.data || response.data || []
+  } catch (error) {
+    if (error?.code !== 'ERR_CANCELED') throw error
   } finally {
-    loading.value = false
+    if (requestId === notificationRequestId) {
+      loading.value = false
+      notificationAbortController = null
+    }
   }
 }
 
@@ -116,8 +129,27 @@ const formatTime = (value) => {
   return new Date(value).toLocaleString(i18nStore.locale === 'vi' ? 'vi-VN' : 'en-US')
 }
 
+const handleMentionRefresh = () => { void fetchNotifications() }
+const handleNotificationReset = () => {
+  notificationAbortController?.abort()
+  notificationRequestId += 1
+  notifications.value = []
+}
+
 watch([filter, showUnreadOnly], fetchNotifications)
-onMounted(fetchNotifications)
+onMounted(() => {
+  window.addEventListener('collaboration-mention-created', handleMentionRefresh)
+  window.addEventListener('collaboration-notifications-refresh', handleMentionRefresh)
+  window.addEventListener('collaboration-notifications-reset', handleNotificationReset)
+  void fetchNotifications()
+})
+onBeforeUnmount(() => {
+  notificationAbortController?.abort()
+  notificationRequestId += 1
+  window.removeEventListener('collaboration-mention-created', handleMentionRefresh)
+  window.removeEventListener('collaboration-notifications-refresh', handleMentionRefresh)
+  window.removeEventListener('collaboration-notifications-reset', handleNotificationReset)
+})
 </script>
 
 <style scoped>

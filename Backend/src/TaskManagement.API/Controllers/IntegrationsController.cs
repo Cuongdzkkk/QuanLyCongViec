@@ -1,6 +1,5 @@
 using System.Net.Http.Headers;
 using System.Security.Claims;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
@@ -24,6 +23,7 @@ namespace TaskManagement.API.Controllers
         private readonly IConfiguration _configuration;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IDataProtector _protector;
+        private readonly IDataProtector _oauthStateProtector;
 
         public IntegrationsController(
             ApplicationDbContext context,
@@ -35,6 +35,7 @@ namespace TaskManagement.API.Controllers
             _configuration = configuration;
             _httpClientFactory = httpClientFactory;
             _protector = dataProtectionProvider.CreateProtector("SprintA.IntegrationTokens");
+            _oauthStateProtector = dataProtectionProvider.CreateProtector("SprintA.IntegrationOAuthState.v1");
         }
 
         [HttpGet]
@@ -139,14 +140,7 @@ namespace TaskManagement.API.Controllers
                 return BadRequest(new { message = "Google Calendar OAuth chưa được cấu hình đầy đủ" });
             }
 
-            var stateJson = JsonSerializer.Serialize(new
-            {
-                userId = userId.Value,
-                provider = GoogleCalendarProvider,
-                nonce = Guid.NewGuid(),
-                createdAt = DateTime.UtcNow
-            });
-            var state = Base64UrlEncode(Encoding.UTF8.GetBytes(stateJson));
+            var state = BuildOAuthState(userId.Value, GoogleCalendarProvider);
             var scope = Uri.EscapeDataString("openid email profile https://www.googleapis.com/auth/calendar.readonly");
             var url =
                 "https://accounts.google.com/o/oauth2/v2/auth" +
@@ -234,6 +228,10 @@ namespace TaskManagement.API.Controllers
             }
 
             var userId = statePayload.UserId;
+            if (!await IsActiveUserAsync(userId))
+            {
+                return Redirect(BuildFrontendRedirect(frontendUrl, "error", "OAuth user is no longer active"));
+            }
 
             var googleConfig = GetOAuthConfig(GoogleCalendarProvider);
             var clientId = googleConfig.ClientId;
@@ -330,6 +328,10 @@ namespace TaskManagement.API.Controllers
             if (statePayload == null || statePayload.UserId == Guid.Empty || statePayload.Provider != SlackProvider)
             {
                 return Redirect(BuildFrontendRedirect(frontendUrl, SlackProvider, "error", "OAuth state không hợp lệ"));
+            }
+            if (!await IsActiveUserAsync(statePayload.UserId))
+            {
+                return Redirect(BuildFrontendRedirect(frontendUrl, SlackProvider, "error", "OAuth user is no longer active"));
             }
 
             var config = GetOAuthConfig(SlackProvider);
@@ -709,16 +711,15 @@ namespace TaskManagement.API.Controllers
         private static string? FirstConfigured(params string?[] values)
             => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
-        private static string BuildOAuthState(Guid userId, string provider)
+        private string BuildOAuthState(Guid userId, string provider)
         {
-            var stateJson = JsonSerializer.Serialize(new
+            return _oauthStateProtector.Protect(JsonSerializer.Serialize(new
             {
                 userId,
                 provider,
                 nonce = Guid.NewGuid(),
                 createdAt = DateTime.UtcNow
-            });
-            return Base64UrlEncode(Encoding.UTF8.GetBytes(stateJson));
+            }));
         }
 
         private async Task<IActionResult> GoogleOAuthCallback(string provider, string displayName, string code, string state, string? error, string? errorDescription)
@@ -738,6 +739,10 @@ namespace TaskManagement.API.Controllers
             if (statePayload == null || statePayload.UserId == Guid.Empty || statePayload.Provider != provider)
             {
                 return Redirect(BuildFrontendRedirect(frontendUrl, provider, "error", "OAuth state không hợp lệ"));
+            }
+            if (!await IsActiveUserAsync(statePayload.UserId))
+            {
+                return Redirect(BuildFrontendRedirect(frontendUrl, provider, "error", "OAuth user is no longer active"));
             }
 
             var config = GetOAuthConfig(provider);
@@ -938,11 +943,6 @@ namespace TaskManagement.API.Controllers
             return DateTimeOffset.FromUnixTimeMilliseconds((long)(seconds * 1000)).UtcDateTime;
         }
 
-        private static string Base64UrlEncode(byte[] input)
-        {
-            return Convert.ToBase64String(input).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        }
-
         private string GetFrontendIntegrationUrl()
         {
             var frontendBaseUrl = _configuration["Frontend:BaseUrl"]?.TrimEnd('/');
@@ -993,19 +993,32 @@ namespace TaskManagement.API.Controllers
             return $"{frontendUrl}?{string.Join("&", query)}";
         }
 
-        private static OAuthState? DecodeState(string state)
+        private OAuthState? DecodeState(string state)
         {
             try
             {
-                var padded = state.Replace('-', '+').Replace('_', '/');
-                padded = padded.PadRight(padded.Length + (4 - padded.Length % 4) % 4, '=');
-                return JsonSerializer.Deserialize<OAuthState>(Encoding.UTF8.GetString(Convert.FromBase64String(padded)));
+                var payload = JsonSerializer.Deserialize<OAuthState>(_oauthStateProtector.Unprotect(state));
+                if (payload == null ||
+                    payload.CreatedAt == default ||
+                    payload.CreatedAt < DateTime.UtcNow.AddMinutes(-10) ||
+                    payload.CreatedAt > DateTime.UtcNow.AddMinutes(1))
+                {
+                    return null;
+                }
+
+                return payload;
             }
             catch
             {
                 return null;
             }
         }
+
+        private Task<bool> IsActiveUserAsync(Guid userId)
+            => _context.Users.AsNoTracking().AnyAsync(user =>
+                user.Id == userId &&
+                user.IsActive &&
+                !user.IsDeleted);
 
         private sealed record OAuthProviderConfig(string ClientId, string ClientSecret, string RedirectUri)
         {
@@ -1021,6 +1034,9 @@ namespace TaskManagement.API.Controllers
 
             [JsonPropertyName("provider")]
             public string Provider { get; set; } = string.Empty;
+
+            [JsonPropertyName("createdAt")]
+            public DateTime CreatedAt { get; set; }
         }
 
         private sealed class GoogleTokenResponse

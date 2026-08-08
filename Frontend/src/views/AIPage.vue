@@ -4,8 +4,11 @@
       <div class="ai-container">
         <div class="ai-page-header">
           <div class="header-left">
-            <h2 class="page-title">Trá»£ lÃ½ AI</h2>
+            <h2 class="page-title">Trợ lý AI</h2>
             <span class="header-pill">Chat, breakdown, repo analysis</span>
+            <span v-if="aiUsage" class="credit-pill">
+              {{ aiUsage.usedCredits }}/{{ aiUsage.includedCredits }} credits · còn {{ aiUsage.remainingCredits }}
+            </span>
           </div>
         </div>
 
@@ -13,7 +16,7 @@
           <div class="repo-head">
             <div>
               <div class="panel-title">GitHub repo analysis</div>
-              <div class="panel-copy">Chá»n repo, Ä‘á»c nhanh metadata vÃ  gá»­i má»™t prompt phÃ¢n tÃ­ch task vÃ o chat box.</div>
+              <div class="panel-copy">Chọn repo, đọc nhanh metadata và gửi một prompt phân tích task vào chat box.</div>
             </div>
             <button class="ghost-btn" type="button" :disabled="repoLoading" @click="analyzeRepository">Analyze repo</button>
           </div>
@@ -103,7 +106,7 @@
                     />
                     <span class="review-item-body">
                       <strong>{{ item.title }}</strong>
-                      <small>{{ item.suggestedHours }}h Â· P{{ item.priority }}</small>
+                      <small>{{ item.suggestedHours }}h · P{{ item.priority }}</small>
                     </span>
                   </label>
                 </div>
@@ -117,7 +120,7 @@
                     />
                     <span class="review-item-body">
                       <strong>{{ item.title }}</strong>
-                      <small>{{ item.suggestedHours }}h Â· P{{ item.priority }}</small>
+                      <small>{{ item.suggestedHours }}h · P{{ item.priority }}</small>
                     </span>
                   </label>
                 </div>
@@ -131,7 +134,7 @@
                     />
                     <span class="review-item-body">
                       <strong>{{ item.title }}</strong>
-                      <small>{{ item.suggestedHours }}h Â· P{{ item.priority }}</small>
+                      <small>{{ item.suggestedHours }}h · P{{ item.priority }}</small>
                     </span>
                   </label>
                 </div>
@@ -161,7 +164,7 @@
                 <div class="analysis-col-title">Quick wins</div>
                 <ul>
                   <li v-for="item in repoAnalysis.quickWins" :key="`quick-${item.title}`">
-                    {{ item.title }} Â· {{ item.suggestedHours }}h
+                    {{ item.title }} · {{ item.suggestedHours }}h
                   </li>
                 </ul>
               </div>
@@ -169,7 +172,7 @@
                 <div class="analysis-col-title">Medium tasks</div>
                 <ul>
                   <li v-for="item in repoAnalysis.mediumTasks" :key="`medium-${item.title}`">
-                    {{ item.title }} Â· {{ item.suggestedHours }}h
+                    {{ item.title }} · {{ item.suggestedHours }}h
                   </li>
                 </ul>
               </div>
@@ -177,7 +180,7 @@
                 <div class="analysis-col-title">Risky tasks</div>
                 <ul>
                   <li v-for="item in repoAnalysis.riskyTasks" :key="`risk-${item.title}`">
-                    {{ item.title }} Â· {{ item.suggestedHours }}h
+                    {{ item.title }} · {{ item.suggestedHours }}h
                   </li>
                 </ul>
               </div>
@@ -298,6 +301,7 @@ const repoLoading = ref(false)
 const repoStatus = ref('')
 const repoAnalysis = ref(null)
 const createBacklogLoading = ref('')
+const aiUsage = ref(null)
 const selectedBacklogKeys = ref([])
 const reviewTargetSprintId = ref('')
 const repoForm = ref({
@@ -308,7 +312,7 @@ const repoForm = ref({
 const chatHistory = ref([
   {
     role: 'bot',
-    content: 'Xin chÃ o! TÃ´i lÃ  trá»£ lÃ½ AI cá»§a SprintA. TÃ´i cÃ³ thá»ƒ táº¡o task tháº­t, thá»‘ng kÃª dá»± Ã¡n, tÃ³m táº¯t cÃ´ng viá»‡c, breakdown task vÃ  phÃ¢n tÃ­ch repo GitHub Ä‘á»ƒ gá»£i Ã½ backlog.'
+    content: 'Xin chào! Tôi là trợ lý AI của SprintA. Tôi có thể tạo task thật, thống kê dự án, tóm tắt công việc, breakdown task và phân tích repo GitHub để gợi ý backlog.'
   }
 ])
 
@@ -492,13 +496,13 @@ const sendMessage = async (overrideMessage = null) => {
   } catch (error) {
     clearProgressTimer()
     chatHistory.value.pop()
-    const message = error.response?.data?.message || error.response?.data?.error || error.message || 'Lá»—i káº¿t ná»‘i'
-    let friendlyMessage = `AI khÃ´ng thá»ƒ xá»­ lÃ½ yÃªu cáº§u lÃºc nÃ y: ${message}`
+    const message = error.response?.data?.message || error.response?.data?.error || error.message || 'Lỗi kết nối'
+    let friendlyMessage = `AI không thể xử lý yêu cầu lúc này: ${message}`
     
     if (message.toLowerCase().includes('quota') || message.toLowerCase().includes('limit') || error.response?.status === 429) {
-      friendlyMessage = 'Báº¡n Ä‘Ã£ Ä‘áº¡t giá»›i háº¡n sá»­ dá»¥ng AI (Quota). Vui lÃ²ng thá»­ láº¡i sau hoáº·c nÃ¢ng cáº¥p gÃ³i thÃ nh viÃªn.'
+      friendlyMessage = 'Bạn đã đạt giới hạn sử dụng AI trong tháng này. Vui lòng thử lại khi hạn mức được làm mới.'
     } else if (message.toLowerCase().includes('key') || message.toLowerCase().includes('auth')) {
-      friendlyMessage = 'Lá»—i cáº¥u hÃ¬nh API key. Vui lÃ²ng liÃªn há»‡ quáº£n trá»‹ viÃªn Ä‘á»ƒ kiá»ƒm tra láº¡i há»‡ thá»‘ng.'
+      friendlyMessage = 'Lỗi cấu hình dịch vụ AI. Vui lòng liên hệ quản trị viên để kiểm tra lại hệ thống.'
     }
     
     chatHistory.value.push({ role: 'bot', content: friendlyMessage })
@@ -694,9 +698,18 @@ const notifyProjectRealtime = (type, payload = {}) => {
   signalRService.sendProjectEvent(`${projectId}`, type, message)
 }
 
+const loadAiUsage = async () => {
+  try {
+    aiUsage.value = (await axiosClient.get('/ai/usage-summary')).data?.data || null
+  } catch {
+    aiUsage.value = null
+  }
+}
+
 onMounted(() => {
   clearLegacyGitHubCredentialStorage()
   projectStore.fetchAllProjects().catch(() => [])
+  loadAiUsage()
   if (currentProjectId.value) {
     sprintStore.fetchSprints(currentProjectId.value).catch(() => [])
     signalRService.startConnection(`${currentProjectId.value}`)
@@ -789,6 +802,7 @@ const handleSidebarSaved = (prefs) => {
 .header-left {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -806,6 +820,17 @@ const handleSidebarSaved = (prefs) => {
   font-size: 12px;
   font-weight: 600;
   border: 1px solid var(--border-color);
+}
+
+.credit-pill {
+  margin-left: auto;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .repo-panel {

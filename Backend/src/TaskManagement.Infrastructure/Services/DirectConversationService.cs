@@ -1,0 +1,546 @@
+using System.Data;
+using Microsoft.EntityFrameworkCore;
+using TaskManagement.Application.DTOs.Collaboration;
+using TaskManagement.Application.Interfaces;
+using TaskManagement.Domain.Entities;
+using TaskManagement.Infrastructure.Data;
+
+namespace TaskManagement.Infrastructure.Services;
+
+public sealed class DirectConversationService : IDirectConversationService
+{
+    public const int MaximumContentLength = 4000;
+    public const int MaximumPageSize = 100;
+    public const string ConversationOrdering = "lastMessageAt_desc,createdAt_desc,conversationId_desc";
+    public const string MessageOrdering = "createdAt_desc,messageId_desc";
+
+    private readonly ApplicationDbContext _context;
+
+    public DirectConversationService(ApplicationDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<DirectConversationDto> FindOrCreateAsync(
+        Guid userId,
+        Guid participantUserId,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == participantUserId)
+            throw new ArgumentException("A direct conversation requires another participant.");
+
+        var (lowId, highId) = CanonicalPair(userId, participantUserId);
+        var existing = await FindPairAsync(lowId, highId, userId, cancellationToken);
+        if (existing != null) return existing;
+
+        await FindSharedWorkspaceAsync(userId, participantUserId, cancellationToken);
+
+        try
+        {
+            if (_context.Database.IsRelational())
+            {
+                var strategy = _context.Database.CreateExecutionStrategy();
+                return await strategy.ExecuteAsync(() => FindOrCreateCoreAsync(
+                    userId,
+                    participantUserId,
+                    lowId,
+                    highId,
+                    useTransaction: true,
+                    cancellationToken));
+            }
+
+            return await FindOrCreateCoreAsync(
+                userId,
+                participantUserId,
+                lowId,
+                highId,
+                useTransaction: false,
+                cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            _context.ChangeTracker.Clear();
+            var concurrent = await FindPairAsync(lowId, highId, userId, cancellationToken);
+            if (concurrent != null) return concurrent;
+            throw;
+        }
+    }
+
+    private async Task<DirectConversationDto> FindOrCreateCoreAsync(
+        Guid userId,
+        Guid participantUserId,
+        Guid lowId,
+        Guid highId,
+        bool useTransaction,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = useTransaction
+            ? await _context.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable,
+                cancellationToken)
+            : null;
+
+        if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.SqlServer")
+        {
+            var pairLock = $"direct-conversation:{lowId:N}:{highId:N}";
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                DECLARE @result int;
+                EXEC @result = sys.sp_getapplock
+                    @Resource = {pairLock},
+                    @LockMode = 'Exclusive',
+                    @LockOwner = 'Transaction',
+                    @LockTimeout = 10000;
+                IF @result < 0
+                    THROW 51000, 'Could not acquire the direct conversation pair lock.', 1;
+                """,
+                cancellationToken);
+        }
+
+        var existing = await FindPairAsync(lowId, highId, userId, cancellationToken);
+        if (existing != null)
+        {
+            if (transaction != null) await transaction.CommitAsync(cancellationToken);
+            return existing;
+        }
+        if (await PairExistsAsync(lowId, highId, cancellationToken))
+            throw new DirectParticipantNotFoundException();
+
+        // Revalidate inside the transaction so conversation and both participants are atomic.
+        var workspaceId = await FindSharedWorkspaceAsync(
+            userId,
+            participantUserId,
+            cancellationToken);
+        var now = DateTime.UtcNow;
+        var conversation = new DirectConversation
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = workspaceId,
+            UserLowId = lowId,
+            UserHighId = highId,
+            CreatedAt = now
+        };
+        conversation.Participants.Add(new DirectConversationParticipant
+        {
+            ConversationId = conversation.Id,
+            UserId = lowId,
+            JoinedAt = now
+        });
+        conversation.Participants.Add(new DirectConversationParticipant
+        {
+            ConversationId = conversation.Id,
+            UserId = highId,
+            JoinedAt = now
+        });
+        _context.DirectConversations.Add(conversation);
+        await _context.SaveChangesAsync(cancellationToken);
+        if (transaction != null) await transaction.CommitAsync(cancellationToken);
+
+        return await FindPairAsync(lowId, highId, userId, cancellationToken)
+            ?? throw new InvalidOperationException("The direct conversation could not be loaded.");
+    }
+
+    public async Task<DirectConversationPageDto> ListAsync(
+        Guid userId,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        ValidatePage(page, pageSize);
+        await EnsureActiveUserAsync(userId, cancellationToken);
+
+        var query = VisibleConversations(userId);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(conversation => conversation.LastMessageAt)
+            .ThenByDescending(conversation => conversation.CreatedAt)
+            .ThenByDescending(conversation => conversation.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(conversation => new DirectConversationDto(
+                conversation.Id,
+                new DirectParticipantDto(
+                    conversation.UserLowId == userId ? conversation.UserHighId : conversation.UserLowId,
+                    conversation.UserLowId == userId
+                        ? conversation.UserHigh.FullName
+                        : conversation.UserLow.FullName,
+                    conversation.UserLowId == userId
+                        ? conversation.UserHigh.AvatarUrl
+                        : conversation.UserLow.AvatarUrl),
+                conversation.Messages
+                    .OrderByDescending(message => message.SentAt)
+                    .ThenByDescending(message => message.Id)
+                    .Select(message => message.Content)
+                    .FirstOrDefault(),
+                conversation.LastMessageAt,
+                conversation.CreatedAt))
+            .ToListAsync(cancellationToken);
+
+        items = await ApplyReadMetadataAsync(items, userId, cancellationToken);
+
+        return new(items, page, pageSize, totalCount, ConversationOrdering);
+    }
+
+    public async Task<DirectMessagePageDto> GetHistoryAsync(
+        Guid conversationId,
+        Guid userId,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        ValidatePage(page, pageSize);
+        await AuthorizeConversationAsync(conversationId, userId, cancellationToken);
+        var query = _context.DirectMessages.AsNoTracking()
+            .Where(message => message.ConversationId == conversationId);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(message => message.SentAt)
+            .ThenByDescending(message => message.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(message => new DirectMessageDto(
+                message.Id,
+                conversationId,
+                message.Content,
+                new DirectMessageSenderDto(
+                    message.SenderId,
+                    message.Sender != null ? message.Sender.FullName : "Unknown user",
+                    message.Sender != null ? message.Sender.AvatarUrl : null),
+                message.SentAt,
+                message.Attachments
+                    .OrderBy(attachment => attachment.CreatedAt)
+                    .ThenBy(attachment => attachment.Id)
+                    .Select(attachment => new CollaborationAttachmentDto(
+                        attachment.Id,
+                        attachment.OriginalFileName,
+                        attachment.ContentType,
+                        attachment.SizeBytes))
+                    .ToList()))
+            .ToListAsync(cancellationToken);
+        return new(items, page, pageSize, totalCount, MessageOrdering);
+    }
+
+    public async Task<DirectMessageDto> SendAsync(
+        Guid conversationId,
+        Guid userId,
+        string? content,
+        CancellationToken cancellationToken = default) =>
+        await SendWithAttachmentsAsync(
+            conversationId, userId, content, [], cancellationToken);
+
+    public async Task<DirectMessageDto> SendWithAttachmentsAsync(
+        Guid conversationId,
+        Guid userId,
+        string? content,
+        IReadOnlyList<PendingCollaborationAttachmentDto> attachments,
+        CancellationToken cancellationToken = default)
+    {
+        var conversation = await AuthorizeConversationAsync(conversationId, userId, cancellationToken);
+        ValidateAttachments(attachments);
+        var normalizedContent = NormalizeContent(content, attachments.Count > 0);
+        var recipientId = conversation.UserLowId == userId
+            ? conversation.UserHighId
+            : conversation.UserLowId;
+        var sentAt = DateTime.UtcNow;
+        var message = new DirectMessage
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = conversationId,
+            SenderId = userId,
+            ReceiverId = recipientId,
+            Content = normalizedContent,
+            SentAt = sentAt
+        };
+        foreach (var attachment in attachments)
+        {
+            message.Attachments.Add(new CollaborationMessageAttachment
+            {
+                Id = attachment.AttachmentId,
+                DirectMessageId = message.Id,
+                StorageKey = attachment.StorageKey,
+                OriginalFileName = attachment.OriginalFileName,
+                ContentType = attachment.ContentType,
+                SizeBytes = attachment.SizeBytes,
+                UploadedByUserId = userId,
+                CreatedAt = sentAt
+            });
+        }
+
+        if (_context.Database.IsRelational())
+        {
+            var strategy = _context.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(() => SendCoreAsync(
+                message,
+                useTransaction: true,
+                cancellationToken));
+        }
+        else
+        {
+            await SendCoreAsync(
+                message,
+                useTransaction: false,
+                cancellationToken);
+        }
+
+        return await _context.DirectMessages.AsNoTracking()
+            .Where(item => item.Id == message.Id)
+            .Select(item => new DirectMessageDto(
+                item.Id,
+                conversationId,
+                item.Content,
+                new DirectMessageSenderDto(
+                    item.SenderId,
+                    item.Sender != null ? item.Sender.FullName : "Unknown user",
+                    item.Sender != null ? item.Sender.AvatarUrl : null),
+                item.SentAt,
+                item.Attachments
+                    .OrderBy(attachment => attachment.CreatedAt)
+                    .ThenBy(attachment => attachment.Id)
+                    .Select(attachment => new CollaborationAttachmentDto(
+                        attachment.Id,
+                        attachment.OriginalFileName,
+                        attachment.ContentType,
+                        attachment.SizeBytes))
+                    .ToList()))
+            .SingleAsync(cancellationToken);
+    }
+
+    private async Task SendCoreAsync(
+        DirectMessage message,
+        bool useTransaction,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = useTransaction
+            ? await _context.Database.BeginTransactionAsync(
+                IsolationLevel.ReadCommitted,
+                cancellationToken)
+            : null;
+
+        if (useTransaction && await _context.DirectMessages
+                .AsNoTracking()
+                .AnyAsync(item => item.Id == message.Id, cancellationToken))
+        {
+            if (transaction != null) await transaction.CommitAsync(cancellationToken);
+            return;
+        }
+
+        if (_context.Entry(message).State == EntityState.Detached)
+            _context.DirectMessages.Add(message);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        if (_context.Database.IsRelational())
+        {
+            await _context.DirectConversations
+                .Where(item => item.Id == message.ConversationId &&
+                    (item.LastMessageAt == null || item.LastMessageAt < message.SentAt))
+                .ExecuteUpdateAsync(setters => setters.SetProperty(
+                    item => item.LastMessageAt,
+                    message.SentAt), cancellationToken);
+        }
+        else
+        {
+            var trackedConversation = await _context.DirectConversations
+                .SingleAsync(
+                    item => item.Id == message.ConversationId,
+                    cancellationToken);
+            trackedConversation.LastMessageAt =
+                trackedConversation.LastMessageAt == null ||
+                trackedConversation.LastMessageAt < message.SentAt
+                    ? message.SentAt
+                    : trackedConversation.LastMessageAt;
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        if (transaction != null) await transaction.CommitAsync(cancellationToken);
+    }
+
+    private IQueryable<DirectConversation> VisibleConversations(Guid userId) =>
+        _context.DirectConversations.AsNoTracking().Where(conversation =>
+            conversation.Participants.Any(participant => participant.UserId == userId) &&
+            conversation.UserLow.IsActive && !conversation.UserLow.IsDeleted &&
+            conversation.UserHigh.IsActive && !conversation.UserHigh.IsDeleted &&
+            !conversation.Workspace.IsDeleted &&
+            conversation.Workspace.Members.Any(member =>
+                member.UserId == conversation.UserLowId && member.IsActive) &&
+            conversation.Workspace.Members.Any(member =>
+                member.UserId == conversation.UserHighId && member.IsActive));
+
+    private async Task<DirectConversation> AuthorizeConversationAsync(
+        Guid conversationId,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        await EnsureActiveUserAsync(userId, cancellationToken);
+        return await VisibleConversations(userId)
+            .SingleOrDefaultAsync(conversation => conversation.Id == conversationId, cancellationToken)
+            ?? throw new DirectConversationNotFoundException();
+    }
+
+    private async Task<DirectConversationDto?> FindPairAsync(
+        Guid lowId,
+        Guid highId,
+        Guid currentUserId,
+        CancellationToken cancellationToken)
+    {
+        var conversation = await VisibleConversations(currentUserId)
+            .Where(conversation => conversation.UserLowId == lowId && conversation.UserHighId == highId)
+            .Select(conversation => new DirectConversationDto(
+                conversation.Id,
+                new DirectParticipantDto(
+                    currentUserId == lowId ? highId : lowId,
+                    currentUserId == lowId ? conversation.UserHigh.FullName : conversation.UserLow.FullName,
+                    currentUserId == lowId ? conversation.UserHigh.AvatarUrl : conversation.UserLow.AvatarUrl),
+                conversation.Messages
+                    .OrderByDescending(message => message.SentAt)
+                    .ThenByDescending(message => message.Id)
+                    .Select(message => message.Content)
+                    .FirstOrDefault(),
+                conversation.LastMessageAt,
+                conversation.CreatedAt))
+            .SingleOrDefaultAsync(cancellationToken);
+        if (conversation == null) return null;
+        return (await ApplyReadMetadataAsync(
+            [conversation], currentUserId, cancellationToken))[0];
+    }
+
+    private async Task<List<DirectConversationDto>> ApplyReadMetadataAsync(
+        IReadOnlyCollection<DirectConversationDto> conversations,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        if (conversations.Count == 0) return [];
+        var conversationIds = conversations.Select(item => item.ConversationId).ToList();
+        var states = await _context.DirectConversationReadStates.AsNoTracking()
+            .Where(state =>
+                conversationIds.Contains(state.ConversationId) &&
+                state.UserId == userId)
+            .ToDictionaryAsync(
+                state => state.ConversationId,
+                state => state.LastReadMessageId,
+                cancellationToken);
+        var messages = await _context.DirectMessages.AsNoTracking()
+            .Where(message =>
+                message.ConversationId != null &&
+                conversationIds.Contains(message.ConversationId.Value))
+            .OrderBy(message => message.ConversationId)
+            .ThenBy(message => message.SentAt)
+            .ThenBy(message => message.Id)
+            .Select(message => new ReadMessage(
+                message.ConversationId!.Value,
+                message.Id,
+                message.SenderId))
+            .ToListAsync(cancellationToken);
+        var messagesByConversation = messages
+            .GroupBy(message => message.ResourceId)
+            .ToDictionary(group => group.Key, group => group.ToList());
+
+        return conversations.Select(conversation =>
+        {
+            states.TryGetValue(conversation.ConversationId, out var cursorId);
+            messagesByConversation.TryGetValue(
+                conversation.ConversationId,
+                out var conversationMessages);
+            conversationMessages ??= [];
+            var cursorIndex = cursorId == null
+                ? -1
+                : conversationMessages.FindIndex(message => message.MessageId == cursorId.Value);
+            var unreadCount = conversationMessages
+                .Skip(cursorIndex + 1)
+                .Count(message => message.SenderId != userId);
+            return conversation with
+            {
+                UnreadCount = unreadCount,
+                LastReadMessageId = cursorId
+            };
+        }).ToList();
+    }
+
+    private sealed record ReadMessage(Guid ResourceId, Guid MessageId, Guid SenderId);
+
+    private Task<bool> PairExistsAsync(
+        Guid lowId,
+        Guid highId,
+        CancellationToken cancellationToken) =>
+        _context.DirectConversations.AsNoTracking().AnyAsync(
+            conversation =>
+                conversation.UserLowId == lowId &&
+                conversation.UserHighId == highId,
+            cancellationToken);
+
+    private async Task<Guid> FindSharedWorkspaceAsync(
+        Guid userId,
+        Guid participantUserId,
+        CancellationToken cancellationToken)
+    {
+        await EnsureActiveUserAsync(userId, cancellationToken);
+        var participantIsActive = await _context.Users.AsNoTracking()
+            .AnyAsync(user =>
+                user.Id == participantUserId && user.IsActive && !user.IsDeleted,
+                cancellationToken);
+        if (!participantIsActive) throw new DirectParticipantNotFoundException();
+
+        var workspaceId = await _context.WorkspaceMembers.AsNoTracking()
+            .Where(member =>
+                member.UserId == userId &&
+                member.IsActive &&
+                !member.Workspace.IsDeleted &&
+                member.Workspace.Members.Any(other =>
+                    other.UserId == participantUserId && other.IsActive))
+            .OrderBy(member => member.WorkspaceId)
+            .Select(member => (Guid?)member.WorkspaceId)
+            .FirstOrDefaultAsync(cancellationToken);
+        return workspaceId ?? throw new DirectParticipantNotFoundException();
+    }
+
+    private async Task EnsureActiveUserAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        if (!await _context.Users.AsNoTracking().AnyAsync(
+                user => user.Id == userId && user.IsActive && !user.IsDeleted,
+                cancellationToken))
+            throw new DirectParticipantNotFoundException();
+    }
+
+    private static (Guid LowId, Guid HighId) CanonicalPair(Guid first, Guid second) =>
+        first.CompareTo(second) < 0 ? (first, second) : (second, first);
+
+    private static string NormalizeContent(string? content, bool hasAttachments)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            if (hasAttachments) return string.Empty;
+            throw new ArgumentException("Message content is required.", nameof(content));
+        }
+        var normalized = content.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Trim();
+        if (normalized.Length > MaximumContentLength)
+            throw new ArgumentException(
+                $"Message content cannot exceed {MaximumContentLength} characters.",
+                nameof(content));
+        return normalized;
+    }
+
+    private static void ValidateAttachments(IReadOnlyList<PendingCollaborationAttachmentDto> attachments)
+    {
+        ArgumentNullException.ThrowIfNull(attachments);
+        if (attachments.Count > 5)
+            throw new ArgumentException("A message can contain at most 5 attachments.", nameof(attachments));
+        if (attachments.Any(item =>
+                item.AttachmentId == Guid.Empty ||
+                string.IsNullOrWhiteSpace(item.StorageKey) ||
+                item.StorageKey != Path.GetFileName(item.StorageKey) ||
+                string.IsNullOrWhiteSpace(item.OriginalFileName) ||
+                string.IsNullOrWhiteSpace(item.ContentType) ||
+                item.SizeBytes is <= 0 or > 10 * 1024 * 1024))
+            throw new ArgumentException("Attachment metadata is invalid.", nameof(attachments));
+    }
+
+    private static void ValidatePage(int page, int pageSize)
+    {
+        if (page < 1) throw new ArgumentOutOfRangeException(nameof(page), "Page must be at least 1.");
+        if (pageSize is < 1 or > MaximumPageSize)
+            throw new ArgumentOutOfRangeException(
+                nameof(pageSize),
+                $"Page size must be between 1 and {MaximumPageSize}.");
+    }
+}

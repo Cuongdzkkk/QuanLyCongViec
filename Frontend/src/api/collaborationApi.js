@@ -1,0 +1,167 @@
+import axiosClient from '@/api/axiosClient'
+
+const unwrapData = (response) => response?.data?.data ?? response?.data
+
+const messageForm = (content, files, mentions = []) => {
+  const form = new FormData()
+  if (content) form.append('content', content)
+  files.forEach(file => form.append('files', file))
+  mentions.forEach((mention, index) => {
+    form.append(`mentions[${index}].userId`, mention.userId)
+    form.append(`mentions[${index}].startIndex`, `${mention.startIndex}`)
+    form.append(`mentions[${index}].length`, `${mention.length}`)
+  })
+  return form
+}
+
+export const collaborationApi = {
+  async getProjectChannels(projectId, options = {}) {
+    const response = await axiosClient.get(`/projects/${projectId}/channels`, {
+      params: {
+        page: options.page ?? 1,
+        pageSize: options.pageSize ?? 50
+      },
+      signal: options.signal
+    })
+    return unwrapData(response)
+  },
+
+  async createProjectChannel(projectId, payload, options = {}) {
+    const response = await axiosClient.post(
+      `/projects/${projectId}/channels`,
+      payload,
+      {
+        headers: {
+          'Idempotency-Key': options.idempotencyKey
+        },
+        signal: options.signal
+      }
+    )
+    return unwrapData(response)
+  },
+
+  async getChannelMessages(channelId, options = {}) {
+    const response = await axiosClient.get(`/channels/${channelId}/messages`, {
+      params: {
+        page: options.page ?? 1,
+        pageSize: options.pageSize ?? 50
+      },
+      signal: options.signal
+    })
+    return unwrapData(response)
+  },
+
+  async sendChannelMessage(channelId, payload, options = {}) {
+    const files = Array.isArray(payload.files) ? payload.files : []
+    const mentions = Array.isArray(payload.mentions) ? payload.mentions : []
+    const response = await axiosClient.post(
+      `/channels/${channelId}/messages`,
+      files.length
+        ? messageForm(payload.content, files, mentions)
+        : { content: payload.content, mentions },
+      {
+        signal: options.signal,
+        headers: files.length ? { 'Content-Type': 'multipart/form-data' } : undefined
+      }
+    )
+    return unwrapData(response)
+  },
+
+  async searchChannelMembers(channelId, query, options = {}) {
+    const response = await axiosClient.get(`/channels/${channelId}/members`, {
+      params: { query, limit: options.limit ?? 10 },
+      signal: options.signal
+    })
+    return unwrapData(response)
+  },
+
+  async markChannelRead(channelId, messageId, options = {}) {
+    const response = await axiosClient.post(
+      `/channels/${channelId}/read`,
+      { messageId },
+      { signal: options.signal }
+    )
+    return unwrapData(response)
+  },
+
+  async getDirectMessageUsers(projectId, options = {}) {
+    const response = await axiosClient.get('/users', {
+      params: {
+        projectId,
+        page: options.page ?? 1,
+        pageSize: options.pageSize ?? 100
+      },
+      signal: options.signal
+    })
+    return {
+      items: response?.data?.data ?? [],
+      page: response?.data?.page ?? options.page ?? 1,
+      pageSize: response?.data?.pageSize ?? options.pageSize ?? 100,
+      totalCount: response?.data?.total ?? 0
+    }
+  },
+
+  async findOrCreateDirectConversation(participantUserId, options = {}) {
+    const response = await axiosClient.post(
+      '/direct-conversations',
+      { participantUserId },
+      { signal: options.signal }
+    )
+    return unwrapData(response)
+  },
+
+  async getDirectConversations(options = {}) {
+    const response = await axiosClient.get('/direct-conversations', {
+      params: {
+        page: options.page ?? 1,
+        pageSize: options.pageSize ?? 50
+      },
+      signal: options.signal
+    })
+    return unwrapData(response)
+  },
+
+  async getDirectMessages(conversationId, options = {}) {
+    const response = await axiosClient.get(
+      `/direct-conversations/${conversationId}/messages`,
+      {
+        params: {
+          page: options.page ?? 1,
+          pageSize: options.pageSize ?? 50
+        },
+        signal: options.signal
+      }
+    )
+    return unwrapData(response)
+  },
+
+  async sendDirectMessage(conversationId, content, options = {}) {
+    const files = Array.isArray(options.files) ? options.files : []
+    const response = await axiosClient.post(
+      `/direct-conversations/${conversationId}/messages`,
+      files.length ? messageForm(content, files) : { content },
+      {
+        signal: options.signal,
+        headers: files.length ? { 'Content-Type': 'multipart/form-data' } : undefined
+      }
+    )
+    return unwrapData(response)
+  },
+
+  async downloadAttachment(attachmentId, options = {}) {
+    const response = await axiosClient.get(
+      `/collaboration-attachments/${attachmentId}/content`,
+      { responseType: 'blob', signal: options.signal }
+    )
+    return response.data
+  },
+
+  async markDirectConversationRead(conversationId, messageId, options = {}) {
+    const response = await axiosClient.post(
+      `/direct-conversations/${conversationId}/read`,
+      { messageId },
+      { signal: options.signal }
+    )
+    return unwrapData(response)
+  }
+}

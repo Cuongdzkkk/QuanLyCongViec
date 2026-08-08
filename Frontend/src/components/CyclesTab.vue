@@ -1,9 +1,11 @@
 <script setup>
-import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { useSprintStore } from '@/store/useSprintStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { hasProjectWritePermission, normalizeProjectRole } from '@/utils/permissions'
+import { getSprintErrorMessage, getSprintStateMeta, SPRINT_STATE } from '@/utils/sprintState'
 import { useI18n } from '@/composables/useI18n'
 import axiosClient from '@/api/axiosClient'
 import { subscribeAdminRealtime } from '@/utils/adminRealtime'
@@ -35,6 +37,8 @@ const chartTheme = computed(() => currentTheme.value === 'dark' ? 'dark' : 'ligh
 provide(THEME_KEY, chartTheme)
 
 const showCreateModal = ref(false)
+const closeCycleCandidate = ref(null)
+const closeCycleConfirmButton = ref(null)
 const burndownCharts = ref({})
 const showCalendar = ref(false)
 const currentMonth = ref(new Date().getMonth())
@@ -100,9 +104,9 @@ const filteredSprints = computed(() => {
     return matchesSearch && matchesProgress
   })
 })
-const activeSprints = computed(() => filteredSprints.value.filter(s => (s.state || '').toLowerCase() === 'active'))
-const upcomingSprints = computed(() => filteredSprints.value.filter(s => (s.state || '').toLowerCase() === 'upcoming'))
-const completedSprints = computed(() => filteredSprints.value.filter(s => (s.state || '').toLowerCase() === 'completed'))
+const activeSprints = computed(() => filteredSprints.value.filter(s => s.state === SPRINT_STATE.ACTIVE))
+const upcomingSprints = computed(() => filteredSprints.value.filter(s => s.state === SPRINT_STATE.UPCOMING))
+const completedSprints = computed(() => filteredSprints.value.filter(s => s.state === SPRINT_STATE.COMPLETED))
 const hasCycleFilters = computed(() => Boolean(cycleSearchQuery.value.trim()) || cycleProgressFilter.value !== 'all')
 
 const toggleTab = (tab) => {
@@ -163,7 +167,9 @@ const visibleCarryOverTasks = (cycleId) => {
   })
 }
 
-const availableTargetSprints = (cycleId) => allSprints.value.filter(sprint => sprint.id !== cycleId && (sprint.state || '').toLowerCase() !== 'completed')
+const availableTargetSprints = (cycleId) => allSprints.value.filter(sprint =>
+  sprint.id !== cycleId && sprint.state === SPRINT_STATE.UPCOMING
+)
 
 const priorityLabel = (priority) => {
   if (priority === 1) return 'Urgent'
@@ -226,7 +232,9 @@ const progressSegments = (cycle) => {
 }
 
 const activeItemCount = (cycle) => Math.max((cycle.taskCount || 0) - (cycle.completedTaskCount || 0), 0)
-const cycleStateLabel = (state) => state === 'Active' ? t('cyclesTab.active') : state
+const cycleStateLabel = (state) => getSprintStateMeta(state).label
+const isTransitioning = (action, cycleId) =>
+  sprintStore.isTransitioning(action, props.projectId, cycleId)
 
 const openCycleBoard = (cycle) => {
   router.push({
@@ -349,12 +357,15 @@ const getBurndownPalette = () => {
   }
 }
 
+let burndownRequestSequence = 0
 const fetchBurndowns = async () => {
+  const requestId = ++burndownRequestSequence
+  const projectId = props.projectId
   const chartEntries = {}
   const palette = getBurndownPalette()
   await Promise.all(activeSprints.value.map(async (sprint) => {
     try {
-      const res = await axiosClient.get(`/projects/${props.projectId}/sprints/${sprint.id}/burndown`)
+      const res = await axiosClient.get(`/projects/${projectId}/sprints/${sprint.id}/burndown`)
       const burndown = res.data?.data || []
       chartEntries[sprint.id] = {
         backgroundColor: 'transparent',
@@ -411,7 +422,9 @@ const fetchBurndowns = async () => {
       console.error('Failed to load burndown', error)
     }
   }))
-  burndownCharts.value = chartEntries
+  if (requestId === burndownRequestSequence && props.projectId === projectId) {
+    burndownCharts.value = chartEntries
+  }
 }
 
 const loadCycles = async (force = false) => {
@@ -453,11 +466,59 @@ const createNewCycle = async () => {
 }
 
 const startCycle = async (cycle) => {
+  if (
+    !canManageSprint.value ||
+    !getSprintStateMeta(cycle.state).canStart ||
+    isTransitioning('start', cycle.id)
+  ) return
+
   try {
-    await sprintStore.startSprint(props.projectId, cycle.id)
+    const result = await sprintStore.startSprint(props.projectId, cycle.id)
+    if (result?.data) {
+      ElMessage.success(`Đã bắt đầu Cycle "${cycle.name}".`)
+      await fetchBurndowns()
+    }
   } catch (error) {
-    alert(error.response?.data?.message || 'Không thể bắt đầu cycle')
+    ElMessage.error(getSprintErrorMessage(error))
   }
+}
+
+const openCloseCycleModal = (cycle) => {
+  if (!canManageSprint.value || !getSprintStateMeta(cycle.state).canClose) return
+  closeCycleCandidate.value = cycle
+}
+
+const dismissCloseCycleModal = () => {
+  if (
+    closeCycleCandidate.value &&
+    isTransitioning('close', closeCycleCandidate.value.id)
+  ) return
+  closeCycleCandidate.value = null
+}
+
+const closeCycleToBacklog = async () => {
+  const cycle = closeCycleCandidate.value
+  if (
+    !cycle ||
+    !canManageSprint.value ||
+    !getSprintStateMeta(cycle.state).canClose ||
+    isTransitioning('close', cycle.id)
+  ) return
+
+  try {
+    const result = await sprintStore.closeSprint(props.projectId, cycle.id, null)
+    if (result?.data) {
+      closeCycleCandidate.value = null
+      ElMessage.success(`Đã đóng Cycle "${cycle.name}".`)
+      await fetchBurndowns()
+    }
+  } catch (error) {
+    ElMessage.error(getSprintErrorMessage(error))
+  }
+}
+
+const handleTransitionEscape = (event) => {
+  if (event.key === 'Escape') dismissCloseCycleModal()
 }
 
 const toggleCalendar = () => {
@@ -560,7 +621,24 @@ const btnDateText = computed(() => {
   return `${start} -> ${end}`
 })
 
-watch(() => props.projectId, () => loadCycles(true), { immediate: true })
+watch(
+  () => props.projectId,
+  () => {
+    burndownRequestSequence += 1
+    burndownCharts.value = {}
+    cycleWorkItems.value = {}
+    carryOverItems.value = {}
+    expandedCarryOverCycleId.value = null
+    closeCycleCandidate.value = null
+    loadCycles(true)
+  },
+  { immediate: true }
+)
+watch(closeCycleCandidate, async (cycle) => {
+  if (!cycle) return
+  await nextTick()
+  closeCycleConfirmButton.value?.focus()
+})
 watch(
   () => route.query.carryOverFromSprintId,
   async (cycleId) => {
@@ -579,6 +657,7 @@ watch(currentTheme, () => {
 let cycleRefreshTimer = null
 let unsubscribeAdminRealtime = null
 onMounted(() => {
+  window.addEventListener('keydown', handleTransitionEscape)
   cycleRefreshTimer = window.setInterval(() => {
     if (props.projectId) {
       loadCycles()
@@ -603,6 +682,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleTransitionEscape)
+  burndownRequestSequence += 1
   if (cycleRefreshTimer) {
     window.clearInterval(cycleRefreshTimer)
   }
@@ -647,7 +728,20 @@ onUnmounted(() => {
         </template>
       </ProjectPageToolbar>
 
-    <div class="cycles-body">
+    <div v-if="sprintStore.loading && allSprints.length === 0" class="cycle-load-state" role="status">
+      <i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i>
+      Đang tải Cycle...
+    </div>
+    <div v-else-if="sprintStore.error && allSprints.length === 0" class="cycle-load-state cycle-load-error" role="alert">
+      <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+      {{ sprintStore.error.message || 'Không thể tải danh sách Cycle.' }}
+      <button type="button" class="nexus-btn-outlined" @click="loadCycles(true)">Thử lại</button>
+    </div>
+
+    <div
+      v-if="allSprints.length > 0 || (!sprintStore.loading && !sprintStore.error)"
+      class="cycles-body"
+    >
       <div class="cycle-section">
         <div class="cs-header" @click="toggleTab('active')">
           <i class="chevron fa-solid" :class="expandedTabs.active ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
@@ -664,6 +758,22 @@ onUnmounted(() => {
                 <span class="cycle-name">{{ cycle.name }}</span>
               </div>
               <div class="cct-right">
+                <button
+                  v-if="canManageSprint"
+                  class="plane-danger-btn"
+                  type="button"
+                  :disabled="isTransitioning('close', cycle.id)"
+                  :aria-label="`Đóng Cycle ${cycle.name}`"
+                  title="Đóng Cycle"
+                  @click.stop="openCloseCycleModal(cycle)"
+                >
+                  <i
+                    class="fa-solid"
+                    :class="isTransitioning('close', cycle.id) ? 'fa-circle-notch fa-spin' : 'fa-circle-check'"
+                    aria-hidden="true"
+                  ></i>
+                  {{ isTransitioning('close', cycle.id) ? 'Đang đóng...' : 'Đóng Cycle' }}
+                </button>
                 <span class="detail-link cursor-pointer hover:text-white" @click.stop="openCycleBoard(cycle)">
                   <i class="fa-solid fa-info-circle"></i> {{ t('cyclesTab.openBoard', 'Open board') }}
                 </span>
@@ -772,8 +882,22 @@ onUnmounted(() => {
                 <i class="fa-regular fa-calendar"></i>
                 {{ formatDateCompact(cycle.startDate) }} - {{ formatDateCompact(cycle.endDate) }}
               </span>
-              <button class="plane-primary-btn" style="margin-right: 8px;" @click.stop="startCycle(cycle)">
-                <i class="fa-solid fa-play"></i> {{ t('cyclesTab.startCycle', 'Start cycle') }}
+              <button
+                v-if="canManageSprint && getSprintStateMeta(cycle.state).canStart"
+                class="plane-primary-btn"
+                style="margin-right: 8px;"
+                type="button"
+                :disabled="isTransitioning('start', cycle.id)"
+                :aria-label="`Bắt đầu Cycle ${cycle.name}`"
+                title="Bắt đầu Cycle"
+                @click.stop="startCycle(cycle)"
+              >
+                <i
+                  class="fa-solid"
+                  :class="isTransitioning('start', cycle.id) ? 'fa-circle-notch fa-spin' : 'fa-play'"
+                  aria-hidden="true"
+                ></i>
+                {{ isTransitioning('start', cycle.id) ? 'Đang bắt đầu...' : t('cyclesTab.startCycle', 'Start cycle') }}
               </button>
               <span class="detail-link cursor-pointer hover:text-white" @click.stop="openCycleBoard(cycle)">
                 <i class="fa-solid fa-info-circle"></i> {{ t('cyclesTab.openBoard', 'Open board') }}
@@ -902,6 +1026,63 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+    </div>
+
+    <div
+      v-if="closeCycleCandidate"
+      class="modal-overlay transition-modal-overlay"
+      role="presentation"
+      @click.self="dismissCloseCycleModal"
+    >
+      <section
+        class="transition-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="close-cycle-title"
+        aria-describedby="close-cycle-description"
+      >
+        <header class="transition-modal-header">
+          <div class="transition-modal-icon" aria-hidden="true">
+            <i class="fa-solid fa-flag-checkered"></i>
+          </div>
+          <div>
+            <h2 id="close-cycle-title">Đóng Cycle</h2>
+            <p>{{ closeCycleCandidate.name }}</p>
+          </div>
+        </header>
+        <div id="close-cycle-description" class="transition-modal-body">
+          <p>Cycle sẽ được đánh dấu hoàn tất theo trạng thái mới nhất từ máy chủ.</p>
+          <div class="transition-warning">
+            <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+            <span>Task chưa hoàn tất sẽ được chuyển về Backlog. Task, trạng thái và người được giao sẽ không bị xóa hoặc tự động hoàn tất.</span>
+          </div>
+        </div>
+        <footer class="transition-modal-actions">
+          <button
+            class="cm-btn-cancel"
+            type="button"
+            :disabled="isTransitioning('close', closeCycleCandidate.id)"
+            @click="dismissCloseCycleModal"
+          >
+            Hủy
+          </button>
+          <button
+            ref="closeCycleConfirmButton"
+            class="plane-danger-btn"
+            type="button"
+            :disabled="isTransitioning('close', closeCycleCandidate.id)"
+            aria-label="Xác nhận đóng Cycle"
+            @click="closeCycleToBacklog"
+          >
+            <i
+              class="fa-solid"
+              :class="isTransitioning('close', closeCycleCandidate.id) ? 'fa-circle-notch fa-spin' : 'fa-circle-check'"
+              aria-hidden="true"
+            ></i>
+            {{ isTransitioning('close', closeCycleCandidate.id) ? 'Đang đóng...' : 'Đóng Cycle' }}
+          </button>
+        </footer>
+      </section>
     </div>
 
     <div class="modal-overlay" v-if="showCreateModal && canManageSprint" @click.self="showCreateModal = false; showCalendar = false">
@@ -1816,7 +1997,140 @@ onUnmounted(() => {
 [data-theme='dark'] .cycle-card {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22) !important;
 }
+
+.cycle-load-state {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--color-text-secondary);
+}
+
+.cycle-load-error {
+  color: var(--color-danger, #dc2626);
+  flex-wrap: wrap;
+}
+
+.plane-danger-btn {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, #dc2626 55%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, #dc2626 10%, var(--color-surface));
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.plane-danger-btn:disabled,
+.plane-primary-btn:disabled,
+.cm-btn-cancel:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.transition-modal-overlay {
+  padding: 16px;
+  z-index: 1100;
+}
+
+.transition-modal {
+  width: min(100%, 480px);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.24);
+}
+
+.transition-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 20px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.transition-modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.transition-modal-header p {
+  margin: 3px 0 0;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.transition-modal-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, #dc2626 12%, transparent);
+  color: #dc2626;
+}
+
+.transition-modal-body {
+  padding: 18px 20px;
+}
+
+.transition-modal-body > p {
+  margin: 0 0 14px;
+}
+
+.transition-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-left: 3px solid #d97706;
+  border-radius: 4px;
+  background: color-mix(in srgb, #d97706 10%, var(--color-surface));
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.transition-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px 20px;
+}
+
+@media (max-width: 390px) {
+  .transition-modal-overlay {
+    align-items: flex-end;
+    padding: 8px;
+  }
+
+  .transition-modal {
+    max-height: calc(100vh - 16px);
+  }
+
+  .transition-modal-header,
+  .transition-modal-body,
+  .transition-modal-actions {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .transition-modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .transition-modal-actions > button {
+    width: 100%;
+  }
+}
 </style>
-
-
-

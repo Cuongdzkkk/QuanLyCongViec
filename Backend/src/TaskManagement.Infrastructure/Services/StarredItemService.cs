@@ -1,111 +1,243 @@
-using System;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using TaskManagement.Application.DTOs.StarredRecent;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 
 namespace TaskManagement.Infrastructure.Services
 {
-    public class StarredItemService : IStarredItemService
+    public sealed class StarredItemService : IStarredItemService
     {
         private readonly ApplicationDbContext _context;
+        private readonly IPersonalEntityReferenceResolver _referenceResolver;
 
-        public StarredItemService(ApplicationDbContext context)
+        public StarredItemService(
+            ApplicationDbContext context,
+            IPersonalEntityReferenceResolver referenceResolver)
         {
             _context = context;
+            _referenceResolver = referenceResolver;
         }
 
-        public async Task<object> GetAllAsync(Guid userId, Guid workspaceId)
+        public async Task<PersonalCollectionPageDto<StarredItemDto>> GetAllAsync(
+            Guid userId,
+            Guid workspaceId,
+            int page,
+            int pageSize)
         {
-            var items = await _context.StarredItems
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 100);
+
+            var records = await _context.StarredItems
                 .AsNoTracking()
-                .Where(s => s.UserId == userId && s.WorkspaceId == workspaceId)
-                .OrderByDescending(s => s.CreatedAt)
+                .Where(item => item.UserId == userId && item.WorkspaceId == workspaceId)
+                .OrderByDescending(item => item.CreatedAt)
+                .ThenBy(item => item.Id)
                 .ToListAsync();
 
-            var goalIds = items.Where(i => i.ItemType == "Goal").Select(i => i.ItemId).ToList();
-            var projectIds = items.Where(i => i.ItemType == "Project").Select(i => i.ItemId).ToList();
-            var teamIds = items.Where(i => i.ItemType == "Team").Select(i => i.ItemId).ToList();
-            var userIds = items.Where(i => i.ItemType == "User").Select(i => i.ItemId).ToList();
-
-            var goalNames = goalIds.Count == 0
-                ? new Dictionary<Guid, string>()
-                : await _context.Goals.Where(g => goalIds.Contains(g.Id)).ToDictionaryAsync(g => g.Id, g => g.Title);
-            var projectNames = projectIds.Count == 0
-                ? new Dictionary<Guid, string>()
-                : await _context.Projects.Where(p => projectIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name);
-            var teamNames = teamIds.Count == 0
-                ? new Dictionary<Guid, string>()
-                : await _context.Departments.Where(d => teamIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, d => d.Name);
-            var userNames = userIds.Count == 0
-                ? new Dictionary<Guid, string>()
-                : await _context.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.FullName ?? u.Email);
-
-            return items.Select(item => new
-            {
-                item.Id,
-                item.UserId,
-                item.WorkspaceId,
-                item.ItemType,
-                item.ItemId,
-                item.CreatedAt,
-                itemName = item.ItemType switch
+            var canonicalRecords = records
+                .Select(item => new
                 {
-                    "Goal" => goalNames.GetValueOrDefault(item.ItemId),
-                    "Project" => projectNames.GetValueOrDefault(item.ItemId),
-                    "Team" => teamNames.GetValueOrDefault(item.ItemId),
-                    "User" => userNames.GetValueOrDefault(item.ItemId),
-                    _ => null
-                }
-            }).ToList();
+                    Record = item,
+                    CanonicalType = StarredItemTypes.Normalize(item.ItemType)
+                })
+                .Where(item => item.CanonicalType != null)
+                .ToList();
+            var references = await _referenceResolver.ResolveReadableAsync(
+                userId,
+                workspaceId,
+                canonicalRecords.Select(item =>
+                    new PersonalEntityKey(item.CanonicalType!, item.Record.ItemId)));
+
+            var readable = canonicalRecords
+                .Where(item => references.ContainsKey(
+                    new PersonalEntityKey(item.CanonicalType!, item.Record.ItemId)))
+                .ToList();
+            var items = readable
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(item => Map(
+                    item.Record,
+                    references[new PersonalEntityKey(item.CanonicalType!, item.Record.ItemId)]))
+                .ToList();
+
+            return new PersonalCollectionPageDto<StarredItemDto>
+            {
+                TotalCount = readable.Count,
+                Page = page,
+                PageSize = pageSize,
+                Items = items
+            };
         }
 
-        public async Task<object> ToggleStarAsync(Guid userId, Guid workspaceId, string itemType, Guid itemId)
+        public async Task<StarredItemMutationDto> StarAsync(
+            Guid userId,
+            Guid workspaceId,
+            string itemType,
+            Guid itemId)
         {
-            var existing = await _context.StarredItems
-                .FirstOrDefaultAsync(s => s.UserId == userId && s.WorkspaceId == workspaceId && s.ItemType == itemType && s.ItemId == itemId);
+            var canonicalType = _referenceResolver.NormalizeType(itemType);
+            using var mutationLock = await PersonalEntityMutationLock.AcquireAsync(
+                $"star:{userId}:{workspaceId}:{canonicalType}:{itemId}");
+            return await StarCoreAsync(userId, workspaceId, canonicalType, itemId);
+        }
 
+        public async Task<StarredItemMutationDto> UnstarAsync(
+            Guid userId,
+            Guid workspaceId,
+            string itemType,
+            Guid itemId)
+        {
+            var canonicalType = _referenceResolver.NormalizeType(itemType);
+            using var mutationLock = await PersonalEntityMutationLock.AcquireAsync(
+                $"star:{userId}:{workspaceId}:{canonicalType}:{itemId}");
+            return await UnstarCoreAsync(userId, workspaceId, canonicalType, itemId);
+        }
+
+        public async Task<StarredItemMutationDto> ToggleStarAsync(
+            Guid userId,
+            Guid workspaceId,
+            string itemType,
+            Guid itemId)
+        {
+            var canonicalType = _referenceResolver.NormalizeType(itemType);
+            using var mutationLock = await PersonalEntityMutationLock.AcquireAsync(
+                $"star:{userId}:{workspaceId}:{canonicalType}:{itemId}");
+            var exists = await _context.StarredItems.AnyAsync(item =>
+                item.UserId == userId &&
+                item.WorkspaceId == workspaceId &&
+                item.ItemType == canonicalType &&
+                item.ItemId == itemId);
+
+            return exists
+                ? await UnstarCoreAsync(userId, workspaceId, canonicalType, itemId)
+                : await StarCoreAsync(userId, workspaceId, canonicalType, itemId);
+        }
+
+        private async Task<StarredItemMutationDto> StarCoreAsync(
+            Guid userId,
+            Guid workspaceId,
+            string canonicalType,
+            Guid itemId)
+        {
+            var reference = await _referenceResolver.ResolveReadableAsync(
+                userId,
+                workspaceId,
+                canonicalType,
+                itemId);
+            var existing = await _context.StarredItems.FirstOrDefaultAsync(item =>
+                item.UserId == userId &&
+                item.WorkspaceId == workspaceId &&
+                item.ItemType == canonicalType &&
+                item.ItemId == itemId);
             if (existing != null)
             {
-                _context.StarredItems.Remove(existing);
-                _context.SiteAuditLogs.Add(new SiteAuditLog
+                return new StarredItemMutationDto
                 {
-                    EntityId = itemId,
-                    EntityType = itemType,
-                    Action = "Unstar",
-                    UserId = userId,
-                    OldValue = itemId.ToString(),
-                    CreatedAt = DateTime.UtcNow
-                });
-                await _context.SaveChangesAsync();
-                return new { status = "unstarred" };
-            }
-            else
-            {
-                var starredItem = new StarredItem
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = userId,
-                    WorkspaceId = workspaceId,
-                    ItemType = itemType,
-                    ItemId = itemId,
-                    CreatedAt = DateTime.UtcNow
+                    Status = "starred",
+                    Item = Map(existing, reference)
                 };
-                _context.StarredItems.Add(starredItem);
-                _context.SiteAuditLogs.Add(new SiteAuditLog
-                {
-                    EntityId = itemId,
-                    EntityType = itemType,
-                    Action = "Star",
-                    UserId = userId,
-                    NewValue = itemId.ToString(),
-                    CreatedAt = DateTime.UtcNow
-                });
-                await _context.SaveChangesAsync();
-                return new { status = "starred", data = starredItem };
             }
+
+            var now = DateTime.UtcNow;
+            var starredItem = new StarredItem
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                WorkspaceId = workspaceId,
+                ItemType = canonicalType,
+                ItemId = itemId,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            _context.StarredItems.Add(starredItem);
+            AddAudit(userId, itemId, canonicalType, "Star");
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                _context.ChangeTracker.Clear();
+                var concurrent = await _context.StarredItems
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(item =>
+                        item.UserId == userId &&
+                        item.WorkspaceId == workspaceId &&
+                        item.ItemType == canonicalType &&
+                        item.ItemId == itemId);
+                if (concurrent == null) throw;
+                starredItem = concurrent;
+            }
+
+            return new StarredItemMutationDto
+            {
+                Status = "starred",
+                Item = Map(starredItem, reference)
+            };
+        }
+
+        private async Task<StarredItemMutationDto> UnstarCoreAsync(
+            Guid userId,
+            Guid workspaceId,
+            string canonicalType,
+            Guid itemId)
+        {
+            // Authorization is checked even when the record no longer exists.
+            await _referenceResolver.ResolveReadableAsync(
+                userId,
+                workspaceId,
+                canonicalType,
+                itemId);
+            var existing = await _context.StarredItems.FirstOrDefaultAsync(item =>
+                item.UserId == userId &&
+                item.WorkspaceId == workspaceId &&
+                item.ItemType == canonicalType &&
+                item.ItemId == itemId);
+            if (existing == null)
+            {
+                return new StarredItemMutationDto { Status = "unstarred" };
+            }
+
+            _context.StarredItems.Remove(existing);
+            AddAudit(userId, itemId, canonicalType, "Unstar");
+            await _context.SaveChangesAsync();
+            return new StarredItemMutationDto { Status = "unstarred" };
+        }
+
+        private void AddAudit(Guid userId, Guid itemId, string itemType, string action)
+        {
+            _context.SiteAuditLogs.Add(new SiteAuditLog
+            {
+                Id = Guid.NewGuid(),
+                EntityId = itemId,
+                EntityType = itemType,
+                Action = action,
+                UserId = userId,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        private static StarredItemDto Map(
+            StarredItem record,
+            PersonalEntityReferenceDto reference)
+        {
+            return new StarredItemDto
+            {
+                Id = record.Id,
+                ItemType = reference.EntityType,
+                ItemId = record.ItemId,
+                WorkspaceId = record.WorkspaceId,
+                ProjectId = reference.ProjectId,
+                ItemName = reference.Title,
+                Title = reference.Title,
+                Subtitle = reference.Subtitle,
+                Url = reference.Url,
+                Icon = reference.Icon,
+                CreatedAt = record.CreatedAt,
+                UpdatedAt = record.UpdatedAt == default ? record.CreatedAt : record.UpdatedAt
+            };
         }
     }
 }

@@ -59,8 +59,15 @@
 
         <div v-else class="project-grid">
           <article v-for="project in filteredProjects" :key="project.id" class="project-card">
-            <button class="favorite-btn" type="button" @click="toggleFavorite(project)">
-              <i :class="project.isFavorite ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+            <button
+              class="favorite-btn"
+              type="button"
+              :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, project.id)"
+              :aria-pressed="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id)"
+              :aria-label="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id) ? 'Remove project from starred' : 'Add project to starred'"
+              @click="toggleFavorite(project)"
+            >
+              <i :class="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
             </button>
 
             <div class="project-cover" :style="projectCoverStyle(project)" :aria-label="project.coverAltText || project.name">
@@ -95,8 +102,15 @@
 
         <div class="project-grid">
           <article v-for="project in favoriteProjects" :key="`favorite-${project.id}`" class="project-card">
-            <button class="favorite-btn" type="button" @click="toggleFavorite(project)">
-              <i :class="project.isFavorite ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+            <button
+              class="favorite-btn"
+              type="button"
+              :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, project.id)"
+              :aria-pressed="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id)"
+              :aria-label="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id) ? 'Remove project from starred' : 'Add project to starred'"
+              @click="toggleFavorite(project)"
+            >
+              <i :class="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
             </button>
 
             <div class="project-cover" :style="projectCoverStyle(project)" :aria-label="project.coverAltText || project.name">
@@ -173,12 +187,15 @@ import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 
 import { useProjectStore } from '@/store/useProjectStore'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { useI18n } from '@/composables/useI18n'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import DailyFocusWidget from '@/components/DailyFocusWidget.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
+const starredStore = useStarredStore()
 const { t, language } = useI18n()
 
 const currentUser = ref(null)
@@ -262,14 +279,12 @@ const openTaskModal = async (project = null) => {
 }
 
 const toggleFavorite = async (project) => {
-  const nextValue = !project.isFavorite
-  project.isFavorite = nextValue
+  const nextValue = !starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id)
   try {
     await projectStore.updateFavorite(project.id, nextValue)
     ElMessage.success(nextValue ? t('dashboard.projectStarred') : t('dashboard.projectUnstarred'))
   } catch (error) {
-    project.isFavorite = !nextValue
-    ElMessage.error(t('dashboard.favoriteUpdateFailed'))
+    ElMessage.error(starredStore.error || t('dashboard.favoriteUpdateFailed'))
   }
 }
 
@@ -301,7 +316,10 @@ onMounted(async () => {
   if (userStr) currentUser.value = JSON.parse(userStr)
   updateTime()
   setInterval(updateTime, 60000)
-  await projectStore.fetchAllProjects(true)
+  await Promise.all([
+    projectStore.fetchAllProjects(true),
+    starredStore.fetchStarredItems({ page: 1, pageSize: 100 }).catch(() => [])
+  ])
 })
 
 watch(language, updateTime)
@@ -460,18 +478,31 @@ watch(language, updateTime)
 }
 
 .favorite-btn {
+  appearance: none;
+  -webkit-appearance: none;
   position: absolute;
   top: 12px;
   right: 12px;
   z-index: 1;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 2px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
   background: rgba(0, 0, 0, 0.45);
   color: #facc15;
+  font: inherit;
   cursor: pointer;
+  touch-action: manipulation;
+  display: grid;
+  place-items: center;
 }
+.favorite-btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 52%, #fff);
+  outline-offset: 2px;
+}
+.favorite-btn:disabled { cursor: wait; }
+.favorite-btn i { width: 1em; line-height: 1; text-align: center; }
 
 .project-cover {
   height: 110px;
@@ -681,6 +712,3 @@ watch(language, updateTime)
   }
 }
 </style>
-
-
-

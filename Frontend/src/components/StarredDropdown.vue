@@ -1,304 +1,306 @@
 <template>
-  <div class="jd-content">
-    <div class="jd-header">
+  <div class="quick-panel">
+    <header class="panel-header">
       <h3>Starred</h3>
-    </div>
+    </header>
 
-    <div class="jd-body">
-      <!-- Empty state: không có cả project lẫn task -->
-      <div v-if="starredProjects.length === 0 && starredTasks.length === 0" class="jd-empty-starred">
-        <i class="fa-regular fa-star" style="font-size: 48px; color: var(--color-text-muted); margin-bottom: 16px;"></i>
-        <h4>You haven't starred anything yet</h4>
-        <p>Đánh dấu sao các mục quan trọng để truy cập nhanh tại đây.</p>
+    <div class="panel-body">
+      <div v-if="starredStore.loading" class="panel-state" role="status" aria-live="polite">
+        <span class="state-spinner" aria-hidden="true"></span>
+        <h4>Loading starred items</h4>
+        <p>Keeping your shortcuts up to date.</p>
       </div>
 
-      <div v-else class="jd-list">
-        <!-- Section: Starred Spaces (Projects) -->
-        <template v-if="starredProjects.length > 0">
-          <div class="jd-section-label">Spaces</div>
+      <div v-else-if="starredStore.error" class="panel-state state-error" role="alert">
+        <i class="fa-solid fa-triangle-exclamation state-icon" aria-hidden="true"></i>
+        <h4>Starred items are unavailable</h4>
+        <p>{{ starredStore.error }}</p>
+        <button class="retry-button" type="button" @click="loadStarredItems">Try again</button>
+      </div>
+
+      <div v-else-if="starredProjects.length === 0 && starredTasks.length === 0" class="panel-state">
+        <i class="fa-regular fa-star state-icon" aria-hidden="true"></i>
+        <h4>You haven't starred anything yet</h4>
+        <p>Star important items to keep them within easy reach.</p>
+      </div>
+
+      <div v-else class="panel-list">
+        <section v-if="starredProjects.length > 0" aria-labelledby="starred-spaces-label">
+          <h4 id="starred-spaces-label" class="section-label">Spaces</h4>
           <div
             v-for="project in starredProjects"
-            :key="`proj-${project.id}`"
-            class="jd-item"
+            :key="`project-${project.itemId}`"
+            class="panel-item"
+            role="link"
+            tabindex="0"
             @click="goToProject(project)"
+            @keydown.enter.prevent="goToProject(project)"
+            @keydown.space.prevent="goToProject(project)"
           >
-            <div class="jd-item-icon">
-              <span
-                class="proj-icon"
-                :style="{ background: projectColor(project) }"
-              >{{ project.icon || project.name?.charAt(0)?.toUpperCase() || 'P' }}</span>
-            </div>
-            <div class="jd-item-content">
-              <div class="jd-item-title">{{ project.name || 'Space' }}</div>
-              <div class="jd-item-subtitle">Space</div>
-            </div>
-            <div class="jd-item-action" @click.stop="unstarProject(project)" title="Remove from starred">
-              <i class="fa-solid fa-star text-yellow-400"></i>
-            </div>
+            <span class="project-icon" :style="{ background: projectColor(project) }">
+              {{ project.icon || project.name?.charAt(0)?.toUpperCase() || 'P' }}
+            </span>
+            <span class="item-copy">
+              <strong>{{ project.name || 'Space' }}</strong>
+              <small>Space</small>
+            </span>
+            <button
+              class="star-action"
+              type="button"
+              :disabled="starredStore.isPending(project.itemType, project.itemId)"
+              :aria-busy="starredStore.isPending(project.itemType, project.itemId)"
+              aria-label="Remove space from starred"
+              title="Remove from starred"
+              @click.stop="unstarItem(project)"
+            >
+              <i :class="pendingIcon(project)" aria-hidden="true"></i>
+            </button>
           </div>
-        </template>
+        </section>
 
-        <!-- Section: Starred Tasks -->
-        <template v-if="starredTasks.length > 0">
-          <div class="jd-section-label">Work items</div>
+        <section v-if="starredTasks.length > 0" aria-labelledby="starred-tasks-label">
+          <h4 id="starred-tasks-label" class="section-label">Work items</h4>
           <div
             v-for="item in starredTasks"
-            :key="`task-${item.id}`"
-            class="jd-item"
+            :key="`task-${item.itemId}`"
+            class="panel-item"
+            role="link"
+            tabindex="0"
             @click="goToTask(item)"
+            @keydown.enter.prevent="goToTask(item)"
+            @keydown.space.prevent="goToTask(item)"
           >
-            <div class="jd-item-icon">
-              <i class="fa-solid fa-square-check text-blue-500"></i>
-            </div>
-            <div class="jd-item-content">
-              <div class="jd-item-title">{{ item.title || 'Task' }}</div>
-              <div class="jd-item-subtitle">Task • {{ item.sequenceId || item.id?.substring(0, 8).toUpperCase() }} • {{ item.projectName || 'Project' }}</div>
-            </div>
-            <div class="jd-item-action" @click.stop="unstarTask(item)" title="Remove from starred">
-              <i class="fa-solid fa-star text-yellow-400"></i>
-            </div>
+            <span class="item-type-icon"><i class="fa-solid fa-square-check" aria-hidden="true"></i></span>
+            <span class="item-copy">
+              <strong>{{ item.title || 'Task' }}</strong>
+              <small>Task · {{ item.sequenceId || '—' }} · {{ item.projectName || 'Project' }}</small>
+            </span>
+            <button
+              class="star-action"
+              type="button"
+              :disabled="starredStore.isPending(item.itemType, item.itemId)"
+              :aria-busy="starredStore.isPending(item.itemType, item.itemId)"
+              aria-label="Remove work item from starred"
+              title="Remove from starred"
+              @click.stop="unstarItem(item)"
+            >
+              <i :class="pendingIcon(item)" aria-hidden="true"></i>
+            </button>
           </div>
-        </template>
+        </section>
       </div>
     </div>
 
-    <div class="jd-footer" v-if="starredProjects.length > 0 || starredTasks.length > 0">
-      <button @click="viewAllStarred">View all starred items</button>
-    </div>
+    <footer v-if="hasItems" class="panel-footer">
+      <button type="button" @click="viewAllStarred">View all starred items</button>
+    </footer>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useWorkTaskStore } from '@/store/useWorkTaskStore'
-import { useProjectStore } from '@/store/useProjectStore'
-import axiosClient from '@/api/axiosClient'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 
 const emit = defineEmits(['close'])
 const router = useRouter()
-const workTaskStore = useWorkTaskStore()
-const projectStore = useProjectStore()
+const starredStore = useStarredStore()
 
-// --- Starred Projects (reactive t\u1ef1 \u0111\u1ed9ng theo favoriteProjects getter) ---
-const starredProjects = computed(() => projectStore.favoriteProjects)
+const starredProjects = computed(() => starredStore.starredItems
+  .filter(item => item.itemType === STARRED_ENTITY_TYPES.PROJECT)
+  .map(item => ({ ...item, id: item.itemId, name: item.itemName || item.title })))
 
-// --- Starred Tasks (reactive t\u1ef1 \u0111\u1ed9ng theo Pinia state) ---
-const starredTasks = computed(() => [...workTaskStore.starredTasks].reverse())
+const starredTasks = computed(() => starredStore.starredItems
+  .filter(item => item.itemType === STARRED_ENTITY_TYPES.WORK_TASK)
+  .map(item => ({
+    ...item,
+    id: item.itemId,
+    projectName: item.subtitle,
+    sequenceId: item.sequenceId || item.itemId?.substring(0, 8).toUpperCase()
+  })))
 
-// Gi\u1eef expose \u0111\u1ec3 t\u01b0\u01a1ng th\u00edch v\u1edbi parent (NexusSidebar @show="onStarredShow")
-const loadStarredItems = async () => {
-  try {
-    await workTaskStore.fetchStarredTasks()
-  } catch (err) {
-    console.error('Failed to validate starred tasks:', err)
-  }
-}
+const hasItems = computed(() => starredProjects.value.length > 0 || starredTasks.value.length > 0)
+const loadStarredItems = () => starredStore.fetchStarredItems({ page: 1, pageSize: 20 }).catch(() => null)
 defineExpose({ loadStarredItems })
 
-// --- Actions ---
-const unstarProject = async (project) => {
+const unstarItem = async (item) => {
   try {
-    await projectStore.updateFavorite(project.id, false)
+    await starredStore.setStarred(item.itemType, item.itemId, false)
   } catch {
-    // silent
+    // The store exposes the API error in the shared error state.
   }
 }
 
-const unstarTask = (item) => {
-  workTaskStore.toggleTaskStar(item)
-}
+const pendingIcon = (item) => starredStore.isPending(item.itemType, item.itemId)
+  ? 'fa-solid fa-spinner fa-spin'
+  : 'fa-solid fa-star'
 
 const goToProject = (project) => {
   emit('close')
-  router.push(`/space/${project.id}`)
+  router.push(project.url || `/home/projects/${project.itemId}`)
 }
 
 const goToTask = (item) => {
+  if (!item.url) return
   emit('close')
-  if (item.projectId) {
-    router.push(`/space/${item.projectId}/work-items`)
-  }
+  router.push(item.url)
 }
 
 const viewAllStarred = () => {
   emit('close')
-  router.push('/dashboard?tab=starred')
+  router.push('/home/starred')
 }
 
 const projectColor = (project) => {
-  if (project.cover && project.cover.startsWith('#')) return project.cover
-  const colors = ['#579dff', '#c97cf4', '#00b8d9', '#22a06b', '#f5cd47']
+  if (project.cover?.startsWith('#')) return project.cover
+  const colors = ['#0c66e4', '#7c3aed', '#0891b2', '#0f9d72', '#d97706']
   return colors[(project.name?.length || 0) % colors.length]
 }
 </script>
 
 <style scoped>
-.jd-content {
+.quick-panel {
+  width: min(340px, calc(100vw - 24px));
+  min-width: 0;
+  min-height: 286px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 96%, var(--color-accent) 4%), var(--color-surface));
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface, #fff) 96%, var(--color-accent, #0c66e4) 4%), var(--color-surface, #fff));
   color: var(--color-text-primary, #172b4d);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  border-radius: 16px;
-  overflow: hidden;
-  min-width: 340px;
 }
 
-.jd-header {
-  padding: 16px 16px 8px;
-}
-.jd-header h3 {
+.panel-header { padding: 16px 16px 8px; }
+.panel-header h3,
+.section-label {
   margin: 0;
-  font-size: 12px;
-  text-transform: uppercase;
   color: var(--color-text-muted, #6b778c);
-  font-weight: 850;
+  font-size: 11px;
+  font-weight: 800;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
+.section-label { padding: 10px 12px 5px; font-size: 10px; }
 
-.jd-body {
+.panel-body {
+  min-height: 216px;
+  max-height: 360px;
   flex: 1;
   overflow-y: auto;
-  max-height: 360px;
   padding: 0 8px 8px;
 }
 
-.jd-empty-starred {
-  text-align: center;
+.panel-state {
+  min-height: 216px;
   padding: 24px 16px;
-}
-.jd-empty-starred img {
-  width: 100px;
-  margin: 0 auto 16px;
-  opacity: 0.7;
-}
-.jd-empty-starred h4 {
-  font-size: 14px;
-  font-weight: 600;
-  margin: 0 0 6px 0;
-  color: var(--color-text-primary, #172b4d);
-}
-.jd-empty-starred p {
-  font-size: 12px;
-  color: var(--color-text-muted, #6b778c);
-  margin: 0;
-  line-height: 1.4;
-}
-
-.jd-section-label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  color: var(--color-text-muted, #6b778c);
-  letter-spacing: 0.6px;
-  padding: 10px 16px 4px;
-}
-
-.jd-list {
-  padding-bottom: 8px;
-}
-
-.jd-item {
   display: flex;
-  align-items: center;
-  padding: 10px 10px;
-  cursor: pointer;
-  border-radius: 12px;
-  transition: background 0.16s ease, transform 0.16s ease;
-}
-.jd-item:hover {
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface-hover));
-  transform: translateX(2px);
-}
-
-.jd-item-icon {
-  margin-right: 12px;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.proj-icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
+  box-sizing: border-box;
+  text-align: center;
 }
-
-.jd-item-content {
-  flex: 1;
-  min-width: 0;
+.panel-state h4 { margin: 0 0 6px; font-size: 14px; font-weight: 800; }
+.panel-state p { max-width: 250px; margin: 0; color: var(--color-text-muted, #6b778c); font-size: 12px; line-height: 1.5; }
+.state-icon { width: 40px; height: 40px; margin-bottom: 14px; display: grid; place-items: center; color: var(--color-text-muted, #6b778c); font-size: 26px; }
+.state-error .state-icon { color: #e34935; }
+.state-spinner {
+  width: 24px;
+  height: 24px;
+  margin-bottom: 16px;
+  border: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 18%, transparent);
+  border-top-color: var(--color-accent, #0c66e4);
+  border-radius: 50%;
+  animation: panel-spin 0.8s linear infinite;
 }
+@keyframes panel-spin { to { transform: rotate(360deg); } }
 
-.jd-item-title {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--color-text-primary, #172b4d);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.jd-item-subtitle {
-  font-size: 11px;
-  color: var(--color-text-muted, #6b778c);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.jd-item-action {
-  margin-left: 12px;
-  font-size: 14px;
-  padding: 4px;
-  border-radius: 3px;
+.panel-list { padding-bottom: 4px; }
+.panel-item {
+  min-height: 54px;
+  padding: 7px 6px 7px 10px;
   display: flex;
   align-items: center;
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.jd-item:hover .jd-item-action {
-  opacity: 1;
-}
-.jd-item-action:hover {
-  background: rgba(9, 30, 66, 0.08);
-}
-
-.jd-footer {
-  padding: 10px 14px;
-  border-top: 1px solid var(--color-border, #ebecf0);
-}
-
-.jd-footer button {
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  border: none;
-  color: var(--color-accent, #0c66e4);
-  font-size: 13px;
-  font-weight: 800;
-  padding: 8px;
-  border-radius: 10px;
+  box-sizing: border-box;
+  border-radius: 11px;
   cursor: pointer;
+  transition: background 0.16s ease, transform 0.16s ease;
 }
-.jd-footer button:hover {
-  background: var(--color-surface-hover, #f4f5f7);
-  text-decoration: none;
+.panel-item:hover { background: color-mix(in srgb, var(--color-accent, #0c66e4) 9%, var(--color-surface-hover, #f4f5f7)); transform: translateX(2px); }
+.panel-item:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 38%, transparent); outline-offset: -2px; }
+.project-icon,
+.item-type-icon {
+  width: 28px;
+  height: 28px;
+  margin-right: 10px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+.item-type-icon { background: color-mix(in srgb, var(--color-accent, #0c66e4) 14%, transparent); color: var(--color-accent, #0c66e4); font-size: 14px; }
+.item-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.item-copy strong,
+.item-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-copy strong { font-size: 13px; font-weight: 800; }
+.item-copy small { color: var(--color-text-muted, #6b778c); font-size: 11px; }
+
+.star-action,
+.panel-footer button,
+.retry-button {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.star-action {
+  width: 40px;
+  height: 40px;
+  margin-left: 6px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: #e3a008;
+}
+.star-action:hover { background: color-mix(in srgb, #e3a008 14%, transparent); }
+.star-action:disabled { cursor: wait; }
+.star-action i { width: 1em; line-height: 1; text-align: center; }
+
+.panel-footer { padding: 9px 12px; border-top: 1px solid var(--color-border, #ebecf0); }
+.panel-footer button { width: 100%; padding: 9px 10px; border-radius: 9px; color: var(--color-accent, #0c66e4); text-align: left; font-size: 13px; font-weight: 800; }
+.panel-footer button:hover { background: var(--color-surface-hover, #f4f5f7); }
+.retry-button { margin-top: 14px; padding: 8px 12px; border: 1px solid var(--color-border, #dfe1e6); border-radius: 9px; background: var(--color-surface, #fff); font-size: 12px; font-weight: 800; }
+.retry-button:hover { background: var(--color-surface-hover, #f4f5f7); }
+
+.star-action:focus-visible,
+.panel-footer button:focus-visible,
+.retry-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 42%, transparent);
+  outline-offset: 2px;
 }
 
-[data-theme='dark'] .jd-content {
-  background:
-    linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.98)),
-    #0f172a;
+[data-theme='dark'] .quick-panel {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface, #162033) 94%, #2563eb 6%), var(--color-surface, #162033));
+}
+
+@media (hover: none) {
+  .panel-item:hover { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-item { transition: none; }
 }
 </style>
-

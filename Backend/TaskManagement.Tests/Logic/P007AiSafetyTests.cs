@@ -65,7 +65,13 @@ public sealed class P007AiSafetyTests
             ["ZenMux:Model"] = "test-model"
         }).Build();
         var zenMuxClient = new ZenMuxAiClient(new HttpClient(handler), configuration);
-        var service = new GeminiAiService(context, new HttpClient(), zenMuxClient, Mock.Of<IWorkTaskService>(), configuration);
+        var service = new GeminiAiService(
+            context,
+            new HttpClient(),
+            zenMuxClient,
+            Mock.Of<IWorkTaskService>(),
+            new AiCreditUsageService(context),
+            configuration);
 
         var failure = await FluentActions.Invoking(() => service.ChatAsync(userId, new AiChatRequestDto
         {

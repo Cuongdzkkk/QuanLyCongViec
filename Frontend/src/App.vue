@@ -1,18 +1,10 @@
 <template>
   <ErrorBoundary>
-    <Suspense>
-      <router-view v-slot="{ Component }">
-        <Transition name="route-soft" mode="out-in">
-          <component :is="Component" />
-        </Transition>
-      </router-view>
-      <template #fallback>
-        <div class="app-loading-screen">
-          <div class="loader-spinner"></div>
-          <p>Đang tải giao diện...</p>
-        </div>
-      </template>
-    </Suspense>
+    <router-view v-slot="{ Component }">
+      <Transition name="route-soft" mode="out-in">
+        <component :is="Component" />
+      </Transition>
+    </router-view>
   </ErrorBoundary>
 </template>
 
@@ -68,31 +60,6 @@ onMounted(async () => {
 
 <style>
 /* Global Resets & Base Styles are in style.css */
-
-.app-loading-screen {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  background: var(--color-bg);
-  color: var(--color-text-primary);
-  font-family: 'Inter', sans-serif;
-  gap: 16px;
-}
-
-.loader-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--color-border);
-  border-top-color: var(--color-accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
 
 .route-soft-enter-active,
 .route-soft-leave-active {

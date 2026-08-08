@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using TaskManagement.Application.Common;
+using TaskManagement.Application.DTOs.Module;
 using TaskManagement.Application.DTOs.Project;
 using TaskManagement.Application.DTOs.WorkTask;
 using TaskManagement.Application.Interfaces;
@@ -159,6 +160,222 @@ namespace TaskManagement.Infrastructure.Services
             dtos = dtos.OrderBy(d => d.SortOrder).ToList();
 
             return dtos;
+        }
+
+        public async Task<ModuleDetailDto?> GetModuleDetailAsync(
+            Guid projectId,
+            Guid moduleId,
+            Guid userId,
+            int page,
+            int pageSize)
+        {
+            var normalizedPage = Math.Max(page, 1);
+            var normalizedPageSize = Math.Clamp(pageSize, 1, 100);
+
+            var module = await _context.Modules
+                .AsNoTracking()
+                .Where(item =>
+                    item.Id == moduleId &&
+                    item.ProjectId == projectId &&
+                    item.Status != "Disabled" &&
+                    item.Project.Status &&
+                    !item.Project.IsDeleted &&
+                    !item.Project.Workspace.IsDeleted)
+                .Select(item => new
+                {
+                    item.Id,
+                    item.ProjectId,
+                    WorkspaceId = item.Project.WorkspaceId,
+                    item.Name,
+                    item.Description,
+                    item.Status,
+                    item.StartDate,
+                    item.TargetDate,
+                    item.LeadId,
+                    LeadName = item.Lead != null ? item.Lead.FullName : null,
+                    item.CreatedAt,
+                    item.UpdatedAt
+                })
+                .FirstOrDefaultAsync();
+            if (module == null)
+            {
+                return null;
+            }
+
+            var projectRole = await _context.ProjectMembers
+                .AsNoTracking()
+                .Where(member =>
+                    member.ProjectId == projectId &&
+                    member.UserId == userId &&
+                    member.Status &&
+                    member.User.IsActive &&
+                    !member.User.IsDeleted)
+                .Select(member => member.ProjectRole)
+                .FirstOrDefaultAsync();
+            var hasWorkspaceMembership = await _context.WorkspaceMembers
+                .AsNoTracking()
+                .AnyAsync(member =>
+                    member.WorkspaceId == module.WorkspaceId &&
+                    member.UserId == userId &&
+                    member.IsActive &&
+                    member.User.IsActive &&
+                    !member.User.IsDeleted);
+            if (string.IsNullOrWhiteSpace(projectRole) || !hasWorkspaceMembership)
+            {
+                throw new UnauthorizedAccessException(
+                    "Active workspace and project membership are required.");
+            }
+
+            var executionRules = await LoadExecutionRulesAsync(projectId);
+            var normalizedProjectRole = ProjectExecutionRuleHelper.NormalizeProjectRole(projectRole);
+            var canSeeAllTasks =
+                executionRules.ManagerAlwaysSeeAllTasks &&
+                IsVisibilityOverrideRole(normalizedProjectRole);
+
+            var taskQuery = _context.WorkTasks
+                .AsNoTracking()
+                .Where(task =>
+                    task.ProjectId == projectId &&
+                    task.WorkspaceId == module.WorkspaceId &&
+                    !task.IsDeleted &&
+                    !task.IsArchived &&
+                    task.IssueModules.Any(link => link.ModuleId == moduleId));
+
+            if (!canSeeAllTasks)
+            {
+                var accessRecords = await taskQuery
+                    .Select(task => new TaskVisibilityAccessRecord
+                    {
+                        Id = task.Id,
+                        ReporterId = task.ReporterId,
+                        AssignedUserId = task.AssignedUserId,
+                        AssigneeIds = task.TaskAssignments
+                            .Where(assignment => assignment.Status)
+                            .Select(assignment => assignment.UserId)
+                            .ToList()
+                    })
+                    .ToListAsync();
+                var visibilityMap = await LoadTaskVisibilityMapAsync(
+                    accessRecords.Select(item => item.Id));
+                var allowedTaskIds = accessRecords
+                    .Where(record => CanUserViewTask(
+                        record,
+                        visibilityMap.TryGetValue(record.Id, out var visibility)
+                            ? visibility
+                            : new TaskVisibilityDto(),
+                        normalizedProjectRole,
+                        userId))
+                    .Select(record => record.Id)
+                    .ToHashSet();
+
+                taskQuery = taskQuery.Where(task => allowedTaskIds.Contains(task.Id));
+            }
+
+            var now = DateTime.UtcNow;
+            var summary = await taskQuery
+                .GroupBy(_ => 1)
+                .Select(group => new
+                {
+                    Total = group.Count(),
+                    Completed = group.Count(task =>
+                        task.TaskStatus.Name.Contains("Done") ||
+                        task.TaskStatus.Name.Contains("DONE") ||
+                        task.TaskStatus.Name.Contains("Complete")),
+                    InProgress = group.Count(task =>
+                        task.TaskStatus.Name.Contains("Progress") ||
+                        task.TaskStatus.Name.Contains("Active")),
+                    Overdue = group.Count(task =>
+                        task.DueDate.HasValue &&
+                        task.DueDate.Value < now &&
+                        !task.TaskStatus.Name.Contains("Done") &&
+                        !task.TaskStatus.Name.Contains("DONE") &&
+                        !task.TaskStatus.Name.Contains("Complete"))
+                })
+                .FirstOrDefaultAsync();
+            var totalCount = summary?.Total ?? 0;
+            var totalPages = totalCount == 0
+                ? 0
+                : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
+
+            var tasks = await taskQuery
+                .OrderByDescending(task => task.UpdatedAt)
+                .ThenBy(task => task.Id)
+                .Skip((normalizedPage - 1) * normalizedPageSize)
+                .Take(normalizedPageSize)
+                .Select(task => new ModuleTaskDto
+                {
+                    Id = task.Id,
+                    SequenceId = task.SequenceId,
+                    Title = task.Title,
+                    StatusName = task.TaskStatus.Name,
+                    Priority = task.Priority,
+                    DueDate = task.DueDate,
+                    ProjectId = task.ProjectId,
+                    ProjectName = task.Project.Name,
+                    ModuleId = moduleId,
+                    SprintId = task.SprintId,
+                    SprintName = task.Sprint != null ? task.Sprint.Name : null,
+                    AssignedUserId = task.AssignedUserId,
+                    AssigneeName = task.AssignedUser != null
+                        ? task.AssignedUser.FullName
+                        : null,
+                    Assignees = task.TaskAssignments
+                        .Where(assignment => assignment.Status)
+                        .Select(assignment => new TaskAssigneeDto
+                        {
+                            UserId = assignment.UserId,
+                            FullName = assignment.User.FullName,
+                            Email = assignment.User.Email,
+                            ProgressPercent = assignment.ProgressPercent,
+                            ContributionWeight = assignment.ContributionWeight,
+                            EstimatedHours = assignment.EstimatedHours,
+                            TotalActualHours = assignment.TotalActualHours,
+                            IsBlocked = assignment.BlockedByUserId.HasValue,
+                            BlockedByUserId = assignment.BlockedByUserId,
+                            BlockReason = assignment.BlockReason
+                        })
+                        .ToList(),
+                    ParentTaskId = task.ParentTaskId,
+                    UpdatedAt = task.UpdatedAt
+                })
+                .ToListAsync();
+            foreach (var task in tasks)
+            {
+                task.StatusName = NormalizeStatusName(task.StatusName);
+            }
+
+            return new ModuleDetailDto
+            {
+                Id = module.Id,
+                ProjectId = module.ProjectId,
+                WorkspaceId = module.WorkspaceId,
+                Name = module.Name,
+                Description = module.Description,
+                Status = module.Status,
+                StartDate = module.StartDate,
+                TargetDate = module.TargetDate,
+                LeadId = module.LeadId,
+                LeadName = module.LeadName,
+                TaskCount = totalCount,
+                CompletedCount = summary?.Completed ?? 0,
+                InProgressCount = summary?.InProgress ?? 0,
+                OverdueCount = summary?.Overdue ?? 0,
+                ProgressPercent = totalCount == 0
+                    ? 0
+                    : (int)Math.Round(100.0 * (summary?.Completed ?? 0) / totalCount),
+                Tasks = new ModuleTaskPageDto
+                {
+                    Items = tasks,
+                    Page = normalizedPage,
+                    PageSize = normalizedPageSize,
+                    TotalCount = totalCount,
+                    TotalPages = totalPages,
+                    HasPreviousPage = normalizedPage > 1,
+                    HasNextPage = normalizedPage < totalPages
+                },
+                CreatedAt = module.CreatedAt,
+                UpdatedAt = module.UpdatedAt
+            };
         }
 
         public async Task<WorkTaskResponseDto> CreateAsync(Guid reporterId, CreateWorkTaskDto request)
@@ -809,11 +1026,29 @@ namespace TaskManagement.Infrastructure.Services
             string? scope = "all")
         {
             // TÌM CÁC PROJECT MÀ USER CÓ QUYỀN
+            var isActiveUser = await _context.Users
+                .AsNoTracking()
+                .AnyAsync(user => user.Id == userId && user.IsActive && !user.IsDeleted);
+            if (!isActiveUser)
+            {
+                throw new UnauthorizedAccessException("The authenticated user is not active.");
+            }
+
             var userProjectIds = await _context.ProjectMembers
-                .Where(pm => pm.UserId == userId && pm.Status)
+                .AsNoTracking()
+                .Where(pm =>
+                    pm.UserId == userId &&
+                    pm.Status &&
+                    pm.Project.Status &&
+                    !pm.Project.IsDeleted &&
+                    !pm.Project.IsArchived &&
+                    !pm.Project.Workspace.IsDeleted &&
+                    pm.Project.Workspace.Members.Any(member =>
+                        member.UserId == userId && member.IsActive))
                 .Select(pm => pm.ProjectId)
                 .ToListAsync();
 
+            var normalizedScope = (scope ?? "all").Trim().ToLowerInvariant();
             var dbQuery = _context.WorkTasks
                 .Include(wt => wt.TaskStatus)
                 .Include(wt => wt.TaskType)
@@ -824,12 +1059,50 @@ namespace TaskManagement.Infrastructure.Services
                 .Include(wt => wt.IssueModules)
                 .Include(wt => wt.IssueLabels)
                 .Include(wt => wt.Project)
-                .Where(wt => (userProjectIds.Contains(wt.ProjectId) || wt.Subscribers.Any(s => s.UserId == userId)) && !wt.IsDeleted && !wt.IsArchived);
+                .Where(wt =>
+                    userProjectIds.Contains(wt.ProjectId) &&
+                    !wt.IsDeleted &&
+                    !wt.IsArchived &&
+                    wt.Project.Status &&
+                    !wt.Project.IsDeleted &&
+                    !wt.Project.IsArchived &&
+                    !wt.Project.Workspace.IsDeleted);
 
             if (projectId.HasValue && projectId.Value != Guid.Empty)
             {
                 dbQuery = dbQuery.Where(wt => wt.ProjectId == projectId.Value);
             }
+
+            dbQuery = normalizedScope switch
+            {
+                "assigned" => dbQuery.Where(wt =>
+                    wt.AssignedUserId == userId ||
+                    wt.TaskAssignments.Any(assignment =>
+                        assignment.UserId == userId && assignment.Status)),
+                "created" => dbQuery.Where(wt => wt.ReporterId == userId),
+                "following" => dbQuery.Where(wt =>
+                    wt.Subscribers.Any(subscriber => subscriber.UserId == userId)),
+                "worked" or "worked-on" => dbQuery.Where(wt =>
+                    wt.AuditLogs.Any(log => log.UserId == userId) ||
+                    wt.TimeLogs.Any(log => log.UserId == userId) ||
+                    _context.Comments.Any(comment =>
+                        comment.EntityType == "WorkTask" &&
+                        comment.EntityId == wt.Id &&
+                        comment.UserId == userId &&
+                        !comment.IsDeleted) ||
+                    wt.TaskAssignments.Any(assignment => assignment.UserId == userId)),
+                "suggested" => dbQuery.Where(wt =>
+                    (wt.AssignedUserId == userId ||
+                     wt.TaskAssignments.Any(assignment =>
+                         assignment.UserId == userId && assignment.Status) ||
+                     wt.ReporterId == userId ||
+                     wt.Subscribers.Any(subscriber => subscriber.UserId == userId) ||
+                     wt.AuditLogs.Any(log => log.UserId == userId) ||
+                     wt.TimeLogs.Any(log => log.UserId == userId)) &&
+                    !new[] { "DONE", "COMPLETED", "FINISHED", "CANCELLED", "CANCELED" }
+                        .Contains(wt.TaskStatus.Name.ToUpper())),
+                _ => dbQuery
+            };
 
             // Filtering
             if (!string.IsNullOrEmpty(query))
@@ -920,10 +1193,13 @@ namespace TaskManagement.Infrastructure.Services
 
             var results = await dbQuery
                 .Where(wt => allowedTaskIds.Contains(wt.Id))
-                .OrderByDescending(wt => wt.CreatedAt)
+                .OrderByDescending(wt => wt.UpdatedAt)
+                .ThenBy(wt => wt.Id)
                 .Select(wt => new WorkTaskResponseDto
                 {
                     Id = wt.Id,
+                    EntityType = "Task",
+                    WorkspaceId = wt.Project.WorkspaceId,
                     Title = wt.Title,
                     Description = wt.Description,
                     ProjectId = wt.ProjectId,
@@ -989,6 +1265,80 @@ namespace TaskManagement.Infrastructure.Services
             foreach (var r in results) r.StatusName = NormalizeStatusName(r.StatusName);
 
             return results;
+        }
+
+        public async Task<PersonalWorkPageDto> GetPersonalWorkPageAsync(
+            Guid userId,
+            string scope,
+            int page,
+            int pageSize)
+        {
+            var normalizedScope = (scope ?? string.Empty).Trim().ToLowerInvariant();
+            var supportedScopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "assigned",
+                "created",
+                "following",
+                "worked",
+                "worked-on",
+                "suggested"
+            };
+            if (!supportedScopes.Contains(normalizedScope))
+            {
+                throw new ArgumentException("Unsupported personal work scope.", nameof(scope));
+            }
+
+            var safePage = Math.Max(1, page);
+            var safePageSize = Math.Clamp(pageSize, 1, 100);
+            var tasks = await SearchTasksAsync(
+                userId,
+                query: null,
+                status: null,
+                assigneeId: null,
+                priority: null,
+                projectId: null,
+                scope: normalizedScope);
+
+            return new PersonalWorkPageDto
+            {
+                TotalCount = tasks.Count,
+                Page = safePage,
+                PageSize = safePageSize,
+                Items = tasks
+                    .Skip((safePage - 1) * safePageSize)
+                    .Take(safePageSize)
+                    .ToList()
+            };
+        }
+
+        public async Task<PersonalWorkSummaryDto> GetPersonalWorkSummaryAsync(Guid userId)
+        {
+            var assigned = await SearchTasksAsync(userId, null, null, null, null, scope: "assigned");
+            var created = await SearchTasksAsync(userId, null, null, null, null, scope: "created");
+            var following = await SearchTasksAsync(userId, null, null, null, null, scope: "following");
+            var workedOn = await SearchTasksAsync(userId, null, null, null, null, scope: "worked");
+            var suggested = await SearchTasksAsync(userId, null, null, null, null, scope: "suggested");
+            var now = DateTime.UtcNow;
+
+            return new PersonalWorkSummaryDto
+            {
+                Assigned = assigned.Count,
+                Created = created.Count,
+                Following = following.Count,
+                WorkedOn = workedOn.Count,
+                Suggested = suggested.Count,
+                Overdue = assigned.Count(task =>
+                    task.DueDate.HasValue &&
+                    task.DueDate.Value < now &&
+                    !IsCompletedStatus(task.StatusName)),
+                Completed = assigned.Count(task => IsCompletedStatus(task.StatusName))
+            };
+        }
+
+        private static bool IsCompletedStatus(string? status)
+        {
+            var normalized = (status ?? string.Empty).Trim().ToUpperInvariant();
+            return normalized is "DONE" or "COMPLETED" or "FINISHED";
         }
 
         private async Task<ProjectExecutionRulesDto> LoadExecutionRulesAsync(Guid projectId)
