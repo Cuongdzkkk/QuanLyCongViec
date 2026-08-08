@@ -1,5 +1,5 @@
 param(
-    [string]$Server = "KIETNGO",
+    [string]$Server = "KHOI\SQLEXPRESS",
     [string]$Database = "TaskManagementDB",
     [string]$InputFile = "",
     [string]$Query = ""

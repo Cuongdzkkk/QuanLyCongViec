@@ -2,7 +2,7 @@
 title Start Task Management System
 cd /d "%~dp0"
 
-set "DEV_SQL_SERVER=KIETNGO"
+set "DEV_SQL_SERVER=KHOI\SQLEXPRESS"
 set "DEV_SQL_DATABASE=TaskManagementDB"
 set "DOTNET_EF_VERSION=10.0.9"
 set "RUN_LOCK=%TEMP%\sprinta-task-management-startup.lock"

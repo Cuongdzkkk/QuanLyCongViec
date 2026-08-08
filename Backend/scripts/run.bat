@@ -13,7 +13,7 @@ if /I "%resetDB%"=="Y" (
     cd Backend\src\TaskManagement.API
     
     echo 1. Drop Database cu...
-    sqlcmd -S "KIETNGO" -Q "IF DB_ID('TaskManagementDB') IS NOT NULL BEGIN ALTER DATABASE [TaskManagementDB] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [TaskManagementDB]; END" -E -C
+    sqlcmd -S "KHOI\SQLEXPRESS" -Q "IF DB_ID('TaskManagementDB') IS NOT NULL BEGIN ALTER DATABASE [TaskManagementDB] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [TaskManagementDB]; END" -E -C
     
     echo 2. Xoa cac migration cu...
     if exist "..\TaskManagement.Infrastructure\Migrations" rd /s /q "..\TaskManagement.Infrastructure\Migrations"
@@ -25,7 +25,7 @@ if /I "%resetDB%"=="Y" (
     dotnet ef database update --project ../TaskManagement.Infrastructure --startup-project .
     
     echo 5. Dang chay data ban dau seed_data.sql va cac bang moi...
-    sqlcmd -S "KIETNGO" -d "TaskManagementDB" -i "..\..\seed_data.sql" -E -C
+    sqlcmd -S "KHOI\SQLEXPRESS" -d "TaskManagementDB" -i "..\..\seed_data.sql" -E -C
     
     cd ..\..\..
     echo --- RESET DATABASE THANH CONG ---
