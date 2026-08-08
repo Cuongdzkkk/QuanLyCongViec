@@ -9,7 +9,7 @@ namespace TaskManagement.Application.Interfaces
         Task<SprintResponseDto> CreateAsync(Guid projectId, CreateSprintDto dto);
         Task<SprintResponseDto> UpdateAsync(Guid projectId, Guid sprintId, UpdateSprintDto dto);
         Task<SprintResponseDto> StartAsync(Guid projectId, Guid sprintId);
-        Task CloseAsync(Guid sprintId, CloseSprintDto dto, Guid actorUserId);
+        Task<SprintResponseDto> CloseAsync(Guid projectId, Guid sprintId, CloseSprintDto dto, Guid actorUserId);
         Task<List<BurndownDataDto>> GetBurndownChartAsync(Guid sprintId);
     }
 }

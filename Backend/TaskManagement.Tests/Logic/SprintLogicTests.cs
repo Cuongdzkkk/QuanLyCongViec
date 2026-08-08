@@ -146,10 +146,10 @@ namespace TaskManagement.Tests.Logic
             var sprint2Id = await SeedSprintAsync(projectId, isActive: false, name: "Sprint 2 Muốn Start");
 
             // Act & Assert
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsAsync<TaskManagement.Application.Common.SprintTransitionException>(() =>
                 _sprintService.StartAsync(projectId, sprint2Id));
 
-            Assert.Contains("Phải đóng Sprint hiện tại trước", ex.Message);
+            Assert.Equal("ACTIVE_CYCLE_EXISTS", ex.Code);
         }
 
         // =========================================================
@@ -176,17 +176,16 @@ namespace TaskManagement.Tests.Logic
         // TC_SPRINT_006: [PASS] Start Sprint đã chạy -> Lỗi
         // =========================================================
         [Fact]
-        public async Task StartAsync_SprintAlreadyActive_ThrowsInvalidOperationException()
+        public async Task StartAsync_SprintAlreadyActive_IsIdempotent()
         {
             // Arrange
             var projectId = await SeedProjectAsync();
             var sprintId = await SeedSprintAsync(projectId, isActive: true);
 
-            // Act & Assert
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                _sprintService.StartAsync(projectId, sprintId));
+            var result = await _sprintService.StartAsync(projectId, sprintId);
 
-            Assert.Contains("đã đang chạy", ex.Message);
+            Assert.Equal("Active", result.State);
+            Assert.True(result.Status);
         }
 
         // =========================================================
@@ -228,7 +227,7 @@ namespace TaskManagement.Tests.Logic
             var closeDto = new CloseSprintDto { TargetSprintId = null }; // Về Backlog
 
             // Act
-            await _sprintService.CloseAsync(sprintId, closeDto, actorUserId);
+            await _sprintService.CloseAsync(projectId, sprintId, closeDto, actorUserId);
 
             // Assert
             var sprint = await _context.Sprints.FindAsync(sprintId);
@@ -250,10 +249,10 @@ namespace TaskManagement.Tests.Logic
             var dto = new CloseSprintDto();
 
             // Act & Assert
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                _sprintService.CloseAsync(sprintId, dto, Guid.NewGuid()));
+            var ex = await Assert.ThrowsAsync<TaskManagement.Application.Common.SprintTransitionException>(() =>
+                _sprintService.CloseAsync(projectId, sprintId, dto, Guid.NewGuid()));
 
-            Assert.Contains("đã đóng", ex.Message);
+            Assert.Equal("CYCLE_NOT_ACTIVE", ex.Code);
         }
 
         // =========================================================
@@ -267,10 +266,10 @@ namespace TaskManagement.Tests.Logic
             var dto = new CloseSprintDto();
 
             // Act & Assert
-            var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-                _sprintService.CloseAsync(fakeSprint, dto, Guid.NewGuid()));
+            var ex = await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+                _sprintService.CloseAsync(Guid.NewGuid(), fakeSprint, dto, Guid.NewGuid()));
 
-            Assert.Contains("không tồn tại", ex.Message);
+            Assert.Contains("does not exist", ex.Message);
         }
 
         // =========================================================
@@ -305,7 +304,7 @@ namespace TaskManagement.Tests.Logic
             var closeDto = new CloseSprintDto { TargetSprintId = sprint2Id };
 
             // Act
-            await _sprintService.CloseAsync(sprint1Id, closeDto, actorUserId);
+            await _sprintService.CloseAsync(projectId, sprint1Id, closeDto, actorUserId);
 
             // Assert
             var task = await _context.WorkTasks.FindAsync(taskId);

@@ -2,7 +2,9 @@ import { defineStore } from 'pinia'
 import axiosClient from '@/api/axiosClient'
 import { useSiteStore } from './useSiteStore'
 import { useProjectStore } from './useProjectStore'
+import { useStarredStore } from './useStarredStore'
 import { ensureWorkspaceIdFromState, isValidEntityId, resolveWorkspaceIdFromState } from '@/utils/contextIds'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 
 const normalizeDateOnly = (value) => {
   if (!value) return null
@@ -88,14 +90,6 @@ const normalizeTaskRecord = (task = {}, fallbackProjectId = null) => {
 export const useWorkTaskStore = defineStore('workTask', {
   state: () => ({
     tasks: [],
-    starredTasks: [],
-    recentlyViewedTasks: (() => {
-      try {
-        return JSON.parse(localStorage.getItem('recently_viewed_tasks') || '[]')
-      } catch {
-        return []
-      }
-    })(),
     loading: false,
     error: null,
     errorStatus: null,
@@ -302,91 +296,23 @@ export const useWorkTaskStore = defineStore('workTask', {
       return resolveWorkspaceIdFromState({ siteStore })
     },
     async fetchStarredTasks() {
-      const siteStore = useSiteStore()
-      const workspaceId = this.resolveWorkspaceId() || await ensureWorkspaceIdFromState({ siteStore })
-      if (!workspaceId) {
-        this.starredTasks = []
-        return []
-      }
-      try {
-        const response = await axiosClient.get(`/workspaces/${workspaceId}/StarredItems`)
-        const data = response.data
-        this.starredTasks = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.data)
-            ? data.data
-            : []
-        return this.starredTasks
-      } catch (error) {
-        console.error('Failed to fetch starred tasks:', error)
-        return []
-      }
+      const starredStore = useStarredStore()
+      await starredStore.fetchStarredItems({ page: 1, pageSize: 100 })
+      return starredStore.starredItems.filter(item => item.itemType === STARRED_ENTITY_TYPES.WORK_TASK)
     },
     async toggleTaskStar(taskOrId) {
       if (!taskOrId) return
       const taskId = typeof taskOrId === 'object' ? taskOrId.id : taskOrId
-      const fullTask = typeof taskOrId === 'object' ? taskOrId : this.tasks.find(t => t.id === taskId)
-      const siteStore = useSiteStore()
-      const workspaceId = this.resolveWorkspaceId(null, fullTask?.projectId) || await ensureWorkspaceIdFromState({ siteStore })
-      if (!workspaceId) {
-        console.error('Cannot toggle star: workspace ID is empty')
-        return
-      }
-      
-      const index = this.starredTasks.findIndex(t => t.itemId === taskId)
-      const isStarred = index >= 0
-
-      // Optimistic UI update
-      if (isStarred) {
-        this.starredTasks.splice(index, 1)
-      } else {
-        this.starredTasks.push({
-          id: Math.random().toString(), // Temp ID
-          itemId: taskId,
-          itemType: 'Task',
-          title: fullTask?.title || 'Task',
-          subtitle: fullTask?.projectName || '',
-          url: `/space/${fullTask?.projectId}/work-items?task=${taskId}`
-        })
-      }
-
-      try {
-        await axiosClient.post(`/workspaces/${workspaceId}/StarredItems/toggle?itemType=Task&itemId=${taskId}`)
-        // Fetch again to ensure sync with DB
-        await this.fetchStarredTasks()
-      } catch (error) {
-        console.error('Failed to toggle task star:', error)
-        // Revert optimistic update
-        await this.fetchStarredTasks()
-      }
+      return useStarredStore().toggleStar(STARRED_ENTITY_TYPES.WORK_TASK, taskId)
     },
     isTaskStarred(taskId) {
       if (!taskId) return false
       const id = typeof taskId === 'object' ? taskId.id : taskId
-      return this.starredTasks.some(t => t.itemId === id)
+      return useStarredStore().isStarred(STARRED_ENTITY_TYPES.WORK_TASK, id)
     },
-    logViewedTask(task, spaces = []) {
-      if (!task || !task.id) return
-      // Remove duplicate nếu đã có
-      this.recentlyViewedTasks = this.recentlyViewedTasks.filter(item => item.id !== task.id)
-      const proj = spaces.find(s => s.id === task.projectId)
-      this.recentlyViewedTasks.unshift({
-        id: task.id,
-        title: task.title,
-        sequenceId: task.sequenceId,
-        projectId: task.projectId,
-        projectName: task.projectName || proj?.name || 'Project',
-        projectColor: task.projectColor || proj?.cover || '#3b82f6',
-        createdAt: task.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        statusName: task.statusName || 'TO DO',
-        priority: task.priority || 3
-      })
-      // Giữ tối đa 15 items
-      if (this.recentlyViewedTasks.length > 15) {
-        this.recentlyViewedTasks = this.recentlyViewedTasks.slice(0, 15)
-      }
-      localStorage.setItem('recently_viewed_tasks', JSON.stringify(this.recentlyViewedTasks))
+    logViewedTask(task) {
+      if (!task?.id) return Promise.resolve(null)
+      return useStarredStore().recordViewed(STARRED_ENTITY_TYPES.WORK_TASK, task.id)
     }
   }
 })

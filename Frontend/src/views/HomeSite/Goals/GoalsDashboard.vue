@@ -93,8 +93,18 @@
                 </td>
                 <td>{{ goal.createdAt ? new Date(goal.createdAt).toLocaleDateString('vi-VN') : '-' }}</td>
                 <td>{{ goal.updatedAt ? new Date(goal.updatedAt).toLocaleDateString('vi-VN') : '-' }}</td>
-                <td @click.stop="toggleStar(goal)">
-                  <i :class="goal.isStarred ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'" style="cursor: pointer;"></i>
+                <td @click.stop>
+                  <button
+                    class="goal-star-btn"
+                    type="button"
+                    :class="{ starred: isGoalStarred(goal.id) }"
+                    :disabled="starredStore.isPending('Goal', goal.id)"
+                    :aria-pressed="isGoalStarred(goal.id)"
+                    :aria-label="isGoalStarred(goal.id) ? 'Bỏ gắn sao mục tiêu' : 'Gắn sao mục tiêu'"
+                    @click="toggleStar(goal)"
+                  >
+                    <i :class="isGoalStarred(goal.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+                  </button>
                 </td>
                 <td @click.stop="toggleWatch(goal)">
                   <span :class="goal.isFollowing ? 'text-blue-500' : 'text-gray-500'" style="cursor: pointer;">{{ goal.isFollowing ? labels.following : labels.follow }}</span>
@@ -180,6 +190,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { useGoalStore } from '@/store/useGoalStore'
 import { useStarredStore } from '@/store/useStarredStore'
 import { useFollowerStore } from '@/store/useFollowerStore'
@@ -360,7 +371,7 @@ const newGoal = ref({
 
 onMounted(async () => {
   await goalStore.fetchGoals()
-  await starredStore.fetchStarredItems()
+  await starredStore.fetchStarredItems({ page: 1, pageSize: 100 })
   await followerStore.fetchFollowedItems()
   await peopleStore.fetchPeople()
   window.addEventListener('global-create-click', openCreateModal)
@@ -522,10 +533,16 @@ const goToGoal = (id) => {
   router.push(`/home/goals/${id}`)
 }
 
+const isGoalStarred = (id) => starredStore.isStarred('Goal', id)
+
 const toggleStar = async (goal) => {
   if (!goal?.id) return
   goalStore.currentGoal = goal
-  await goalStore.toggleStar()
+  try {
+    await goalStore.toggleStar()
+  } catch {
+    ElMessage.error(starredStore.error || 'Could not update starred item.')
+  }
 }
 
 const toggleWatch = async (goal) => {
@@ -1083,6 +1100,46 @@ const toggleWatch = async (goal) => {
 
 .cancel-btn:hover {
   background: rgba(9, 30, 66, 0.08);
+}
+
+.goal-star-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--home-muted, #6b778c);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  display: inline-grid;
+  place-items: center;
+}
+
+.goal-star-btn:hover {
+  background: color-mix(in srgb, var(--home-accent, #0c66e4) 9%, transparent);
+}
+
+.goal-star-btn.starred {
+  color: #e3a008;
+}
+
+.goal-star-btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--home-accent, #0c66e4) 42%, transparent);
+  outline-offset: 2px;
+}
+
+.goal-star-btn:disabled {
+  cursor: wait;
+}
+
+.goal-star-btn i {
+  width: 1em;
+  line-height: 1;
+  text-align: center;
 }
 
 :deep(.jira-date-picker .el-input__inner) {

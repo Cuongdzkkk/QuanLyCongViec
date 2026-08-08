@@ -177,12 +177,13 @@ public sealed class P003DataIntegrityTests
 
         var service = new SprintService(context);
         await FluentActions.Invoking(() => service.CloseAsync(
+                sourceProjectId,
                 sourceSprintId,
                 new CloseSprintDto { TargetSprintId = invalidTargetId },
                 userId))
             .Should().ThrowAsync<ArgumentException>().WithMessage("*same project and workspace*");
 
-        await service.CloseAsync(sourceSprintId, new CloseSprintDto { TargetSprintId = validTargetId }, userId);
+        await service.CloseAsync(sourceProjectId, sourceSprintId, new CloseSprintDto { TargetSprintId = validTargetId }, userId);
         (await context.Sprints.FindAsync(sourceSprintId))!.Status.Should().BeFalse();
     }
 
@@ -282,8 +283,7 @@ public sealed class P003SqlServerIntegrationTests
     public async Task TC_DEP_025_DependencyCycleValidation_RunsAtomicallyOnRealSqlServer()
     {
         var databaseName = $"TaskManagement_P003_{Guid.NewGuid():N}";
-        var connectionString =
-            $"Server=KHOI\\SQLEXPRESS;Database={databaseName};Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False;Connect Timeout=30";
+        var connectionString = SqlServerTestConfiguration.ConnectionString(databaseName);
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseSqlServer(connectionString)
             .Options;

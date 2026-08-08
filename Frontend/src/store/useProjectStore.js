@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import axiosClient from '@/api/axiosClient'
 import { reportExpectedError } from '@/utils/errorTelemetry'
 import { clearScopedCurrentProjectId } from '@/utils/projectContext'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 
 const PROJECT_BUNDLE_CACHE_TTL_MS = 30000
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api'
@@ -164,7 +166,12 @@ export const useProjectStore = defineStore('project', {
   }),
   getters: {
     sidebarProjects: (state) => dedupeProjects(state.allProjects).filter(project => project.isMember !== false),
-    favoriteProjects: (state) => dedupeProjects(state.allProjects).filter(project => project.isFavorite),
+    favoriteProjects: (state) => {
+      const starredStore = useStarredStore()
+      return dedupeProjects(state.allProjects).filter(project =>
+        starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id)
+      )
+    },
     projectTree: (state) => dedupeProjects(state.allProjects).filter(project => project.isMember !== false).map(project => ({
       ...project,
       expanded: state.expandedProjectIds.includes(project.id)
@@ -222,7 +229,7 @@ export const useProjectStore = defineStore('project', {
       this.expandedProjectIds = this.expandedProjectIds.filter(id => id !== projectId);
     },
     async updateFavorite(projectId, favorite) {
-      await axiosClient.put(`/projects/${projectId}/favorite`, { favorite });
+      await useStarredStore().setStarred(STARRED_ENTITY_TYPES.PROJECT, projectId, favorite)
       const index = this.allProjects.findIndex(project => project.id === projectId);
       if (index >= 0) {
         const current = this.allProjects[index];
@@ -231,7 +238,6 @@ export const useProjectStore = defineStore('project', {
       if (this.currentProject?.id === projectId) {
         this.currentProject = { ...this.currentProject, isFavorite: favorite };
       }
-      await this.fetchAllProjects(true)
     },
     clearProjectContext(projectId = null) {
       this.currentProject = projectId

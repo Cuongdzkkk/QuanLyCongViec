@@ -1,10 +1,11 @@
 @echo off
+if not defined DEV_SQL_SERVER set "DEV_SQL_SERVER=localhost\SQLEXPRESS"
 echo =======================================
 echo KHOI TAO LAI TOAN BO DATABASE (FORCE RESET)
 echo =======================================
 echo.
 echo 1. Xoa Database hien tai bang SQLCMD (ngat toan bo ket noi)...
-sqlcmd -S "KIETNGO" -Q "IF DB_ID('TaskManagementDB') IS NOT NULL BEGIN ALTER DATABASE [TaskManagementDB] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [TaskManagementDB]; END" -E -C
+sqlcmd -S "%DEV_SQL_SERVER%" -Q "IF DB_ID('TaskManagementDB') IS NOT NULL BEGIN ALTER DATABASE [TaskManagementDB] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [TaskManagementDB]; END" -E -C
 
 echo.
 echo 2. Xoa cac file Migrations cu trong code...

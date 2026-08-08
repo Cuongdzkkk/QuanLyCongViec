@@ -1,6 +1,6 @@
 param(
-    [string]$Server = "KIETNGO",
-    [string]$Database = "TaskManagementDB",
+    [string]$Server = $(if ($env:DEV_SQL_SERVER) { $env:DEV_SQL_SERVER } else { "localhost\SQLEXPRESS" }),
+    [string]$Database = $(if ($env:DEV_SQL_DATABASE) { $env:DEV_SQL_DATABASE } else { "TaskManagementDB" }),
     [string]$InputFile = "",
     [string]$Query = ""
 )

@@ -56,6 +56,8 @@ namespace TaskManagement.API.Controllers
                     n.IsRead,
                     n.RelatedTaskId,
                     n.RelatedProjectId,
+                    n.CollaborationChannelId,
+                    n.ChannelMessageId,
                     n.TriggeredByUserId,
                     TriggeredByName = n.TriggeredByUser != null ? n.TriggeredByUser.FullName : null,
                     TriggeredByAvatar = n.TriggeredByUser != null ? n.TriggeredByUser.AvatarUrl : null,

@@ -22,7 +22,9 @@ namespace TaskManagement.API.Controllers
         {
             var plans = await _context.AiPricingPlans
                 .AsNoTracking()
-                .OrderBy(plan => plan.Code == "free" ? 0 : plan.Code == "team" ? 1 : plan.Code == "business" ? 2 : 9)
+                .Where(plan => plan.IsPublished)
+                .OrderBy(plan => plan.Audience == "Personal" ? 0 : 1)
+                .ThenBy(plan => plan.MonthlyPriceVnd == null ? 9 : 0)
                 .ThenBy(plan => plan.Code)
                 .Select(plan => new
                 {
@@ -34,6 +36,8 @@ namespace TaskManagement.API.Controllers
                     plan.IncludedUsers,
                     plan.IncludedAiCredits,
                     plan.ExtraAiCreditsEnabled,
+                    plan.Audience,
+                    plan.IsRecommended,
                     plan.FeaturesJson,
                     plan.UpdatedAt
                 })
@@ -70,12 +74,14 @@ namespace TaskManagement.API.Controllers
                         plan.IncludedUsers,
                         plan.IncludedAiCredits,
                         plan.ExtraAiCreditsEnabled,
+                        plan.Audience,
+                        plan.IsRecommended,
                         features = SafeDeserializeStringArray(plan.FeaturesJson),
                         plan.UpdatedAt
                     }),
                     aiCreditRules,
                     source = "database",
-                    disclaimer = "Paid plan prices remain null until Product Owner approval. AI usage is read from server-side ledger/token logs."
+                    disclaimer = "MVP plan prices are published from the database. Extra credit purchase pricing remains undecided. AI usage is read from server-side ledger/token logs."
                 }
             });
         }

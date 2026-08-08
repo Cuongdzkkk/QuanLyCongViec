@@ -265,30 +265,11 @@ const favoriteSprints = computed(() => {
    return sprintStore.sprints.filter(s => s.isFavorite);
 })
 
-// Recent projects - derived from recently viewed tasks stored in localStorage
-const recentProjects = computed(() => {
-  try {
-    const viewed = JSON.parse(localStorage.getItem('recently_viewed_tasks') || '[]')
-    const seenIds = new Set()
-    const result = []
-    for (const t of viewed) {
-      if (t.projectId && !seenIds.has(t.projectId)) {
-        seenIds.add(t.projectId)
-        const proj = projectStore.allProjects.find(p => p.id === t.projectId)
-        if (proj) result.push(proj)
-        else result.push({ id: t.projectId, name: t.projectName || 'Project', icon: null })
-      }
-      if (result.length >= 3) break
-    }
-    return result
-  } catch {
-    return []
-  }
-})
-
-watch(currentProjectId, async (newVal, oldVal) => {
-   const isProjectRoute = route.path.startsWith('/space') && route.params.id
+watch(() => [route.path, route.params.id], async ([path, newVal], previous = []) => {
+   const oldVal = previous[1]
+   const isProjectRoute = path.startsWith('/space') && newVal
    if (!isProjectRoute) {
+      sprintStore.resetScope()
       return
    }
 

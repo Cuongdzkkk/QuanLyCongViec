@@ -324,7 +324,7 @@ public sealed class P004SqlServerIntegrationTests
 
     private static DbContextOptions<ApplicationDbContext> SqlOptions(string databaseName) =>
         new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlServer($"Server=KHOI\\SQLEXPRESS;Database={databaseName};Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False;Connect Timeout=30")
+            .UseSqlServer(SqlServerTestConfiguration.ConnectionString(databaseName))
             .Options;
 
     private static IConfiguration TestConfiguration() => new ConfigurationBuilder()

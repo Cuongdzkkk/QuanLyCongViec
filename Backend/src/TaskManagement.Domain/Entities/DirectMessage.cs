@@ -5,6 +5,8 @@ namespace TaskManagement.Domain.Entities
     public class DirectMessage
     {
         public Guid Id { get; set; }
+        public Guid? ConversationId { get; set; }
+        public DirectConversation? Conversation { get; set; }
         public Guid SenderId { get; set; }
         public User? Sender { get; set; }
         public Guid ReceiverId { get; set; }
@@ -13,5 +15,6 @@ namespace TaskManagement.Domain.Entities
         public DateTime SentAt { get; set; } = DateTime.UtcNow;
         public bool IsRead { get; set; } = false;
         public string? AttachmentUrl { get; set; }
+        public ICollection<CollaborationMessageAttachment> Attachments { get; set; } = new List<CollaborationMessageAttachment>();
     }
 }

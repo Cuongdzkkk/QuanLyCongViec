@@ -1,8 +1,12 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.Sprint;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Domain.Entities;
+using TaskManagement.Domain.Rules;
 
 namespace TaskManagement.Infrastructure.Services
 {
@@ -17,18 +21,24 @@ namespace TaskManagement.Infrastructure.Services
 
         public async Task<List<SprintResponseDto>> GetByProjectAsync(Guid projectId)
         {
-            await SyncProjectSprintStatusesAsync(projectId);
-
             var sprints = await _context.Sprints
-                .Where(s => s.ProjectId == projectId)
+                .AsNoTracking()
+                .Where(s => s.ProjectId == projectId && s.Project.Status)
+                .OrderBy(s => s.StartDate)
+                .ThenBy(s => s.CreatedAt)
+                .ThenBy(s => s.Id)
                 .Select(s => new SprintResponseDto
                 {
                     Id = s.Id,
                     ProjectId = s.ProjectId,
+                    WorkspaceId = s.Project.WorkspaceId,
                     Name = s.Name,
                     StartDate = s.StartDate,
                     EndDate = s.EndDate,
                     Status = s.Status,
+                    State = s.State == SprintStates.Planned ? "Upcoming" : s.State,
+                    StartedAt = s.StartedAt,
+                    CompletedAt = s.CompletedAt,
                     TaskCount = s.WorkTasks.Count(wt => !wt.IsDeleted && wt.ParentTaskId == null),
                     CompletedTaskCount = s.WorkTasks.Count(wt => !wt.IsDeleted && wt.ParentTaskId == null && (wt.TaskStatus.Name.Contains("Done") || wt.TaskStatus.Name.Contains("Complete"))),
                     InProgressTaskCount = s.WorkTasks.Count(wt => !wt.IsDeleted && wt.ParentTaskId == null && (wt.TaskStatus.Name.Contains("Progress") || wt.TaskStatus.Name.Contains("Active"))),
@@ -48,26 +58,21 @@ namespace TaskManagement.Infrastructure.Services
 
         public async Task<SprintResponseDto?> GetByIdAsync(Guid id)
         {
-            var sprintProjectId = await _context.Sprints
-                .Where(s => s.Id == id)
-                .Select(s => (Guid?)s.ProjectId)
-                .FirstOrDefaultAsync();
-
-            if (sprintProjectId.HasValue)
-            {
-                await SyncProjectSprintStatusesAsync(sprintProjectId.Value);
-            }
-
             var sprint = await _context.Sprints
-                .Where(s => s.Id == id)
+                .AsNoTracking()
+                .Where(s => s.Id == id && s.Project.Status)
                 .Select(s => new SprintResponseDto
                 {
                     Id = s.Id,
                     ProjectId = s.ProjectId,
+                    WorkspaceId = s.Project.WorkspaceId,
                     Name = s.Name,
                     StartDate = s.StartDate,
                     EndDate = s.EndDate,
                     Status = s.Status,
+                    State = s.State == SprintStates.Planned ? "Upcoming" : s.State,
+                    StartedAt = s.StartedAt,
+                    CompletedAt = s.CompletedAt,
                     TaskCount = s.WorkTasks.Count(wt => !wt.IsDeleted && wt.ParentTaskId == null),
                     CompletedTaskCount = s.WorkTasks.Count(wt => !wt.IsDeleted && wt.ParentTaskId == null && (wt.TaskStatus.Name.Contains("Done") || wt.TaskStatus.Name.Contains("Complete"))),
                     InProgressTaskCount = s.WorkTasks.Count(wt => !wt.IsDeleted && wt.ParentTaskId == null && (wt.TaskStatus.Name.Contains("Progress") || wt.TaskStatus.Name.Contains("Active"))),
@@ -103,13 +108,13 @@ namespace TaskManagement.Infrastructure.Services
                 Name = dto.Name,
                 StartDate = dto.StartDate,
                 EndDate = dto.EndDate,
-                Status = false, // Mới tạo chưa Active, phải gọi Start
+                Status = false,
+                State = SprintStates.Planned,
                 CreatedAt = DateTime.UtcNow
             };
 
             _context.Sprints.Add(sprint);
             await _context.SaveChangesAsync();
-            await SyncProjectSprintStatusesAsync(projectId);
 
             var created = (await GetByIdAsync(sprint.Id))!;
             ApplySprintComputedFields(created);
@@ -132,97 +137,178 @@ namespace TaskManagement.Infrastructure.Services
             sprint.EndDate = dto.EndDate;
 
             await _context.SaveChangesAsync();
-            await SyncProjectSprintStatusesAsync(projectId);
 
             var updated = (await GetByIdAsync(sprint.Id))!;
             ApplySprintComputedFields(updated);
             return updated;
         }
 
-        /// <summary>
-        /// 5.3 Sprint Overlap Guard: Chặn 2 Sprint cùng Active trong 1 Project
-        /// </summary>
         public async Task<SprintResponseDto> StartAsync(Guid projectId, Guid sprintId)
         {
-            var sprint = await _context.Sprints
-                .FirstOrDefaultAsync(s => s.Id == sprintId && s.ProjectId == projectId);
-
-            if (sprint == null)
-                throw new ArgumentException("Sprint không tồn tại trong dự án này.");
-
-            if (sprint.Status)
-                throw new InvalidOperationException("Sprint này đã đang chạy.");
-
-            // === SPRINT OVERLAP GUARD ===
-            bool hasActiveSprint = await _context.Sprints
-                .AnyAsync(s => s.ProjectId == projectId && s.Status == true);
-
-            if (hasActiveSprint)
-                throw new InvalidOperationException("Dự án đang có Sprint đang chạy! Phải đóng Sprint hiện tại trước khi bắt đầu Sprint mới.");
-
-            sprint.Status = true;
-            await _context.SaveChangesAsync();
-            await SyncProjectSprintStatusesAsync(projectId);
-
-            var started = (await GetByIdAsync(sprint.Id))!;
-            ApplySprintComputedFields(started);
-            return started;
-        }
-
-        /// <summary>
-        /// 5.5 Close Sprint + Roll-over Tasks (bọc trong Transaction)
-        /// </summary>
-        public async Task CloseAsync(Guid sprintId, CloseSprintDto dto, Guid actorUserId)
-        {
-            var sprint = await _context.Sprints
-                .FirstOrDefaultAsync(s => s.Id == sprintId);
-
-            if (sprint == null)
-                throw new ArgumentException("Sprint không tồn tại.");
-
-            if (!sprint.Status)
-                throw new InvalidOperationException("Sprint này đã đóng.");
-
-            // Validate target sprint nếu có
-            if (dto.TargetSprintId.HasValue)
-            {
-                await SprintScopeValidator.ValidateTargetSprintAsync(
-                    _context,
-                    sprint.ProjectId,
-                    dto.TargetSprintId.Value);
-
-                var targetSprint = await _context.Sprints
-                    .FirstOrDefaultAsync(s => s.Id == dto.TargetSprintId.Value && s.ProjectId == sprint.ProjectId);
-                if (targetSprint == null)
-                    throw new ArgumentException("Sprint đích không tồn tại trong cùng dự án.");
-            }
-
-            // === BỌC TRONG TRANSACTION (theo CONTEXT.md) ===
-            await using var transaction = await _context.Database.BeginTransactionAsync();
+            await using var transaction = await BeginProjectTransitionAsync(projectId);
             try
             {
-                // Tìm tất cả TaskStatus có Name chứa "Done" hoặc "Hoàn thành" trong project
+                var sprint = await _context.Sprints
+                    .Include(item => item.Project)
+                    .SingleOrDefaultAsync(item =>
+                        item.Id == sprintId &&
+                        item.ProjectId == projectId &&
+                        item.Project.Status);
+
+                if (sprint == null)
+                {
+                    throw new KeyNotFoundException("Cycle does not exist in this active project.");
+                }
+
+                var currentState = SprintStatePolicy.ResolveState(sprint);
+                if (currentState == SprintStates.Active)
+                {
+                    if (sprint.State != SprintStates.Active)
+                    {
+                        sprint.State = SprintStates.Active;
+                        sprint.StartedAt ??= DateTime.UtcNow;
+                        await _context.SaveChangesAsync();
+                    }
+                    await CommitAsync(transaction);
+                    return await GetRequiredByIdAsync(sprint.Id);
+                }
+
+                if (currentState != SprintStates.Planned)
+                {
+                    throw new SprintTransitionException(
+                        "CYCLE_ALREADY_COMPLETED",
+                        "Completed cycle cannot be started again.");
+                }
+
+                if (sprint.EndDate <= sprint.StartDate || sprint.EndDate.Date < DateTime.UtcNow.Date)
+                {
+                    throw new SprintTransitionException(
+                        "CYCLE_DATES_INVALID",
+                        "Cycle dates are not valid for starting.");
+                }
+
+                var hasActiveSprint = await _context.Sprints
+                    .AnyAsync(item =>
+                        item.ProjectId == projectId &&
+                        item.Id != sprintId &&
+                        (item.State == SprintStates.Active ||
+                         (item.State == SprintStates.Planned && item.Status)));
+                if (hasActiveSprint)
+                {
+                    throw new SprintTransitionException(
+                        "ACTIVE_CYCLE_EXISTS",
+                        "Project already has an active cycle. Close it before starting another cycle.");
+                }
+
+                sprint.State = SprintStates.Active;
+                sprint.Status = true;
+                sprint.StartedAt ??= DateTime.UtcNow;
+                sprint.CompletedAt = null;
+                await _context.SaveChangesAsync();
+                await CommitAsync(transaction);
+                return await GetRequiredByIdAsync(sprint.Id);
+            }
+            catch (DbUpdateException ex) when (IsActiveCycleConstraintViolation(ex))
+            {
+                await RollbackAsync(transaction);
+                throw new SprintTransitionException(
+                    "ACTIVE_CYCLE_EXISTS",
+                    "Project already has an active cycle. Close it before starting another cycle.");
+            }
+            catch
+            {
+                await RollbackAsync(transaction);
+                throw;
+            }
+        }
+
+        public async Task<SprintResponseDto> CloseAsync(
+            Guid projectId,
+            Guid sprintId,
+            CloseSprintDto dto,
+            Guid actorUserId)
+        {
+            await using var transaction = await BeginProjectTransitionAsync(projectId);
+            try
+            {
+                var sprint = await _context.Sprints
+                    .Include(item => item.Project)
+                    .SingleOrDefaultAsync(item =>
+                        item.Id == sprintId &&
+                        item.ProjectId == projectId &&
+                        item.Project.Status);
+                if (sprint == null)
+                {
+                    throw new KeyNotFoundException("Cycle does not exist in this active project.");
+                }
+
+                var currentState = SprintStatePolicy.ResolveState(sprint);
+                if (currentState == SprintStates.Completed)
+                {
+                    await CommitAsync(transaction);
+                    return await GetRequiredByIdAsync(sprint.Id);
+                }
+
+                if (currentState != SprintStates.Active)
+                {
+                    throw new SprintTransitionException(
+                        "CYCLE_NOT_ACTIVE",
+                        "Only an active cycle can be completed.");
+                }
+
+                if (dto.TargetSprintId == sprintId)
+                {
+                    throw new SprintTransitionException(
+                        "INVALID_TARGET_CYCLE",
+                        "Carry-over target must be a different planned cycle.");
+                }
+
+                if (dto.TargetSprintId.HasValue)
+                {
+                    await SprintScopeValidator.ValidateTargetSprintAsync(
+                        _context,
+                        projectId,
+                        dto.TargetSprintId.Value);
+                    var targetState = await _context.Sprints
+                        .Where(item =>
+                            item.Id == dto.TargetSprintId.Value &&
+                            item.ProjectId == projectId)
+                        .Select(item => item.State)
+                        .SingleOrDefaultAsync();
+                    if (targetState != SprintStates.Planned)
+                    {
+                        throw new SprintTransitionException(
+                            "INVALID_TARGET_CYCLE",
+                            "Carry-over target must be a planned cycle in the same project.");
+                    }
+                }
+
                 var doneStatusIds = await _context.TaskStatuses
-                    .Where(ts => ts.ProjectId == sprint.ProjectId &&
-                                 (ts.Name.Contains("Done") || ts.Name.Contains("Hoàn thành")))
+                    .Where(ts => ts.ProjectId == projectId &&
+                        (ts.Name.Contains("Done") ||
+                         ts.Name.Contains("Complete") ||
+                         ts.Name.Contains("Hoàn thành")))
                     .Select(ts => ts.Id)
                     .ToListAsync();
 
-                // Chuyển các task chưa Done sang sprint mới hoặc backlog (null)
                 var unfinishedTasks = await _context.WorkTasks
-                    .Where(wt => wt.SprintId == sprintId && !doneStatusIds.Contains(wt.TaskStatusId))
+                    .Where(wt =>
+                        wt.ProjectId == projectId &&
+                        wt.SprintId == sprintId &&
+                        !doneStatusIds.Contains(wt.TaskStatusId))
                     .ToListAsync();
 
                 await SprintScopeValidator.EnsureTasksBelongToProjectAsync(
                     _context,
-                    sprint.ProjectId,
+                    projectId,
                     unfinishedTasks.Select(task => (task.Id, task.ProjectId, task.WorkspaceId)));
 
+                var now = DateTime.UtcNow;
                 foreach (var task in unfinishedTasks)
                 {
                     var nextLocation = dto.TargetSprintId?.ToString() ?? "BACKLOG";
-                    task.SprintId = dto.TargetSprintId; // null = backlog
-                    task.UpdatedAt = DateTime.UtcNow;
+                    task.SprintId = dto.TargetSprintId;
+                    task.UpdatedAt = now;
                     _context.AuditLogs.Add(new AuditLog
                     {
                         Id = Guid.NewGuid(),
@@ -231,25 +317,20 @@ namespace TaskManagement.Infrastructure.Services
                         FieldChanged = "SPRINT_CARRY_OVER",
                         OldValue = sprintId.ToString(),
                         NewValue = nextLocation,
-                        CreatedAt = DateTime.UtcNow
+                        CreatedAt = now
                     });
                 }
 
-                // Đóng sprint
+                sprint.State = SprintStates.Completed;
                 sprint.Status = false;
-                var today = DateTime.UtcNow.Date;
-                if (sprint.EndDate.Date >= today)
-                {
-                    sprint.EndDate = today.AddDays(-1);
-                }
-
+                sprint.CompletedAt = now;
                 await _context.SaveChangesAsync();
-                await SyncProjectSprintStatusesAsync(sprint.ProjectId);
-                await transaction.CommitAsync();
+                await CommitAsync(transaction);
+                return await GetRequiredByIdAsync(sprint.Id);
             }
             catch
             {
-                await transaction.RollbackAsync();
+                await RollbackAsync(transaction);
                 throw;
             }
         }
@@ -324,48 +405,55 @@ namespace TaskManagement.Infrastructure.Services
 
         private static void ApplySprintComputedFields(SprintResponseDto sprint)
         {
-            var today = DateTime.UtcNow.Date;
-            var start = sprint.StartDate.Date;
-            var end = sprint.EndDate.Date;
-
-            sprint.State = end < today
-                ? "Completed"
-                : sprint.Status && start <= today && end >= today
-                    ? "Active"
-                    : "Upcoming";
-
             sprint.ProgressPercent = sprint.TaskCount == 0
                 ? 0
                 : (int)Math.Round((double)sprint.CompletedTaskCount * 100 / sprint.TaskCount, MidpointRounding.AwayFromZero);
         }
 
-        private async Task SyncProjectSprintStatusesAsync(Guid projectId)
+        private async Task<IDbContextTransaction?> BeginProjectTransitionAsync(Guid projectId)
         {
-            var today = DateTime.UtcNow.Date;
-            var sprints = await _context.Sprints
-                .Where(s => s.ProjectId == projectId)
-                .OrderByDescending(s => s.StartDate)
-                .ThenByDescending(s => s.CreatedAt)
-                .ToListAsync();
-
-            var activeSprint = sprints
-                .FirstOrDefault(s => s.StartDate.Date <= today && s.EndDate.Date >= today);
-
-            var hasChanges = false;
-            foreach (var sprint in sprints)
+            if (!_context.Database.IsRelational())
             {
-                var shouldBeActive = activeSprint != null && sprint.Id == activeSprint.Id;
-                if (sprint.Status != shouldBeActive)
-                {
-                    sprint.Status = shouldBeActive;
-                    hasChanges = true;
-                }
+                return null;
             }
 
-            if (hasChanges)
+            var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+            if (_context.Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true)
             {
-                await _context.SaveChangesAsync();
+                var lockResource = $"cycle-transition-project:{projectId:N}";
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"EXEC sys.sp_getapplock @Resource={lockResource}, @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=10000;");
             }
+
+            return transaction;
+        }
+
+        private static async Task CommitAsync(IDbContextTransaction? transaction)
+        {
+            if (transaction != null)
+            {
+                await transaction.CommitAsync();
+            }
+        }
+
+        private static async Task RollbackAsync(IDbContextTransaction? transaction)
+        {
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync();
+            }
+        }
+
+        private async Task<SprintResponseDto> GetRequiredByIdAsync(Guid sprintId) =>
+            await GetByIdAsync(sprintId) ??
+            throw new KeyNotFoundException("Cycle no longer exists.");
+
+        private static bool IsActiveCycleConstraintViolation(DbUpdateException exception)
+        {
+            var message = exception.InnerException?.Message ?? exception.Message;
+            return message.Contains("UX_Sprints_Project_Active", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("duplicate", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("unique", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

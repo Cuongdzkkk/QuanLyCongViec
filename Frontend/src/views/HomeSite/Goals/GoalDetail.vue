@@ -32,8 +32,16 @@
             <button class="secondary-btn" @click="toggleFollow">
               <i class="fa-solid fa-eye"></i> {{ goal.isFollowing ? 'Đang theo dõi' : 'Theo dõi' }}
             </button>
-            <button class="secondary-btn icon-only" @click="toggleStar" :class="{ starred: goal.isStarred }">
-              <i :class="goal.isStarred ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+            <button
+              class="secondary-btn icon-only goal-star-button"
+              type="button"
+              :class="{ starred: isGoalStarred }"
+              :disabled="starredStore.isPending('Goal', goal.id)"
+              :aria-pressed="isGoalStarred"
+              :aria-label="isGoalStarred ? 'Bỏ gắn sao mục tiêu' : 'Gắn sao mục tiêu'"
+              @click="toggleStar"
+            >
+              <i :class="isGoalStarred ? 'fa-solid fa-star' : 'fa-regular fa-star'" aria-hidden="true"></i>
             </button>
             <button class="secondary-btn icon-only" @click="toggleShare">
               <i class="fa-solid fa-share-nodes"></i>
@@ -646,6 +654,7 @@ import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { usePeopleStore } from '@/store/usePeopleStore'
 import axiosClient from '@/api/axiosClient'
 import { useTeamStore } from '@/store/useTeamStore'
+import { useStarredStore } from '@/store/useStarredStore'
 import RichTextEditor from '@/components/common/RichTextEditor.vue'
 import ShareModal from '@/components/common/ShareModal.vue'
 import CommentSection from '@/components/common/CommentSection.vue'
@@ -667,6 +676,8 @@ const goalStore = useGoalStore()
 const projectStore = useHomeProjectStore()
 const teamStore = useTeamStore()
 const peopleStore = usePeopleStore()
+const starredStore = useStarredStore()
+const isGoalStarred = computed(() => goal.value?.id && starredStore.isStarred('Goal', goal.value.id))
 const siteProjects = computed(() => projectStore.projects || [])
 
 const myInitials = computed(() => {
@@ -784,14 +795,7 @@ onMounted(async () => {
     startDateInput.value = dateValue ? new Date(dateValue).toISOString().slice(0, 10) : ''
     if (goal.value?.id) {
       try {
-        await axiosClient.post('/recentviews', {
-          entityType: 'Goal',
-          entityId: goal.value.id,
-          title: goal.value.title || 'Goal',
-          subtitle: 'Goal',
-          url: `/home/goals/${goal.value.id}`,
-          icon: 'fa-solid fa-bullseye'
-        })
+        await starredStore.recordViewed('Goal', goal.value.id)
       } catch (err) {
         console.warn('Failed to record recent goal view', err)
       }
@@ -1040,8 +1044,12 @@ const toggleFollow = () => {
   if (goal.value) goalStore.toggleFollow(goal.value?.id)
 }
 
-const toggleStar = () => {
-  goalStore.toggleStar()
+const toggleStar = async () => {
+  try {
+    await goalStore.toggleStar()
+  } catch (error) {
+    console.error('Failed to update starred goal', error)
+  }
 }
 
 const postUpdate = () => {
@@ -1221,6 +1229,28 @@ const postUpdate = () => {
 .secondary-btn.starred i {
   color: #FFAB00;
 }
+
+.goal-star-button {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: rgba(9, 30, 66, 0.04);
+  color: #42526e;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  justify-content: center;
+  border-radius: 9px;
+}
+.goal-star-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-accent, #0c66e4) 42%, transparent);
+  outline-offset: 2px;
+}
+.goal-star-button:disabled { cursor: wait; }
+.goal-star-button i { width: 1em; line-height: 1; text-align: center; }
 
 .quick-status-row {
   display: flex;
@@ -2178,4 +2208,3 @@ const postUpdate = () => {
   outline: none !important;
 }
 </style>
-

@@ -20,6 +20,8 @@ namespace TaskManagement.Application.DTOs.WorkTask
     public class WorkTaskResponseDto
     {
         public Guid Id { get; set; }
+        public string EntityType { get; set; } = "Task";
+        public Guid WorkspaceId { get; set; }
         public Guid ProjectId { get; set; }
         public Guid? SprintId { get; set; }
         public string Title { get; set; } = string.Empty;

@@ -135,6 +135,7 @@ import { useSiteStore } from '@/store/useSiteStore'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { useActivityStore } from '@/store/useActivityStore'
+import { useStarredStore } from '@/store/useStarredStore'
 import { getStoredUser } from '@/utils/permissions'
 import axiosClient from '@/api/axiosClient'
 
@@ -143,6 +144,7 @@ const siteStore = useSiteStore()
 const i18nStore = useI18nStore()
 const projectStore = useHomeProjectStore()
 const activityStore = useActivityStore()
+const starredStore = useStarredStore()
 const t = (key) => i18nStore.t(key)
 
 const currentUser = getStoredUser()
@@ -176,7 +178,6 @@ const currentDate = computed(() => {
 })
 
 const loading = ref(false)
-const recentViews = ref([])
 
 const isCreateModalVisible = ref(false)
 const newSiteName = ref('')
@@ -206,16 +207,11 @@ const filteredSites = computed(() => {
 })
 
 const fetchRecentViews = async () => {
-  try {
-    const response = await axiosClient.get('/recentviews', { params: { limit: 8 } })
-    recentViews.value = response.data?.data || []
-  } catch (error) {
-    console.error('Fetch recent views error:', error)
-  }
+  await starredStore.fetchRecentItems({ page: 1, pageSize: 8 }).catch(() => {})
 }
 
 const recentProjects = computed(() => {
-  const viewedProjects = recentViews.value
+  const viewedProjects = starredStore.recentItems
     .filter(item => item.entityType === 'Project')
     .map(item => ({
       id: item.entityId,
@@ -225,11 +221,7 @@ const recentProjects = computed(() => {
       updatedAt: item.viewedAt
     }))
 
-  if (viewedProjects.length > 0) return viewedProjects.slice(0, 4)
-
-  return [...(projectStore.projects || [])]
-    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
-    .slice(0, 4)
+  return viewedProjects.slice(0, 4)
 })
 
 const miniActivities = computed(() => (activityStore.activities || []).slice(0, 5))

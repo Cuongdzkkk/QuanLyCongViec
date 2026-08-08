@@ -1,29 +1,26 @@
 <template>
   <div class="chat-container">
-    <!-- Left-most Discord-style Server Sidebar (only in channels tab) -->
+    <!-- Project scope sidebar for real collaboration channels -->
     <div class="server-bar" v-if="currentTab === 'channel'">
       <div 
-        v-for="srv in servers" 
-        :key="srv.id" 
+        v-for="project in projectOptions"
+        :key="project.id"
         class="server-icon-wrapper"
-        :class="{ active: activeServer.id === srv.id }"
-        @click="selectServer(srv)"
-        :title="srv.name"
+        :class="{ active: activeProjectId === project.id }"
+        @click="selectProject(project.id)"
+        :title="project.name"
       >
-        <div class="server-icon" :style="{ backgroundColor: srv.color }">
-          {{ srv.name.charAt(0).toUpperCase() }}
+        <div class="server-icon">
+          {{ project.name.charAt(0).toUpperCase() }}
         </div>
         <div class="active-indicator"></div>
       </div>
       
-      <!-- Add Server Circle Button -->
-      <button class="add-server-circle-btn" @click="openCreateServerModal" title="Tạo Server mới">
-        <i class="fa-solid fa-plus"></i>
-      </button>
     </div>
 
     <!-- Chat Sidebar (Channels & Direct Messages) -->
     <div class="chat-sidebar">
+
       <div class="sidebar-header" style="display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); margin-bottom: 14px;">
         <div class="flex items-center justify-between" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
           <h3 class="font-bold truncate" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0;">
@@ -51,7 +48,26 @@
             <span>{{ t('Direct Chat') }}</span>
           </button>
         </div>
+
+      <div class="sidebar-header">
+        <h3 class="font-bold truncate" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0;">
+          <i class="fa-solid fa-diagram-project text-primary text-base" v-if="currentTab === 'channel'"></i>
+          <i class="fa-solid fa-comments text-primary text-lg" v-else style="margin-right: 8px;"></i>
+          <span>{{ currentTab === 'channel' ? (activeProject?.name || 'Chọn Project') : 'Kênh Thảo Luận' }}</span>
+        </h3>
+
       </div>
+      <select
+        v-if="currentTab === 'channel'"
+        v-model="activeProjectId"
+        class="project-scope-select"
+        aria-label="Chọn Project cho Channel"
+      >
+        <option value="">Chọn Project</option>
+        <option v-for="project in projectOptions" :key="project.id" :value="project.id">
+          {{ project.name }}
+        </option>
+      </select>
 
       <!-- Sidebar lists wrap in scrollable container to pin voice panel at bottom -->
       <div class="sidebar-lists-scrollable">
@@ -65,27 +81,66 @@
 
           <div class="flex items-center justify-between section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <span class="section-title" style="margin-bottom: 0;">CHANNELS</span>
-            <button class="add-btn-small" title="Tạo kênh mới" @click="openCreateChannelModal">
+            <button
+              class="add-btn-small"
+              title="Tạo Channel"
+              aria-label="Tạo Channel"
+              :disabled="!activeProjectId || channelsLoading"
+              @click="openCreateChannelModal"
+            >
               <i class="fa-solid fa-plus text-xs"></i>
             </button>
           </div>
           <div class="section-list">
+            <div v-if="projectsLoading || channelsLoading" class="channel-state" role="status">
+              <i class="fa-solid fa-spinner fa-spin"></i>
+              <span>Đang tải Channel...</span>
+            </div>
+            <div v-else-if="projectsError" class="channel-state channel-state-error" role="alert">
+              <span>{{ projectsError }}</span>
+              <button type="button" class="state-action" @click="retryProjects">Thử lại</button>
+            </div>
+            <div v-else-if="channelsError" class="channel-state channel-state-error" role="alert">
+              <span>{{ channelsError }}</span>
+              <button type="button" class="state-action" @click="retryChannels">Thử lại</button>
+            </div>
+            <div v-else-if="!activeProjectId" class="channel-state">
+              Chọn Project để xem Channel.
+            </div>
+            <div v-else-if="channels.length === 0" class="channel-state">
+              Project này chưa có Channel bạn có thể truy cập.
+            </div>
             <button 
               v-for="ch in channels" 
               :key="ch.id" 
               class="list-item" 
-              :class="{ active: activeChat.id === ch.id && activeChat.type === 'channel' }"
+              :class="{ active: activeChat?.id === ch.id && activeChat?.type === 'channel' }"
               @click="selectChat(ch, 'channel')"
             >
               <span class="item-icon">#</span>
               <span class="item-name truncate">{{ ch.name }}</span>
-              <el-badge v-if="ch.unread" :value="ch.unread" class="ml-auto" />
+              <span
+                v-if="ch.unreadCount > 0"
+                class="collaboration-unread-badge"
+                role="status"
+                aria-live="polite"
+                :aria-label="`${ch.unreadCount} tin nhắn chưa đọc trong Channel ${ch.name}`"
+              >{{ formatUnreadCount(ch.unreadCount) }}</span>
+            </button>
+            <button
+              v-if="channels.length < channelPagination.totalCount"
+              type="button"
+              class="state-action load-more-action"
+              :disabled="channelsLoadingMore"
+              @click="loadMoreChannels"
+            >
+              {{ channelsLoadingMore ? 'Đang tải...' : 'Tải thêm Channel' }}
             </button>
           </div>
         </div>
 
         <!-- Voice Channels List -->
-        <div class="sidebar-section mt-4" v-if="currentTab === 'channel'">
+        <div class="sidebar-section mt-4" v-if="currentTab === 'voice'">
           <div class="flex items-center justify-between section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <span class="section-title" style="margin-bottom: 0;">KÊNH THOẠI (VOICE)</span>
             <button class="add-btn-small" title="Tạo kênh thoại mới" @click="openCreateVoiceModal">
@@ -125,30 +180,85 @@
         <!-- Direct Messages List -->
         <div class="sidebar-section mt-4" v-if="currentTab === 'dm'">
           <span class="section-title">TIN NHẮN TRỰC TIẾP</span>
+          <select
+            v-model="activeProjectId"
+            class="project-scope-select"
+            aria-label="Chọn Project để tìm người nhận"
+          >
+            <option value="">Chọn Project</option>
+            <option v-for="project in projectOptions" :key="project.id" :value="project.id">
+              {{ project.name }}
+            </option>
+          </select>
+          <select
+            class="project-scope-select"
+            :value="selectedRecipientId"
+            :disabled="membersLoading || findingConversation || !activeProjectId"
+            aria-label="Chọn người nhận Direct Message"
+            @change="selectDirectRecipient($event.target.value)"
+          >
+            <option value="">
+              {{ membersLoading ? 'Đang tải thành viên...' : 'Chọn người nhận' }}
+            </option>
+            <option v-for="member in members" :key="member.id" :value="member.id">
+              {{ member.name }}
+            </option>
+          </select>
           <div class="section-list">
+            <div v-if="membersError" class="channel-state channel-state-error" role="alert">
+              <span>{{ membersError }}</span>
+              <button type="button" class="state-action" aria-label="Thử tải lại thành viên" @click="retryMembers">Thử lại</button>
+            </div>
+            <div v-if="conversationsLoading" class="channel-state" role="status">
+              <i class="fa-solid fa-spinner fa-spin"></i>
+              <span>Đang tải cuộc trò chuyện...</span>
+            </div>
+            <div v-else-if="conversationsError" class="channel-state channel-state-error" role="alert">
+              <span>{{ conversationsError }}</span>
+              <button type="button" class="state-action" aria-label="Thử tải lại cuộc trò chuyện" @click="retryConversations">Thử lại</button>
+            </div>
+            <div v-else-if="directConversations.length === 0" class="channel-state">
+              Bạn chưa có cuộc trò chuyện nào.
+            </div>
             <button 
-              v-for="m in members" 
-              :key="m.id" 
+              v-for="conversation in directConversations"
+              :key="conversation.id"
               class="list-item" 
-              :class="{ active: activeChat.id === m.id && activeChat.type === 'dm' }"
-              @click="selectChat(m, 'dm')"
+              :class="{ active: activeChat?.id === conversation.id && activeChat?.type === 'dm' }"
+              :disabled="findingConversation"
+              @click="selectChat(conversation, 'dm')"
             >
-              <div class="avatar-status-wrapper">
-                <el-avatar :size="24" :src="m.avatar">{{ m.name.charAt(0) }}</el-avatar>
-                <span class="status-dot" :class="m.status"></span>
-              </div>
+              <el-avatar :size="24" :src="conversation.avatar">{{ conversation.name.charAt(0) }}</el-avatar>
               <div class="flex flex-col text-left overflow-hidden ml-2">
-                <span class="item-name truncate">{{ m.name }}</span>
-                <span class="text-xs text-muted truncate">{{ m.statusText || (m.status === 'online' ? 'Online' : 'Offline') }}</span>
+                <span class="item-name truncate">{{ conversation.name }}</span>
+                <span class="text-xs text-muted truncate">{{ conversation.lastMessagePreview || 'Chưa có tin nhắn' }}</span>
               </div>
-              <el-badge v-if="m.unread" :value="m.unread" class="ml-auto" />
+              <span class="conversation-time">
+                {{ formatTime(conversation.lastMessageAt || conversation.createdAt) }}
+              </span>
+              <span
+                v-if="conversation.unreadCount > 0"
+                class="collaboration-unread-badge"
+                role="status"
+                aria-live="polite"
+                :aria-label="`${conversation.unreadCount} tin nhắn chưa đọc từ ${conversation.name}`"
+              >{{ formatUnreadCount(conversation.unreadCount) }}</span>
+            </button>
+            <button
+              v-if="directConversations.length < conversationPagination.totalCount"
+              type="button"
+              class="state-action load-more-action"
+              :disabled="conversationsLoadingMore"
+              @click="loadMoreConversations"
+            >
+              {{ conversationsLoadingMore ? 'Đang tải...' : 'Tải thêm cuộc trò chuyện' }}
             </button>
           </div>
         </div>
       </div>
 
       <!-- Connected Voice Control Panel (Discord style) -->
-      <div v-if="activeVoiceChannel" class="connected-voice-panel mt-auto">
+      <div v-if="currentTab === 'voice' && activeVoiceChannel" class="connected-voice-panel mt-auto">
         <div class="voice-status-info flex items-center justify-between" style="display: flex; justify-content: space-between; align-items: center;">
           <div class="flex items-center gap-2" style="display: flex; align-items: center; gap: 8px;">
             <span class="status-indicator-ping"><i class="fa-solid fa-signal text-success text-xs" style="color: var(--color-success);"></i></span>
@@ -186,11 +296,11 @@
     <div class="chat-main">
       <div class="chat-header">
         <div class="active-info">
-          <span class="active-icon">{{ activeChat.type === 'channel' ? '#' : '@' }}</span>
+          <span class="active-icon">{{ activeChat?.type === 'channel' ? '#' : '@' }}</span>
           <div>
-            <h4 class="font-semibold text-primary leading-tight">{{ activeChat.name }}</h4>
+            <h4 class="font-semibold text-primary leading-tight">{{ activeChat?.name || 'Chưa chọn Channel' }}</h4>
             <p class="text-xs text-muted leading-none">
-              {{ activeChat.type === 'channel' ? activeChat.desc : (activeChat.status === 'online' ? 'Đang hoạt động' : 'Ngoại tuyến') }}
+              {{ activeChat?.type === 'channel' ? activeChat.desc : (activeChat ? 'Tin nhắn được lưu trên máy chủ' : 'Chọn một cuộc trò chuyện') }}
             </p>
           </div>
         </div>
@@ -208,10 +318,21 @@
           <button class="action-btn" v-if="currentTab === 'dm'" title="Tìm kiếm tin nhắn">
             <i class="fa-solid fa-magnifying-glass text-lg"></i>
           </button>
-          <button class="action-btn" :title="currentTab === 'dm' ? 'Tạo nhóm Server' : 'Thành viên'" @click="currentTab === 'dm' ? openCreateServerFromDmModal() : toggleMembersSidebar()">
+          <button v-if="currentTab === 'dm'" class="action-btn" title="Tạo nhóm Server" @click="openCreateServerFromDmModal">
             <i class="fa-solid fa-users text-lg"></i>
           </button>
         </div>
+      </div>
+      <div
+        v-if="connectionNotice"
+        class="connection-notice"
+        :class="`is-${connectionState}`"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <i :class="connectionNoticeIcon" aria-hidden="true"></i>
+        <span>{{ connectionNotice }}</span>
       </div>
 
       <!-- Main body layout with horizontal partition for Discord style members list -->
@@ -220,14 +341,44 @@
         <div style="display: flex; flex-direction: column; flex: 1; min-width: 0; height: 100%;">
           <!-- Messages View -->
           <div ref="messageThread" class="messages-thread">
+            <div v-if="historyLoading" class="history-state" role="status">
+              <i class="fa-solid fa-spinner fa-spin"></i>
+              <span>Đang tải tin nhắn...</span>
+            </div>
+            <div v-else-if="historyError" class="history-state history-state-error" role="alert">
+              <span>{{ historyError }}</span>
+              <button type="button" class="state-action" @click="retryHistory">Thử lại</button>
+            </div>
+            <div v-else-if="currentTab === 'channel' && !activeChannel" class="history-state">
+              Chọn một Channel để xem tin nhắn.
+            </div>
+            <div v-else-if="currentTab === 'channel' && activeMessages.length === 0" class="history-state">
+              Chưa có tin nhắn trong kênh này.
+            </div>
+            <div v-else-if="currentTab === 'dm' && !activeChat" class="history-state">
+              Chọn một cuộc trò chuyện hoặc người nhận để bắt đầu.
+            </div>
+            <div v-else-if="currentTab === 'dm' && activeMessages.length === 0" class="history-state">
+              Chưa có tin nhắn trong cuộc trò chuyện này.
+            </div>
+            <button
+              v-if="activeChat && activeMessages.length < messagePagination.totalCount"
+              type="button"
+              class="state-action load-older-action"
+              :disabled="historyLoadingOlder"
+              @click="loadOlderMessages"
+            >
+              {{ historyLoadingOlder ? 'Đang tải...' : 'Tải tin nhắn cũ hơn' }}
+            </button>
             <div 
-              v-for="(msg, idx) in activeMessages" 
-              :key="idx" 
+              v-for="msg in activeMessages"
+              :key="messageKey(msg)"
               class="message-card"
-              :class="{ 'mine': msg.senderId === currentUser.id }"
+              :class="{ 'mine': msg.senderId === currentUser.id, 'mention-target': route.query.messageId === msg.messageId }"
+              :data-message-id="msg.messageId"
             >
               <el-avatar :size="32" :src="msg.senderAvatar" class="flex-shrink-0">
-                {{ msg.senderName.charAt(0) }}
+                {{ msg.senderName?.charAt(0) || '?' }}
               </el-avatar>
               <div class="message-body">
                 <div class="message-meta">
@@ -235,22 +386,33 @@
                   <span class="send-time">{{ formatTime(msg.sentAt) }}</span>
                 </div>
                 <div class="message-content">
-                  <p>{{ msg.content }}</p>
+                  <p><template v-for="(segment, index) in msg.contentSegments" :key="`${msg.messageId}-${index}`"><span v-if="segment.isMention" class="message-mention">{{ segment.text }}</span><span v-else>{{ segment.text }}</span></template></p>
                   
-                  <!-- File Attachment Preview -->
-                  <div v-if="msg.attachment" class="attachment-preview-container mt-2">
-                    <div v-if="isImageFile(msg.attachment.name)" class="image-attachment">
-                      <img :src="msg.attachment.url" class="max-w-xs max-h-48 rounded border border-slate-700/50" />
-                    </div>
-                    <div v-else class="attachment-preview flex items-center p-2 rounded bg-slate-800/60 border border-slate-700/40">
-                      <i :class="getFileIconClass(msg.attachment.name)" class="text-2xl mr-2"></i>
-                      <div class="flex flex-col overflow-hidden min-w-0">
-                        <span class="text-xs font-semibold truncate text-primary">{{ msg.attachment.name }}</span>
-                        <span class="text-xxs text-muted">{{ msg.attachment.size }}</span>
+                  <div v-if="msg.attachments.length" class="attachment-preview-container mt-2">
+                    <div v-for="attachment in msg.attachments" :key="attachment.attachmentId" class="message-attachment">
+                      <button
+                        v-if="attachment.isImage && attachment.previewUrl"
+                        type="button"
+                        class="image-attachment"
+                        :aria-label="`Tải ảnh ${attachment.originalFileName}`"
+                        @click="downloadAttachment(attachment)"
+                      >
+                        <img :src="attachment.previewUrl" :alt="attachment.originalFileName" />
+                      </button>
+                      <div v-else class="attachment-preview flex items-center p-2 rounded">
+                        <i :class="getFileIconClass(attachment.originalFileName)" class="text-2xl mr-2"></i>
+                        <div class="flex flex-col overflow-hidden min-w-0">
+                          <span class="text-xs font-semibold truncate text-primary">{{ attachment.originalFileName }}</span>
+                          <span class="text-xxs text-muted">{{ formatFileSize(attachment.sizeBytes) }}</span>
+                        </div>
+                        <button
+                          type="button"
+                          class="attachment-download-btn"
+                          :disabled="attachment.downloading"
+                          :aria-label="`Tải ${attachment.originalFileName}`"
+                          @click="downloadAttachment(attachment)"
+                        ><i :class="attachment.downloading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-download'"></i> Tải xuống</button>
                       </div>
-                      <a :href="msg.attachment.url" :download="msg.attachment.name" class="ml-auto text-xs text-primary hover:underline" style="display: flex; align-items: center; gap: 4px;">
-                        <i class="fa-solid fa-download"></i> Tải xuống
-                      </a>
                     </div>
                   </div>
                 </div>
@@ -265,21 +427,33 @@
               type="file" 
               ref="fileInputRef" 
               style="display: none;" 
+              multiple
+              accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.docx,.xlsx"
               @change="handleFileChange" 
             />
 
             <!-- Attached File Preview Bar -->
-            <div v-if="attachedFile" class="attached-file-preview-bar">
-              <i :class="getFileIconClass(attachedFile.name)" class="text-xl"></i>
-              <span class="text-xs truncate font-semibold text-secondary" style="max-width: 260px; margin-left: 6px; margin-right: 6px;">{{ attachedFile.name }}</span>
-              <span class="text-xxs text-muted">({{ attachedFile.size }})</span>
-              <button class="remove-attachment-btn ml-auto" @click="removeAttachedFile" title="Gỡ file đính kèm">
-                <i class="fa-solid fa-xmark"></i>
-              </button>
+            <div v-if="attachedFiles.length" class="attached-files-preview" aria-label="File đã chọn">
+              <div v-for="file in attachedFiles" :key="file.id" class="attached-file-preview-bar">
+                <img v-if="file.previewUrl" :src="file.previewUrl" alt="" class="selected-file-thumbnail" />
+                <i v-else :class="getFileIconClass(file.name)" class="text-xl"></i>
+                <span class="text-xs truncate font-semibold text-secondary">{{ file.name }}</span>
+                <span class="text-xxs text-muted">({{ formatFileSize(file.sizeBytes) }})</span>
+                <button type="button" class="remove-attachment-btn ml-auto" @click="removeAttachedFile(file.id)" :aria-label="`Gỡ ${file.name}`" title="Gỡ file đính kèm">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
             </div>
 
             <div class="input-actions-bar">
-              <el-button size="small" class="btn-secondary" title="Đính kèm file" @click="triggerAttachment">
+              <el-button
+                size="small"
+                class="btn-secondary"
+                title="Đính kèm file"
+                :disabled="composerDisabled || attachedFiles.length >= 5"
+                aria-label="Chọn file đính kèm"
+                @click="triggerAttachment"
+              >
                 <i class="fa-solid fa-paperclip"></i>
               </el-button>
               
@@ -307,25 +481,59 @@
                 </div>
               </el-popover>
 
-              <span class="text-xs text-muted ml-2" v-if="isTyping">Ai đó đang nhập...</span>
             </div>
-            <div class="input-form">
-              <input 
+            <div class="input-form mention-composer">
+              <textarea
+                ref="composerInput"
                 v-model="newMessage" 
-                type="text" 
-                placeholder="Gửi tin nhắn hoặc gõ / để mở trợ giúp..." 
+                :placeholder="composerPlaceholder"
                 class="chat-input w-full"
-                @keyup.enter="sendMessage"
-              />
-              <button class="btn-send" @click="sendMessage">
-                <i class="fa-solid fa-paper-plane"></i>
+                rows="1"
+                :maxlength="4000"
+                :disabled="composerDisabled"
+                @input="handleComposerInput"
+                @keydown="handleComposerKeydown"
+              ></textarea>
+              <div
+                v-if="mentionMenuOpen"
+                class="mention-menu"
+                role="listbox"
+                aria-label="Channel members"
+              >
+                <div v-if="mentionLoading" class="mention-menu-state">Đang tìm thành viên...</div>
+                <button
+                  v-for="(member, index) in mentionSuggestions"
+                  :key="member.userId"
+                  type="button"
+                  class="mention-option"
+                  :class="{ active: index === mentionActiveIndex }"
+                  role="option"
+                  :aria-selected="index === mentionActiveIndex"
+                  @mousedown.prevent="selectMention(member)"
+                >
+                  <el-avatar :size="26" :src="member.avatarUrl || ''">{{ member.displayName?.charAt(0) || '?' }}</el-avatar>
+                  <span>{{ member.displayName }}</span>
+                </button>
+                <div v-if="!mentionLoading && mentionSuggestions.length === 0" class="mention-menu-state">Không có thành viên phù hợp.</div>
+              </div>
+              <button
+                class="btn-send"
+                :disabled="composerDisabled || (!newMessage.trim() && attachedFiles.length === 0)"
+                :aria-label="sendingMessage ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'"
+                :title="sendingMessage ? 'Đang gửi...' : 'Gửi tin nhắn'"
+                @click="sendMessage"
+              >
+                <i :class="sendingMessage ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
               </button>
+            </div>
+            <div v-if="newMessage.length >= 3600" class="character-counter">
+              {{ newMessage.length }}/4000
             </div>
           </div>
         </div>
 
         <!-- Right Server Members Sidebar -->
-        <div v-if="showMembersSidebar && currentTab === 'channel'" class="members-sidebar-right">
+        <div v-if="currentTab === 'server' && showMembersSidebar" class="members-sidebar-right">
           <div class="flex items-center justify-between" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <span class="text-xs font-bold text-muted uppercase">Thành viên ({{ activeServerMembers.length }})</span>
           </div>
@@ -576,6 +784,8 @@
             placeholder="Ví dụ: backend-dev" 
             class="custom-friend-input"
             style="width: 100%; height: 38px;"
+            maxlength="100"
+            :disabled="creatingChannel"
           />
         </div>
         <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -585,13 +795,21 @@
             placeholder="Mô tả mục đích của kênh này..." 
             class="custom-friend-input"
             style="width: 100%; height: 38px;"
+            maxlength="500"
+            :disabled="creatingChannel"
           />
         </div>
       </div>
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <el-button @click="createChannelActive = false">Hủy</el-button>
-          <button class="btn-save" @click="createNewChannel">Tạo Kênh</button>
+          <el-button :disabled="creatingChannel" @click="closeCreateChannelModal">Hủy</el-button>
+          <button
+            class="btn-save"
+            :disabled="creatingChannel || !newChannelName.trim()"
+            @click="createNewChannel"
+          >
+            {{ creatingChannel ? 'Đang tạo...' : 'Tạo Kênh' }}
+          </button>
         </div>
       </template>
     </el-dialog>
@@ -910,10 +1128,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
+
 import { useI18n } from '@/composables/useI18n'
 
 const route = useRoute()
@@ -921,11 +1140,36 @@ const router = useRouter()
 const { t } = useI18n()
 const currentTab = computed(() => route.query.tab || 'channel')
 
+import { collaborationApi } from '@/api/collaborationApi'
+import { useProjectStore } from '@/store/useProjectStore'
+import { useAuthStore } from '@/store/useAuthStore'
+import {
+  collaborationRealtime,
+  COLLABORATION_REALTIME_STATES,
+  getCollaborationHubErrorCode
+} from '@/services/collaborationRealtime'
+import {
+  clearScopedCurrentProjectId,
+  getScopedCurrentProjectId,
+  setScopedCurrentProjectId
+} from '@/utils/projectContext'
+
+const route = useRoute()
+const router = useRouter()
+const projectStore = useProjectStore()
+const authStore = useAuthStore()
+const currentTab = computed(() => route.query.tab === 'dm' ? 'dm' : 'channel')
+const projectOptions = computed(() => projectStore.sidebarProjects)
+const activeProjectId = ref('')
+const activeProject = computed(() =>
+  projectOptions.value.find(project => project.id === activeProjectId.value) || null
+)
+const projectsLoading = ref(false)
+const projectsError = ref('')
+
+
 const defaultServers = [
-  { id: 'srv-sprinta', name: 'SprintA Workspace', color: '#6366f1', channels: [
-    { id: 'ch-general', name: 'general', desc: 'Thảo luận chung của cả đội', unread: 0 },
-    { id: 'ch-frontend', name: 'frontend-dev', desc: 'Nơi thảo luận về giao diện Vue 3 + Element Plus', unread: 2 }
-  ], voiceChannels: [
+  { id: 'srv-sprinta', name: 'SprintA Workspace', color: '#6366f1', channels: [], voiceChannels: [
     { id: 'vc-sprint', name: 'Họp Kế Hoạch Sprint 🚀', users: [
       { id: 'user-kiet', name: 'Nguyễn Tuấn Kiệt', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=128' },
       { id: 'user-phat', name: 'Trần Gia Phát', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128' }
@@ -936,9 +1180,7 @@ const defaultServers = [
     { id: 'user-kiet', name: 'Nguyễn Tuấn Kiệt', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=128' },
     { id: 'user-phat', name: 'Trần Gia Phát', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128' }
   ] },
-  { id: 'srv-gaming', name: 'Góc Giải Trí 🎮', color: '#10b981', channels: [
-    { id: 'ch-chat', name: 'tán-gẫu', desc: 'Tán gẫu ngoài giờ làm việc', unread: 0 }
-  ], voiceChannels: [
+  { id: 'srv-gaming', name: 'Góc Giải Trí 🎮', color: '#10b981', channels: [], voiceChannels: [
     { id: 'vc-pubg', name: 'PUBG Team 🔫', users: [] },
     { id: 'vc-lol', name: 'Liên Minh Huyền Thoại ⚔️', users: [] }
   ] }
@@ -963,7 +1205,18 @@ const saveServers = () => {
 
 const activeServer = ref(servers.value[0])
 
-const channels = computed(() => activeServer.value ? activeServer.value.channels : [])
+const channels = ref([])
+const channelsLoading = ref(false)
+const channelsLoadingMore = ref(false)
+const channelsError = ref('')
+const channelPagination = ref({
+  page: 1,
+  pageSize: 50,
+  totalCount: 0,
+  ordering: ''
+})
+const channelAbortController = ref(null)
+let channelRequestId = 0
 const voiceChannels = computed(() => activeServer.value ? activeServer.value.voiceChannels : [])
 
 const selectServer = (srv) => {
@@ -979,6 +1232,10 @@ const newServerName = ref('')
 const createChannelActive = ref(false)
 const newChannelName = ref('')
 const newChannelDesc = ref('')
+const creatingChannel = ref(false)
+const createChannelIdempotencyKey = ref('')
+const createChannelPayloadFingerprint = ref('')
+const createChannelAbortController = ref(null)
 const createVoiceActive = ref(false)
 const newVoiceName = ref('')
 
@@ -1025,9 +1282,22 @@ const openCreateServerModal = () => {
   createServerActive.value = true
 }
 const openCreateChannelModal = () => {
+  if (!activeProjectId.value) {
+    ElMessage.warning('Chọn Project trước khi tạo Channel.')
+    return
+  }
   newChannelName.value = ''
   newChannelDesc.value = ''
+  createChannelIdempotencyKey.value = makeChannelIdempotencyKey()
+  createChannelPayloadFingerprint.value = ''
   createChannelActive.value = true
+}
+
+const closeCreateChannelModal = () => {
+  if (creatingChannel.value) return
+  createChannelActive.value = false
+  createChannelIdempotencyKey.value = ''
+  createChannelPayloadFingerprint.value = ''
 }
 const openCreateVoiceModal = () => {
   newVoiceName.value = ''
@@ -1046,9 +1316,7 @@ const createNewServer = () => {
     id: `srv-${Date.now()}`,
     name: newServerName.value.trim(),
     color: color,
-    channels: [
-      { id: `ch-gen-${Date.now()}`, name: 'general', desc: 'Thảo luận chung của Server', unread: 0 }
-    ],
+    channels: [],
     voiceChannels: [
       { id: `vc-gen-${Date.now()}`, name: 'Phòng thoại chung 🔊', users: [] }
     ],
@@ -1091,9 +1359,7 @@ const confirmCreateServerFromDm = () => {
     id: `srv-${Date.now()}`,
     name: dmServerName.value.trim(),
     color: color,
-    channels: [
-      { id: `ch-gen-${Date.now()}`, name: 'general', desc: `Kênh thảo luận nhóm của ${dmServerName.value.trim()}`, unread: 0 }
-    ],
+    channels: [],
     voiceChannels: [
       { id: `vc-gen-${Date.now()}`, name: 'Phòng thoại chung 🔊', users: [] }
     ],
@@ -1125,23 +1391,82 @@ const confirmCreateServerFromDm = () => {
   selectServer(newSrv)
   ElMessage.success(`Đã tạo nhóm server "${newSrv.name}" và chuyển sang chat nhóm!`)
 }
-const createNewChannel = () => {
-  if (!newChannelName.value.trim()) {
-    ElMessage.warning('Vui lòng nhập tên kênh!')
+const createNewChannel = async () => {
+  if (creatingChannel.value || !activeProjectId.value) return
+  const name = newChannelName.value.trim()
+  const description = newChannelDesc.value.trim()
+  if (!name) {
+    ElMessage.warning('Vui lòng nhập tên Channel.')
     return
   }
-  const nameFormatted = newChannelName.value.trim().toLowerCase().replace(/\s+/g, '-')
-  const newCh = {
-    id: `ch-custom-${Date.now()}`,
-    name: nameFormatted,
-    desc: newChannelDesc.value.trim() || 'Kênh trao đổi tùy chỉnh',
-    unread: 0
+
+  const payload = {
+    name,
+    description: description || null,
+    visibility: 'Private'
   }
-  activeServer.value.channels.push(newCh)
-  saveServers()
-  createChannelActive.value = false
-  selectChat(newCh, 'channel')
-  ElMessage.success(`Đã tạo kênh chat #${nameFormatted}`)
+  const fingerprint = JSON.stringify(payload)
+  if (
+    !createChannelIdempotencyKey.value ||
+    (createChannelPayloadFingerprint.value &&
+      createChannelPayloadFingerprint.value !== fingerprint)
+  ) {
+    createChannelIdempotencyKey.value = makeChannelIdempotencyKey()
+  }
+  createChannelPayloadFingerprint.value = fingerprint
+  const requestProjectId = activeProjectId.value
+  const controller = new AbortController()
+  createChannelAbortController.value = controller
+  creatingChannel.value = true
+
+  try {
+    const result = await collaborationApi.createProjectChannel(
+      requestProjectId,
+      payload,
+      {
+        idempotencyKey: createChannelIdempotencyKey.value,
+        signal: controller.signal
+      }
+    )
+    if (activeProjectId.value !== requestProjectId) return
+    const channel = mapChannel(result, requestProjectId)
+    await loadChannels({ page: 1, selectFirst: false })
+    channelsError.value = ''
+    if (!channels.value.some(item => item.id === channel.id)) {
+      channels.value = [...channels.value, channel]
+      channelPagination.value.totalCount = Math.max(
+        channelPagination.value.totalCount,
+        channels.value.length
+      )
+    }
+    createChannelActive.value = false
+    createChannelIdempotencyKey.value = ''
+    createChannelPayloadFingerprint.value = ''
+    await selectChat(channel, 'channel')
+    ElMessage.success(`Đã tạo Channel #${channel.name}`)
+  } catch (error) {
+    if (isCanceledRequest(error)) return
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+    } else if (status === 403) {
+      ElMessage.error('Bạn không có quyền tạo Channel trong Project này.')
+    } else if (status === 404 || status === 409) {
+      await loadChannels({ page: 1 })
+      ElMessage.error(
+        status === 409
+          ? 'Yêu cầu tạo Channel bị xung đột. Danh sách đã được làm mới.'
+          : 'Project không còn khả dụng. Danh sách Channel đã được làm mới.'
+      )
+    } else {
+      ElMessage.error(apiErrorMessage(error, 'Không thể tạo Channel. Bạn có thể thử lại.'))
+    }
+  } finally {
+    if (createChannelAbortController.value === controller) {
+      createChannelAbortController.value = null
+    }
+    creatingChannel.value = false
+  }
 }
 
 const createNewVoice = () => {
@@ -1161,57 +1486,89 @@ const createNewVoice = () => {
 }
 
 const members = ref([])
+const membersLoading = ref(false)
+const membersError = ref('')
+const memberAbortController = ref(null)
+let memberRequestId = 0
+const selectedRecipientId = ref('')
 
 const currentUser = ref({
   id: '',
-  name: 'Đoàn Minh Quân',
+  name: '',
   avatar: ''
 })
 
-const defaultMessages = {
-  'ch-general': [
-    { senderId: 'user-kiet', senderName: 'Nguyễn Tuấn Kiệt', senderAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=128', content: 'Chào mọi người, chúc một tuần mới làm việc hiệu quả!', sentAt: new Date(Date.now() - 3600000 * 4).toISOString() },
-    { senderId: 'user-quan', senderName: 'Đoàn Minh Quân', senderAvatar: '', content: 'Chào cả nhà, hôm nay mình bắt đầu thiết kế Module Team Collaboration nhé.', sentAt: new Date(Date.now() - 3600000 * 3).toISOString() }
-  ],
-  'ch-frontend': [
-    { senderId: 'user-phat', senderName: 'Trần Gia Phát', senderAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128', content: 'Cậu ơi, đã hoàn thành import CSS Variables chưa?', sentAt: new Date(Date.now() - 3600000 * 2).toISOString() },
-    { senderId: 'user-phat', senderName: 'Trần Gia Phát', senderAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128', content: 'Tớ có gửi kèm file thiết kế UI ở đây.', sentAt: new Date(Date.now() - 3600000 * 1.9).toISOString(), attachment: { name: 'UI_Specification_v2.pdf', size: '2.4 MB' } }
-  ],
-  'user-phat': [
-    { senderId: 'user-phat', senderName: 'Trần Gia Phát', senderAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128', content: 'Quân ơi, rảnh thì call video thảo luận vụ setup SignalR một chút nhé.', sentAt: new Date(Date.now() - 3600000).toISOString() }
-  ]
-}
-
-const loadMessages = () => {
-  const stored = localStorage.getItem('collaboration_messages')
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch (e) {
-      console.error(e)
-    }
-  }
-  return defaultMessages
-}
-
-const mockMessages = ref(loadMessages())
-
-const saveMessages = () => {
-  localStorage.setItem('collaboration_messages', JSON.stringify(mockMessages.value))
-}
-
-const activeChat = ref({
-  id: 'ch-general',
-  name: 'general',
-  type: 'channel',
-  desc: 'Thảo luận chung của cả đội'
+const directConversations = ref([])
+const conversationsLoading = ref(false)
+const conversationsLoadingMore = ref(false)
+const conversationsError = ref('')
+const conversationPagination = ref({
+  page: 1,
+  pageSize: 50,
+  totalCount: 0,
+  ordering: ''
 })
+const conversationAbortController = ref(null)
+let conversationRequestId = 0
+const findingConversation = ref(false)
+const findConversationAbortController = ref(null)
+
+const activeChat = ref(null)
 
 const activeMessages = ref([])
+const activeChannel = computed(() =>
+  activeChat.value?.type === 'channel' ? activeChat.value : null
+)
+const activeDirectConversation = computed(() =>
+  activeChat.value?.type === 'dm' ? activeChat.value : null
+)
 const newMessage = ref('')
+const composerInput = ref(null)
+const selectedMentions = ref([])
+const mentionSuggestions = ref([])
+const mentionMenuOpen = ref(false)
+const mentionLoading = ref(false)
+const mentionActiveIndex = ref(0)
+const mentionRange = ref(null)
+const mentionAbortController = ref(null)
+let mentionRequestId = 0
+let mentionDebounceTimer = null
+let previousComposerValue = ''
 const messageThread = ref(null)
+const historyLoading = ref(false)
+const historyLoadingOlder = ref(false)
+const historyError = ref('')
+const sendingMessage = ref(false)
+const sendMessageAbortController = ref(null)
+const messagePagination = ref({
+  page: 1,
+  pageSize: 50,
+  totalCount: 0,
+  ordering: ''
+})
+const messageAbortController = ref(null)
+let messageRequestId = 0
+let chatSelectionId = 0
+const connectionState = ref(COLLABORATION_REALTIME_STATES.DISCONNECTED)
+const connectionNotice = ref('')
+const connectionNoticeIcon = computed(() => {
+  if (
+    connectionState.value === COLLABORATION_REALTIME_STATES.CONNECTING ||
+    connectionState.value === COLLABORATION_REALTIME_STATES.RECONNECTING
+  ) {
+    return 'fa-solid fa-arrows-rotate fa-spin'
+  }
+  if (connectionState.value === COLLABORATION_REALTIME_STATES.CONNECTED) {
+    return 'fa-solid fa-circle-check'
+  }
+  return 'fa-solid fa-triangle-exclamation'
+})
+let connectionNoticeTimer = null
+let markReadTimer = null
+let pendingRead = null
+let markReadVersion = 0
+const realtimeUnsubscribers = []
 const videoCallActive = ref(false)
-const isTyping = ref(false)
 
 const isCallMuted = ref(false)
 const isCallCameraOn = ref(false)
@@ -1398,96 +1755,1299 @@ const leaveVoiceChannel = () => {
   activeVoiceChannel.value = null
 }
 
-onMounted(async () => {
-  try {
-    // 1. Get current user profile
-     const meRes = await axiosClient.get('/users/me')
-     if (meRes.data && meRes.data.data) {
-       const me = meRes.data.data
-       currentUser.value = {
-         id: me.id,
-         name: me.fullName,
-         avatar: me.avatarUrl || ''
-       }
-       // Helper to remove accents
-       const stripAccents = (str) => {
-         if (!str) return '';
-         return str.normalize('NFD')
-                   .replace(/[\u0300-\u036f]/g, '')
-                   .replace(/[đĐ]/g, m => m === 'đ' ? 'd' : 'D');
-       }
-       const parts = (me.fullName || 'USER').trim().split(/\s+/)
-       const last = parts[parts.length - 1]
-       const clean = stripAccents(last).toUpperCase().replace(/[^A-Z0-9]/g, '')
-       const suffix = me.id ? me.id.substring(me.id.length - 4).toUpperCase() : '9982'
-       myFriendCode.value = `${clean}-${suffix}`
-     }
-  } catch (e) {
-    console.error('Cannot load current user profile:', e)
+const isCanceledRequest = (error) =>
+  error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED'
+
+const apiErrorMessage = (error, fallback) => {
+  const message = error?.response?.data?.message
+  return typeof message === 'string' && message.trim() ? message : fallback
+}
+
+const makeChannelIdempotencyKey = () => {
+  const randomPart = typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return `channel:${randomPart}`
+}
+
+const mapChannel = (item, expectedProjectId) => {
+  if (
+    !item?.channelId ||
+    !item?.workspaceId ||
+    item?.projectId !== expectedProjectId
+  ) {
+    throw new Error('Invalid Channel response scope.')
   }
 
-  try {
-    // 2. Get list of active users/members
-    const usersRes = await axiosClient.get('/users', { params: { pageSize: 100 } })
-    if (usersRes.data && usersRes.data.data) {
-      members.value = usersRes.data.data.map(u => ({
-        id: u.id,
-        name: u.fullName,
-        status: 'online',
-        statusText: u.jobTitle || 'Thành viên',
-        avatar: u.avatarUrl || '',
-        unread: 0
-      })).filter(u => u.id !== currentUser.value.id)
+  return {
+    id: item.channelId,
+    channelId: item.channelId,
+    name: item.name,
+    desc: item.description || '',
+    workspaceId: item.workspaceId,
+    projectId: item.projectId,
+    visibility: item.visibility,
+    isMember: Boolean(item.isMember),
+    canRead: Boolean(item.canRead),
+    canSend: Boolean(item.canSend),
+    canManage: Boolean(item.canManage),
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    unreadCount: Math.max(0, Number(item.unreadCount || 0)),
+    lastReadMessageId: item.lastReadMessageId || null
+  }
+}
+
+const mapAttachment = (item) => {
+  if (
+    !item?.attachmentId ||
+    typeof item?.originalFileName !== 'string' ||
+    typeof item?.contentType !== 'string' ||
+    !Number.isFinite(Number(item?.sizeBytes)) ||
+    'storageKey' in item
+  ) {
+    throw new Error('Invalid collaboration attachment metadata.')
+  }
+  return {
+    attachmentId: item.attachmentId,
+    originalFileName: item.originalFileName,
+    contentType: item.contentType,
+    sizeBytes: Number(item.sizeBytes),
+    isImage: item.contentType.startsWith('image/'),
+    previewUrl: '',
+    previewLoading: false,
+    downloading: false
+  }
+}
+
+const mapMentions = (items, content) => {
+  if (!Array.isArray(items)) return []
+  const seenUsers = new Set()
+  return items
+    .filter(item => {
+      const start = Number(item?.startIndex)
+      const length = Number(item?.length)
+      const valid = item?.userId &&
+        !seenUsers.has(item.userId) &&
+        Number.isInteger(start) && start >= 0 &&
+        Number.isInteger(length) && length >= 2 &&
+        start + length <= content.length &&
+        content.slice(start, start + length) === item.displayText &&
+        item.displayText.startsWith('@')
+      if (valid) seenUsers.add(item.userId)
+      return valid
+    })
+    .map(item => ({
+      userId: item.userId,
+      displayText: item.displayText,
+      startIndex: Number(item.startIndex),
+      length: Number(item.length)
+    }))
+    .sort((left, right) => left.startIndex - right.startIndex)
+}
+
+const buildContentSegments = (content, mentions) => {
+  const segments = []
+  let cursor = 0
+  mentions.forEach(mention => {
+    if (mention.startIndex < cursor) return
+    if (mention.startIndex > cursor) {
+      segments.push({ text: content.slice(cursor, mention.startIndex), isMention: false })
     }
-  } catch (e) {
-    console.error('Cannot load team members:', e)
+    segments.push({ text: mention.displayText, isMention: true })
+    cursor = mention.startIndex + mention.length
+  })
+  if (cursor < content.length || segments.length === 0) {
+    segments.push({ text: content.slice(cursor), isMention: false })
+  }
+  return segments
+}
+
+const mapChannelMessage = (item, expectedChannelId) => {
+  if (
+    !item?.messageId ||
+    item?.channelId !== expectedChannelId ||
+    !item?.sender?.userId ||
+    !Number.isFinite(Date.parse(item?.createdAt)) ||
+    typeof item?.content !== 'string'
+  ) {
+    throw new Error('Invalid Channel message response scope.')
   }
 
-  try {
-    // 3. Get departments as team channels
-    const depRes = await axiosClient.get('/departments')
-    if (depRes.data && depRes.data.data) {
-      channels.value = depRes.data.data.map(d => ({
-        id: d.id,
-        name: d.name.toLowerCase().replace(/\s+/g, '-'),
-        desc: d.description || `Kênh trao đổi của phòng ${d.name}`,
-        unread: 0
-      }))
-    } else {
-      channels.value = [
-        { id: 'ch-general', name: 'general', desc: 'Thảo luận chung của cả đội', unread: 0 },
-        { id: 'ch-frontend', name: 'frontend-dev', desc: 'Nơi thảo luận về giao diện Vue 3 + Element Plus', unread: 2 }
-      ]
-    }
-  } catch (e) {
-    channels.value = [
-      { id: 'ch-general', name: 'general', desc: 'Thảo luận chung của cả đội', unread: 0 },
-      { id: 'ch-frontend', name: 'frontend-dev', desc: 'Nơi thảo luận về giao diện Vue 3 + Element Plus', unread: 2 }
-    ]
+  const mentions = mapMentions(item.mentions, item.content)
+  return {
+    messageId: item.messageId,
+    channelId: item.channelId,
+    orderingId: item.orderingId,
+    senderId: item.sender.userId,
+    senderName: item.sender.displayName || 'Unknown user',
+    senderAvatar: item.sender.avatarUrl || '',
+    content: item.content,
+    mentions,
+    contentSegments: buildContentSegments(item.content, mentions),
+    sentAt: item.createdAt,
+    attachments: Array.isArray(item.attachments) ? item.attachments.map(mapAttachment) : []
+  }
+}
+
+const mapDirectConversation = (item) => {
+  if (!item?.conversationId || !item?.otherParticipant?.userId) {
+    throw new Error('Invalid Direct Message conversation response.')
   }
 
-  // Set active chat initially based on selected tab query
-  if (currentTab.value === 'dm') {
-    if (members.value.length > 0) {
-      selectChat(members.value[0], 'dm')
+  return {
+    id: item.conversationId,
+    conversationId: item.conversationId,
+    participantUserId: item.otherParticipant.userId,
+    name: item.otherParticipant.displayName || 'Unknown user',
+    avatar: item.otherParticipant.avatarUrl || '',
+    lastMessagePreview: item.lastMessagePreview || '',
+    lastMessageAt: item.lastMessageAt || null,
+    createdAt: item.createdAt,
+    unreadCount: Math.max(0, Number(item.unreadCount || 0)),
+    lastReadMessageId: item.lastReadMessageId || null,
+    type: 'dm'
+  }
+}
+
+const mapDirectMessage = (item, expectedConversationId) => {
+  if (
+    !item?.messageId ||
+    item?.conversationId !== expectedConversationId ||
+    !item?.sender?.userId ||
+    !Number.isFinite(Date.parse(item?.createdAt)) ||
+    typeof item?.content !== 'string'
+  ) {
+    throw new Error('Invalid Direct Message response scope.')
+  }
+
+  return {
+    messageId: item.messageId,
+    conversationId: item.conversationId,
+    senderId: item.sender.userId,
+    senderName: item.sender.displayName || 'Unknown user',
+    senderAvatar: item.sender.avatarUrl || '',
+    content: item.content,
+    mentions: [],
+    contentSegments: [{ text: item.content, isMention: false }],
+    sentAt: item.createdAt,
+    attachments: Array.isArray(item.attachments) ? item.attachments.map(mapAttachment) : []
+  }
+}
+
+const messageKey = (message) => message.messageId
+
+const compareMessages = (left, right) => {
+  const timeDifference = Date.parse(left.sentAt) - Date.parse(right.sentAt)
+  if (Number.isFinite(timeDifference) && timeDifference !== 0) return timeDifference
+  return `${left.messageId}`.localeCompare(`${right.messageId}`)
+}
+
+const mergeMessages = (...collections) => {
+  const unique = new Map()
+  collections.flat().forEach((message) => {
+    if (message?.messageId) unique.set(message.messageId, message)
+  })
+  return Array.from(unique.values()).sort(compareMessages)
+}
+
+const messageAttachmentObjectUrls = new Set()
+
+const revokeMessageAttachmentUrls = () => {
+  messageAttachmentObjectUrls.forEach(url => URL.revokeObjectURL(url))
+  messageAttachmentObjectUrls.clear()
+}
+
+const hydrateImagePreviews = async (messages) => {
+  const attachments = messages
+    .flatMap(message => message.attachments || [])
+    .filter(attachment => attachment.isImage && !attachment.previewUrl && !attachment.previewLoading)
+  await Promise.all(attachments.map(async (attachment) => {
+    attachment.previewLoading = true
+    try {
+      const blob = await collaborationApi.downloadAttachment(attachment.attachmentId)
+      if (!blob?.type?.startsWith('image/')) return
+      const url = URL.createObjectURL(blob)
+      attachment.previewUrl = url
+      messageAttachmentObjectUrls.add(url)
+    } catch {
+      // The file card remains usable; authorization is checked again on explicit download.
+    } finally {
+      attachment.previewLoading = false
     }
+  }))
+}
+
+const downloadAttachment = async (attachment) => {
+  if (!attachment?.attachmentId || attachment.downloading) return
+  attachment.downloading = true
+  try {
+    const blob = await collaborationApi.downloadAttachment(attachment.attachmentId)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = attachment.originalFileName
+    link.rel = 'noopener'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    const status = error?.response?.status
+    ElMessage.error(status === 404
+      ? 'File không tồn tại hoặc bạn không còn quyền tải.'
+      : 'Không thể tải file đính kèm.')
+  } finally {
+    attachment.downloading = false
+  }
+}
+
+const formatFileSize = (bytes) => {
+  if (!Number.isFinite(Number(bytes)) || Number(bytes) < 0) return '0 B'
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${bytes} B`
+}
+
+const formatUnreadCount = (count) => count > 99 ? '99+' : `${count}`
+
+const applyReadState = (state) => {
+  if (!state?.resourceId || !['channel', 'dm'].includes(state.resourceType)) return
+  const unreadCount = Math.max(0, Number(state.unreadCount || 0))
+  const updateItem = item => item.id === state.resourceId
+    ? {
+        ...item,
+        unreadCount,
+        lastReadMessageId: state.lastReadMessageId || item.lastReadMessageId || null
+      }
+    : item
+  if (state.resourceType === 'channel') {
+    channels.value = channels.value.map(updateItem)
   } else {
-    if (channels.value.length > 0) {
-      selectChat(channels.value[0], 'channel')
+    directConversations.value = directConversations.value.map(updateItem)
+  }
+  if (
+    activeChat.value?.id === state.resourceId &&
+    activeChat.value?.type === state.resourceType
+  ) {
+    activeChat.value = updateItem(activeChat.value)
+  }
+}
+
+const cancelPendingMarkRead = () => {
+  markReadVersion += 1
+  pendingRead = null
+  if (markReadTimer) {
+    window.clearTimeout(markReadTimer)
+    markReadTimer = null
+  }
+}
+
+const flushMarkRead = async (request, version) => {
+  if (
+    version !== markReadVersion ||
+    !request?.messageId ||
+    activeChat.value?.id !== request.resourceId ||
+    activeChat.value?.type !== request.resourceType
+  ) {
+    return
+  }
+  try {
+    const state = request.resourceType === 'channel'
+      ? await collaborationApi.markChannelRead(request.resourceId, request.messageId)
+      : await collaborationApi.markDirectConversationRead(request.resourceId, request.messageId)
+    if (
+      version !== markReadVersion ||
+      activeChat.value?.id !== request.resourceId ||
+      activeChat.value?.type !== request.resourceType
+    ) {
+      return
+    }
+    applyReadState(state)
+  } catch (error) {
+    if (isCanceledRequest(error) || version !== markReadVersion) return
+    if (error?.response?.status === 401) clearCollaborationState()
+  } finally {
+    if (version === markReadVersion) pendingRead = null
+  }
+}
+
+const scheduleMarkRead = (resourceType, resourceId, messageId) => {
+  if (
+    !messageId ||
+    activeChat.value?.id !== resourceId ||
+    activeChat.value?.type !== resourceType
+  ) {
+    return
+  }
+  pendingRead = { resourceType, resourceId, messageId }
+  const version = ++markReadVersion
+  if (markReadTimer) window.clearTimeout(markReadTimer)
+  markReadTimer = window.setTimeout(() => {
+    markReadTimer = null
+    const request = pendingRead
+    void flushMarkRead(request, version)
+  }, 180)
+}
+
+const markRenderedLatestMessageRead = (resourceType, resourceId) => {
+  const latestMessage = activeMessages.value.at(-1)
+  if (latestMessage?.messageId) {
+    scheduleMarkRead(resourceType, resourceId, latestMessage.messageId)
+  }
+}
+
+const appendRealtimeMessage = async (message) => {
+  if (activeMessages.value.some(item => item.messageId === message.messageId)) return
+  const shouldScroll = isNearMessageBottom()
+  activeMessages.value = mergeMessages(activeMessages.value, [message])
+  void hydrateImagePreviews([message])
+  messagePagination.value.totalCount = Math.max(
+    messagePagination.value.totalCount + 1,
+    activeMessages.value.length
+  )
+  await nextTick()
+  if (shouldScroll) scrollToBottom()
+}
+
+const clearMessageHistory = () => {
+  cancelPendingMarkRead()
+  messageAbortController.value?.abort()
+  messageAbortController.value = null
+  messageRequestId += 1
+  chatSelectionId += 1
+  revokeMessageAttachmentUrls()
+  activeMessages.value = []
+  historyLoading.value = false
+  historyLoadingOlder.value = false
+  historyError.value = ''
+  sendingMessage.value = false
+  messagePagination.value = {
+    page: 1,
+    pageSize: 50,
+    totalCount: 0,
+    ordering: ''
+  }
+}
+
+const clearChannelSelection = () => {
+  sendMessageAbortController.value?.abort()
+  sendMessageAbortController.value = null
+  clearMessageHistory()
+  if (activeChat.value?.type === 'channel') {
+    void collaborationRealtime.leaveChannel(activeChat.value.id)
+    activeChat.value = null
+  }
+  newMessage.value = ''
+  resetMentionComposer()
+  removeAttachedFile()
+}
+
+const clearDirectSelection = ({ clearComposer = true } = {}) => {
+  findConversationAbortController.value?.abort()
+  findConversationAbortController.value = null
+  findingConversation.value = false
+  sendMessageAbortController.value?.abort()
+  sendMessageAbortController.value = null
+  clearMessageHistory()
+  if (activeChat.value?.type === 'dm') {
+    void collaborationRealtime.leaveDirectConversation(activeChat.value.id)
+    activeChat.value = null
+  }
+  selectedRecipientId.value = ''
+  if (clearComposer) newMessage.value = ''
+  resetMentionComposer()
+  removeAttachedFile()
+}
+
+const clearDirectContext = () => {
+  memberAbortController.value?.abort()
+  memberAbortController.value = null
+  memberRequestId += 1
+  conversationAbortController.value?.abort()
+  conversationAbortController.value = null
+  conversationRequestId += 1
+  members.value = []
+  membersLoading.value = false
+  membersError.value = ''
+  directConversations.value = []
+  conversationsLoading.value = false
+  conversationsLoadingMore.value = false
+  conversationsError.value = ''
+  conversationPagination.value = {
+    page: 1,
+    pageSize: 50,
+    totalCount: 0,
+    ordering: ''
+  }
+  clearDirectSelection()
+}
+
+const clearChannels = () => {
+  createChannelAbortController.value?.abort()
+  createChannelAbortController.value = null
+  creatingChannel.value = false
+  channelAbortController.value?.abort()
+  channelAbortController.value = null
+  channelRequestId += 1
+  channels.value = []
+  channelsLoading.value = false
+  channelsLoadingMore.value = false
+  channelsError.value = ''
+  channelPagination.value = {
+    page: 1,
+    pageSize: 50,
+    totalCount: 0,
+    ordering: ''
+  }
+  clearChannelSelection()
+}
+
+const clearCollaborationState = () => {
+  void collaborationRealtime.stop()
+  clearChannels()
+  clearDirectContext()
+  activeProjectId.value = ''
+  currentUser.value = { id: '', name: '', avatar: '' }
+  clearScopedCurrentProjectId()
+}
+
+const selectProject = (projectId) => {
+  if (!projectOptions.value.some(project => project.id === projectId)) return
+  activeProjectId.value = projectId
+}
+
+const loadProjects = async ({ force = false } = {}) => {
+  projectsLoading.value = true
+  projectsError.value = ''
+  try {
+    const projects = await projectStore.fetchAllProjects(force)
+    if (projectStore.error && projects.length === 0) {
+      projectsError.value = 'Không thể tải danh sách Project.'
+      return
+    }
+    const preferredProjectId = getScopedCurrentProjectId()
+    if (
+      !activeProjectId.value &&
+      preferredProjectId &&
+      projectOptions.value.some(project => project.id === preferredProjectId)
+    ) {
+      activeProjectId.value = preferredProjectId
+    }
+  } finally {
+    projectsLoading.value = false
+  }
+}
+
+const retryProjects = () => loadProjects({ force: true })
+
+const loadChannels = async ({
+  page = 1,
+  append = false,
+  selectFirst = true,
+  preserveSelection = false
+} = {}) => {
+  const projectId = activeProjectId.value
+  if (!projectId) {
+    clearChannels()
+    return
+  }
+
+  channelAbortController.value?.abort()
+  const controller = new AbortController()
+  channelAbortController.value = controller
+  const requestId = channelRequestId + 1
+  channelRequestId = requestId
+  if (append) {
+    channelsLoadingMore.value = true
+  } else {
+    if (!preserveSelection) clearChannelSelection()
+    channels.value = []
+    channelsError.value = ''
+    channelsLoading.value = true
+  }
+
+  try {
+    const result = await collaborationApi.getProjectChannels(projectId, {
+      page,
+      pageSize: channelPagination.value.pageSize,
+      signal: controller.signal
+    })
+    if (
+      requestId !== channelRequestId ||
+      activeProjectId.value !== projectId
+    ) {
+      return
+    }
+    const items = Array.isArray(result?.items)
+      ? result.items.map(item => mapChannel(item, projectId))
+      : []
+    const merged = append ? [...channels.value, ...items] : items
+    const unique = new Map(merged.map(item => [item.id, item]))
+    channels.value = Array.from(unique.values())
+    channelPagination.value = {
+      page: Number(result?.page || page),
+      pageSize: Number(result?.pageSize || 50),
+      totalCount: Number(result?.totalCount || 0),
+      ordering: result?.ordering || ''
+    }
+    channelsError.value = ''
+
+    if (
+      !append &&
+      selectFirst &&
+      currentTab.value === 'channel' &&
+      channels.value.length > 0
+    ) {
+      const linkedChannel = channels.value.find(item => item.id === route.query.channelId)
+      await selectChat(linkedChannel || channels.value[0], 'channel')
+    }
+  } catch (error) {
+    if (
+      isCanceledRequest(error) ||
+      requestId !== channelRequestId ||
+      activeProjectId.value !== projectId
+    ) {
+      return
+    }
+    const status = error?.response?.status
+    if (!append) {
+      channels.value = []
+      clearChannelSelection()
+    }
+    if (status === 401) {
+      clearCollaborationState()
+      channelsError.value = 'Phiên đăng nhập đã hết hạn.'
+    } else if (status === 403) {
+      channelsError.value = 'Bạn không có quyền xem Channel của Project này.'
+    } else if (status === 404) {
+      channelsError.value = 'Project không tồn tại hoặc bạn không còn quyền truy cập.'
+      await projectStore.fetchAllProjects(true)
+      if (!projectOptions.value.some(project => project.id === projectId)) {
+        activeProjectId.value = ''
+      }
+    } else {
+      channelsError.value = apiErrorMessage(error, 'Không thể tải danh sách Channel.')
+    }
+  } finally {
+    if (requestId === channelRequestId) {
+      channelsLoading.value = false
+      channelsLoadingMore.value = false
+      channelAbortController.value = null
+    }
+  }
+}
+
+const retryChannels = () => loadChannels({ page: 1 })
+
+const loadMoreChannels = () => {
+  if (
+    channelsLoadingMore.value ||
+    channels.value.length >= channelPagination.value.totalCount
+  ) {
+    return
+  }
+  return loadChannels({
+    page: channelPagination.value.page + 1,
+    append: true
+  })
+}
+
+const loadDirectMessageUsers = async (projectId) => {
+  if (!projectId) {
+    members.value = []
+    membersError.value = ''
+    return
+  }
+
+  memberAbortController.value?.abort()
+  const controller = new AbortController()
+  memberAbortController.value = controller
+  const requestId = memberRequestId + 1
+  memberRequestId = requestId
+  membersLoading.value = true
+  membersError.value = ''
+
+  try {
+    const result = await collaborationApi.getDirectMessageUsers(projectId, {
+      page: 1,
+      pageSize: 100,
+      signal: controller.signal
+    })
+    if (requestId !== memberRequestId || activeProjectId.value !== projectId) return
+    members.value = (Array.isArray(result?.items) ? result.items : [])
+      .filter(user => user?.id && user.id !== currentUser.value.id)
+      .map(user => ({
+        id: user.id,
+        name: user.fullName || 'Unknown user',
+        avatar: user.avatarUrl || '',
+        statusText: user.jobTitle || 'Thành viên'
+      }))
+    membersError.value = ''
+  } catch (error) {
+    if (
+      isCanceledRequest(error) ||
+      requestId !== memberRequestId ||
+      activeProjectId.value !== projectId
+    ) {
+      return
+    }
+    members.value = []
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+      membersError.value = 'Phiên đăng nhập đã hết hạn.'
+    } else if (status === 403 || status === 404) {
+      membersError.value = 'Project không còn khả dụng hoặc bạn không có quyền xem thành viên.'
+    } else {
+      membersError.value = apiErrorMessage(error, 'Không thể tải danh sách thành viên.')
+    }
+  } finally {
+    if (requestId === memberRequestId) {
+      membersLoading.value = false
+      memberAbortController.value = null
+    }
+  }
+}
+
+const retryMembers = () => loadDirectMessageUsers(activeProjectId.value)
+
+const loadDirectConversations = async ({
+  page = 1,
+  append = false,
+  selectFirst = true
+} = {}) => {
+  conversationAbortController.value?.abort()
+  const controller = new AbortController()
+  conversationAbortController.value = controller
+  const requestId = conversationRequestId + 1
+  conversationRequestId = requestId
+  if (append) {
+    conversationsLoadingMore.value = true
+  } else {
+    conversationsLoading.value = true
+    conversationsError.value = ''
+  }
+
+  try {
+    const result = await collaborationApi.getDirectConversations({
+      page,
+      pageSize: conversationPagination.value.pageSize,
+      signal: controller.signal
+    })
+    if (requestId !== conversationRequestId || currentTab.value !== 'dm') return
+    const items = Array.isArray(result?.items)
+      ? result.items.map(mapDirectConversation)
+      : []
+    const merged = append ? [...directConversations.value, ...items] : items
+    directConversations.value = Array.from(
+      new Map(merged.map(item => [item.id, item])).values()
+    )
+    conversationPagination.value = {
+      page: Number(result?.page || page),
+      pageSize: Number(result?.pageSize || 50),
+      totalCount: Number(result?.totalCount || 0),
+      ordering: result?.ordering || ''
+    }
+    conversationsError.value = ''
+
+    if (
+      !append &&
+      selectFirst &&
+      !activeDirectConversation.value &&
+      directConversations.value.length > 0
+    ) {
+      await selectChat(directConversations.value[0], 'dm')
+    }
+  } catch (error) {
+    if (isCanceledRequest(error) || requestId !== conversationRequestId) return
+    if (!append) {
+      directConversations.value = []
+      clearDirectSelection()
+    }
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+      conversationsError.value = 'Phiên đăng nhập đã hết hạn.'
+    } else if (status === 403) {
+      conversationsError.value = 'Bạn không có quyền tải Direct Message.'
+    } else {
+      conversationsError.value = apiErrorMessage(error, 'Không thể tải danh sách cuộc trò chuyện.')
+    }
+  } finally {
+    if (requestId === conversationRequestId) {
+      conversationsLoading.value = false
+      conversationsLoadingMore.value = false
+      conversationAbortController.value = null
+    }
+  }
+}
+
+const retryConversations = () => loadDirectConversations({ page: 1 })
+
+const loadMoreConversations = () => {
+  if (
+    conversationsLoadingMore.value ||
+    directConversations.value.length >= conversationPagination.value.totalCount
+  ) {
+    return
+  }
+  return loadDirectConversations({
+    page: conversationPagination.value.page + 1,
+    append: true,
+    selectFirst: false
+  })
+}
+
+const loadChannelHistory = async (channel, {
+  page = 1,
+  older = false,
+  refresh = false
+} = {}) => {
+  if (!channel?.id || channel.projectId !== activeProjectId.value) return
+  messageAbortController.value?.abort()
+  const controller = new AbortController()
+  messageAbortController.value = controller
+  const requestId = messageRequestId + 1
+  messageRequestId = requestId
+  if (older) {
+    historyLoadingOlder.value = true
+  } else if (!refresh) {
+    activeMessages.value = []
+    historyError.value = ''
+    historyLoading.value = true
+  }
+  const previousScrollHeight = messageThread.value?.scrollHeight || 0
+
+  try {
+    const result = await collaborationApi.getChannelMessages(channel.id, {
+      page,
+      pageSize: messagePagination.value.pageSize,
+      signal: controller.signal
+    })
+    if (
+      requestId !== messageRequestId ||
+      activeChannel.value?.id !== channel.id ||
+      activeProjectId.value !== channel.projectId
+    ) {
+      return
+    }
+    const newestFirst = Array.isArray(result?.items)
+      ? result.items.map(item => mapChannelMessage(item, channel.id))
+      : []
+    const chronologicalPage = [...newestFirst].reverse()
+    activeMessages.value = mergeMessages(chronologicalPage, activeMessages.value)
+    void hydrateImagePreviews(activeMessages.value)
+    messagePagination.value = {
+      page: Number(result?.page || page),
+      pageSize: Number(result?.pageSize || 50),
+      totalCount: Number(result?.totalCount || 0),
+      ordering: result?.ordering || ''
+    }
+    historyError.value = ''
+
+    await nextTick()
+    if (older && messageThread.value) {
+      messageThread.value.scrollTop +=
+        messageThread.value.scrollHeight - previousScrollHeight
+    } else if (!refresh) {
+      scrollToBottom()
+    }
+    if (page === 1 && !older) {
+      markRenderedLatestMessageRead('channel', channel.id)
+      const targetMessageId = `${route.query.messageId || ''}`
+      if (targetMessageId && targetMessageId === activeMessages.value.find(item => item.messageId === targetMessageId)?.messageId) {
+        messageThread.value?.querySelector(`[data-message-id="${targetMessageId}"]`)?.scrollIntoView({ block: 'center' })
+      }
+    }
+  } catch (error) {
+    if (
+      isCanceledRequest(error) ||
+      requestId !== messageRequestId ||
+      activeChannel.value?.id !== channel.id
+    ) {
+      return
+    }
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+      historyError.value = 'Phiên đăng nhập đã hết hạn.'
+    } else if (status === 403 || status === 404) {
+      clearChannelSelection()
+      channels.value = channels.value.filter(item => item.id !== channel.id)
+      historyError.value = 'Channel không còn khả dụng hoặc bạn không còn quyền truy cập.'
+      if (status === 404) await loadChannels({ page: 1 })
+    } else {
+      historyError.value = apiErrorMessage(error, 'Không thể tải lịch sử Channel.')
+    }
+  } finally {
+    if (requestId === messageRequestId) {
+      historyLoading.value = false
+      historyLoadingOlder.value = false
+      messageAbortController.value = null
+    }
+  }
+}
+
+const loadDirectHistory = async (conversation, {
+  page = 1,
+  older = false,
+  refresh = false
+} = {}) => {
+  if (!conversation?.id) return
+  messageAbortController.value?.abort()
+  const controller = new AbortController()
+  messageAbortController.value = controller
+  const requestId = messageRequestId + 1
+  messageRequestId = requestId
+  if (older) {
+    historyLoadingOlder.value = true
+  } else if (!refresh) {
+    activeMessages.value = []
+    historyError.value = ''
+    historyLoading.value = true
+  }
+  const previousScrollHeight = messageThread.value?.scrollHeight || 0
+
+  try {
+    const result = await collaborationApi.getDirectMessages(conversation.id, {
+      page,
+      pageSize: messagePagination.value.pageSize,
+      signal: controller.signal
+    })
+    if (
+      requestId !== messageRequestId ||
+      activeDirectConversation.value?.id !== conversation.id
+    ) {
+      return
+    }
+    const newestFirst = Array.isArray(result?.items)
+      ? result.items.map(item => mapDirectMessage(item, conversation.id))
+      : []
+    const chronologicalPage = [...newestFirst].reverse()
+    activeMessages.value = mergeMessages(chronologicalPage, activeMessages.value)
+    void hydrateImagePreviews(activeMessages.value)
+    messagePagination.value = {
+      page: Number(result?.page || page),
+      pageSize: Number(result?.pageSize || 50),
+      totalCount: Number(result?.totalCount || 0),
+      ordering: result?.ordering || ''
+    }
+    historyError.value = ''
+
+    await nextTick()
+    if (older && messageThread.value) {
+      messageThread.value.scrollTop +=
+        messageThread.value.scrollHeight - previousScrollHeight
+    } else if (!refresh) {
+      scrollToBottom()
+    }
+    if (page === 1 && !older) {
+      markRenderedLatestMessageRead('dm', conversation.id)
+    }
+  } catch (error) {
+    if (
+      isCanceledRequest(error) ||
+      requestId !== messageRequestId ||
+      activeDirectConversation.value?.id !== conversation.id
+    ) {
+      return
+    }
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+      historyError.value = 'Phiên đăng nhập đã hết hạn.'
+    } else if (status === 403 || status === 404) {
+      clearDirectSelection()
+      directConversations.value = directConversations.value.filter(
+        item => item.id !== conversation.id
+      )
+      historyError.value = 'Cuộc trò chuyện không còn khả dụng hoặc bạn không còn quyền truy cập.'
+      await loadDirectConversations({ page: 1, selectFirst: false })
+    } else {
+      historyError.value = apiErrorMessage(error, 'Không thể tải lịch sử Direct Message.')
+    }
+  } finally {
+    if (requestId === messageRequestId) {
+      historyLoading.value = false
+      historyLoadingOlder.value = false
+      messageAbortController.value = null
+    }
+  }
+}
+
+const retryHistory = () => {
+  if (activeChannel.value) {
+    return loadChannelHistory(activeChannel.value, { page: 1 })
+  }
+  if (activeDirectConversation.value) {
+    return loadDirectHistory(activeDirectConversation.value, { page: 1 })
+  }
+}
+
+const loadOlderMessages = () => {
+  if (
+    !activeChat.value ||
+    historyLoadingOlder.value ||
+    activeMessages.value.length >= messagePagination.value.totalCount
+  ) {
+    return
+  }
+  const options = {
+    page: messagePagination.value.page + 1,
+    older: true
+  }
+  return activeChannel.value
+    ? loadChannelHistory(activeChannel.value, options)
+    : loadDirectHistory(activeDirectConversation.value, options)
+}
+
+const composerDisabled = computed(() => {
+  if (currentTab.value === 'dm') return !activeChat.value || sendingMessage.value
+  return (
+    !activeChannel.value ||
+    !activeChannel.value.canSend ||
+    historyLoading.value ||
+    sendingMessage.value
+  )
+})
+
+const composerPlaceholder = computed(() => {
+  if (currentTab.value === 'dm') return 'Gửi tin nhắn...'
+  if (!activeChannel.value) return 'Chọn Channel để gửi tin nhắn'
+  if (!activeChannel.value.canSend) return 'Bạn không có quyền gửi vào Channel này'
+  return `Gửi tin nhắn tới #${activeChannel.value.name}`
+})
+
+const hubErrorMessage = (code) => ({
+  AUTH_REQUIRED: 'Phiên đăng nhập đã hết hạn.',
+  USER_INACTIVE: 'Tài khoản không còn hoạt động.',
+  CHANNEL_NOT_FOUND_OR_FORBIDDEN: 'Channel không còn khả dụng hoặc bạn không còn quyền truy cập.',
+  CONVERSATION_NOT_FOUND_OR_FORBIDDEN: 'Cuộc trò chuyện không còn khả dụng hoặc bạn không còn quyền truy cập.',
+  INVALID_ID: 'Cuộc trò chuyện được chọn không hợp lệ.',
+  JOIN_FAILED: 'Không thể kết nối realtime. Lịch sử REST vẫn khả dụng.'
+}[code] || 'Không thể kết nối realtime. Lịch sử REST vẫn khả dụng.')
+
+const setConnectionNotice = (message, { clearAfter = 0 } = {}) => {
+  if (connectionNoticeTimer) {
+    window.clearTimeout(connectionNoticeTimer)
+    connectionNoticeTimer = null
+  }
+  connectionNotice.value = message
+  if (clearAfter > 0) {
+    connectionNoticeTimer = window.setTimeout(() => {
+      connectionNotice.value = ''
+      connectionNoticeTimer = null
+    }, clearAfter)
+  }
+}
+
+const handleRealtimeState = ({ state, code, reconnected = false }) => {
+  connectionState.value = state
+  if (state === COLLABORATION_REALTIME_STATES.CONNECTING) {
+    setConnectionNotice('Đang kết nối realtime…')
+  } else if (state === COLLABORATION_REALTIME_STATES.RECONNECTING) {
+    setConnectionNotice('Đang kết nối lại…')
+  } else if (state === COLLABORATION_REALTIME_STATES.CONNECTED && reconnected) {
+    setConnectionNotice('Đã kết nối lại', { clearAfter: 2500 })
+  } else if (state === COLLABORATION_REALTIME_STATES.CONNECTED) {
+    setConnectionNotice('')
+  } else if (state === COLLABORATION_REALTIME_STATES.ERROR) {
+    setConnectionNotice(hubErrorMessage(code))
+  } else if (
+    state === COLLABORATION_REALTIME_STATES.DISCONNECTED &&
+    currentUser.value.id
+  ) {
+    setConnectionNotice('Mất kết nối realtime. Tin nhắn vẫn được gửi và tải bằng REST.')
+  }
+}
+
+const handleChannelRealtimeMessage = async (payload) => {
+  const channel = activeChannel.value
+  if (!channel?.id || payload?.channelId !== channel.id || !payload?.messageId) return
+  try {
+    await appendRealtimeMessage(mapChannelMessage(payload, channel.id))
+    markRenderedLatestMessageRead('channel', channel.id)
+  } catch {
+    // Ignore payloads that do not match the documented Channel event contract.
+  }
+}
+
+const handleDirectRealtimeMessage = async (payload) => {
+  const conversation = activeDirectConversation.value
+  if (
+    !conversation?.id ||
+    payload?.conversationId !== conversation.id ||
+    !payload?.messageId
+  ) {
+    return
+  }
+  try {
+    await appendRealtimeMessage(mapDirectMessage(payload, conversation.id))
+    markRenderedLatestMessageRead('dm', conversation.id)
+  } catch {
+    // Ignore payloads that do not match the documented Direct event contract.
+  }
+}
+
+const handleReadStateChanged = (payload) => {
+  applyReadState(payload)
+}
+
+const receivedMentionNotificationIds = new Set()
+const handleMentionCreated = (payload) => {
+  if (!payload?.notificationId || receivedMentionNotificationIds.has(payload.notificationId)) return
+  receivedMentionNotificationIds.add(payload.notificationId)
+  window.dispatchEvent(new CustomEvent('collaboration-mention-created', { detail: payload }))
+}
+
+const leaveActiveRealtimeGroup = async (chat = activeChat.value) => {
+  if (chat?.type === 'channel') {
+    await collaborationRealtime.leaveChannel(chat.id)
+  } else if (chat?.type === 'dm') {
+    await collaborationRealtime.leaveDirectConversation(chat.id)
+  }
+}
+
+const handleRealtimeGroupFailure = async ({ scope, id, code }) => {
+  connectionState.value = COLLABORATION_REALTIME_STATES.ERROR
+  setConnectionNotice(hubErrorMessage(code))
+  const sensitiveFailure = [
+    'AUTH_REQUIRED',
+    'USER_INACTIVE',
+    'CHANNEL_NOT_FOUND_OR_FORBIDDEN',
+    'CONVERSATION_NOT_FOUND_OR_FORBIDDEN',
+    'INVALID_ID'
+  ].includes(code)
+  if (!sensitiveFailure) return
+
+  if (scope === 'channel' && activeChannel.value?.id === id) {
+    clearChannelSelection()
+    channels.value = channels.value.filter(item => item.id !== id)
+    historyError.value = hubErrorMessage(code)
+    await loadChannels({ page: 1, selectFirst: false })
+  } else if (scope === 'dm' && activeDirectConversation.value?.id === id) {
+    clearDirectSelection()
+    directConversations.value = directConversations.value.filter(item => item.id !== id)
+    historyError.value = hubErrorMessage(code)
+    await loadDirectConversations({ page: 1, selectFirst: false })
+  }
+}
+
+const joinRealtimeForChat = async (chat) => {
+  if (
+    !chat?.id ||
+    activeChat.value?.id !== chat.id ||
+    activeChat.value?.type !== chat.type
+  ) {
+    return false
+  }
+  try {
+    if (chat.type === 'channel') {
+      await collaborationRealtime.joinChannel(chat.id)
+    } else {
+      await collaborationRealtime.joinDirectConversation(chat.id)
+    }
+    return true
+  } catch (error) {
+    await handleRealtimeGroupFailure({
+      scope: chat.type,
+      id: chat.id,
+      code: getCollaborationHubErrorCode(error)
+    })
+    return false
+  }
+}
+
+const handleRealtimeReconnected = async ({ errors }) => {
+  if (errors.length > 0) {
+    await handleRealtimeGroupFailure(errors[0])
+    return
+  }
+  window.dispatchEvent(new CustomEvent('collaboration-notifications-refresh'))
+  const chat = activeChat.value
+  if (!chat?.id) return
+  if (chat.type === 'channel') {
+    await Promise.all([
+      loadChannelHistory(chat, { page: 1, refresh: true }),
+      loadChannels({ page: 1, selectFirst: false, preserveSelection: true })
+    ])
+  } else {
+    await Promise.all([
+      loadDirectHistory(chat, { page: 1, refresh: true }),
+      loadDirectConversations({ page: 1, selectFirst: false })
+    ])
+  }
+}
+
+const registerRealtimeHandlers = () => {
+  realtimeUnsubscribers.push(
+    collaborationRealtime.subscribeChannelMessage(handleChannelRealtimeMessage),
+    collaborationRealtime.subscribeDirectMessage(handleDirectRealtimeMessage),
+    collaborationRealtime.subscribeReadState(handleReadStateChanged),
+    collaborationRealtime.subscribeMention(handleMentionCreated),
+    collaborationRealtime.subscribeState(handleRealtimeState),
+    collaborationRealtime.subscribeReconnected(handleRealtimeReconnected)
+  )
+}
+
+let componentMounted = false
+let collaborationContextVersion = 0
+
+const initializeCollaborationContext = async ({ forceProjects = false } = {}) => {
+  const version = ++collaborationContextVersion
+  try {
+    const meRes = await axiosClient.get('/users/me')
+    if (!componentMounted || version !== collaborationContextVersion) return
+    const me = meRes?.data?.data
+    if (!me?.id) throw new Error('Current user response is invalid.')
+    currentUser.value = {
+      id: me.id,
+      name: me.fullName || '',
+      avatar: me.avatarUrl || ''
+    }
+  } catch (error) {
+    const status = error?.response?.status
+    membersError.value = status === 401
+      ? 'Phiên đăng nhập đã hết hạn.'
+      : 'Không thể xác định người dùng hiện tại.'
+    conversationsError.value = membersError.value
+    return
+  }
+
+  if (!componentMounted || version !== collaborationContextVersion) return
+  try {
+    await collaborationRealtime.start()
+  } catch (error) {
+    handleRealtimeState({
+      state: COLLABORATION_REALTIME_STATES.ERROR,
+      code: getCollaborationHubErrorCode(error)
+    })
+  }
+
+  if (!componentMounted || version !== collaborationContextVersion) return
+  await loadProjects({ force: forceProjects })
+  if (!componentMounted || version !== collaborationContextVersion) return
+  const linkedProjectId = `${route.query.projectId || ''}`
+  if (linkedProjectId && projectOptions.value.some(project => project.id === linkedProjectId)) {
+    activeProjectId.value = linkedProjectId
+  } else if (!activeProjectId.value && projectOptions.value.length > 0) {
+    activeProjectId.value = projectOptions.value[0].id
+  } else if (currentTab.value === 'dm') {
+    if (activeProjectId.value) {
+      await loadDirectMessageUsers(activeProjectId.value)
+    }
+    await loadDirectConversations({ page: 1 })
+  }
+}
+
+onMounted(() => {
+  componentMounted = true
+  registerRealtimeHandlers()
+  void initializeCollaborationContext()
+})
+
+watch(() => route.query.tab, async (newTab) => {
+  await leaveActiveRealtimeGroup()
+  if (newTab === 'dm') {
+    clearChannelSelection()
+    clearDirectContext()
+    if (activeProjectId.value) {
+      await loadDirectMessageUsers(activeProjectId.value)
+    }
+    await loadDirectConversations({ page: 1 })
+  } else {
+    clearDirectContext()
+    if (activeProjectId.value) {
+      await loadChannels({ page: 1 })
     }
   }
 })
 
-watch(() => route.query.tab, (newTab) => {
-  if (newTab === 'dm') {
-    if (members.value.length > 0) {
-      selectChat(members.value[0], 'dm')
-    }
+watch(activeProjectId, async (projectId, previousProjectId) => {
+  if (projectId === previousProjectId) return
+  await leaveActiveRealtimeGroup()
+  if (currentTab.value === 'dm') {
+    clearDirectContext()
   } else {
-    if (channels.value.length > 0) {
-      selectChat(channels.value[0], 'channel')
-    }
+    clearChannels()
   }
+  if (!projectId) {
+    clearScopedCurrentProjectId()
+    if (currentTab.value === 'dm') {
+      await loadDirectConversations({ page: 1 })
+    }
+    return
+  }
+  if (!projectOptions.value.some(project => project.id === projectId)) {
+    activeProjectId.value = ''
+    return
+  }
+  setScopedCurrentProjectId(projectId)
+  if (currentTab.value === 'dm') {
+    await Promise.all([
+      loadDirectMessageUsers(projectId),
+      loadDirectConversations({ page: 1 })
+    ])
+  } else {
+    await loadChannels({ page: 1 })
+  }
+})
+
+watch(() => authStore.token, async (token, previousToken) => {
+  if (!componentMounted || token === previousToken) return
+  collaborationContextVersion += 1
+  await collaborationRealtime.stop()
+  clearCollaborationState()
+  receivedMentionNotificationIds.clear()
+  window.dispatchEvent(new CustomEvent('collaboration-notifications-reset'))
+  projectStore.allProjects = []
+  setConnectionNotice('')
+  if (token && componentMounted) {
+    await initializeCollaborationContext({ forceProjects: true })
+  }
+})
+
+watch(projectOptions, (projects) => {
+  if (
+    activeProjectId.value &&
+    !projects.some(project => project.id === activeProjectId.value)
+  ) {
+    activeProjectId.value = ''
+  }
+})
+
+onBeforeUnmount(() => {
+  componentMounted = false
+  collaborationContextVersion += 1
+  realtimeUnsubscribers.splice(0).forEach(unsubscribe => unsubscribe())
+  if (connectionNoticeTimer) {
+    window.clearTimeout(connectionNoticeTimer)
+    connectionNoticeTimer = null
+  }
+  cancelPendingMarkRead()
+  removeAttachedFile()
+  revokeMessageAttachmentUrls()
+  void leaveActiveRealtimeGroup()
+  createChannelAbortController.value?.abort()
+  channelAbortController.value?.abort()
+  memberAbortController.value?.abort()
+  conversationAbortController.value?.abort()
+  findConversationAbortController.value?.abort()
+  messageAbortController.value?.abort()
+  sendMessageAbortController.value?.abort()
+  closeMentionMenu()
+  channelRequestId += 1
+  memberRequestId += 1
+  conversationRequestId += 1
+  messageRequestId += 1
+  channels.value = []
+  members.value = []
+  directConversations.value = []
+  activeMessages.value = []
+  activeChat.value = null
+  channelsError.value = ''
+  historyError.value = ''
 })
 const addFriendActive = ref(false)
 const searchFriendQuery = ref('')
@@ -1527,7 +3087,9 @@ const activeServerMembers = computed(() => {
 })
 
 const fileInputRef = ref(null)
-const attachedFile = ref(null)
+const attachedFiles = ref([])
+const allowedAttachmentExtensions = new Set(['png', 'jpg', 'jpeg', 'webp', 'pdf', 'txt', 'docx', 'xlsx'])
+const maximumAttachmentBytes = 10 * 1024 * 1024
 
 const triggerAttachment = () => {
   if (fileInputRef.value) {
@@ -1536,37 +3098,51 @@ const triggerAttachment = () => {
 }
 
 const handleFileChange = (e) => {
-  const file = e.target.files[0]
-  if (!file) return
-  
-  let sizeStr = `${(file.size / 1024).toFixed(1)} KB`
-  if (file.size > 1024 * 1024) {
-    sizeStr = `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+  const candidates = Array.from(e.target.files || [])
+  const remaining = 5 - attachedFiles.value.length
+  if (candidates.length > remaining) {
+    ElMessage.warning('Mỗi tin nhắn chỉ được đính kèm tối đa 5 file.')
   }
-  
-  const fileUrl = URL.createObjectURL(file)
-  attachedFile.value = {
-    name: file.name,
-    size: sizeStr,
-    type: file.type,
-    url: fileUrl,
-    rawFile: file
-  }
-  
+  candidates.slice(0, remaining).forEach((file) => {
+    const extension = file.name.split('.').pop()?.toLowerCase() || ''
+    if (!allowedAttachmentExtensions.has(extension)) {
+      ElMessage.warning(`${file.name}: loại file không được hỗ trợ.`)
+      return
+    }
+    if (file.size <= 0 || file.size > maximumAttachmentBytes) {
+      ElMessage.warning(`${file.name}: file phải lớn hơn 0 B và không quá 10 MB.`)
+      return
+    }
+    const previewUrl = isImageFile(file.name) ? URL.createObjectURL(file) : ''
+    attachedFiles.value.push({
+      id: typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      name: file.name,
+      sizeBytes: file.size,
+      previewUrl,
+      rawFile: file
+    })
+  })
   e.target.value = ''
 }
 
-const removeAttachedFile = () => {
-  if (attachedFile.value && attachedFile.value.url) {
-    URL.revokeObjectURL(attachedFile.value.url)
+const removeAttachedFile = (fileId) => {
+  const removed = fileId
+    ? attachedFiles.value.filter(file => file.id === fileId)
+    : attachedFiles.value
+  removed.forEach((file) => {
+    if (file.previewUrl) URL.revokeObjectURL(file.previewUrl)
+  })
+  if (fileId) {
+    attachedFiles.value = attachedFiles.value.filter(file => file.id !== fileId)
+  } else {
+    attachedFiles.value = []
   }
-  attachedFile.value = null
 }
 
 const isImageFile = (fileName) => {
   if (!fileName) return false
   const ext = fileName.split('.').pop().toLowerCase()
-  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)
+  return ['jpg', 'jpeg', 'png', 'webp'].includes(ext)
 }
 
 const getFileIconClass = (fileName) => {
@@ -1597,79 +3173,426 @@ const emojiList = [
   '🤔', '💡', '🔥', '✨', '🎉', '🚀', '👀', '👍', '👎', '❤️'
 ]
 
+const closeMentionMenu = () => {
+  mentionAbortController.value?.abort()
+  mentionAbortController.value = null
+  mentionRequestId += 1
+  if (mentionDebounceTimer) {
+    window.clearTimeout(mentionDebounceTimer)
+    mentionDebounceTimer = null
+  }
+  mentionMenuOpen.value = false
+  mentionLoading.value = false
+  mentionSuggestions.value = []
+  mentionRange.value = null
+  mentionActiveIndex.value = 0
+}
+
+const resetMentionComposer = () => {
+  closeMentionMenu()
+  selectedMentions.value = []
+  previousComposerValue = newMessage.value
+}
+
+const reconcileMentionSpans = (oldValue, nextValue) => {
+  let prefix = 0
+  while (prefix < oldValue.length && prefix < nextValue.length && oldValue[prefix] === nextValue[prefix]) prefix += 1
+  let suffix = 0
+  while (
+    suffix < oldValue.length - prefix &&
+    suffix < nextValue.length - prefix &&
+    oldValue[oldValue.length - 1 - suffix] === nextValue[nextValue.length - 1 - suffix]
+  ) suffix += 1
+  const oldEnd = oldValue.length - suffix
+  const delta = nextValue.length - oldValue.length
+  selectedMentions.value = selectedMentions.value.flatMap(mention => {
+    const mentionEnd = mention.startIndex + mention.length
+    if (mentionEnd <= prefix) return [mention]
+    if (mention.startIndex >= oldEnd) {
+      const shifted = { ...mention, startIndex: mention.startIndex + delta }
+      return nextValue.slice(shifted.startIndex, shifted.startIndex + shifted.length) === shifted.displayText
+        ? [shifted]
+        : []
+    }
+    return []
+  })
+}
+
+const loadMentionSuggestions = (query, range, channelId) => {
+  if (mentionDebounceTimer) window.clearTimeout(mentionDebounceTimer)
+  mentionMenuOpen.value = true
+  mentionLoading.value = true
+  mentionRange.value = range
+  mentionDebounceTimer = window.setTimeout(async () => {
+    mentionAbortController.value?.abort()
+    const controller = new AbortController()
+    mentionAbortController.value = controller
+    const requestId = ++mentionRequestId
+    try {
+      const result = await collaborationApi.searchChannelMembers(channelId, query, {
+        limit: 20,
+        signal: controller.signal
+      })
+      if (
+        requestId !== mentionRequestId ||
+        activeChannel.value?.id !== channelId ||
+        mentionRange.value?.start !== range.start
+      ) return
+      const selectedIds = new Set(selectedMentions.value.map(item => item.userId))
+      mentionSuggestions.value = (Array.isArray(result) ? result : [])
+        .filter(item => item?.userId && item?.displayName && !selectedIds.has(item.userId))
+        .slice(0, 20)
+      mentionActiveIndex.value = 0
+    } catch (error) {
+      if (!isCanceledRequest(error) && requestId === mentionRequestId) {
+        mentionSuggestions.value = []
+      }
+    } finally {
+      if (requestId === mentionRequestId) {
+        mentionLoading.value = false
+        mentionAbortController.value = null
+      }
+    }
+  }, 180)
+}
+
+const handleComposerInput = (event) => {
+  const nextValue = newMessage.value
+  reconcileMentionSpans(previousComposerValue, nextValue)
+  previousComposerValue = nextValue
+  if (currentTab.value !== 'channel' || !activeChannel.value?.id) {
+    closeMentionMenu()
+    return
+  }
+  const caret = Number(event.target?.selectionStart ?? nextValue.length)
+  const beforeCaret = nextValue.slice(0, caret)
+  const match = beforeCaret.match(/(?:^|\s)@([^\s@]{0,100})$/u)
+  if (!match || selectedMentions.value.length >= 20) {
+    closeMentionMenu()
+    return
+  }
+  const query = match[1]
+  const start = caret - query.length - 1
+  loadMentionSuggestions(query, { start, end: caret }, activeChannel.value.id)
+}
+
+const selectMention = async (member) => {
+  const range = mentionRange.value
+  if (!range || !member?.userId || selectedMentions.value.some(item => item.userId === member.userId)) return
+  const token = `@${member.displayName}`
+  const nextValue = `${newMessage.value.slice(0, range.start)}${token} ${newMessage.value.slice(range.end)}`
+  const delta = nextValue.length - newMessage.value.length
+  selectedMentions.value = selectedMentions.value.map(mention =>
+    mention.startIndex >= range.end
+      ? { ...mention, startIndex: mention.startIndex + delta }
+      : mention
+  )
+  selectedMentions.value.push({
+    userId: member.userId,
+    displayText: token,
+    startIndex: range.start,
+    length: token.length
+  })
+  newMessage.value = nextValue
+  previousComposerValue = nextValue
+  closeMentionMenu()
+  await nextTick()
+  const caret = range.start + token.length + 1
+  composerInput.value?.focus()
+  composerInput.value?.setSelectionRange(caret, caret)
+}
+
+const handleComposerKeydown = (event) => {
+  if (mentionMenuOpen.value) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const count = mentionSuggestions.value.length
+      if (count) {
+        const direction = event.key === 'ArrowDown' ? 1 : -1
+        mentionActiveIndex.value = (mentionActiveIndex.value + direction + count) % count
+      }
+      return
+    }
+    if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault()
+      const member = mentionSuggestions.value[mentionActiveIndex.value]
+      if (member) void selectMention(member)
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeMentionMenu()
+      return
+    }
+  }
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault()
+    void sendMessage()
+  }
+}
+
 const insertEmoji = (emoji) => {
   newMessage.value += emoji
+  previousComposerValue = newMessage.value
+}
+
+const sendDirectMessage = async () => {
+  if (sendingMessage.value || !activeDirectConversation.value) return
+  const content = newMessage.value
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim()
+  if (!content && attachedFiles.value.length === 0) return
+  if (content.length > 4000) {
+    ElMessage.warning('Tin nhắn không được vượt quá 4.000 ký tự.')
+    return
+  }
+
+  const conversation = activeDirectConversation.value
+  const shouldScroll = isNearMessageBottom()
+  const controller = new AbortController()
+  sendMessageAbortController.value = controller
+  sendingMessage.value = true
+  try {
+    const result = await collaborationApi.sendDirectMessage(
+      conversation.id,
+      content,
+      {
+        signal: controller.signal,
+        files: attachedFiles.value.map(file => file.rawFile)
+      }
+    )
+    if (activeDirectConversation.value?.id !== conversation.id) return
+    const message = mapDirectMessage(result, conversation.id)
+    const messageAlreadyPresent = activeMessages.value.some(
+      item => item.messageId === message.messageId
+    )
+    activeMessages.value = mergeMessages(activeMessages.value, [message])
+    if (!messageAlreadyPresent) {
+      messagePagination.value.totalCount += 1
+    }
+    newMessage.value = ''
+    removeAttachedFile()
+    await loadDirectConversations({ page: 1, selectFirst: false })
+    await nextTick()
+    if (shouldScroll) scrollToBottom()
+  } catch (error) {
+    if (isCanceledRequest(error)) return
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+      ElMessage.error('Phiên đăng nhập đã hết hạn.')
+    } else if (status === 403 || status === 404) {
+      clearDirectSelection({ clearComposer: false })
+      directConversations.value = directConversations.value.filter(
+        item => item.id !== conversation.id
+      )
+      ElMessage.error('Cuộc trò chuyện không còn khả dụng hoặc bạn không còn quyền gửi.')
+      await loadDirectConversations({ page: 1, selectFirst: false })
+    } else if (status === 400) {
+      ElMessage.error(apiErrorMessage(error, 'Nội dung tin nhắn không hợp lệ.'))
+    } else {
+      ElMessage.error(apiErrorMessage(error, 'Không thể gửi tin nhắn. Nội dung vẫn được giữ lại.'))
+    }
+  } finally {
+    if (sendMessageAbortController.value === controller) {
+      sendMessageAbortController.value = null
+      sendingMessage.value = false
+    }
+  }
+}
+
+const sendChannelMessage = async () => {
+  if (sendingMessage.value || !activeChannel.value?.canSend) return
+  const normalizedInput = newMessage.value
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+  const leadingWhitespace = normalizedInput.length - normalizedInput.trimStart().length
+  const content = normalizedInput.trim()
+  if (!content && attachedFiles.value.length === 0) return
+  if (content.length > 4000) {
+    ElMessage.warning('Tin nhắn không được vượt quá 4.000 ký tự.')
+    return
+  }
+
+  const channel = activeChannel.value
+  const mentions = selectedMentions.value.flatMap(mention => {
+    const adjusted = { ...mention, startIndex: mention.startIndex - leadingWhitespace }
+    return adjusted.startIndex >= 0 &&
+      content.slice(adjusted.startIndex, adjusted.startIndex + adjusted.length) === adjusted.displayText
+      ? [{ userId: adjusted.userId, startIndex: adjusted.startIndex, length: adjusted.length }]
+      : []
+  })
+  const controller = new AbortController()
+  sendMessageAbortController.value = controller
+  sendingMessage.value = true
+  try {
+    const result = await collaborationApi.sendChannelMessage(
+      channel.id,
+      {
+        content,
+        mentions,
+        files: attachedFiles.value.map(file => file.rawFile)
+      },
+      { signal: controller.signal }
+    )
+    if (activeChannel.value?.id !== channel.id) return
+    const message = mapChannelMessage(result, channel.id)
+    const messageAlreadyPresent = activeMessages.value.some(
+      item => item.messageId === message.messageId
+    )
+    activeMessages.value = mergeMessages(activeMessages.value, [message])
+    if (!messageAlreadyPresent) {
+      messagePagination.value.totalCount += 1
+    }
+    newMessage.value = ''
+    resetMentionComposer()
+    removeAttachedFile()
+    await nextTick()
+    scrollToBottom()
+  } catch (error) {
+    if (isCanceledRequest(error)) return
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+    } else if (status === 403 || status === 404) {
+      clearChannelSelection()
+      channels.value = channels.value.filter(item => item.id !== channel.id)
+      ElMessage.error('Channel không còn khả dụng hoặc bạn không còn quyền gửi.')
+      if (status === 404) await loadChannels({ page: 1 })
+    } else {
+      ElMessage.error(apiErrorMessage(error, 'Không thể gửi tin nhắn. Nội dung vẫn được giữ lại.'))
+    }
+  } finally {
+    if (sendMessageAbortController.value === controller) {
+      sendMessageAbortController.value = null
+    }
+    sendingMessage.value = false
+  }
 }
 
 const sendMessage = () => {
-  if (!newMessage.value.trim() && !attachedFile.value) return
-  
-  const msgObj = {
-    senderId: currentUser.value.id || 'user-quan',
-    senderName: currentUser.value.name || 'Đoàn Minh Quân',
-    senderAvatar: currentUser.value.avatar || '',
-    content: newMessage.value,
-    sentAt: new Date().toISOString()
+  if (composerDisabled.value) return
+  return currentTab.value === 'channel'
+    ? sendChannelMessage()
+    : sendDirectMessage()
+}
+
+const selectDirectRecipient = async (participantUserId) => {
+  if (
+    findingConversation.value ||
+    !participantUserId ||
+    !members.value.some(member => member.id === participantUserId)
+  ) {
+    return
   }
-  
-  if (attachedFile.value) {
-    msgObj.attachment = {
-      name: attachedFile.value.name,
-      size: attachedFile.value.size,
-      url: attachedFile.value.url,
-      type: attachedFile.value.type
+
+  await leaveActiveRealtimeGroup()
+  clearDirectSelection()
+  selectedRecipientId.value = participantUserId
+  const controller = new AbortController()
+  findConversationAbortController.value = controller
+  findingConversation.value = true
+  try {
+    const result = await collaborationApi.findOrCreateDirectConversation(
+      participantUserId,
+      { signal: controller.signal }
+    )
+    const conversation = mapDirectConversation(result)
+    if (conversation.participantUserId !== participantUserId) {
+      throw new Error('Direct Message participant response is out of scope.')
     }
-    attachedFile.value = null
-  }
-  
-  const chatId = activeChat.value.id
-  if (!mockMessages.value[chatId]) {
-    mockMessages.value[chatId] = []
-  }
-  mockMessages.value[chatId].push(msgObj)
-  saveMessages()
-  
-  newMessage.value = ''
-  nextTick(() => {
-    scrollToBottom()
-  })
-  
-  // Simulate response for DM
-  if (activeChat.value.type === 'dm') {
-    simulatePartnerResponse(activeChat.value.id, activeChat.value.name, activeChat.value.avatar)
+    directConversations.value = [
+      conversation,
+      ...directConversations.value.filter(item => item.id !== conversation.id)
+    ]
+    conversationPagination.value.totalCount = Math.max(
+      conversationPagination.value.totalCount,
+      directConversations.value.length
+    )
+    await selectChat(conversation, 'dm')
+    await loadDirectConversations({ page: 1, selectFirst: false })
+  } catch (error) {
+    if (isCanceledRequest(error)) return
+    selectedRecipientId.value = ''
+    const status = error?.response?.status
+    if (status === 401) {
+      clearCollaborationState()
+      ElMessage.error('Phiên đăng nhập đã hết hạn.')
+    } else if (status === 400) {
+      ElMessage.error('Người nhận không hợp lệ.')
+    } else if (status === 403 || status === 404) {
+      ElMessage.error('Người dùng không tồn tại hoặc nằm ngoài phạm vi cộng tác.')
+      await loadDirectMessageUsers(activeProjectId.value)
+    } else if (status === 409) {
+      await loadDirectConversations({ page: 1 })
+      ElMessage.error('Cuộc trò chuyện vừa thay đổi. Danh sách đã được làm mới.')
+    } else {
+      ElMessage.error(apiErrorMessage(error, 'Không thể mở cuộc trò chuyện.'))
+    }
+  } finally {
+    if (findConversationAbortController.value === controller) {
+      findConversationAbortController.value = null
+      findingConversation.value = false
+    }
   }
 }
 
-const selectChat = (item, type) => {
+const selectChat = async (item, type) => {
+  if (type === 'channel') {
+    if (
+      !item?.id ||
+      item.projectId !== activeProjectId.value ||
+      !channels.value.some(channel => channel.id === item.id)
+    ) {
+      return
+    }
+  } else if (
+    !item?.id ||
+    !item?.participantUserId ||
+    !directConversations.value.some(conversation => conversation.id === item.id)
+  ) {
+    return
+  }
+
+  const previousChat = activeChat.value
+  await leaveActiveRealtimeGroup(previousChat)
+  clearMessageHistory()
+  removeAttachedFile()
+  resetMentionComposer()
+  const selectionId = chatSelectionId
   activeChat.value = {
     id: item.id,
     name: item.name,
     type: type,
     desc: item.desc || (type === 'dm' ? `Cuộc hội thoại trực tiếp với ${item.name}` : ''),
-    avatar: item.avatar || ''
-  }
-  
-  // Mark as read
-  item.unread = 0
-  
-  // Load messages
-  if (!mockMessages.value[item.id]) {
-    mockMessages.value[item.id] = []
+    avatar: item.avatar || '',
+    participantUserId: item.participantUserId || null,
+    projectId: item.projectId || null,
+    workspaceId: item.workspaceId || null,
+    canRead: type === 'channel' ? item.canRead : true,
+    canSend: type === 'channel' ? item.canSend : true,
+    canManage: type === 'channel' ? item.canManage : false,
+    unreadCount: item.unreadCount || 0,
+    lastReadMessageId: item.lastReadMessageId || null
   }
 
-  // Self-healing clean up: if it's a DM, only keep messages from the current user or the selected partner
-  if (type === 'dm') {
-    mockMessages.value[item.id] = mockMessages.value[item.id].filter(msg => {
-      return msg.senderId === item.id || msg.senderId === currentUser.value.id || msg.senderId === 'user-quan'
-    })
-    saveMessages()
+  await joinRealtimeForChat(activeChat.value)
+  if (
+    selectionId !== chatSelectionId ||
+    activeChat.value?.id !== item.id ||
+    activeChat.value?.type !== type
+  ) {
+    return
   }
-  
-  activeMessages.value = mockMessages.value[item.id]
-  
-  nextTick(() => {
-    scrollToBottom()
-  })
+
+  if (type === 'dm') {
+    selectedRecipientId.value = item.participantUserId
+    await loadDirectHistory(activeChat.value, { page: 1 })
+  } else {
+    await loadChannelHistory(activeChat.value, { page: 1 })
+  }
+
 }
 
 const scrollToBottom = () => {
@@ -1678,39 +3601,13 @@ const scrollToBottom = () => {
   }
 }
 
-const simulatePartnerResponse = (partnerId, partnerName, partnerAvatar) => {
-  isTyping.value = true
-  setTimeout(() => {
-    isTyping.value = false
-    const responses = [
-      'Tớ nhận được rồi nhé, thiết kế nhìn rất hiện đại!',
-      'Ok cậu, lát tớ review lại rồi báo lại nhé.',
-      'Cậu có cần chỉnh sửa gì thêm về phần API không?',
-      'Bên tớ đang test thử, mọi thứ chạy rất mượt.',
-      'Tuyệt vời! Cảm ơn cậu nhiều nhé.'
-    ]
-    const randomReply = responses[Math.floor(Math.random() * responses.length)]
-    
-    const replyObj = {
-      senderId: partnerId,
-      senderName: partnerName,
-      senderAvatar: partnerAvatar || '',
-      content: randomReply,
-      sentAt: new Date().toISOString()
-    }
-    
-    if (!mockMessages.value[partnerId]) {
-      mockMessages.value[partnerId] = []
-    }
-    mockMessages.value[partnerId].push(replyObj)
-    saveMessages()
-    
-    if (activeChat.value.id === partnerId) {
-      nextTick(() => {
-        scrollToBottom()
-      })
-    }
-  }, 2000)
+const isNearMessageBottom = () => {
+  if (!messageThread.value) return true
+  const distance =
+    messageThread.value.scrollHeight -
+    messageThread.value.scrollTop -
+    messageThread.value.clientHeight
+  return distance <= 120
 }
 
 // Call simulation helpers
@@ -1776,18 +3673,6 @@ const sendFriendRequest = () => {
 
 const acceptFriend = (req) => {
   friendRequests.value = friendRequests.value.filter(r => r.id !== req.id)
-  
-  // Add to members list
-  if (!members.value.some(m => m.id === req.id)) {
-    members.value.push({
-      id: req.id,
-      name: req.name,
-      status: 'online',
-      statusText: 'Đã kết bạn',
-      avatar: req.avatar || '',
-      unread: 0
-    })
-  }
   ElMessage.success(`Đã đồng ý kết bạn với ${req.name}!`)
 }
 
@@ -1833,6 +3718,7 @@ const confirmInviteToServer = () => {
   ElMessage.success(`Đã thêm ${selected.length} thành viên vào Server!`)
 }
 
+
 // Simulate receiving call after 15s if in DM
 onMounted(() => {
   setTimeout(() => {
@@ -1850,6 +3736,9 @@ onUnmounted(() => {
   stopScreenShare()
 })</script>
 
+</script>
+
+
 <style scoped>
 .server-bar {
   width: 72px;
@@ -1861,6 +3750,7 @@ onUnmounted(() => {
   gap: 8px;
   border-right: 1px solid var(--color-border);
   flex-shrink: 0;
+  overflow-y: auto;
 }
 
 .server-icon-wrapper {
@@ -1887,6 +3777,69 @@ onUnmounted(() => {
   transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
   user-select: none;
+  background-color: var(--color-accent);
+}
+
+.project-scope-select {
+  width: 100%;
+  min-height: 36px;
+  margin-bottom: 12px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.channel-state,
+.history-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px 10px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.history-state {
+  min-height: 120px;
+  margin: auto;
+}
+
+.channel-state-error,
+.history-state-error {
+  color: var(--color-danger);
+}
+
+.state-action {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.load-more-action,
+.load-older-action {
+  width: 100%;
+}
+
+.load-older-action {
+  align-self: center;
+  width: auto;
+}
+
+.state-action:disabled,
+.add-btn-small:disabled,
+.btn-send:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .server-icon-wrapper:hover .server-icon {
@@ -2173,6 +4126,36 @@ onUnmounted(() => {
   text-transform: uppercase;
 }
 
+.conversation-time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 6px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.collaboration-unread-badge {
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-accent);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 2px var(--sa-sidebar);
+}
+
+.list-item.active .collaboration-unread-badge {
+  background: var(--color-text-primary);
+  color: var(--color-surface);
+}
+
 .section-list {
   display: flex;
   flex-direction: column;
@@ -2231,6 +4214,7 @@ onUnmounted(() => {
 
 .chat-main {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background-color: var(--color-surface);
@@ -2245,8 +4229,39 @@ onUnmounted(() => {
   padding: 0 16px;
 }
 
+.connection-notice {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface));
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.connection-notice i {
+  flex: 0 0 14px;
+  width: 14px;
+  text-align: center;
+}
+
+.connection-notice.is-connected {
+  background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface));
+}
+
+.connection-notice.is-error {
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+}
+
 .active-info {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 8px;
 }
@@ -2335,6 +4350,12 @@ onUnmounted(() => {
   border: 1px solid var(--color-border);
 }
 
+.message-content p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .message-card.mine .message-content {
   background-color: var(--color-accent);
   color: white;
@@ -2384,8 +4405,20 @@ onUnmounted(() => {
 .chat-input {
   border: 2px solid var(--color-border) !important;
   border-radius: 8px !important;
-  height: 40px !important;
-  padding-inline: 12px !important;
+  min-height: 40px !important;
+  max-height: 112px;
+  padding: 9px 12px !important;
+  line-height: 20px;
+  resize: vertical;
+  overflow-y: auto;
+  font: inherit;
+}
+
+.character-counter {
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  text-align: right;
 }
 
 .btn-send {
@@ -2404,6 +4437,10 @@ onUnmounted(() => {
 
 .btn-send:hover {
   background-color: var(--color-accent-hover);
+}
+
+.btn-send:disabled:hover {
+  background-color: var(--color-accent);
 }
 
 .video-grid {
@@ -2596,6 +4633,25 @@ onUnmounted(() => {
     min-height: calc(100vh - 112px);
   }
 
+  .server-bar {
+    width: 100%;
+    height: 64px;
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 6px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .server-icon-wrapper,
+  .server-icon {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+  }
+
   .chat-sidebar {
     width: 100%;
     max-height: 240px;
@@ -2605,6 +4661,22 @@ onUnmounted(() => {
 
   .messages-thread {
     min-height: 420px;
+  }
+
+  .chat-header,
+  .connection-notice {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .message-card {
+    max-width: 92%;
+  }
+
+  .chat-input-area {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
   }
 }
 </style>
@@ -3251,13 +5323,123 @@ background-color: #111c2d !important;
 /* Custom styles for attachment cards in messages */
 .attachment-preview-container {
   margin-top: 8px;
+  display: grid;
+  gap: 8px;
+  max-width: min(420px, 100%);
+}
+
+.message-attachment {
+  min-width: 0;
+}
+
+.message-mention {
+  display: inline;
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  border-radius: 4px;
+  padding: 1px 3px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.message-card.mention-target {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.mention-composer {
+  position: relative;
+}
+
+.mention-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  width: min(340px, calc(100vw - 32px));
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.mention-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.mention-option:hover,
+.mention-option.active,
+.mention-option:focus-visible {
+  background: color-mix(in srgb, var(--color-primary) 13%, var(--color-surface));
+  outline: none;
+}
+
+.mention-menu-state {
+  padding: 9px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.attachment-preview {
+  gap: 8px;
+  background: color-mix(in srgb, var(--color-surface) 88%, var(--color-primary) 12%);
+  border: 1px solid var(--color-border);
+}
+
+.image-attachment {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  max-width: 100%;
 }
 
 .image-attachment img {
+  display: block;
+  max-width: min(320px, 100%);
+  max-height: 240px;
+  object-fit: contain;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   transition: transform 0.2s ease;
   cursor: pointer;
+}
+
+.attachment-download-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.attached-files-preview {
+  display: grid;
+  gap: 4px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding: 6px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .image-attachment img:hover {
@@ -3268,9 +5450,23 @@ background-color: #111c2d !important;
   display: flex;
   align-items: center;
   background-color: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
-  border-radius: 8px 8px 0 0;
+  border-radius: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--color-border);
+  border: 1px solid var(--color-border);
+  gap: 7px;
+  min-width: 0;
+}
+
+.attached-file-preview-bar .truncate {
+  max-width: min(260px, 45vw);
+}
+
+.selected-file-thumbnail {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  object-fit: cover;
 }
 
 .remove-attachment-btn {
@@ -3283,6 +5479,22 @@ background-color: #111c2d !important;
 
 .remove-attachment-btn:hover {
   color: var(--color-danger);
+}
+
+@media (max-width: 390px) {
+  .attachment-preview {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .attachment-download-btn {
+    width: 100%;
+    margin-left: 32px;
+  }
+
+  .attached-file-preview-bar .truncate {
+    max-width: 130px;
+  }
 }
 </style>
 
@@ -3300,12 +5512,3 @@ background-color: #111c2d !important;
   border: 1px solid var(--color-border) !important;
 }
 </style>
-
-
-
-
-
-
-
-
-

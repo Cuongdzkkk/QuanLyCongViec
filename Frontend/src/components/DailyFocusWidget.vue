@@ -111,12 +111,17 @@ import { useI18n } from '@/composables/useI18n'
 
 const router = useRouter()
 const { t } = useI18n()
+const props = defineProps({
+  tasks: { type: Array, default: null },
+  projectId: { type: String, default: '' }
+})
 
 // ── State ─────────────────────────────────────────────────────────────
-const tasks = ref([])
+const fetchedTasks = ref([])
+const tasks = computed(() => props.tasks ?? fetchedTasks.value)
 const loading = ref(false)
 const error = ref(false)
-const selectedProjectId = ref('')
+const selectedProjectId = ref(props.projectId)
 
 // ── Postpone - lưu localStorage với ghi chú rõ là "hoãn trên thiết bị hôm nay" ──
 const todayKey = () => {
@@ -238,7 +243,7 @@ const load = async () => {
   error.value = false
   try {
     const res = await axiosClient.get('/tasks/search')
-    tasks.value = res.data?.data || []
+    fetchedTasks.value = res.data?.data || []
   } catch (e) {
     error.value = true
   } finally {
@@ -246,7 +251,9 @@ const load = async () => {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  if (props.tasks === null) load()
+})
 </script>
 
 <style scoped>

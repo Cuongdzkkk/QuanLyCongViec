@@ -88,6 +88,7 @@ namespace TaskManagement.Tests.Logic
         {
             var controller = new AiController(
                 _aiService.Object,
+                Mock.Of<IAiCreditUsageService>(),
                 Mock.Of<IAiAttachmentService>(),
                 Mock.Of<IWorkTaskService>(),
                 Mock.Of<IProjectService>(),
