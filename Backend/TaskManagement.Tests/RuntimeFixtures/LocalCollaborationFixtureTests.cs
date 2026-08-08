@@ -13,7 +13,7 @@ public sealed class LocalCollaborationFixtureTests : IDisposable
 {
     private const string ConnectionVariable = "QLCV_E2E_FIXTURE_TEST_CONNECTION";
     private const string ApprovedConnection =
-        "Server=localhost\\SQLEXPRESS;Database=TaskManagementDB;Trusted_Connection=True;TrustServerCertificate=True";
+        "Server=KHOI\\SQLEXPRESS;Database=TaskManagementDB;Trusted_Connection=True;TrustServerCertificate=True";
     private readonly string? _originalValue = Environment.GetEnvironmentVariable(ConnectionVariable);
     private readonly string? _originalServer = Environment.GetEnvironmentVariable("DEV_SQL_SERVER");
 
