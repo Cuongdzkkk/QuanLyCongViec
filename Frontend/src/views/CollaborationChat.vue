@@ -1136,10 +1136,7 @@ import axiosClient from '@/api/axiosClient'
 
 import { useI18n } from '@/composables/useI18n'
 
-const route = useRoute()
-const router = useRouter()
 const { t } = useI18n()
-const currentTab = computed(() => route.query.tab || 'channel')
 
 import { collaborationApi } from '@/api/collaborationApi'
 import { useProjectStore } from '@/store/useProjectStore'
