@@ -48,6 +48,7 @@
             <span>{{ t('Direct Chat') }}</span>
           </button>
         </div>
+      </div>
 
       <div class="sidebar-header">
         <h3 class="font-bold truncate" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0;">
@@ -3735,8 +3736,6 @@ onUnmounted(() => {
   stopLocalCamera()
   stopScreenShare()
 })</script>
-
-</script>
 
 
 <style scoped>
