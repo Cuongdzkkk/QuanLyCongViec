@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using TaskManagement.API.Controllers;
+using TaskManagement.Application.Common;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
@@ -94,8 +95,11 @@ public sealed class P1AiCreditUsageTests
 
             var action = () => new AiCreditUsageService(context).EnsureWithinQuotaAsync(userId);
 
-            await action.Should().ThrowAsync<InvalidOperationException>()
-                .WithMessage("*2 AI credits*");
+            var exception = (await action.Should().ThrowAsync<AiCreditsExhaustedException>()).Which;
+            exception.IncludedCredits.Should().Be(2);
+            exception.UsedCredits.Should().Be(2);
+            exception.RemainingCredits.Should().Be(0);
+            exception.Message.Should().Be("Bạn đã sử dụng hết AI Credits trong tháng này.");
         }
     }
 
