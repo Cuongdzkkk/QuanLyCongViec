@@ -1,3 +1,4 @@
+using TaskManagement.Application.Common;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -25,19 +26,86 @@ builder.Services.AddHostedService<TaskManagement.API.Services.PrivateUploadClean
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddPolicy("FixedWindow", httpContext =>
+
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        var retryAfterSeconds = 60;
+
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            retryAfterSeconds = Math.Max(
+                1,
+                (int)Math.Ceiling(retryAfter.TotalSeconds));
+        }
+
+        context.HttpContext.Response.Headers["Retry-After"] =
+            retryAfterSeconds.ToString();
+
+        await context.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            statusCode = StatusCodes.Status429TooManyRequests,
+            success = false,
+            message = "Bạn đang thao tác AI quá nhanh. Vui lòng thử lại sau.",
+            data = new
+            {
+                code = "AI_RATE_LIMITED",
+                retryAfterSeconds
+            }
+        }, cancellationToken);
+    };
+
+    options.AddPolicy("AiGeneration", httpContext =>
     {
         var userKey = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        var partitionKey = !string.IsNullOrWhiteSpace(userKey)
+        var identity = !string.IsNullOrWhiteSpace(userKey)
             ? $"user:{userKey}"
             : $"ip:{httpContext.Connection.RemoteIpAddress}";
-        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = 5,
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0,
-            AutoReplenishment = true
-        });
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"ai-generation:{identity}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 15,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
+
+    options.AddPolicy("AiAction", httpContext =>
+    {
+        var userKey = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var identity = !string.IsNullOrWhiteSpace(userKey)
+            ? $"user:{userKey}"
+            : $"ip:{httpContext.Connection.RemoteIpAddress}";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"ai-action:{identity}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
+
+    options.AddPolicy("AiHeavy", httpContext =>
+    {
+        var userKey = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var identity = !string.IsNullOrWhiteSpace(userKey)
+            ? $"user:{userKey}"
+            : $"ip:{httpContext.Connection.RemoteIpAddress}";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"ai-heavy:{identity}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
     });
 });
 
@@ -80,6 +148,38 @@ foreach (var proxy in builder.Configuration.GetSection("ForwardedHeaders:KnownPr
     forwardedHeaders.KnownProxies.Add(address);
 }
 app.UseForwardedHeaders(forwardedHeaders);
+
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (AiCreditsExhaustedException ex)
+    {
+        if (context.Response.HasStarted)
+        {
+            throw;
+        }
+
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status402PaymentRequired;
+
+        await context.Response.WriteAsJsonAsync(new
+        {
+            statusCode = StatusCodes.Status402PaymentRequired,
+            success = false,
+            message = ex.Message,
+            data = new
+            {
+                code = "AI_CREDITS_EXHAUSTED",
+                includedCredits = ex.IncludedCredits,
+                usedCredits = ex.UsedCredits,
+                remainingCredits = ex.RemainingCredits
+            }
+        });
+    }
+});
 app.UseMiddleware<TaskManagement.API.Middlewares.PerformanceMiddleware>();
 app.UseMiddleware<TaskManagement.API.Middlewares.IpWhitelistMiddleware>();
 if (!app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("Security:UseHttpsRedirection"))

@@ -11,7 +11,7 @@ namespace TaskManagement.Application.Interfaces
         Task RegisterAsync(RegisterRequestDto request);
         Task ResetPasswordAsync(ResetPasswordRequestDto request);
         Task<(string newAccessToken, string newRefreshToken)> RefreshTokenAsync(string accessToken, string refreshToken);
-        Task RevokeTokenAsync(Guid userId);
+        Task RevokeTokenAsync(string refreshToken);
         Task AcceptInviteAsync(Guid userId);
         Task<InviteInfoDto> GetInviteInfoAsync(string token);
         Task<AcceptInviteResultDto> AcceptInviteTokenAsync(AcceptInviteTokenRequestDto request);

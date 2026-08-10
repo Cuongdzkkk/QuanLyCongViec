@@ -86,6 +86,38 @@
             </button>
           </div>
           <p class="ai-hero-copy">{{ aiCopy.hero }}</p>
+
+          <div
+            v-if="aiUsage"
+            class="ai-credit-card"
+            :class="{ 'is-low': aiCreditsLow, 'is-empty': aiCreditsExhausted }"
+          >
+            <div class="ai-credit-head">
+              <div>
+                <span class="ai-credit-label">AI CREDITS</span>
+                <strong>{{ aiPlanLabel }}</strong>
+              </div>
+
+              <strong>{{ aiRemainingCredits }} / {{ aiIncludedCredits }}</strong>
+            </div>
+
+            <div class="ai-credit-progress" aria-hidden="true">
+              <span :style="{ width: `${aiCreditPercent}%` }"></span>
+            </div>
+
+            <p v-if="aiCreditsExhausted" class="ai-credit-message">
+              Bạn đã sử dụng hết AI Credits trong tháng này.
+            </p>
+
+            <p v-else-if="aiCreditsLow" class="ai-credit-message">
+              AI Credits sắp hết. Bạn còn {{ aiRemainingCredits }} credits.
+            </p>
+
+            <p v-else class="ai-credit-message">
+              Còn {{ aiRemainingCredits }} AI Credits trong tháng này.
+            </p>
+          </div>
+
           <button class="ai-pin-toggle" type="button" @click="togglePetPinned">
             <i :class="petPinned ? 'fa-solid fa-thumbtack' : 'fa-solid fa-location-dot'"></i>
             {{ petPinned ? 'Đã ghim vị trí' : 'Thả cho pet di chuyển' }}
@@ -497,7 +529,7 @@
             >
               <i class="fa-solid fa-microphone"></i>
             </button>
-            <button class="send-btn" type="button" :disabled="aiSending || (!aiInput.trim() && !pendingAttachments.length)" title="Gửi tin nhắn" aria-label="Gửi tin nhắn" @click="sendAiMessage">
+            <button class="send-btn" type="button" :disabled="aiSending || aiCreditsExhausted || (!aiInput.trim() && !pendingAttachments.length)" title="Gửi tin nhắn" aria-label="Gửi tin nhắn" @click="sendAiMessage">
               <i v-if="!aiSending" class="fa-solid fa-paper-plane"></i>
               <i v-else class="fa-solid fa-spinner fa-spin"></i>
             </button>
@@ -574,7 +606,63 @@ const createSpaceVisible = ref(false)
 const isMobile = ref(window.innerWidth <= 1024)
 const aiInput = ref('')
 const aiSending = ref(false)
+const aiUsage = ref(null)
 const aiContentRef = ref(null)
+
+const aiIncludedCredits = computed(() =>
+  Math.max(0, Number(aiUsage.value?.includedCredits || 0))
+)
+
+const aiUsedCredits = computed(() =>
+  Math.max(0, Number(aiUsage.value?.usedCredits || 0))
+)
+
+const aiRemainingCredits = computed(() =>
+  Math.max(
+    0,
+    Number(
+      aiUsage.value?.remainingCredits
+      ?? aiUsage.value?.remainingIncludedCredits
+      ?? (aiIncludedCredits.value - aiUsedCredits.value)
+    )
+  )
+)
+
+const aiCreditPercent = computed(() => {
+  if (aiIncludedCredits.value <= 0) return 0
+
+  return Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round((aiRemainingCredits.value / aiIncludedCredits.value) * 100)
+    )
+  )
+})
+
+const aiCreditsExhausted = computed(() =>
+  Boolean(
+    aiUsage.value
+    && aiIncludedCredits.value > 0
+    && aiRemainingCredits.value <= 0
+  )
+)
+
+const aiCreditsLow = computed(() =>
+  Boolean(
+    aiUsage.value
+    && !aiCreditsExhausted.value
+    && aiIncludedCredits.value > 0
+    && aiCreditPercent.value <= 20
+  )
+)
+
+const aiPlanLabel = computed(() => {
+  const plan = String(aiUsage.value?.planCode || 'free').trim()
+  return plan
+    ? plan.charAt(0).toUpperCase() + plan.slice(1)
+    : 'Free'
+})
 const selectedText = ref('')
 const selectionPopover = ref({ visible: false, left: 0, top: 0 })
 const petPinned = computed({ get: () => aiPetStore.isPinned, set: value => aiPetStore.setPinned(value) })
@@ -2468,6 +2556,24 @@ const normalizeUploadedAttachment = (payload, localAttachment) => ({
   chunkCount: payload.chunkCount
 })
 
+const loadAiUsage = async () => {
+  try {
+    const response = await axiosClient.get('/ai/usage-summary')
+    aiUsage.value = apiPayload(response) || null
+  } catch {
+    // Lỗi badge Credits không được làm hỏng AI Drawer.
+    aiUsage.value = null
+  }
+}
+
+onMounted(() => {
+  loadAiUsage()
+})
+
+watch(aiVisible, (visible) => {
+  if (visible) loadAiUsage()
+})
+
 const uploadPendingAttachments = async (conversationId) => {
   const uploaded = []
   for (const attachment of pendingAttachments.value) {
@@ -2501,6 +2607,12 @@ const uploadPendingAttachments = async (conversationId) => {
 const sendAiMessage = async () => {
   const outgoing = aiInput.value.trim()
   const hasAttachments = pendingAttachments.value.length > 0
+
+  if (aiCreditsExhausted.value) {
+    ElMessage.warning('Bạn đã sử dụng hết AI Credits trong tháng này.')
+    return
+  }
+
   if ((!outgoing && !hasAttachments) || aiSending.value) return
 
   aiSending.value = true
@@ -2539,6 +2651,8 @@ const sendAiMessage = async () => {
         content: responseData?.answer || aiCopy.value.emptyResponse,
         citations: responseData?.citations || []
       })
+
+      await loadAiUsage()
       return
     }
 
@@ -2580,17 +2694,44 @@ const sendAiMessage = async () => {
       })),
       suggestedActions: responseData?.suggestedActions || []
     })
+
+    await loadAiUsage()
   } catch (error) {
     if (loadingAdded && chatHistory.value.at(-1)?.loading) chatHistory.value.pop()
     const status = error.response?.status
-    const messages = {
-      400: error.response?.data?.message || 'Attachment không hợp lệ hoặc không thể xử lý.',
-      401: 'Vui lòng đăng nhập lại để sử dụng AI Copilot.',
-      403: 'Bạn không có quyền truy cập attachment trong workspace này.',
-      413: 'Attachment vượt quá giới hạn dung lượng.',
-      503: 'AI Copilot chưa sẵn sàng. Vui lòng thử lại sau.'
+    const errorData = error.response?.data?.data || {}
+    const errorCode = errorData?.code
+    const retryAfterSeconds = Number(errorData?.retryAfterSeconds || 0)
+
+    let message
+
+    if (errorCode === 'AI_CREDITS_EXHAUSTED') {
+      message = 'Bạn đã sử dụng hết AI Credits trong tháng này.'
+      await loadAiUsage()
+    } else if (errorCode === 'AI_RATE_LIMITED') {
+      message = retryAfterSeconds > 0
+        ? `Bạn thao tác AI quá nhanh. Vui lòng thử lại sau ${retryAfterSeconds} giây.`
+        : 'Bạn thao tác AI quá nhanh. Vui lòng thử lại sau.'
+    } else if (errorCode === 'AI_PROVIDER_RATE_LIMITED') {
+      message = 'Dịch vụ AI đang bận. Vui lòng thử lại sau.'
+    } else if (errorCode === 'AI_PROVIDER_UNAVAILABLE') {
+      message = 'Dịch vụ AI tạm thời không khả dụng. Vui lòng thử lại sau.'
+    } else {
+      const messages = {
+        400: error.response?.data?.message || 'Attachment không hợp lệ hoặc không thể xử lý.',
+        401: 'Vui lòng đăng nhập lại để sử dụng AI Copilot.',
+        402: 'Bạn đã sử dụng hết AI Credits trong tháng này.',
+        403: 'Bạn không có quyền truy cập attachment trong workspace này.',
+        413: 'Attachment vượt quá giới hạn dung lượng.',
+        429: 'Dịch vụ AI đang bận. Vui lòng thử lại sau.',
+        503: 'AI Copilot chưa sẵn sàng. Vui lòng thử lại sau.'
+      }
+
+      message =
+        messages[status]
+        || error.response?.data?.message
+        || 'Không thể kết nối AI Copilot. Vui lòng thử lại.'
     }
-    const message = messages[status] || error.response?.data?.message || 'Không thể kết nối AI Copilot. Vui lòng thử lại.'
     if (userMessageAdded) chatHistory.value.push({ role: 'bot', content: message })
     ElMessage.error(message)
   } finally {
@@ -3885,5 +4026,75 @@ const handleProjectCreated = (newProject) => {
   .ai-action-preview-card.is-pending .ai-action-status {
     animation: none;
   }
+}
+</style>
+
+
+<style scoped>
+.ai-credit-card {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.ai-credit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-credit-head > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-credit-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  opacity: .7;
+}
+
+.ai-credit-head strong {
+  font-size: 12px;
+}
+
+.ai-credit-progress {
+  height: 6px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+}
+
+.ai-credit-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-color);
+  transition: width .25s ease;
+}
+
+.ai-credit-message {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: .8;
+}
+
+.ai-credit-card.is-low {
+  border-color: #d9a441;
+}
+
+.ai-credit-card.is-empty {
+  border-color: #d25b5b;
+}
+
+.ai-credit-card.is-empty .ai-credit-progress > span {
+  width: 0 !important;
 }
 </style>

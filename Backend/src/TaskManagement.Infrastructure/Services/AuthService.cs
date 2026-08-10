@@ -477,7 +477,9 @@ namespace TaskManagement.Infrastructure.Services
                 !token.IsRevoked &&
                 token.ExpiryTime > DateTime.UtcNow);
 
-            if (user.RefreshToken != refreshToken || user.RefreshTokenExpiryTime <= DateTime.UtcNow || activeSession == null)
+            // RefreshTokens is the source of truth for each active session.
+            // User.RefreshToken only tracks the latest issued token and must not invalidate other sessions.
+            if (activeSession == null)
             {
                 throw new UnauthorizedAccessException("Invalid access token or refresh token");
             }
@@ -505,14 +507,30 @@ namespace TaskManagement.Infrastructure.Services
             return (newAccessToken, newRefreshToken);
         }
 
-        public async Task RevokeTokenAsync(Guid userId)
+        public async Task RevokeTokenAsync(string refreshToken)
         {
-            var user = await _context.Users.FindAsync(userId);
-            if (user == null) throw new ArgumentException("User not found");
+            if (string.IsNullOrWhiteSpace(refreshToken))
+                return;
 
-            user.RefreshToken = null;
-            user.RefreshTokenExpiryTime = null;
-            
+            var session = await _context.RefreshTokens
+                .FirstOrDefaultAsync(token =>
+                    token.Token == refreshToken &&
+                    !token.IsRevoked);
+
+            if (session == null)
+                return;
+
+            session.IsRevoked = true;
+
+            // User.RefreshToken only tracks the latest issued token.
+            // Clear it only if this exact session is the latest one.
+            var user = await _context.Users.FindAsync(session.UserId);
+            if (user != null && user.RefreshToken == refreshToken)
+            {
+                user.RefreshToken = null;
+                user.RefreshTokenExpiryTime = null;
+            }
+
             await _context.SaveChangesAsync();
         }
 

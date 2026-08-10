@@ -100,25 +100,238 @@ namespace TaskManagement.Infrastructure.Services
                 prompt.AppendLine($"Selected text (untrusted): {selectedText}");
             }
 
-            if (request.ProjectId.HasValue && request.ProjectId.Value != Guid.Empty)
+            // Global AI context: only expose projects that the current user can actually access.
+            var accessibleProjectsQuery = _context.Projects
+                .AsNoTracking()
+                .Where(p =>
+                    p.Status &&
+                    !p.IsDeleted &&
+                    !p.IsArchived &&
+                    p.ProjectMembers.Any(pm =>
+                        pm.UserId == userId &&
+                        pm.Status) &&
+                    _context.WorkspaceMembers.Any(wm =>
+                        wm.UserId == userId &&
+                        wm.WorkspaceId == p.WorkspaceId &&
+                        wm.IsActive));
+
+            if (request.WorkspaceId.HasValue && request.WorkspaceId.Value != Guid.Empty)
             {
-                var project = await _context.Projects
+                accessibleProjectsQuery = accessibleProjectsQuery
+                    .Where(p => p.WorkspaceId == request.WorkspaceId.Value);
+            }
+
+            var accessibleProjects = await accessibleProjectsQuery
+                .OrderByDescending(p => p.UpdatedAt)
+                .Take(50)
+                .Select(p => new
+                {
+                    p.Id,
+                    p.Name,
+                    p.Identifier,
+                    p.Description,
+                    p.WorkspaceId
+                })
+                .ToListAsync();
+
+            prompt.AppendLine($"Accessible project count: {accessibleProjects.Count}");
+            prompt.AppendLine("Accessible project catalog (trusted server data):");
+
+            foreach (var item in accessibleProjects)
+            {
+                prompt.AppendLine(
+                    $"- id={item.Id} | identifier={Limit(item.Identifier, 40)} | name={Limit(item.Name, 200)} | workspace={item.WorkspaceId}");
+            }
+
+            // GLOBAL OVERDUE FAST PATH
+            // Structured read-only questions should not wait for the LLM.
+            var normalizedMessage = message.ToLowerInvariant();
+
+            var explicitlyNamedProject = accessibleProjects.Any(p =>
+                (!string.IsNullOrWhiteSpace(p.Name) &&
+                 message.Contains(p.Name, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrWhiteSpace(p.Identifier) &&
+                 message.Contains(p.Identifier, StringComparison.OrdinalIgnoreCase)));
+
+            var asksForOverdue =
+                normalizedMessage.Contains("quá hạn") ||
+                normalizedMessage.Contains("qua han") ||
+                normalizedMessage.Contains("trễ hạn") ||
+                normalizedMessage.Contains("tre han") ||
+                normalizedMessage.Contains("overdue");
+
+            var asksAcrossProjects =
+                !explicitlyNamedProject &&
+                (
+                    normalizedMessage.Contains("tất cả") ||
+                    normalizedMessage.Contains("tat ca") ||
+                    normalizedMessage.Contains("mọi dự án") ||
+                    normalizedMessage.Contains("moi du an") ||
+                    normalizedMessage.Contains("các dự án") ||
+                    normalizedMessage.Contains("cac du an") ||
+                    normalizedMessage.Contains("dự án đó") ||
+                    normalizedMessage.Contains("du an do") ||
+                    route.Contains("/dashboard", StringComparison.OrdinalIgnoreCase)
+                );
+
+            if (asksForOverdue && asksAcrossProjects)
+            {
+                var accessibleProjectIds = accessibleProjects
+                    .Select(p => p.Id)
+                    .ToList();
+
+                var now = DateTime.UtcNow;
+
+                var overdueQuery = _context.WorkTasks
                     .AsNoTracking()
-                    .Where(p => p.Id == request.ProjectId.Value && !p.IsDeleted)
-                    .Select(p => new { p.Name, p.Description, p.WorkspaceId })
-                    .FirstOrDefaultAsync();
+                    .Where(t =>
+                        accessibleProjectIds.Contains(t.ProjectId) &&
+                        !t.IsDeleted &&
+                        !t.IsArchived &&
+                        t.DueDate.HasValue &&
+                        t.DueDate.Value < now &&
+                        !t.TaskStatus.Name.ToLower().Contains("done") &&
+                        !t.TaskStatus.Name.ToLower().Contains("complete") &&
+                        !t.TaskStatus.Name.ToLower().Contains("xong") &&
+                        !t.TaskStatus.Name.ToLower().Contains("hoàn thành"));
+
+                var overdueCount = await overdueQuery.CountAsync();
+
+                var overdueTasks = await overdueQuery
+                    .OrderBy(t => t.DueDate)
+                    .ThenBy(t => t.Priority)
+                    .Take(40)
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.SequenceId,
+                        t.Title,
+                        t.Priority,
+                        t.DueDate,
+                        ProjectName = t.Project.Name,
+                        StatusName = t.TaskStatus.Name
+                    })
+                    .ToListAsync();
+
+                if (overdueCount == 0)
+                {
+                    return new AiContextChatResponseDto
+                    {
+                        Answer = $"Không có task quá hạn trong {accessibleProjects.Count} dự án bạn có quyền truy cập.",
+                        Suggestions = new List<string>
+                        {
+                            "Tổng quan tiến độ tất cả dự án",
+                            "Task nào sắp đến hạn?"
+                        }
+                    };
+                }
+
+                var lines = overdueTasks.Select((task, index) =>
+                    $"{index + 1}. [{Limit(task.ProjectName, 80)}] " +
+                    $"{Limit(task.SequenceId, 30)} - {Limit(task.Title, 160)} " +
+                    $"| {Limit(task.StatusName, 50)} | P{task.Priority} " +
+                    $"| hạn {task.DueDate?.ToString("yyyy-MM-dd")}");
+
+                var answer =
+                    $"Có {overdueCount} task quá hạn trong {accessibleProjects.Count} dự án bạn có quyền truy cập:\n\n" +
+                    string.Join("\n", lines);
+
+                if (overdueCount > overdueTasks.Count)
+                {
+                    answer += $"\n\nĐang hiển thị {overdueTasks.Count}/{overdueCount} task quá hạn.";
+                }
+
+                return new AiContextChatResponseDto
+                {
+                    Answer = answer,
+                    Suggestions = new List<string>
+                    {
+                        "Task quá hạn nào ưu tiên cao nhất?",
+                        "Dự án nào có nhiều task quá hạn nhất?"
+                    }
+                };
+            }
+
+            Guid? effectiveProjectId =
+                request.ProjectId.HasValue && request.ProjectId.Value != Guid.Empty
+                    ? request.ProjectId.Value
+                    : null;
+
+            // When the UI does not provide ProjectId (for example Dashboard),
+            // resolve a project from its trusted name or identifier in the user's message.
+            if (!effectiveProjectId.HasValue)
+            {
+                var resolvedProject = accessibleProjects
+                    .Where(p =>
+                        !string.IsNullOrWhiteSpace(p.Name) &&
+                        message.Contains(p.Name, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(p => p.Name.Length)
+                    .FirstOrDefault();
+
+                if (resolvedProject == null)
+                {
+                    resolvedProject = accessibleProjects
+                        .Where(p =>
+                            !string.IsNullOrWhiteSpace(p.Identifier) &&
+                            message.Contains(p.Identifier, StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(p => p.Identifier.Length)
+                        .FirstOrDefault();
+                }
+
+                if (resolvedProject != null)
+                {
+                    effectiveProjectId = resolvedProject.Id;
+                    prompt.AppendLine(
+                        $"Project automatically resolved from user message: {Limit(resolvedProject.Name, 200)} ({resolvedProject.Id})");
+                }
+                else if (accessibleProjects.Count == 1)
+                {
+                    effectiveProjectId = accessibleProjects[0].Id;
+                    prompt.AppendLine(
+                        $"Only one accessible project exists; using it as context: {Limit(accessibleProjects[0].Name, 200)} ({accessibleProjects[0].Id})");
+                }
+            }
+
+            if (effectiveProjectId.HasValue)
+            {
+                var project = accessibleProjects
+                    .FirstOrDefault(p => p.Id == effectiveProjectId.Value);
+
+                // Explicit ProjectId was already permission-checked by AiController.
+                // This fallback also preserves current project-page behavior.
+                if (project == null && request.ProjectId.HasValue)
+                {
+                    project = await _context.Projects
+                        .AsNoTracking()
+                        .Where(p =>
+                            p.Id == effectiveProjectId.Value &&
+                            !p.IsDeleted)
+                        .Select(p => new
+                        {
+                            p.Id,
+                            p.Name,
+                            p.Identifier,
+                            p.Description,
+                            p.WorkspaceId
+                        })
+                        .FirstOrDefaultAsync();
+                }
 
                 if (project != null)
                 {
-                    prompt.AppendLine($"Project id: {request.ProjectId.Value}");
+                    prompt.AppendLine($"Project id: {project.Id}");
                     prompt.AppendLine($"Workspace id: {project.WorkspaceId}");
+                    prompt.AppendLine($"Project identifier: {Limit(project.Identifier, 40)}");
                     prompt.AppendLine($"Project: {Limit(project.Name, 200)}");
                     prompt.AppendLine($"Project description: {Limit(project.Description, 1000)}");
 
                     var tasks = await _context.WorkTasks
                         .AsNoTracking()
                         .Include(t => t.TaskStatus)
-                        .Where(t => t.ProjectId == request.ProjectId.Value && !t.IsDeleted && !t.IsArchived)
+                        .Where(t =>
+                            t.ProjectId == project.Id &&
+                            !t.IsDeleted &&
+                            !t.IsArchived)
                         .OrderByDescending(t => t.UpdatedAt)
                         .Take(100)
                         .Select(t => new
@@ -132,11 +345,15 @@ namespace TaskManagement.Infrastructure.Services
                         .ToListAsync();
 
                     prompt.AppendLine($"Task count in context: {tasks.Count}");
+
                     foreach (var task in tasks)
                     {
-                        prompt.AppendLine($"- id={task.Id} | title={Limit(task.Title, 200)} | status={Limit(task.Status, 80)} | priority=P{task.Priority} | due={task.DueDate?.ToString("yyyy-MM-dd") ?? "none"}");
+                        prompt.AppendLine(
+                            $"- id={task.Id} | title={Limit(task.Title, 200)} | status={Limit(task.Status, 80)} | priority=P{task.Priority} | due={task.DueDate?.ToString("yyyy-MM-dd") ?? "none"}");
                     }
-                    prompt.AppendLine("For actions on an existing task, use only the id paired with that task title above. Never guess or reuse an unrelated visible task id.");
+
+                    prompt.AppendLine(
+                        "For actions on an existing task, use only the id paired with that task title above. Never guess or reuse an unrelated visible task id.");
                 }
             }
 
@@ -875,14 +1092,16 @@ namespace TaskManagement.Infrastructure.Services
         private async Task EnsureQuotaAsync(Guid userId)
         {
             var usage = await GetUsageAsync(userId);
+
+            // SprintA AI Credits is the product entitlement source of truth.
+            // MonthlyTokenQuota remains diagnostic only and must not independently
+            // block a user who still has AI Credits available.
             if (usage.IsCreditQuotaExceeded)
             {
-                throw new InvalidOperationException(
-                    $"Bạn đã sử dụng hết {usage.IncludedCredits:N0} AI credits trong tháng này.");
-            }
-            if (usage.UsedTokensThisMonth >= usage.MonthlyTokenQuota)
-            {
-                throw new InvalidOperationException($"Bạn đã vượt hạn mức AI tháng này ({usage.MonthlyTokenQuota:N0} tokens).");
+                throw new AiCreditsExhaustedException(
+                    usage.IncludedCredits,
+                    usage.UsedCredits,
+                    Math.Max(0, usage.IncludedCredits - usage.UsedCredits));
             }
         }
 

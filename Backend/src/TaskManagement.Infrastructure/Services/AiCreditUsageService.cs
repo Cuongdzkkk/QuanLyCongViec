@@ -1,3 +1,4 @@
+using TaskManagement.Application.Common;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.Application.DTOs.AI;
 using TaskManagement.Application.Interfaces;
@@ -65,8 +66,10 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
         // Missing entitlement configuration is not treated as a zero-credit purchase decision.
         if (usage.HasConfiguredEntitlement && usage.IsQuotaExceeded)
         {
-            throw new InvalidOperationException(
-                $"Bạn đã sử dụng hết {usage.IncludedCredits:N0} AI credits trong tháng này.");
+            throw new AiCreditsExhaustedException(
+                usage.IncludedCredits,
+                usage.UsedCredits,
+                Math.Max(0, usage.IncludedCredits - usage.UsedCredits));
         }
     }
 
