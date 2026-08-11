@@ -35,6 +35,7 @@ namespace TaskManagement.API.Extensions
                 client.Timeout = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("ZenMux:TimeoutSeconds", 30), 5, 120));
             });
             services.AddScoped<IAiCreditUsageService, AiCreditUsageService>();
+            services.AddScoped<IBillingService, BillingService>();
             services.AddScoped<IAiIntegrationService, AiIntegrationService>();
             services.AddHttpClient<IAiService, GeminiAiService>(client =>
             {
@@ -153,4 +154,3 @@ namespace TaskManagement.API.Extensions
         }
     }
 }
-

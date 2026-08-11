@@ -1670,11 +1670,11 @@ const sendAiMessage = async () => {
     const status = error.response?.status
     const messages = {
       400: 'Vui long nhap noi dung can hoi.',
-      401: 'Vui long dang nhap lai de su dung AI Copilot.',
+      401: 'Vui lòng đăng nhập lại để sử dụng SprintA AI.',
       403: 'Ban khong co quyen hoi AI trong du an nay.',
-      503: 'AI Copilot chua san sang. Vui long thu lai sau.'
+      503: 'SprintA AI chưa sẵn sàng. Vui lòng thử lại sau.'
     }
-    const message = messages[status] || 'Khong the ket noi AI Copilot. Vui long thu lai.'
+    const message = messages[status] || 'Không thể kết nối SprintA AI. Vui lòng thử lại.'
     chatHistory.value.push({ role: 'bot', content: message })
     ElMessage.error(message)
   } finally {

@@ -51,6 +51,10 @@ const isVi = computed(() => language.value === 'vi')
 const displayName = computed(() => user.value?.fullName || user.value?.username || user.value?.email || (isVi.value ? 'Người dùng SprintA' : 'SprintA user'))
 const initials = computed(() => displayName.value.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(-2).join('').toUpperCase() || 'SA')
 const workspaceName = computed(() => user.value?.currentWorkspace?.name || user.value?.workspaceName || 'Workspace')
+const usagePercent = computed(() => {
+  const total = Number(usage.value?.includedCredits || 0) + Number(usage.value?.adjustmentCredits || 0)
+  return total > 0 ? Math.min(100, Math.round((Number(usage.value?.usedCredits || 0) / total) * 100)) : 0
+})
 const editorialHeadlines = computed(() => isVi.value ? {
   hero: [
     [{ text: 'Quản lý ' }, { text: 'công việc', tone: 'cyan' }],
@@ -108,7 +112,7 @@ const copy = computed(() => isVi.value ? {
   nav: ['Tính năng', 'AI', 'Quy trình', 'Bảng giá', 'Video'],
   badge: 'SPRINTA',
   title: 'Quản lý công việc rõ ràng, chạy sprint gọn hơn.',
-  intro: 'SprintA gom task, cycle, mục tiêu, tài liệu, báo cáo và AI Copilot vào một workspace thống nhất để đội nhóm luôn thấy rõ việc cần làm, người phụ trách và rủi ro.',
+  intro: 'SprintA gom task, cycle, mục tiêu, tài liệu, báo cáo và Trợ lý SprintA AI vào một workspace thống nhất để đội nhóm luôn thấy rõ việc cần làm, người phụ trách và rủi ro.',
   start: 'Bắt đầu miễn phí',
   demo: 'Xem demo',
   proof: ['Không cần thẻ thanh toán', 'Demo data có sẵn', 'Cài như PWA'],
@@ -145,7 +149,7 @@ const copy = computed(() => isVi.value ? {
   nav: ['Features', 'AI', 'Workflow', 'Pricing', 'Video'],
   badge: 'SPRINTA',
   title: 'Work with clarity. Run focused sprints without noise.',
-  intro: 'SprintA brings tasks, cycles, goals, documents, reports and AI Copilot into one focused workspace so ownership, risk and progress stay visible.',
+  intro: 'SprintA brings tasks, cycles, goals, documents, reports and SprintA AI into one focused workspace so ownership, risk and progress stay visible.',
   start: 'Start for free',
   demo: 'Watch demo',
   proof: ['No credit card', 'Demo data included', 'Install as PWA'],
@@ -273,7 +277,7 @@ const loadUsage = async () => {
   if (!authenticated.value) return
   usageError.value = false
   try {
-    usage.value = (await axiosClient.get('/ai/usage-summary')).data?.data || null
+    usage.value = (await axiosClient.get('/billing/me')).data?.data || null
   } catch {
     usageError.value = true
   }
@@ -296,6 +300,16 @@ const planFeatures = (plan) => {
   if (plan.extraAiCreditsEnabled) features.push(copy.value.extraCredits)
   return features
 }
+
+const handlePlan = (plan) => {
+  const code = planCode(plan)
+  if (code === 'enterprise' || plan.monthlyPriceVnd == null) return
+  const checkoutPath = `/billing/checkout/${encodeURIComponent(code)}`
+  if (authenticated.value) router.push(checkoutPath)
+  else router.push({ path: '/login', query: { redirect: checkoutPath } })
+}
+
+const isCurrentPlan = (plan) => usage.value?.planCode === planCode(plan)
 
 const logout = () => {
   clearAuthSession()
@@ -457,7 +471,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="float-card float-card-b">
                 <span class="mini-icon"><Bot :size="16" /></span>
-                <div><b>{{ isVi ? 'AI Copilot' : 'AI Copilot' }}</b><small>{{ isVi ? 'Gợi ý có xác nhận' : 'Confirmed suggestions' }}</small></div>
+                <div><b>{{ isVi ? 'Trợ lý SprintA AI' : 'SprintA AI' }}</b><small>{{ isVi ? 'Gợi ý có xác nhận' : 'Confirmed suggestions' }}</small></div>
               </div>
               <div class="float-card float-card-c">
                 <BarChart3 :size="17" />
@@ -624,6 +638,19 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <div v-if="authenticated && usage" class="usage-panel" data-reveal>
+            <div>
+              <span>{{ isVi ? 'Gói hiện tại' : 'Current plan' }}</span>
+              <b>{{ usage.planName }} · {{ usage.subscriptionStatus }}</b>
+              <small>{{ isVi ? 'Kết thúc kỳ' : 'Period ends' }}: {{ new Intl.DateTimeFormat(isVi ? 'vi-VN' : 'en-US').format(new Date(usage.currentPeriodEnd)) }}</small>
+            </div>
+            <div class="usage-credit-meter">
+              <div class="usage-values"><span>{{ isVi ? 'Đã dùng' : 'Used' }} <b>{{ usage.usedCredits }}</b></span><span>{{ isVi ? 'Còn lại' : 'Remaining' }} <b>{{ usage.remainingCredits }}</b></span></div>
+              <progress :value="usagePercent" max="100" :aria-label="isVi ? 'Tiến độ sử dụng AI credits' : 'AI credit usage progress'"></progress>
+            </div>
+          </div>
+          <div v-else-if="authenticated && usageError" class="api-state">{{ copy.usageFail }}</div>
+
           <div v-if="pricing?.plans?.length" class="pricing-grid">
             <article
               v-for="plan in pricing.plans"
@@ -644,8 +671,8 @@ onBeforeUnmount(() => {
                 <span v-if="plan.monthlyPriceVnd != null">{{ copy.perMonth }}<template v-if="plan.perUser"> {{ copy.perUser }}</template></span>
               </div>
               <p class="price-status"><i></i>{{ plan.monthlyPriceVnd == null ? copy.pending : copy.transparentPricing }}</p>
-              <button class="plan-cta" type="button" @click="go(authenticated ? '/dashboard' : '/register')">
-                {{ copy.choosePlan }} {{ plan.name }} <ArrowRight :size="15" />
+              <button class="plan-cta" type="button" :disabled="plan.monthlyPriceVnd == null" @click="handlePlan(plan)">
+                {{ plan.monthlyPriceVnd == null ? copy.pending : isCurrentPlan(plan) ? (isVi ? 'Gói hiện tại' : 'Current plan') : `${copy.choosePlan} ${plan.name}` }} <ArrowRight v-if="plan.monthlyPriceVnd != null" :size="15" />
               </button>
               <div v-show="showPlanBenefits" class="feature-list">
                 <div v-for="feature in planFeatures(plan)" :key="feature" class="price-line"><span><Check :size="13" /></span>{{ feature }}</div>
@@ -1148,10 +1175,13 @@ button { font: inherit; }
 .pricing-empty b { font-size: 16px; }
 .pricing-empty p { margin: 0; color: var(--muted); line-height: 1.55; }
 .api-state { margin-top: 28px; padding: 18px; border: 1px solid #efc6c6; border-radius: 16px; color: #b33131; background: #fff2f2; }
-.usage-panel { display: flex; justify-content: space-between; gap: 16px; margin-top: 20px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--muted); }
+.usage-panel { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin: 20px 0 24px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--muted); }
 .usage-panel div { display: grid; gap: 4px; }
 .usage-panel b { color: var(--ink); }
 .usage-values { display: flex !important; flex-direction: row; gap: 20px; }
+.usage-credit-meter { min-width: min(340px, 45%); }
+.usage-credit-meter progress { width: 100%; height: 7px; accent-color: var(--blue); }
+.plan-cta:disabled { cursor: default; opacity: .62; }
 .video-section { background: var(--surface); }
 .workflow-line { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; min-height: 266px; margin-top: 38px; padding: 0 6px; }
 .workflow-line::before { content: ''; position: absolute; z-index: 0; top: 50%; right: 5.5%; left: 5.5%; height: 2px; background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--accent) 68%, transparent) 0 11px, transparent 11px 20px); opacity: .72; }
