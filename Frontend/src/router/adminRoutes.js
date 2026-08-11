@@ -18,6 +18,18 @@ export default [
     meta: adminMeta
   },
   {
+    path: '/admin/billing',
+    name: 'AdminBilling',
+    component: () => import('../views/admin/BillingManagement.vue'),
+    meta: adminMeta
+  },
+  {
+    path: '/admin/billing/payments',
+    name: 'AdminBillingPayments',
+    component: () => import('../views/admin/BillingManagement.vue'),
+    meta: adminMeta
+  },
+  {
     path: '/admin/users',
     name: 'AdminUserManagement',
     component: () => import('../views/admin/UserManagement.vue'),
