@@ -391,8 +391,10 @@ public sealed class AiContextTokenOptimizationTests
         handler.RequestBody.Should().Contain("Selected text (untrusted): Selected SprintA task context");
     }
 
-    [Fact]
-    public async Task NamedProjectOutsideCompactCatalog_IsResolvedFromPermissionFilteredDirectory()
+    [Theory]
+    [InlineData("Tóm tắt PROJECT-25")]
+    [InlineData("Tóm tắt P25")]
+    public async Task NamedProjectOutsideCompactCatalog_IsResolvedFromPermissionFilteredDirectory(string message)
     {
         await using var context = CreateContextWithUser(out var userId);
         var workspaceId = Guid.NewGuid();
@@ -444,13 +446,52 @@ public sealed class AiContextTokenOptimizationTests
         var service = CreateService(context, handler);
         await service.ContextChatAsync(userId, new AiContextChatRequestDto
         {
-            Message = "Tóm tắt PROJECT-25"
+            Message = message
         });
 
         handler.RequestBody.Should().Contain("Project: PROJECT-25");
         handler.RequestBody.Should().NotContain("PROJECT-24");
         handler.RequestBody.Should().NotContain("SECRET-PROJECT");
         handler.RequestBody.Should().NotContain("Accessible project catalog");
+    }
+
+    [Theory]
+    [InlineData("Đặt priority task ABC thành P1")]
+    [InlineData("Chuyển trạng thái task ABC sang Done")]
+    [InlineData("Cập nhật hạn task ABC sang ngày mai")]
+    public async Task MutationVerbAndTarget_AddWriteActionPolicy(string message)
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Route = "/dashboard",
+            PageContext = new AiContextPageDto { PageType = "dashboard", CurrentView = "Dashboard" },
+            Message = message
+        });
+
+        handler.RequestBody.Should().Contain("Write whitelist:");
+        handler.RequestBody.Should().Contain("requiresConfirmation=true");
+    }
+
+    [Fact]
+    public async Task ReadOnlyPrioritySummary_DoesNotAddWriteActionPolicy()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Route = "/dashboard",
+            PageContext = new AiContextPageDto { PageType = "dashboard", CurrentView = "Dashboard" },
+            Message = "Tóm tắt priority của project"
+        });
+
+        handler.RequestBody.Should().NotContain("Write whitelist:");
+        handler.RequestBody.Should().NotContain("requiresConfirmation=true");
     }
 
     [Fact]

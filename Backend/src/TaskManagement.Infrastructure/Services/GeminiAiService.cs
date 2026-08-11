@@ -280,7 +280,7 @@ namespace TaskManagement.Infrastructure.Services
 
                 if (resolvedProject == null)
                 {
-                    resolvedProject = accessibleProjects
+                    resolvedProject = accessibleProjectDirectory
                         .Where(p =>
                             !string.IsNullOrWhiteSpace(p.Identifier) &&
                             ContainsProjectReference(message, p.Identifier))
@@ -520,8 +520,19 @@ namespace TaskManagement.Infrastructure.Services
         private static bool IsWriteActionIntent(string message)
         {
             var normalized = message.ToLowerInvariant();
-            return new[] { "tạo", "create", "sửa", "đổi", "update", "assign", "gán", "thêm bình luận", "add comment", "due date" }
-                .Any(normalized.Contains);
+            var hasMutationVerb = new[]
+            {
+                "tạo", "create", "sửa", "đổi", "update", "assign", "gán", "thêm", "add",
+                "đặt", "set", "chuyển", "move", "cập nhật", "thay đổi"
+            }.Any(verb => ContainsProjectReference(normalized, verb));
+            if (!hasMutationVerb) return false;
+
+            return new[]
+            {
+                "task", "project", "goal", "cycle", "module", "page", "view", "intake", "comment",
+                "bình luận", "priority", "ưu tiên", "status", "trạng thái", "due", "due date", "hạn",
+                "assignee", "phân công"
+            }.Any(target => ContainsProjectReference(normalized, target));
         }
 
         private static bool ContainsProjectReference(string message, string? reference)
