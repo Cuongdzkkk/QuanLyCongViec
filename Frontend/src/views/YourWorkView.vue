@@ -1,26 +1,117 @@
 <script setup>
 import { ref, onMounted, onUnmounted, onBeforeUnmount, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
-import { ElNotification } from 'element-plus'
+import { ElNotification, ElMessage } from 'element-plus'
 import { useI18nStore } from '@/store/useI18nStore'
 import { usePersonalWork } from '@/composables/usePersonalWork'
 import { PERSONAL_WORK_SCOPES } from '@/api/personalWorkApi'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSiteStore } from '@/store/useSiteStore'
+import { useProjectStore } from '@/store/useProjectStore'
+import { useWorkTaskStore } from '@/store/useWorkTaskStore'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
+import { translateDemoText } from '@/utils/demoContentLocale'
 import UserAvatar from '@/components/common/UserAvatar.vue'
+import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import TaskDetailModal from '@/components/TaskDetailModal.vue'
+import { DEFAULT_PROJECT_BACKGROUND, DEFAULT_PROJECT_ICON } from '@/config/projectAppearance'
 
+const router = useRouter()
 const i18nStore = useI18nStore()
 const authStore = useAuthStore()
 const siteStore = useSiteStore()
+const projectStore = useProjectStore()
+const workTaskStore = useWorkTaskStore()
+const starredStore = useStarredStore()
 const t = (key) => i18nStore.t(key)
+const demoText = (value) => translateDemoText(value, i18nStore.language || 'vi')
+
 const activeTab = ref('Summary')
-const tabs = ['Summary', 'Assigned', 'Created', 'Following', 'Worked', 'Activity']
-const tabLabel = (tab) => t(`yourWork.tabs.${tab.toLowerCase()}`)
+const tabs = ['Summary', 'Assigned', 'Worked', 'Starred', 'Created', 'Activity']
+const tabLabel = (tab) => {
+  const map = {
+    Summary: t('yourWork.tabs.summary') || 'Summary',
+    Assigned: t('yourWork.tabs.assigned') || 'Assigned',
+    Worked: t('yourWork.tabs.worked') || 'Worked on',
+    Starred: t('forYou.starred') || 'Starred',
+    Created: t('yourWork.tabs.created') || 'Created',
+    Activity: t('yourWork.tabs.activity') || 'Activity'
+  }
+  return map[tab] || tab
+}
 
 const selectedProjectId = ref(null)
 const projectList = ref([])
 const currentPage = ref(1)
 const pageSize = ref(10)
+
+// Recommended Spaces
+const loadingSpaces = ref(false)
+const errorSpaces = ref(null)
+const spaces = ref([])
+
+const fetchSpaces = async () => {
+  loadingSpaces.value = true
+  errorSpaces.value = null
+  try {
+    const list = await projectStore.fetchAllProjects(true)
+    spaces.value = list.map(p => ({
+      id: p.id,
+      name: p.name,
+      key: p.key || p.name.substring(0, 4).toUpperCase(),
+      description: p.description || t('forYou.softwareSpace'),
+      cover: p.cover || DEFAULT_PROJECT_BACKGROUND,
+      icon: p.icon || DEFAULT_PROJECT_ICON,
+      taskCount: p.taskCount ?? p.TotalTasks ?? p.totalTasks ?? p.activeMemberCount ?? p.ActiveMemberCount ?? 0,
+      networkType: p.networkType || 'Public',
+      createdAt: p.createdAt || null,
+      originalRow: p
+    }))
+  } catch (error) {
+    errorSpaces.value = t('forYou.loadProjectsFailed')
+    console.error('Fetch spaces error:', error)
+  } finally {
+    loadingSpaces.value = false
+  }
+}
+
+const toggleSpaceStar = async (space) => {
+  try {
+    const isCurrentlyFav = projectStore.favoriteProjects.some(p => p.id === space.id)
+    await projectStore.updateFavorite(space.id, !isCurrentlyFav)
+    ElMessage.success(isCurrentlyFav ? t('forYou.spaceUnstarred') : t('forYou.spaceStarred'))
+  } catch {
+    ElMessage.error(starredStore.error || t('forYou.updateSpaceStarFailed'))
+  }
+}
+
+const toggleTaskStar = async (item) => {
+  const targetId = item.rawId || item.id
+  const wasStarred = starredStore.isStarred(STARRED_ENTITY_TYPES.WORK_TASK, targetId)
+  try {
+    await starredStore.setStarred(STARRED_ENTITY_TYPES.WORK_TASK, targetId, !wasStarred)
+    ElMessage.success(wasStarred ? t('forYou.taskUnstarred') : t('forYou.taskStarred'))
+  } catch {
+    ElMessage.error(starredStore.error || t('forYou.updateTaskStarFailed'))
+  }
+}
+
+const sortedSpaces = computed(() => {
+  return spaces.value.map(space => {
+    const spaceTasks = myTasks.value.filter(t => t.projectId === space.id || (t.projectName && t.projectName === space.name)).length;
+    return {
+      ...space,
+      displayTaskCount: spaceTasks > 0 ? spaceTasks : (space.taskCount || 0)
+    }
+  }).sort((a, b) => {
+    const aStarred = projectStore.favoriteProjects.some(p => p.id === a.id)
+    const bStarred = projectStore.favoriteProjects.some(p => p.id === b.id)
+    if (aStarred !== bStarred) return aStarred ? -1 : 1
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+  })
+})
 
 const {
   items: myTasks,
@@ -40,6 +131,7 @@ const {
 } = usePersonalWork()
 
 const tabScopes = {
+  Recommended: PERSONAL_WORK_SCOPES.suggested,
   Assigned: PERSONAL_WORK_SCOPES.assigned,
   Created: PERSONAL_WORK_SCOPES.created,
   Following: PERSONAL_WORK_SCOPES.following,
@@ -117,6 +209,12 @@ const getAvatarUrl = (path) => {
 }
 
 const fetchMyTasks = async () => {
+  if (activeTab.value === 'Starred') {
+    return starredStore.fetchStarredItems({ page: currentPage.value, pageSize: pageSize.value }).catch(() => null)
+  }
+  if (activeTab.value === 'Viewed') {
+    return starredStore.fetchRecentItems({ page: currentPage.value, pageSize: pageSize.value }).catch(() => null)
+  }
   const scope = tabScopes[activeTab.value]
   if (!scope) return null
   return fetchPage({
@@ -130,6 +228,8 @@ let timeInterval = null
 onMounted(async () => {
   await fetchProjects()
   fetchProfile()
+  fetchSpaces()
+  starredStore.fetchStarredItems({ page: 1, pageSize: 100 }).catch(() => {})
   timeInterval = setInterval(() => {
     currentTime.value = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
   }, 1000)
@@ -183,7 +283,36 @@ const recentActivity = computed(() => {
   }))
 })
 
+const collectionTasks = computed(() => {
+  const source = activeTab.value === 'Starred' ? starredStore.starredItems : starredStore.recentItems
+  return source.map(item => ({
+    id: item.sequenceId || (item.itemId || item.entityId)?.substring(0, 8).toUpperCase() || 'ITEM-1',
+    rawId: item.itemId || item.entityId,
+    title: item.itemName || item.title || t('forYou.untitled'),
+    state: item.statusName || 'TO DO',
+    priority: item.priority || 3,
+    assigneeName: item.assigneeName || '',
+    assigneeInitials: item.assigneeInitials || '',
+    assigneeAvatarColor: item.assigneeAvatarColor || '',
+    modules: '0 Modules',
+    cycle: 'No Cycle',
+    task: {
+      id: item.itemId || item.entityId,
+      title: item.itemName || item.title,
+      projectId: item.projectId,
+      projectName: item.subtitle,
+      url: item.url,
+      entityType: item.itemType || item.entityType,
+      statusName: item.statusName || 'TO DO',
+      priority: item.priority || 3
+    }
+  }))
+})
+
 const listData = computed(() => {
+  if (activeTab.value === 'Starred' || activeTab.value === 'Viewed') {
+    return collectionTasks.value
+  }
   return myTasks.value.map(task => ({
     id: task.sequenceId || task.id.substring(0, 8).toUpperCase(),
     rawId: task.id,
@@ -198,6 +327,110 @@ const listData = computed(() => {
     task
   }))
 })
+
+const taskListLoading = computed(() => {
+  if (activeTab.value === 'Starred') return starredStore.loading
+  if (activeTab.value === 'Viewed') return starredStore.recentLoading
+  return loading.value
+})
+
+const taskListError = computed(() => {
+  if (activeTab.value === 'Starred') return starredStore.error
+  if (activeTab.value === 'Viewed') return starredStore.recentError
+  return error.value
+})
+
+const effectiveTotalCount = computed(() => {
+  if (activeTab.value === 'Starred') return starredStore.starredPagination.totalCount || starredStore.starredItems.length
+  if (activeTab.value === 'Viewed') return starredStore.recentPagination.totalCount || starredStore.recentItems.length
+  return totalCount.value
+})
+
+const effectiveTotalPages = computed(() => Math.max(1, Math.ceil(effectiveTotalCount.value / pageSize.value)))
+
+// Task Details Modal interactions
+const selectedTask = ref(null)
+const taskDetailHistory = ref([])
+const projectMembers = ref([])
+const currentProjectRole = ref('member')
+
+const openTaskDetail = async (item) => {
+  const task = item.task || item
+  if (task.url && (task.entityType === STARRED_ENTITY_TYPES.PROJECT || !task.projectId)) {
+    await router.push(task.url)
+    return
+  }
+  if (!task.projectId) return
+
+  try {
+    const mRes = await axiosClient.get(`/projects/${task.projectId}/members`)
+    projectMembers.value = (mRes.data?.data || []).map(member => ({
+      ...member,
+      userId: member.userId || member.id,
+      fullName: member.fullName || member.name || member.email,
+      projectRole: member.projectRole || member.ProjectRole || member.myRole || member.MyRole || ''
+    }))
+  } catch (err) {
+    projectMembers.value = []
+  }
+
+  taskDetailHistory.value = []
+  selectedTask.value = workTaskStore.normalizeTaskRecord(task, task.projectId)
+  starredStore.recordViewed(STARRED_ENTITY_TYPES.WORK_TASK, task.id).catch(() => {})
+}
+
+const openTaskDetailFromModal = (task, options = {}) => {
+  const previousTask = options?.fromTask || selectedTask.value
+  if (previousTask?.id && previousTask.id !== task?.id) {
+    const cachedPrevious = myTasks.value.find(item => item.id === previousTask.id) || previousTask
+    taskDetailHistory.value = [...taskDetailHistory.value, cachedPrevious]
+  }
+  selectedTask.value = workTaskStore.normalizeTaskRecord(task, task.projectId)
+}
+
+const goBackTaskDetail = () => {
+  const history = [...taskDetailHistory.value]
+  const previousTask = history.pop()
+  if (!previousTask) return
+  taskDetailHistory.value = history
+  selectedTask.value = myTasks.value.find(item => item.id === previousTask.id) || previousTask
+}
+
+const closeTaskDetail = () => {
+  taskDetailHistory.value = []
+  selectedTask.value = null
+}
+
+const updateTask = async (task, field, value) => {
+  if (!task?.id) return
+  try {
+    const updatePayload = { [field]: value }
+    const usesPutUpdate = ['title', 'description', 'priority', 'assignedUserId'].includes(field)
+    let payload = updatePayload
+    if (usesPutUpdate) {
+      payload = {
+        title: task.title || '',
+        description: task.description || '',
+        priority: task.priority || 3,
+        assignedUserId: task.assignedUserId || null,
+        statusName: task.statusName || 'TO DO',
+        sprintId: task.sprintId || null,
+        plannedStartDate: task.plannedStartDate || null,
+        plannedEndDate: task.plannedEndDate || null,
+        dueDate: task.dueDate || null,
+        ...updatePayload
+      }
+      await axiosClient.put(`/projects/${task.projectId}/WorkTasks/${task.id}`, payload)
+    } else {
+      await axiosClient.patch(`/projects/${task.projectId}/WorkTasks/${task.id}`, payload)
+    }
+    const idx = myTasks.value.findIndex(item => item.id === task.id)
+    if (idx !== -1) myTasks.value[idx][field] = value
+    if (selectedTask.value?.id === task.id) selectedTask.value[field] = value
+  } catch (error) {
+    ElMessage.error('Could not update work item')
+  }
+}
 
 const updateTaskProperty = async (task, field, value) => {
   try {
@@ -256,7 +489,8 @@ watch(activeTab, () => {
 })
 
 watch(currentPage, () => {
-  if (tabScopes[activeTab.value]) fetchMyTasks()
+  if (activeTab.value === 'Summary' || activeTab.value === 'Activity') return
+  fetchMyTasks()
 })
 
 watch(contextKey, () => {
@@ -266,7 +500,7 @@ watch(contextKey, () => {
 
   fetchSummary().catch(() => null)
   fetchActivity({ limit: 50 }).catch(() => null)
-  if (tabScopes[activeTab.value]) fetchMyTasks()
+  fetchMyTasks()
 }, { immediate: true })
 
 onBeforeUnmount(() => {
@@ -326,6 +560,61 @@ const getInitials = (name) => {
     <div class="jira-dashboard">
       <div class="yw-grid">
       <div class="main-content-column">
+        <!-- Recommended Spaces Section (Integrated from For You) -->
+        <section class="mb-6 sprinta-section-panel sprinta-section-panel-blue">
+          <div class="section-header flex-between mb-4 items-center">
+            <h2 class="section-title">
+              <div class="icon-glass">
+                <i class="bi bi-stars"></i>
+              </div>
+              {{ t('forYou.recommendedSpaces') }}
+            </h2>
+            <router-link to="/spaces" class="view-all-link">{{ t('forYou.viewAllSpaces') }}</router-link>
+          </div>
+
+          <div v-if="loadingSpaces" class="loading-state">
+            <i class="fa-solid fa-spinner fa-spin"></i> {{ t('forYou.loadingSpaces') }}
+          </div>
+          
+          <div v-else-if="sortedSpaces.length === 0" class="empty-spaces-card">
+            <div class="esc-icon">
+              <svg class="h-10 w-10 text-blue-500/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+              </svg>
+            </div>
+            <div class="esc-text">
+              <h3 class="text-sm font-semibold text-gray-700 dark:text-neutral-300">{{ t('forYou.noActiveSpaces') }}</h3>
+              <p class="text-xs text-gray-500 dark:text-neutral-500 mt-0.5">{{ t('forYou.noActiveSpacesDesc') }}</p>
+            </div>
+          </div>
+          
+          <div v-else class="spaces-row">
+            <div 
+              v-for="space in sortedSpaces.slice(0, 4)" 
+              :key="space.id" 
+              class="space-card"
+              @click="router.push(`/space/${space.id}`)"
+            >
+              <ProjectAvatar class="recommended-project-avatar" :icon="space.icon" :background="space.cover" size="sm" />
+              <div class="sc-info">
+                <h3 class="sc-name" :title="demoText(space.name)">{{ demoText(space.name) }}</h3>
+                <p class="sc-desc">{{ demoText(space.description) }} - {{ space.displayTaskCount }} {{ t('common.tasks') }}</p>
+              </div>
+              <button 
+                class="sc-star-btn"
+                type="button"
+                :class="{ starred: projectStore.favoriteProjects.some(p => p.id === space.id) }"
+                :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, space.id)"
+                :aria-pressed="projectStore.favoriteProjects.some(p => p.id === space.id)"
+                @click.stop="toggleSpaceStar(space)"
+                :title="projectStore.favoriteProjects.some(p => p.id === space.id) ? 'Bỏ đánh dấu' : 'Đánh dấu'"
+              >
+                <i :class="projectStore.favoriteProjects.some(p => p.id === space.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+              </button>
+            </div>
+          </div>
+        </section>
+
         <section class="yw-content-card sprinta-section-panel sprinta-section-panel-blue">
           <header class="yw-header flex-between items-center mb-6">
             <h2 class="section-title">
@@ -438,31 +727,42 @@ const getInitials = (name) => {
           </template>
         </div>
 
-        <div class="yw-scrollable" v-else-if="['Assigned', 'Created', 'Following', 'Worked'].includes(activeTab)">
-          <div class="list-header mt-4">
-            <i class="fa-solid fa-circle-dashed f-icon"></i>
-            <span class="lh-title">{{ t('yourWork.allWorkItems') }}</span>
-            <span class="lh-count">{{ totalCount }}</span>
+        <div class="yw-scrollable" v-else-if="['Assigned', 'Worked', 'Starred', 'Created'].includes(activeTab)">
+          <div class="list-header mt-4 flex-between items-center">
+            <div>
+              <i class="fa-solid fa-circle-dashed f-icon"></i>
+              <span class="lh-title">{{ t('yourWork.allWorkItems') }}</span>
+              <span class="lh-count">{{ effectiveTotalCount }}</span>
+            </div>
           </div>
 
           <div class="list-body mt-4">
-            <div v-if="loading" class="personal-state">
+            <div v-if="taskListLoading" class="personal-state">
               <i class="fa-solid fa-spinner fa-spin"></i>
               <span>{{ t('yourWork.loading') }}</span>
             </div>
-            <div v-else-if="error" class="personal-state personal-state-error">
+            <div v-else-if="taskListError" class="personal-state personal-state-error">
               <span>{{ t('yourWork.loadFailed') }}</span>
               <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
             </div>
             <div v-else-if="listData.length === 0" class="personal-state">
-              {{ t(`yourWork.empty.${activeTab.toLowerCase()}`) }}
+              {{ t(`yourWork.empty.${activeTab.toLowerCase()}`) || t('common.noData') }}
             </div>
-            <div class="list-row" v-for="item in listData" :key="item.id">
+            <div class="list-row cursor-pointer" v-for="item in listData" :key="item.id" @click="openTaskDetail(item)">
               <div class="lr-left">
+                <button 
+                  class="star-btn mr-2" 
+                  type="button" 
+                  :class="{ starred: starredStore.isStarred(STARRED_ENTITY_TYPES.WORK_TASK, item.rawId || item.id) }" 
+                  @click.stop="toggleTaskStar(item)" 
+                  :title="starredStore.isStarred(STARRED_ENTITY_TYPES.WORK_TASK, item.rawId || item.id) ? 'Bỏ đánh dấu' : 'Đánh dấu'"
+                >
+                  <i :class="starredStore.isStarred(STARRED_ENTITY_TYPES.WORK_TASK, item.rawId || item.id) ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'"></i>
+                </button>
                 <span class="lr-id">{{ item.id }}</span>
                 <span class="lr-title">{{ item.title }}</span>
               </div>
-              <div class="lr-right">
+              <div class="lr-right" @click.stop>
                 <el-dropdown trigger="click" @command="value => updateTaskProperty(item.task, 'statusName', value)">
                   <div class="lr-badge cursor-pointer hover:bg-[var(--color-bg-secondary)]">
                     <i class="fa-solid fa-circle-check" v-if="item.state.toUpperCase() === 'DONE'"></i>
@@ -483,10 +783,11 @@ const getInitials = (name) => {
 
                 <el-dropdown trigger="click" @command="value => updateTaskProperty(item.task, 'priority', value)">
                   <div class="lr-badge cursor-pointer hover:bg-[var(--color-bg-secondary)]">
-                    <i class="fa-solid fa-angles-up text-red-500" v-if="item.priority === 1"></i>
-                    <i class="fa-solid fa-chevron-up text-orange-500" v-else-if="item.priority === 2"></i>
-                    <i class="fa-solid fa-minus text-blue-500" v-else-if="item.priority === 3"></i>
-                    <i class="fa-solid fa-chevron-down text-gray-400" v-else></i>
+                    <i class="fa-solid fa-angles-up text-red-500" v-if="Number(item.priority) === 1"></i>
+                    <i class="fa-solid fa-chevron-up text-orange-500" v-else-if="Number(item.priority) === 2"></i>
+                    <i class="fa-solid fa-minus text-blue-500" v-else-if="Number(item.priority) === 3"></i>
+                    <i class="fa-solid fa-chevron-down text-gray-400" v-else-if="Number(item.priority) === 4"></i>
+                    <i class="fa-solid fa-ban text-gray-500" v-else></i>
                   </div>
                   <template #dropdown>
                     <el-dropdown-menu class="plane-dropdown">
@@ -508,12 +809,12 @@ const getInitials = (name) => {
               </div>
             </div>
           </div>
-          <div class="personal-pagination" v-if="!loading && !error && totalPages > 1">
+          <div class="personal-pagination" v-if="!taskListLoading && !taskListError && effectiveTotalPages > 1">
             <button class="jira-btn-subtle" :disabled="currentPage === 1" @click="currentPage -= 1">
               <i class="fa-solid fa-chevron-left"></i>
             </button>
-            <span>{{ currentPage }} / {{ totalPages }}</span>
-            <button class="jira-btn-subtle" :disabled="currentPage === totalPages" @click="currentPage += 1">
+            <span>{{ currentPage }} / {{ effectiveTotalPages }}</span>
+            <button class="jira-btn-subtle" :disabled="currentPage === effectiveTotalPages" @click="currentPage += 1">
               <i class="fa-solid fa-chevron-right"></i>
             </button>
           </div>
@@ -706,10 +1007,156 @@ const getInitials = (name) => {
       </div>
       </div>
     </div>
+
+    <!-- Task Detail Modal -->
+    <TaskDetailModal
+      v-if="selectedTask"
+      :task="selectedTask"
+      :projectId="selectedTask.projectId"
+      :projectMembers="projectMembers"
+      :currentRole="currentProjectRole"
+      :canGoBack="taskDetailHistory.length > 0"
+      @close="closeTaskDetail"
+      @back="goBackTaskDetail"
+      @open-task="openTaskDetailFromModal"
+      @updateTask="updateTask"
+      @refresh-tasks="fetchMyTasks"
+    />
   </div>
 </template>
 
 <style scoped>
+
+/* Spaces Row */
+.spaces-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.space-card {
+  display: flex;
+  align-items: center;
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 16px 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.recommended-project-avatar {
+  margin-right: 11px;
+}
+
+.space-card:hover {
+  background-color: var(--color-surface-hover, #f4f5f7);
+  border-color: var(--color-accent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+}
+
+.sc-info {
+  flex: 1;
+  min-width: 0;
+  padding-right: 24px;
+}
+
+.sc-name {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-primary, #172b4d);
+}
+
+.sc-desc {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-muted, #6b778c);
+  opacity: 0.85;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sc-star-btn {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--color-text-muted, #6b778c);
+  font-size: 14px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 6px;
+  opacity: 0;
+  transition: all 0.2s ease;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.space-card:hover .sc-star-btn {
+  opacity: 1;
+}
+.sc-star-btn.starred {
+  opacity: 1;
+  color: #facc15;
+}
+.sc-star-btn:hover {
+  color: var(--color-text-primary, #172b4d);
+  background: rgba(9, 30, 66, 0.08);
+}
+
+.empty-spaces-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+}
+.esc-icon {
+  background: var(--color-surface-hover);
+  padding: 10px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.esc-text h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.esc-text p {
+  margin: 0;
+}
+.view-all-link {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-accent);
+  text-decoration: none;
+}
+.view-all-link:hover {
+  text-decoration: underline;
+}
+
+.star-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+}
 
 .yw-header {
   display: flex;
@@ -1498,6 +1945,7 @@ const getInitials = (name) => {
 
 /* Match For You page wrapper spacing exactly; Your Work only adds a two-column grid inside it. */
 .jira-dashboard {
+  --sa-page-x: 18px;
   position: relative;
   width: 100%;
   max-width: 1120px;

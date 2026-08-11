@@ -5,7 +5,7 @@ import { ensureWorkspaceIdFromState, resolveWorkspaceIdFromState } from '@/utils
 import { useStarredStore } from '@/store/useStarredStore'
 
 export const useGoalStore = defineStore('goal', {
-  state: () => ({ lessons: [], risks: [], decisions: [],
+  state: () => ({
     goals: [],
     currentGoal: null,
     updates: [],
@@ -20,6 +20,52 @@ export const useGoalStore = defineStore('goal', {
     isSuccess: false
   }),
   actions: {
+    upsertGoal(goal) {
+      if (!goal?.id) return
+      const index = this.goals.findIndex(item => `${item.id}` === `${goal.id}`)
+      if (index >= 0) this.goals[index] = { ...this.goals[index], ...goal }
+      else this.goals.unshift(goal)
+      if (`${this.currentGoal?.id}` === `${goal.id}`) {
+        this.currentGoal = { ...this.currentGoal, ...goal }
+      }
+      this.isEmpty = this.goals.length === 0
+    },
+    removeGoal(goalId) {
+      this.goals = this.goals.filter(goal => `${goal.id}` !== `${goalId}`)
+      if (`${this.currentGoal?.id}` === `${goalId}`) this.currentGoal = null
+      this.isEmpty = this.goals.length === 0
+    },
+    upsertActivity(collectionName, item) {
+      if (!item?.id || !Array.isArray(this[collectionName])) return
+      const index = this[collectionName].findIndex(entry => `${entry.id}` === `${item.id}`)
+      if (index >= 0) this[collectionName][index] = { ...this[collectionName][index], ...item }
+      else this[collectionName].unshift(item)
+    },
+    applyRealtimeEntityEvent(event) {
+      const workspaceId = this.getWorkspaceId()
+      if (!event || (event.workspaceId && `${event.workspaceId}` !== `${workspaceId}`)) return
+      if (event.entityType === 'goal') {
+        if (event.action === 'deleted') this.removeGoal(event.entityId)
+        else if (event.data) this.upsertGoal(event.data)
+        return
+      }
+      if (event.entityType !== 'goal-activity') return
+      const payload = event.data || {}
+      if (`${this.currentGoal?.id}` !== `${payload.goalId}`) return
+      const collections = {
+        update: 'updates',
+        lesson: 'lessons',
+        risk: 'risks',
+        decision: 'decisions'
+      }
+      const collectionName = collections[payload.activityType]
+      if (!collectionName) return
+      if (event.action === 'deleted') {
+        this[collectionName] = this[collectionName].filter(item => `${item.id}` !== `${event.entityId}`)
+      } else {
+        this.upsertActivity(collectionName, payload.item)
+      }
+    },
     requireWorkspaceId() {
       const workspaceId = this.getWorkspaceId()
       if (!workspaceId) {
@@ -110,7 +156,7 @@ export const useGoalStore = defineStore('goal', {
         newGoal.owner = newGoal.owner || goalData.owner || newGoal.ownerName || 'Chưa gán'
         newGoal.ownerColor = newGoal.ownerColor || goalData.ownerColor || null
         
-        this.goals.push(newGoal)
+        this.upsertGoal(newGoal)
         return newGoal
       } catch (err) {
         this.error = err.message || 'Failed to create goal'

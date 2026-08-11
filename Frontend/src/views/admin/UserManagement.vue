@@ -719,38 +719,52 @@
       </div>
     </section>
 
-    <div v-if="showExportModal" class="modal-backdrop" @click.stop="closeExportModal">
+    <Teleport to="body">
+    <div v-if="showExportModal" class="modal-backdrop sa-data-modal-overlay" @click.stop="closeExportModal">
       <section class="export-modal" @click.stop>
-        <h2>{{ t('Export users to CSV', 'Xuất người dùng ra CSV') }}</h2>
-        <p>
-          {{ t('Select the data you want to export. We\'ll create the CSV file from the users currently loaded here.', 'Chọn dữ liệu bạn muốn xuất. Chúng tôi sẽ tạo file CSV từ danh sách người dùng hiện tại.') }}
-          <a href="#">{{ t('Understand the CSV file', 'Tìm hiểu về file CSV') }}</a>
-        </p>
+        <DataModalHeader
+          icon="bi bi-filetype-csv"
+          :title="t('Export users to CSV', 'Xuất người dùng ra CSV')"
+          :description="t('Select the data you want to export from the users currently loaded here.', 'Chọn dữ liệu bạn muốn xuất từ danh sách người dùng hiện tại.')"
+          @close="closeExportModal"
+        />
 
-        <div class="export-group">
-          <span class="export-label">{{ t('Users', 'Người dùng') }}</span>
-          <label><input v-model="exportUserScope" type="radio" value="all" /> {{ t('All users', 'Tất cả người dùng') }}</label>
-          <label><input v-model="exportUserScope" type="radio" value="filtered" /> {{ t('Only users in selected filters', 'Chỉ người dùng trong bộ lọc') }}</label>
-        </div>
+        <div class="export-modal-body">
+          <DataModalSection icon="bi bi-people" :title="t('Users', 'Người dùng')">
+            <div class="export-group">
+              <label><input v-model="exportUserScope" type="radio" value="all" /> {{ t('All users', 'Tất cả người dùng') }}</label>
+              <label><input v-model="exportUserScope" type="radio" value="filtered" /> {{ t('Only users in selected filters', 'Chỉ người dùng trong bộ lọc') }}</label>
+            </div>
+          </DataModalSection>
 
-        <div class="export-group">
-          <span class="export-label">{{ t('User status', 'Trạng thái') }}</span>
-          <label><input v-model="exportStatusScope" type="radio" value="all" /> {{ t('All users', 'Tất cả người dùng') }}</label>
-          <label><input v-model="exportStatusScope" type="radio" value="active" /> {{ t('Only active users', 'Chỉ người dùng đang hoạt động') }}</label>
-        </div>
+          <DataModalSection icon="bi bi-activity" :title="t('User status', 'Trạng thái')">
+            <div class="export-group">
+              <label><input v-model="exportStatusScope" type="radio" value="all" /> {{ t('All users', 'Tất cả người dùng') }}</label>
+              <label><input v-model="exportStatusScope" type="radio" value="active" /> {{ t('Only active users', 'Chỉ người dùng đang hoạt động') }}</label>
+            </div>
+          </DataModalSection>
 
-        <div class="export-group">
-          <span class="export-label">{{ t('Additional data', 'Dữ liệu bổ sung') }}</span>
-          <label><input v-model="exportAdditionalData" type="checkbox" value="groups" /> {{ t('Group membership', 'Thành viên nhóm') }}</label>
-          <label><input v-model="exportAdditionalData" type="checkbox" value="apps" /> {{ t('App access and role', 'Quyền truy cập ứng dụng và vai trò') }}</label>
+          <DataModalSection icon="bi bi-database-add" :title="t('Additional data', 'Dữ liệu bổ sung')">
+            <div class="export-group">
+              <label><input v-model="exportAdditionalData" type="checkbox" value="groups" /> {{ t('Group membership', 'Thành viên nhóm') }}</label>
+              <label><input v-model="exportAdditionalData" type="checkbox" value="apps" /> {{ t('App access and role', 'Quyền truy cập ứng dụng và vai trò') }}</label>
+            </div>
+          </DataModalSection>
         </div>
 
         <div class="modal-actions">
-          <button type="button" class="plain-action" @click="closeExportModal">{{ t('Cancel', 'Hủy') }}</button>
-          <button type="button" class="primary-btn" @click="exportUsersToCsv">{{ t('Export', 'Xuất') }}</button>
+          <button type="button" class="plain-action" @click="closeExportModal">
+            <i class="bi bi-x-lg"></i>
+            {{ t('Cancel', 'Hủy') }}
+          </button>
+          <button type="button" class="primary-btn" @click="exportUsersToCsv">
+            <i class="bi bi-download"></i>
+            {{ t('Export', 'Xuất') }}
+          </button>
         </div>
       </section>
     </div>
+    </Teleport>
   </AdminLayout>
 </template>
 
@@ -764,6 +778,8 @@ import { useAdminUserStore } from '@/store/useAdminUserStore'
 import { useLocale } from '@/composables/useLocale'
 import { onUnmounted } from 'vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 
 const { t, locale: currentLocale } = useLocale()
 const activeTab = ref('departments')

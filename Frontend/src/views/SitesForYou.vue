@@ -99,13 +99,14 @@
       </div>
 
       <!-- Create Site Modal -->
-      <div class="modal-overlay" v-if="isCreateModalVisible" @click.self="isCreateModalVisible = false">
+      <Teleport to="body">
+      <div class="modal-overlay sa-data-modal-overlay" v-if="isCreateModalVisible" @click.self="isCreateModalVisible = false">
         <div class="modal-dialog">
           <div class="modal-header">
-            <h2>{{ t('Create a new site') }}</h2>
-            <button class="close-btn" @click="isCreateModalVisible = false"><i class="fa-solid fa-xmark"></i></button>
+            <DataModalHeader icon="bi bi-building-add" :title="t('Create a new site')" :description="t('Create a workspace for your teams and projects')" @close="isCreateModalVisible = false" />
           </div>
           <div class="modal-body">
+            <DataModalSection icon="bi bi-card-text" :title="t('Site information')">
             <div class="form-group">
               <label>{{ t('Site Name') }} <span class="required">*</span></label>
               <input type="text" v-model="newSiteName" :placeholder="homeLabels.sitePlaceholder" class="text-input" :class="{ 'error': errorMessage }" />
@@ -113,21 +114,23 @@
                 <i class="fa-solid fa-triangle-exclamation"></i> {{ errorMessage }}
               </div>
             </div>
+            </DataModalSection>
           </div>
           <div class="modal-footer">
-            <button class="secondary-btn" @click="isCreateModalVisible = false">{{ t('Cancel') }}</button>
+            <button class="secondary-btn cancel-btn" @click="isCreateModalVisible = false"><i class="bi bi-x-lg"></i>{{ t('Cancel') }}</button>
             <button class="primary-btn" :disabled="isCreating || !newSiteName.trim()" @click="submitCreateSite">
               {{ isCreating ? t('Creating...') : t('Create') }}
             </button>
           </div>
         </div>
       </div>
+      </Teleport>
 
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSiteStore } from '@/store/useSiteStore'
 import { useI18nStore } from '@/store/useI18nStore'
@@ -136,7 +139,10 @@ import { useActivityStore } from '@/store/useActivityStore'
 import { useStarredStore } from '@/store/useStarredStore'
 import { getStoredUser } from '@/utils/permissions'
 import axiosClient from '@/api/axiosClient'
+import { signalRService } from '@/api/signalrService'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 
 const router = useRouter()
 const siteStore = useSiteStore()
@@ -208,6 +214,23 @@ const filteredSites = computed(() => {
 const fetchRecentViews = async () => {
   await starredStore.fetchRecentItems({ page: 1, pageSize: 8 }).catch(() => {})
 }
+
+let recentViewRefreshTimer = null
+const handleRecentViewChanged = (event) => {
+  if (event?.entityType !== 'RecentView') return
+  if (recentViewRefreshTimer) clearTimeout(recentViewRefreshTimer)
+  recentViewRefreshTimer = setTimeout(fetchRecentViews, 50)
+}
+
+onMounted(() => {
+  signalRService.on('EntityChanged', handleRecentViewChanged)
+  signalRService.startAuthenticatedConnection()
+})
+
+onUnmounted(() => {
+  signalRService.off('EntityChanged', handleRecentViewChanged)
+  if (recentViewRefreshTimer) clearTimeout(recentViewRefreshTimer)
+})
 
 const recentProjects = computed(() => {
   const viewedProjects = starredStore.recentItems

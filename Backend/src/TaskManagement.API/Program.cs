@@ -4,6 +4,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
 using TaskManagement.API.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -246,6 +247,15 @@ app.MapHub<TaskManagement.API.Hubs.NotificationHub>("/notification-hub");
 app.MapHub<TaskManagement.API.Hubs.ChatHub>(TaskManagement.API.Hubs.ChatHub.Route);
 
 if (await app.Services.RunDatabaseDeploymentCommandAsync(args, app.Environment, builder.Configuration)) return;
+
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<TaskManagement.Infrastructure.Data.ApplicationDbContext>();
+    if (!context.Database.IsRelational())
+    {
+        await TaskManagement.Infrastructure.Data.DataSeeder.SeedMockDataAsync(context);
+    }
+}
 
 app.MapFallbackToFile("index.html");
 app.Run();

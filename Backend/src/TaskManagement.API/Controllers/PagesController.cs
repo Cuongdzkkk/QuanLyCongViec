@@ -1,22 +1,29 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Domain.Entities;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
+using TaskManagement.API.Filters;
 
 namespace TaskManagement.API.Controllers
 {
     [ApiController]
     [Route("api/projects/{projectId}")]
     [Authorize]
+    [ProjectAuthorize("")]
     public class PagesController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IHubContext<KanbanHub> _hub;
 
-        public PagesController(ApplicationDbContext context)
+        public PagesController(ApplicationDbContext context, IHubContext<KanbanHub> hub)
         {
             _context = context;
+            _hub = hub;
         }
 
         private async Task<Guid> GetValidProjectIdAsync(string projectIdString)
@@ -166,6 +173,7 @@ namespace TaskManagement.API.Controllers
 
             _context.Pages.Add(page);
             await _context.SaveChangesAsync();
+            await _hub.PublishEntityChangedAsync(validProjectId, "page", "upsert", page.Id, page);
 
             return CreatedAtAction(nameof(GetById), new { projectId, pageId = page.Id },
                 new { statusCode = 201, message = "Tạo trang thành công.", data = new { page.Id, page.Title } });
@@ -207,6 +215,7 @@ namespace TaskManagement.API.Controllers
             page.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+            await _hub.PublishEntityChangedAsync(validProjectId, "page", "upsert", page.Id, page);
 
             return Ok(new { statusCode = 200, message = "Cập nhật thành công." });
         }
@@ -222,6 +231,7 @@ namespace TaskManagement.API.Controllers
             page.IsArchived = !page.IsArchived;
             page.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            await _hub.PublishEntityChangedAsync(validProjectId, "page", "upsert", page.Id, page);
 
             return Ok(new { statusCode = 200, message = page.IsArchived ? "Đã lưu trữ." : "Đã khôi phục." });
         }
@@ -236,6 +246,7 @@ namespace TaskManagement.API.Controllers
 
             _context.Pages.Remove(page);
             await _context.SaveChangesAsync();
+            await _hub.PublishEntityChangedAsync(validProjectId, "page", "deleted", pageId);
 
             return Ok(new { statusCode = 200, message = "Đã xóa trang vĩnh viễn." });
         }

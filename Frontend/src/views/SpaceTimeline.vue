@@ -18,41 +18,36 @@
           :searchPlaceholder="'Search tasks...'"
         >
           <template #filters>
-            <div class="filters-row">
-              
-              <select v-model="filters.assignee" class="filter-select">
-                <option value="">All Assignees</option>
-                <option v-for="member in projectMembers" :key="member.id || member.userId" :value="member.id || member.userId">
-                  {{ member.name || member.fullName || member.email }}
-                </option>
-              </select>
-              
-              <select v-model="filters.status" class="filter-select">
-                <option value="">All Statuses</option>
-                <option v-for="status in taskStatusOptions" :key="status.name" :value="status.name">
-                  {{ status.label }}
-                </option>
-              </select>
-              
-              <select v-model="filters.priority" class="filter-select">
-                <option value="">All Priorities</option>
-                <option :value="1">Urgent</option>
-                <option :value="2">High</option>
-                <option :value="3">Normal</option>
-                <option :value="4">Low</option>
-              </select>
-              
-              <select v-model="filters.sprint" class="filter-select">
-                <option value="">All Sprints</option>
-                <option v-for="sprint in sprints" :key="sprint.id" :value="sprint.id">
-                  {{ sprint.name }}
-                </option>
-              </select>
-              
-              <label class="filter-checkbox">
-                <input type="checkbox" v-model="filters.myTasks" />
-                Only My Tasks
-              </label>
+            <div class="timeline-filter-wrapper">
+              <button class="timeline-filter-trigger" type="button" :class="{ active: showFilters || activeFilterCount }" @click.stop="showFilters = !showFilters">
+                <i class="fa-solid fa-filter"></i>
+                <span>Filters</span>
+                <span v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</span>
+              </button>
+              <div v-if="showFilters" class="timeline-filter-popover" @click.stop>
+                <div class="filter-popover-heading">
+                  <span>Filter timeline</span>
+                  <button type="button" aria-label="Close filters" @click="showFilters = false"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <select v-model="filters.assignee" class="filter-select">
+                  <option value="">All Assignees</option>
+                  <option v-for="member in projectMembers" :key="member.id || member.userId" :value="member.id || member.userId">{{ member.name || member.fullName || member.email }}</option>
+                </select>
+                <select v-model="filters.status" class="filter-select">
+                  <option value="">All Statuses</option>
+                  <option v-for="status in taskStatusOptions" :key="status.name" :value="status.name">{{ status.label }}</option>
+                </select>
+                <select v-model="filters.priority" class="filter-select">
+                  <option value="">All Priorities</option>
+                  <option :value="1">Urgent</option><option :value="2">High</option><option :value="3">Normal</option><option :value="4">Low</option>
+                </select>
+                <select v-model="filters.sprint" class="filter-select">
+                  <option value="">All Sprints</option>
+                  <option v-for="sprint in sprints" :key="sprint.id" :value="sprint.id">{{ sprint.name }}</option>
+                </select>
+                <label class="filter-checkbox"><input type="checkbox" v-model="filters.myTasks" /> Only My Tasks</label>
+                <button class="clear-timeline-filters" type="button" :disabled="!activeFilterCount" @click="clearFilters">Clear filters</button>
+              </div>
             </div>
           </template>
 
@@ -240,6 +235,7 @@ const taskStatusOptions = ref([
 ])
 
 const searchQuery = ref('')
+const showFilters = ref(false)
 const filters = ref({
   assignee: '',
   status: '',
@@ -247,6 +243,10 @@ const filters = ref({
   sprint: '',
   myTasks: false
 })
+const activeFilterCount = computed(() => [filters.value.assignee, filters.value.status, filters.value.priority, filters.value.sprint, filters.value.myTasks].filter(Boolean).length)
+const clearFilters = () => {
+  filters.value = { assignee: '', status: '', priority: '', sprint: '', myTasks: false }
+}
 const zoomLevel = ref('Week')
 const rowHeight = 36
 
@@ -680,6 +680,97 @@ const openTaskDetail = (task) => {
   width: 100%;
 }
 
+.timeline-filter-wrapper {
+  position: relative;
+}
+
+.timeline-filter-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--sa-border, var(--color-border));
+  border-radius: 9px;
+  background: var(--sa-surface, var(--color-surface));
+  color: var(--sa-text-secondary, var(--color-text-secondary));
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.timeline-filter-trigger:hover,
+.timeline-filter-trigger.active {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  color: var(--color-accent);
+}
+
+.filter-count {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-text-inverse, #fff);
+  font-size: 10px;
+}
+
+.timeline-filter-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 100;
+  display: grid;
+  width: min(300px, calc(100vw - 32px));
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xl, 0 20px 48px rgba(15, 23, 42, 0.18));
+}
+
+.timeline-filter-popover .filter-select {
+  width: 100%;
+}
+
+.filter-popover-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.filter-popover-heading button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.clear-timeline-filters {
+  height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface-hover);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.clear-timeline-filters:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .filter-item {
   position: relative;
   display: flex;
@@ -733,6 +824,17 @@ const openTaskDetail = (task) => {
 }
 
 .zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 86%, transparent);
+  border-radius: 9px;
+  background: var(--color-surface);
+  box-sizing: border-box;
+}
+.zoom-btn-old {
   display: flex;
   background: color-mix(in srgb, var(--sa-border, #e2e8f0) 50%, transparent);
   border-radius: 6px;
@@ -740,6 +842,46 @@ const openTaskDetail = (task) => {
 }
 
 .zoom-btn {
+  position: relative;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  border-radius: 7px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zoom-btn:hover {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-hover));
+}
+
+.zoom-btn.active {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.zoom-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3.5px;
+  background: linear-gradient(90deg, var(--color-accent, #0c66e4), color-mix(in srgb, var(--color-accent, #0c66e4) 80%, #38bdf8));
+  border-radius: 4px 4px 0 0;
+  box-shadow: 0 -1px 6px color-mix(in srgb, var(--color-accent, #0c66e4) 50%, transparent);
+}
+.zoom-btn-disabled {
   padding: 4px 12px;
   font-size: 13px;
   font-weight: 600;
@@ -1118,7 +1260,7 @@ const openTaskDetail = (task) => {
 
 .filter-input,
 .filter-select,
-.zoom-controls {
+.zoom-controls-override {
   min-height: 34px;
   border-radius: 9px !important;
   border-color: color-mix(in srgb, var(--color-border) 86%, transparent) !important;

@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using TaskManagement.API.Filters;
 using TaskManagement.Application.Common;
 using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 using TaskManagement.Application.DTOs.WorkTask;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
@@ -30,13 +31,18 @@ namespace TaskManagement.API.Controllers
     {
         private readonly IWorkTaskService _workTaskService;
         private readonly IHubContext<KanbanHub> _kanbanHub;
+        private readonly ApplicationDbContext? _context;
         private static readonly string[] BaselineManagerRoles = { "PM", "PO", "SM", "PA", "PROJECT_MANAGER", "SCRUM_MASTER", "PROJECT_ADMIN" };
         private const string TaskVisibilitySettingGroup = "TaskVisibility";
 
-        public WorkTasksController(IWorkTaskService workTaskService, IHubContext<KanbanHub> kanbanHub)
+        public WorkTasksController(
+            IWorkTaskService workTaskService,
+            IHubContext<KanbanHub> kanbanHub,
+            ApplicationDbContext? context = null)
         {
             _workTaskService = workTaskService;
             _kanbanHub = kanbanHub;
+            _context = context;
         }
 
         private static string NormalizeStatusName(string? statusName)
@@ -304,6 +310,17 @@ namespace TaskManagement.API.Controllers
             var groupName = projectId.ToString();
             await _kanbanHub.Clients.Group(groupName).SendAsync("TaskUpdated", task);
             await _kanbanHub.Clients.Group(groupName).SendAsync("WorkTaskUpdated", task);
+            await _kanbanHub.Clients.Group(groupName).SendAsync("EntityChanged", new
+            {
+                eventId = Guid.NewGuid(),
+                entityType = "task",
+                action = "upsert",
+                entityId = task.Id,
+                projectId,
+                version = task.RowVersion,
+                occurredAt = DateTime.UtcNow,
+                data = task
+            });
         }
 
         private static bool IsDoneStatusName(string? statusName)
@@ -2654,6 +2671,7 @@ namespace TaskManagement.API.Controllers
             try
             {
                 var plan = await _workTaskService.CreateContingencyPlanAsync(id, userId, dto);
+                await PublishContingencyChangedAsync(id, plan.Id, "created");
                 return Ok(new { statusCode = 201, message = "Plan created", data = plan });
             }
             catch (Exception ex)
@@ -2675,6 +2693,7 @@ namespace TaskManagement.API.Controllers
             try
             {
                 var plan = await _workTaskService.UpdateContingencyPlanAsync(id, planId, userId, dto);
+                await PublishContingencyChangedAsync(id, planId, "updated");
                 return Ok(new { statusCode = 200, message = "Plan updated", data = plan });
             }
             catch (Exception ex)
@@ -2694,6 +2713,7 @@ namespace TaskManagement.API.Controllers
             try
             {
                 await _workTaskService.DeleteContingencyPlanAsync(id, planId, userId);
+                await PublishContingencyChangedAsync(id, planId, "deleted");
                 return Ok(new { statusCode = 200, message = "Plan deleted" });
             }
             catch (Exception ex)
@@ -2713,6 +2733,7 @@ namespace TaskManagement.API.Controllers
             try
             {
                 await _workTaskService.CreateContingencyTaskToPlanAsync(id, planId, dto, userId);
+                await PublishContingencyChangedAsync(id, planId, "updated");
                 return Ok(new { statusCode = 200, message = "Contingency task created successfully" });
             }
             catch (Exception ex)
@@ -2732,6 +2753,7 @@ namespace TaskManagement.API.Controllers
             try
             {
                 await _workTaskService.AddContingencyTaskToPlanAsync(id, planId, fallbackTaskId, userId);
+                await PublishContingencyChangedAsync(id, planId, "updated");
                 return Ok(new { statusCode = 200, message = "Task linked to plan successfully" });
             }
             catch (Exception ex)
@@ -2751,6 +2773,7 @@ namespace TaskManagement.API.Controllers
             try
             {
                 await _workTaskService.RemoveContingencyTaskFromPlanAsync(id, planId, fallbackTaskId, userId);
+                await PublishContingencyChangedAsync(id, planId, "updated");
                 return Ok(new { statusCode = 200, message = "Task removed from plan successfully" });
             }
             catch (Exception ex)
@@ -2770,12 +2793,30 @@ namespace TaskManagement.API.Controllers
             try
             {
                 await _workTaskService.ActivateContingencyTaskAsync(id, planId, fallbackTaskId, userId);
+                await PublishContingencyChangedAsync(id, planId, "updated");
                 return Ok(new { statusCode = 200, message = "Contingency task activated successfully" });
             }
             catch (Exception ex)
             {
                 return BadRequest(new { statusCode = 400, message = ex.Message });
             }
+        }
+
+        private async Task PublishContingencyChangedAsync(Guid taskId, Guid planId, string action)
+        {
+            if (_context == null) return;
+            var projectId = await _context.WorkTasks
+                .AsNoTracking()
+                .Where(task => task.Id == taskId)
+                .Select(task => (Guid?)task.ProjectId)
+                .FirstOrDefaultAsync();
+            if (!projectId.HasValue) return;
+            await _kanbanHub.PublishEntityChangedAsync(
+                projectId.Value,
+                "TaskContingencyPlan",
+                action,
+                planId,
+                new { taskId, planId });
         }
 
         private static bool TryParseImportDate(string? value, out DateTime? date)

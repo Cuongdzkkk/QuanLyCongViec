@@ -2,6 +2,13 @@ import { defineStore } from 'pinia'
 import axiosClient from '@/api/axiosClient'
 import { useSiteStore } from '@/store/useSiteStore'
 import { ensureWorkspaceIdFromState, resolveWorkspaceIdFromState } from '@/utils/contextIds'
+import { signalRService } from '@/api/signalrService'
+
+let followerRealtimeRegistered = false
+let activeFollowerStore = null
+const handleFollowerRealtime = event => {
+  if (`${event?.entityType || ''}`.toLowerCase() === 'follower') activeFollowerStore?.fetchFollowedItems()
+}
 
 export const useFollowerStore = defineStore('followerStore', {
   state: () => ({
@@ -10,6 +17,12 @@ export const useFollowerStore = defineStore('followerStore', {
     error: null
   }),
   actions: {
+    registerRealtime() {
+      activeFollowerStore = this
+      if (followerRealtimeRegistered) return
+      signalRService.on('EntityChanged', handleFollowerRealtime)
+      followerRealtimeRegistered = true
+    },
     getWorkspaceId() {
       const siteStore = useSiteStore()
       return resolveWorkspaceIdFromState({ siteStore })
@@ -19,6 +32,7 @@ export const useFollowerStore = defineStore('followerStore', {
       return ensureWorkspaceIdFromState({ siteStore })
     },
     async fetchFollowedItems() {
+      this.registerRealtime()
       this.loading = true
       this.error = null
       try {

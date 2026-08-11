@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 using TaskManagement.Application.DTOs.Common;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
@@ -13,10 +16,12 @@ namespace TaskManagement.API.Controllers
     public class KudosController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IHubContext<KanbanHub>? _hub;
 
-        public KudosController(ApplicationDbContext context)
+        public KudosController(ApplicationDbContext context, IHubContext<KanbanHub>? hub = null)
         {
             _context = context;
+            _hub = hub;
         }
 
         [HttpGet]
@@ -217,6 +222,17 @@ namespace TaskManagement.API.Controllers
             });
 
             await _context.SaveChangesAsync();
+            if (_hub != null)
+            {
+                await _hub.PublishAuthenticatedEntityChangedAsync("Kudo", "created", kudo.Id, new
+                {
+                    kudo.Id,
+                    kudo.DepartmentId,
+                    kudo.ReceiverId
+                });
+                await Task.WhenAll(notifications.Select(notification =>
+                    _hub.PublishUserEntityChangedAsync(notification.UserId, "Notification", "created", notification.Id)));
+            }
 
             return Ok(ApiResponse<object>.Success(new { id = kudo.Id }, "Da gui loi khen ngoi."));
         }

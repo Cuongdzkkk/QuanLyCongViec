@@ -3,34 +3,24 @@
     v-model="visible"
     title="Cập nhật trạng thái của bạn"
     width="500px"
-    class="status-update-dialog"
+    class="status-update-dialog sa-data-dialog sa-modal--form"
     :before-close="handleClose"
     :show-close="false"
-    align-center
     append-to-body
   >
     <template #header>
-      <div class="status-dialog-heading">
-        <div class="heading-icon" aria-hidden="true">
-          <i class="bi bi-person-badge"></i>
-        </div>
-        <div class="heading-copy">
-          <h2>Cập nhật trạng thái</h2>
-          <p>Hiển thị trạng thái của bạn cho đồng nghiệp</p>
-        </div>
-        <button type="button" class="dialog-close-btn" aria-label="Đóng" @click="handleClose">
-          <i class="bi bi-x-lg"></i>
-        </button>
-      </div>
+      <DataModalHeader
+        icon="bi bi-person-badge"
+        title="Cập nhật trạng thái"
+        description="Hiển thị trạng thái của bạn cho đồng nghiệp"
+        @close="handleClose"
+      />
     </template>
 
     <div class="status-content">
       <!-- Current Status Preview -->
-      <section v-if="currentStatusText || currentStatusEmoji" class="current-status-box">
-        <span class="field-label">
-          <i class="bi bi-person-check" aria-hidden="true"></i>
-          Trạng thái hiện tại
-        </span>
+      <DataModalSection v-if="currentStatusText || currentStatusEmoji" icon="bi bi-person-check" title="Trạng thái hiện tại">
+      <section class="current-status-box">
         <div class="current-status-preview">
           <span class="status-icon-shell" aria-hidden="true">
             <i class="bi" :class="getStatusIcon(currentStatusEmoji)"></i>
@@ -45,10 +35,11 @@
           </button>
         </div>
       </section>
+      </DataModalSection>
 
       <!-- Emoji Presets Grid -->
-      <section class="emoji-presets status-section">
-        <span class="field-label">Chọn trạng thái nhanh</span>
+      <DataModalSection icon="bi bi-grid" title="Chọn trạng thái nhanh">
+      <section class="emoji-presets">
         <div class="presets-grid">
           <button
             v-for="preset in presets"
@@ -63,13 +54,11 @@
           </button>
         </div>
       </section>
+      </DataModalSection>
 
       <!-- Custom Status Form -->
-      <section class="custom-status-form status-section divided-section">
-        <span class="field-label">
-          <i class="bi bi-pencil-square" aria-hidden="true"></i>
-          Trạng thái tùy chỉnh
-        </span>
+      <DataModalSection icon="bi bi-pencil-square" title="Trạng thái tùy chỉnh">
+      <section class="custom-status-form">
         <div class="custom-input-wrapper">
           <button type="button" class="emoji-selector-trigger" aria-label="Đổi biểu tượng trạng thái" @click="toggleEmojiPicker">
             <i class="bi" :class="getStatusIcon(selectedEmoji)" aria-hidden="true"></i>
@@ -82,13 +71,12 @@
           />
         </div>
       </section>
+      </DataModalSection>
 
       <!-- Expiration Selector -->
-      <section class="expiration-section status-section divided-section">
-        <span class="field-label">
-          <i class="bi bi-clock" aria-hidden="true"></i>
-          Xóa trạng thái sau
-        </span>
+      <DataModalSection icon="bi bi-clock" title="Thời hạn trạng thái">
+      <section class="expiration-section">
+        <DataModalField label="Xóa trạng thái sau">
         <el-select v-model="expiration" class="w-full custom-select">
           <el-option label="Không xóa" value="never" />
           <el-option label="30 phút" value="30m" />
@@ -96,7 +84,9 @@
           <el-option label="Hôm nay" value="today" />
           <el-option label="Tuần này" value="week" />
         </el-select>
+        </DataModalField>
       </section>
+      </DataModalSection>
     </div>
 
     <template #footer>
@@ -117,6 +107,9 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 
 const props = defineProps({
   modelValue: {
@@ -880,6 +873,21 @@ const handleClose = () => {
 [data-theme='dark'] .preset-btn:hover,
 [data-theme='dark'] .preset-btn.active {
   background: color-mix(in srgb, var(--status-primary) 11%, var(--color-surface));
+}
+
+/* The shared popup contract is the source of truth. These final selectors
+ * neutralize legacy scoped declarations kept above for the status content. */
+:deep(.status-update-dialog .el-dialog__header) {
+  min-height: 92px !important;
+  padding: 16px 24px !important;
+}
+
+:deep(.status-update-dialog .el-dialog__body) {
+  padding: 0 24px 24px !important;
+}
+
+.status-content {
+  gap: 0 !important;
 }
 
 @media (max-width: 540px) {

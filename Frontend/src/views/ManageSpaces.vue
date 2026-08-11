@@ -1,48 +1,55 @@
 <template>
-  <div class="manage-spaces-page sp-page-shell">
-      <!-- Plane Style Header -->
-          <header class="spaces-header">
-            <div class="sh-left">
-              <i class="fa-solid fa-briefcase"></i>
-              <h1>{{ t('Projects') }}</h1>
-            </div>
+  <section class="manage-spaces-page">
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">WORKSPACE</span>
+        <h1>{{ t('Projects') }}</h1>
+        <p>{{ t('Quản lý và theo dõi danh sách tất cả các dự án trong workspace của bạn.', 'Manage and track all projects in your workspace.') }}</p>
+      </div>
 
-        <div class="sh-right">
-          <div class="search-box">
-             <i class="fa-solid fa-magnifying-glass"></i>
-             <input type="text" :placeholder="t('Search spaces...')" v-model="searchQuery" />
-          </div>
-          <div style="display: flex; gap: 4px; border: 1px solid var(--color-border); padding: 4px; border-radius: 8px;">
-            <button class="plane-btn-secondary outline-btn" style="border: none; margin: 0; padding: 6px 10px;" :class="{ active: viewMode === 'table' }" type="button" @click="setViewMode('table')" title="List view">
-              <i class="fa-solid fa-list"></i>
-            </button>
-            <button class="plane-btn-secondary outline-btn" style="border: none; margin: 0; padding: 6px 10px;" :class="{ active: viewMode === 'grid' }" type="button" @click="setViewMode('grid')" title="Grid view">
-              <i class="fa-solid fa-grip"></i>
-            </button>
-          </div>
-          <button class="plane-btn-secondary outline-btn" type="button" @click="toggleSort">
-             <i class="fa-solid fa-arrow-down-short-wide"></i> Created date {{ sortDirection === 'desc' ? '↓' : '↑' }}
-          </button>
-          <div class="project-filter-wrapper">
-            <button class="plane-btn-secondary outline-btn" type="button" @click="showProjectFilters = !showProjectFilters" :class="{ active: showProjectFilters || visibilityFilter !== 'all' }">
-               <i class="fa-solid fa-filter"></i> {{ filterLabel }}
-            </button>
-            <div class="project-filter-menu" v-if="showProjectFilters" @click.stop>
-              <div class="filter-title">Visibility</div>
-              <label class="filter-option"><input type="radio" value="all" v-model="visibilityFilter" /> All projects</label>
-              <label class="filter-option"><input type="radio" value="Public" v-model="visibilityFilter" /> Public</label>
-              <label class="filter-option"><input type="radio" value="Private" v-model="visibilityFilter" /> Private</label>
-              <label class="filter-option"><input type="radio" value="starred" v-model="visibilityFilter" /> Starred</label>
-              <button class="clear-filter-btn" type="button" @click="visibilityFilter = 'all'">Clear filters</button>
-            </div>
-          </div>
-          <button class="plane-btn-primary" @click="isCreateModalVisible = true">
-            {{ t('Add Project') }}
-          </button>
+      <button class="primary-action" type="button" @click="isCreateModalVisible = true">
+        <i class="fa-solid fa-plus"></i>
+        {{ t('Add Project') }}
+      </button>
+    </header>
+
+    <div class="toolbar">
+      <label class="search-field">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="search" :placeholder="t('Search spaces...')" v-model="searchQuery" />
+      </label>
+
+      <div class="view-toggles">
+        <button type="button" :class="{ active: viewMode === 'table' }" @click="setViewMode('table')" title="List view">
+          <i class="fa-solid fa-list"></i>
+        </button>
+        <button type="button" :class="{ active: viewMode === 'grid' }" @click="setViewMode('grid')" title="Grid view">
+          <i class="fa-solid fa-grip"></i>
+        </button>
+      </div>
+
+      <button type="button" @click="toggleSort">
+        <i class="fa-solid fa-arrow-down-short-wide"></i> Created date {{ sortDirection === 'desc' ? '↓' : '↑' }}
+      </button>
+
+      <div class="project-filter-wrapper">
+        <button type="button" @click="showProjectFilters = !showProjectFilters" :class="{ active: showProjectFilters || visibilityFilter !== 'all' }">
+          <i class="fa-solid fa-filter"></i> {{ filterLabel }}
+        </button>
+        <div class="project-filter-menu" v-if="showProjectFilters" @click.stop>
+          <div class="filter-title">Visibility</div>
+          <label class="filter-option"><input type="radio" value="all" v-model="visibilityFilter" /> All projects</label>
+          <label class="filter-option"><input type="radio" value="Public" v-model="visibilityFilter" /> Public</label>
+          <label class="filter-option"><input type="radio" value="Private" v-model="visibilityFilter" /> Private</label>
+          <label class="filter-option"><input type="radio" value="starred" v-model="visibilityFilter" /> Starred</label>
+          <button class="clear-filter-btn" type="button" @click="visibilityFilter = 'all'">Clear filters</button>
         </div>
-      </header>
+      </div>
 
-      <section class="projects-scroll-panel">
+      <span>{{ filteredSpaces.length }} {{ t('dự án', 'projects') }}</span>
+    </div>
+
+    <main class="projects-scroll-panel page-content">
       <div v-if="loading" class="loading-state">
          <i class="fa-solid fa-spinner fa-spin"></i> {{ t('Loading projects...') }}
       </div>
@@ -189,15 +196,15 @@
           </table>
         </div>
       </div>
-      </section>
+    </main>
 
-      <CreateSpaceModal v-model:visible="isCreateModalVisible" @created="fetchSpaces" />
-      <ProjectAppearanceDialog
-        v-model:visible="isAppearanceModalVisible"
-        :project="selectedAppearanceProject"
-        @saved="handleAppearanceSaved"
-      />
-    </div>
+    <CreateSpaceModal v-model:visible="isCreateModalVisible" @created="fetchSpaces" />
+    <ProjectAppearanceDialog
+      v-model:visible="isAppearanceModalVisible"
+      :project="selectedAppearanceProject"
+      @saved="handleAppearanceSaved"
+    />
+  </section>
 </template>
 
 <script setup>
@@ -507,100 +514,141 @@ const filterLabel = computed(() => ({
 }
 
 .manage-spaces-page {
-  padding: 34px clamp(20px, 4vw, 48px) 48px !important;
+  --sa-page-x: 18px;
+  min-height: 100%;
   width: 100%;
-  max-width: 1320px;
-  margin: 0 auto;
+  background: var(--color-bg);
   color: var(--color-text-primary);
+  padding: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
   font-family: 'Inter', -apple-system, sans-serif;
-  min-height: 100vh;
-  background:
-    linear-gradient(180deg, #f8fbff, #eef5fb 54%, #f8fafc);
 }
 
-/* Header */
-.spaces-header {
+.page-header {
   display: flex;
+  align-items: flex-end;
   justify-content: space-between;
-  align-items: center;
-  gap: 24px;
-  margin-bottom: 26px;
-  flex-shrink: 0;
-  padding: 18px 20px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.07);
-  backdrop-filter: blur(14px);
+  gap: 20px;
+  padding: 22px var(--sa-page-x, 24px) 18px;
+  background: var(--color-surface);
+  border-bottom: none !important;
+  margin-bottom: 0 !important;
 }
 
-.sh-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.sh-left i {
-  color: var(--color-text-muted);
-  font-size: 18px;
-}
-.sh-left h1 {
-  font-size: 24px;
-  font-weight: 900;
-  margin: 0;
-  color: #0f172a;
-  letter-spacing: 0;
+.eyebrow {
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.sh-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.search-box {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.search-box i {
-  position: absolute;
-  left: 12px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-}
-.search-box input {
-  background: #ffffff;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 12px;
-  color: #0f172a;
-  padding: 9px 12px 9px 34px;
-  font-size: 13px;
+.page-header h1 {
+  margin: 3px 0 4px;
+  font-size: 22px;
   font-weight: 700;
-  outline: none;
-  width: 180px;
-  transition: width 0.2s;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--color-text-primary);
 }
-.search-box input:focus { width: 240px; }
-.search-box input::placeholder { color: var(--color-text-disabled); }
 
-.plane-btn-secondary.outline-btn {
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  color: #334155;
-  display: flex;
+.page-header p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.primary-action {
+  min-height: 36px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 14px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  border-radius: 12px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
+  transition: opacity 0.15s ease;
 }
-.plane-btn-secondary.outline-btn:hover { background: var(--color-surface-hover); color: var(--color-text-primary); }
-.plane-btn-secondary.outline-btn.active { background: rgba(56, 189, 248, 0.14); color: #0284c7; border-color: rgba(14, 165, 233, 0.34); }
+.primary-action:hover {
+  opacity: 0.9;
+}
+
+.toolbar {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px var(--sa-page-x, 24px);
+  background: var(--color-surface);
+  border-bottom: none !important;
+  margin-bottom: 0 !important;
+  flex-wrap: wrap;
+}
+
+.search-field {
+  width: min(320px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+}
+
+.search-field input {
+  width: 100%;
+  height: 34px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 12px;
+}
+
+.view-toggles {
+  display: flex;
+  gap: 4px;
+}
+
+.toolbar button {
+  min-height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  padding: 0 11px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.toolbar button:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.toolbar button.active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.toolbar > span {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
 
 .project-filter-wrapper { position: relative; }
 .project-filter-menu {
@@ -642,19 +690,9 @@ const filterLabel = computed(() => ({
 }
 .clear-filter-btn:hover { background: var(--color-border); }
 
-.plane-btn-primary {
-  background: linear-gradient(135deg, #38bdf8, #2563eb);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  padding: 9px 16px;
-  font-size: 13px;
-  font-weight: 900;
-  cursor: pointer;
-  transition: background 0.2s;
-  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.22);
+.page-content {
+  padding: 18px var(--sa-page-x, 24px) 28px;
 }
-.plane-btn-primary:hover { background: #0284C7; }
 
 .projects-scroll-panel {
   min-height: 0;
@@ -894,7 +932,7 @@ const filterLabel = computed(() => ({
 
 @media (max-width: 900px) {
   .manage-spaces-page {
-    padding: 24px;
+    padding: 0 !important;
   }
 
   .spaces-header {
@@ -984,7 +1022,10 @@ const filterLabel = computed(() => ({
 
 /* Compact density */
 .manage-spaces-page {
-  padding: 18px var(--sa-page-x, 24px) 30px !important;
+  width: 100% !important;
+  min-height: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 .spaces-toolbar {

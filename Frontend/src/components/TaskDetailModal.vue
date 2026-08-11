@@ -1,43 +1,52 @@
 <template>
+  <Teleport to="body">
   <transition name="fade">
-    <div class="task-modal-overlay" v-if="showTaskModal" @mousedown.self="showTaskModal = false">
+    <div class="task-modal-overlay sa-data-modal-overlay sa-modal--form" v-if="showTaskModal" @mousedown.self="showTaskModal = false">
 
       <!-- MODE: CREATE NEW WORK ITEM (Image 1) -->
       <div class="create-centered-modal" v-if="selectedTask?.isNew">
-        <h3 class="cm-title">{{ tr('Create new work item', 'Tạo công việc mới') }}</h3>
-
-        <div class="cm-badge-row">
-           <div class="cm-badge">
-             <i class="fa-solid fa-bell" style="color: #F59E0B"></i> {{ currentProjectBadge }}
-           </div>
+        <div class="cm-header">
+          <DataModalHeader
+            icon="bi bi-list-check"
+            :title="tr('Create new work item', 'Tạo công việc mới')"
+            :description="tr('Add the essential details, assignment and planning information', 'Thêm thông tin, người thực hiện và kế hoạch cho công việc')"
+            :close-label="tr('Close', 'Đóng')"
+            @close="discardNewTask"
+          />
         </div>
 
         <div class="cm-form-group">
-          <input type="text" class="cm-inputbox" :placeholder="tr('Title', 'Tiêu đề')" v-model="selectedTask.title" />
-          <textarea class="cm-textareabox" :placeholder="tr('Add description...', 'Thêm mô tả...')" v-model="selectedTask.description"></textarea>
+          <div class="cm-field">
+            <label for="new-task-title">{{ tr('Title', 'Tiêu đề') }}</label>
+            <input id="new-task-title" type="text" class="cm-inputbox" :placeholder="tr('Enter a work item title', 'Nhập tiêu đề công việc')" v-model="selectedTask.title" />
+          </div>
+          <div class="cm-field">
+            <label for="new-task-description">{{ tr('Description', 'Mô tả') }}</label>
+            <textarea id="new-task-description" class="cm-textareabox" :placeholder="tr('Add description...', 'Thêm mô tả...')" v-model="selectedTask.description"></textarea>
+          </div>
         </div>
 
         <div class="cm-toolbar-row">
            <!-- STATUS -->
            <el-dropdown trigger="click" @command="(cmd) => selectStatus(cmd)">
-             <div class="t-btn"><i :class="getStatusIcon(selectedTask?.statusName)"></i> <span>{{ tr('Status', 'Trạng thái') }}</span> {{ getStatusLabel(selectedTask?.statusName) }}</div>
+             <div class="t-btn" :style="{ color: getStatusColor(selectedTask?.statusName) }"><i :class="getStatusIcon(selectedTask?.statusName)"></i> <span>{{ tr('Status', 'Trạng thái') }}</span> {{ getStatusLabel(selectedTask?.statusName) }}</div>
              <template #dropdown>
                <el-dropdown-menu class="theme-dropdown">
-                 <el-dropdown-item v-for="status in projectStatuses" :key="status.id" :command="status.name"><i :class="getStatusIcon(status.name)" class="mr-2"></i> {{ getStatusLabel(status.name || status.displayName) }}</el-dropdown-item>
+                 <el-dropdown-item v-for="status in projectStatuses" :key="status.id" :command="status.name" class="status-option" :style="{ '--option-color': getStatusColor(status.name) }"><i :class="getStatusIcon(status.name)" class="mr-2"></i> {{ getStatusLabel(status.name || status.displayName) }}</el-dropdown-item>
                </el-dropdown-menu>
              </template>
            </el-dropdown>
 
            <!-- PRIORITY -->
            <el-dropdown  trigger="click" @command="(cmd) => selectedTask.priority = cmd">
-             <div class="t-btn"><i :class="getPrioIcon(selectedTask?.priority)"></i> <span>{{ tr('Priority', 'Độ ưu tiên') }}</span> {{ getPrioLabel(selectedTask?.priority) }}</div>
+             <div class="t-btn" :style="{ color: getPriorityColor(selectedTask?.priority) }"><i :class="getPrioIcon(selectedTask?.priority)"></i> <span>{{ tr('Priority', 'Độ ưu tiên') }}</span> {{ getPrioLabel(selectedTask?.priority) }}</div>
              <template #dropdown>
                <el-dropdown-menu class="theme-dropdown">
-                 <el-dropdown-item :command="1"><i class="fa-solid fa-angles-up mr-2" style="color: #ef4444"></i> {{ tr('Urgent', 'Khẩn cấp') }}</el-dropdown-item>
-                 <el-dropdown-item :command="2"><i class="fa-solid fa-chevron-up mr-2" style="color: #f59e0b"></i> {{ tr('High', 'Cao') }}</el-dropdown-item>
-                 <el-dropdown-item :command="3"><i class="fa-solid fa-minus mr-2" style="color: #3b82f6"></i> {{ tr('Medium', 'Trung bình') }}</el-dropdown-item>
-                 <el-dropdown-item :command="4"><i class="fa-solid fa-arrow-down mr-2" style="color: var(--color-text-muted)"></i> {{ tr('Low', 'Thấp') }}</el-dropdown-item>
-                 <el-dropdown-item :command="0"><i class="fa-solid fa-ban mr-2 text-muted"></i> {{ tr('None', 'Không có') }}</el-dropdown-item>
+                 <el-dropdown-item :command="1" class="priority-option priority-urgent"><i class="fa-solid fa-angles-up mr-2"></i> {{ tr('Urgent', 'Khẩn cấp') }}</el-dropdown-item>
+                 <el-dropdown-item :command="2" class="priority-option priority-high"><i class="fa-solid fa-chevron-up mr-2"></i> {{ tr('High', 'Cao') }}</el-dropdown-item>
+                 <el-dropdown-item :command="3" class="priority-option priority-medium"><i class="fa-solid fa-minus mr-2"></i> {{ tr('Medium', 'Trung bình') }}</el-dropdown-item>
+                 <el-dropdown-item :command="4" class="priority-option priority-low"><i class="fa-solid fa-arrow-down mr-2"></i> {{ tr('Low', 'Thấp') }}</el-dropdown-item>
+                 <el-dropdown-item :command="0" class="priority-option priority-none"><i class="fa-solid fa-ban mr-2"></i> {{ tr('None', 'Không có') }}</el-dropdown-item>
                </el-dropdown-menu>
              </template>
            </el-dropdown>
@@ -128,27 +137,16 @@
 
            <!-- DATES -->
            <el-date-picker
-             v-model="selectedTask.plannedStartDate"
-             type="date"
-             placeholder="Ngày bắt đầu"
-             class="t-btn-date"
+             v-model="createTaskDateRange"
+             type="daterange"
+             class="create-task-date-range sa-split-date-range"
+             :start-placeholder="tr('Start date', 'Ngày bắt đầu')"
+             :end-placeholder="tr('Due date', 'Hạn hoàn thành')"
+             range-separator="-"
              format="MMM DD"
              value-format="YYYY-MM-DD"
              :disabled-date="disablePastDates"
-             style="width:130px; height:28px"
-             @change="val => handleTaskDateChange('plannedStartDate', val)"
            />
-            <el-date-picker
-              v-model="selectedTask.dueDate"
-              type="date"
-              :placeholder="tr('Due date', 'Hạn hoàn thành')"
-              class="t-btn-date"
-              format="MMM DD"
-              value-format="YYYY-MM-DD"
-              :disabled-date="disableDueDates"
-              style="width:125px; height:28px"
-              @change="val => handleTaskDateChange('dueDate', val)"
-            />
             <div v-if="showEstimateFeatures" class="t-btn t-btn-number">
               <i class="fa-regular fa-hourglass-half"></i>
               <span>{{ tr('Estimate', 'Thời gian ước tính') }}</span>
@@ -204,11 +202,11 @@
               <div class="popover-content">
                 <input type="text" v-model="cycleSearch" class="popover-search" :placeholder="tr('Search cycles...', 'Tìm chu kỳ...')" />
                 <div class="popover-list">
-                  <div class="popover-item" @click="selectedTask.sprintId = null">
+                  <div class="popover-item" @click="setTaskProperty(selectedTask, 'sprintId', null)">
                     <i class="fa-solid fa-circle-half-stroke mr-2 w-4 text-center"></i> {{ tr('No cycle', 'Không có chu kỳ') }}
                     <i v-if="!selectedTask?.sprintId" class="fa-solid fa-check ms-auto"></i>
                   </div>
-                  <div class="popover-item" v-for="c in filteredCycles" :key="c.id" @click="selectedTask.sprintId = c.id">
+                  <div class="popover-item" v-for="c in filteredCycles" :key="c.id" @click="setTaskProperty(selectedTask, 'sprintId', c.id)">
                     <i class="fa-solid fa-certificate mr-2 w-4 text-center text-blue-500"></i>
                     <span class="truncate flex-1">{{ c.name }}</span>
                     <i v-if="selectedTask?.sprintId === c.id" class="fa-solid fa-check ms-auto"></i>
@@ -226,10 +224,10 @@
               <div class="popover-content">
                 <input type="text" v-model="moduleSearch" class="popover-search" :placeholder="tr('Search module...', 'Tìm module...')" />
                 <div class="popover-list">
-                  <div class="popover-item" @click="selectedTask.moduleId = null">
+                  <div class="popover-item" @click="setTaskProperty(selectedTask, 'moduleId', null)">
                     <i class="fa-solid fa-cube mr-2"></i> {{ tr('No module', 'Không có phân hệ') }}
                   </div>
-                  <div class="popover-item" v-for="m in filteredModules" :key="m.id" @click="selectedTask.moduleId = m.id">
+                  <div class="popover-item" v-for="m in filteredModules" :key="m.id" @click="setTaskProperty(selectedTask, 'moduleId', m.id)">
                     <i class="fa-solid fa-box mr-2 text-orange-500"></i>
                     <span class="truncate flex-1">{{ m.name }}</span>
                   </div>
@@ -240,7 +238,7 @@
             <!-- PARENT -->
             <el-popover  placement="bottom-start" trigger="click" popper-class="plane-popover" :width="350" @show="parentSearch = ''">
               <template #reference>
-                <div class="t-btn"><i class="fa-solid fa-arrow-turn-up fa-rotate-90"></i> {{ getParentId(selectedTask) ? tr('Parent selected', 'Đã chọn công việc cha') : tr('Add parent', 'Thêm công việc cha') }}</div>
+                <div class="t-btn parent-task-trigger"><i class="fa-solid fa-arrow-turn-up fa-rotate-90"></i> {{ getParentId(selectedTask) ? tr('Parent selected', 'Đã chọn công việc cha') : tr('Add parent', 'Thêm công việc cha') }}</div>
               </template>
               <div class="popover-content h-[250px] flex flex-col bg-surface-elevation">
                 <div class="p-2 border-b border-theme">
@@ -268,7 +266,7 @@
               <el-switch v-model="createMore" size="small" style="--el-switch-on-color: #38bdf8;" /> <span>{{ tr('Create more', 'Tạo liên tục') }}</span>
            </div>
            <button class="btn-discard" @click="discardNewTask">{{ tr('Discard', 'Hủy') }}</button>
-           <button class="btn-save" @click="submitNewTask">{{ tr('Save', 'Lưu') }}</button>
+           <button class="btn-save" @click="submitNewTask">{{ tr('Add work item', 'Thêm công việc') }}</button>
         </div>
       </div>
 
@@ -317,7 +315,7 @@
               </button>
             </div>
 
-            <h1 class="sp-title" contenteditable @blur="(e) => updateTaskField(selectedTask, 'title', e.target.innerText)">{{ selectedTask?.title }}</h1>
+            <h1 class="sp-title" :contenteditable="canEditTaskDetails" @blur="(e) => updateTaskField(selectedTask, 'title', e.target.innerText)">{{ selectedTask?.title }}</h1>
             <div class="description-editor-shell">
               <div v-if="showFormatToolbar" class="description-toolbar floating-toolbar" :style="{ left: toolbarPosition.x + 'px', top: toolbarPosition.y + 'px' }">
                 <select class="format-select" @change="applyBlockFormat($event.target.value)">
@@ -351,7 +349,7 @@
               <div
                 ref="descriptionEditor"
                 class="sp-desc rich-editor"
-                contenteditable
+                :contenteditable="canEditTaskDetails"
                 :data-placeholder="selectedTask?.description ? '' : tr('Add description...', 'Thêm mô tả... ')"
                 @focus="activeEditor = 'description'"
                 @keydown="handleEditorKeydown($event, 'description')"
@@ -375,6 +373,14 @@
 
             <!-- Action Chips -->
              <div class="sp-toolbar">
+                <button class="s-btn s-btn-outline" @click="toggleSubscription">
+                   <i :class="isSubscribed ? 'fa-regular fa-bell-slash' : 'fa-regular fa-bell'"></i>
+                   {{ isSubscribed ? tr('Unsubscribe', 'Bỏ theo dõi') : tr('Subscribe', 'Theo dõi') }}
+                </button>
+                <button class="s-btn" @click="copyTaskLink">
+                   <i class="fa-solid fa-link"></i>
+                   {{ tr('Copy link', 'Sao chép link') }}
+                </button>
                 <button class="s-btn" @click="startCreateSubtask"><i class="fa-solid fa-layer-group"></i> {{ tr('Add sub-work item', 'Thêm công việc con') }}</button>
                 <button class="s-btn s-btn-primary" :disabled="isAiBreakingDown" @click="createSubtasksWithAI">
                   <i class="fa-solid fa-wand-magic-sparkles"></i>
@@ -452,7 +458,7 @@
                       </button>
                       <template #dropdown>
                         <el-dropdown-menu class="theme-dropdown">
-                          <el-dropdown-item v-for="status in projectStatuses" :key="`${subtask.id}-${status.id}`" :command="status.name">
+                          <el-dropdown-item v-for="status in projectStatuses" :key="`${subtask.id}-${status.id}`" :command="status.name" class="status-option" :style="{ '--option-color': getStatusColor(status.name) }">
                             <i :class="getStatusIcon(status.name)" class="mr-2"></i>
                             {{ status.displayName || status.name }}
                           </el-dropdown-item>
@@ -467,11 +473,11 @@
                       </button>
                       <template #dropdown>
                         <el-dropdown-menu class="theme-dropdown">
-                          <el-dropdown-item :command="1"><i class="fa-solid fa-angles-up mr-2" style="color: var(--color-danger)"></i> {{ tr('Urgent', 'Khẩn cấp') }}</el-dropdown-item>
-                          <el-dropdown-item :command="2"><i class="fa-solid fa-chevron-up mr-2" style="color: var(--color-warning)"></i> {{ tr('High', 'Cao') }}</el-dropdown-item>
-                          <el-dropdown-item :command="3"><i class="fa-solid fa-minus mr-2" style="color: var(--color-accent)"></i> {{ tr('Medium', 'Trung bình') }}</el-dropdown-item>
-                          <el-dropdown-item :command="4"><i class="fa-solid fa-arrow-down mr-2" style="color: var(--color-text-muted)"></i> {{ tr('Low', 'Thấp') }}</el-dropdown-item>
-                          <el-dropdown-item :command="0"><i class="fa-solid fa-ban mr-2 text-muted"></i> {{ tr('None', 'Không có') }}</el-dropdown-item>
+                          <el-dropdown-item :command="1" class="priority-option priority-urgent"><i class="fa-solid fa-angles-up mr-2"></i> {{ tr('Urgent', 'Khẩn cấp') }}</el-dropdown-item>
+                          <el-dropdown-item :command="2" class="priority-option priority-high"><i class="fa-solid fa-chevron-up mr-2"></i> {{ tr('High', 'Cao') }}</el-dropdown-item>
+                          <el-dropdown-item :command="3" class="priority-option priority-medium"><i class="fa-solid fa-minus mr-2"></i> {{ tr('Medium', 'Trung bình') }}</el-dropdown-item>
+                          <el-dropdown-item :command="4" class="priority-option priority-low"><i class="fa-solid fa-arrow-down mr-2"></i> {{ tr('Low', 'Thấp') }}</el-dropdown-item>
+                          <el-dropdown-item :command="0" class="priority-option priority-none"><i class="fa-solid fa-ban mr-2"></i> {{ tr('None', 'Không có') }}</el-dropdown-item>
                         </el-dropdown-menu>
                       </template>
                     </el-dropdown>
@@ -536,13 +542,15 @@
                  <div class="p-row">
                    <div class="p-label"><i class="fa-regular fa-circle-dot"></i> {{ tr('Status', 'Trạng thái') }}</div>
                    <div class="p-val">
-                     <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" @show="statusSearch = ''">
+                     <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" :disabled="!canEditTaskDetails" @show="statusSearch = ''">
                        <template #reference>
-                         <button class="property-trigger status-property-trigger" :style="{ '--status-color': getStatusColor(selectedTask?.statusName) }">
-                           <i :class="getStatusIcon(selectedTask?.statusName)"></i>
-                           <span>{{ tr('Status', 'Trạng thái') }}</span>
-                           <span class="property-value" :style="{ color: getStatusColor(selectedTask?.statusName), padding: '2px 8px', borderRadius: '4px', background: `color-mix(in srgb, ${getStatusColor(selectedTask?.statusName)} 15%, transparent)` }">{{ getStatusLabel(selectedTask?.statusName) }}</span>
-                         </button>
+                         <button class="property-trigger status-property-trigger" :disabled="!canEditTaskDetails" :style="{ '--status-color': getStatusColor(selectedTask?.statusName) }">
+                            <span>{{ tr('Status', 'Trạng thái') }}</span>
+                            <span class="property-value" :style="{ color: getStatusColor(selectedTask?.statusName), padding: '2px 8px', borderRadius: '4px', background: `color-mix(in srgb, ${getStatusColor(selectedTask?.statusName)} 15%, transparent)`, display: 'inline-flex', alignItems: 'center', gap: '5px' }">
+                              <i :class="getStatusIcon(selectedTask?.statusName)"></i>
+                              {{ getStatusLabel(selectedTask?.statusName) }}
+                            </span>
+                          </button>
                        </template>
                        <div class="popover-content">
                          <input v-model="statusSearch" type="text" class="popover-search" :placeholder="tr('Search status...', 'Tìm trạng thái... ')" />
@@ -577,7 +585,7 @@
                           class="estimate-hours-input"
                           style="width: 100%; max-width: 320px; font-size: 13px;"
                           :value="customFieldValues[field.id] || ''"
-                          :disabled="!canUpdateTask"
+                          :disabled="!canEditTaskDetails"
                           :placeholder="field.isRequired ? 'Bắt buộc nhập...' : 'Nhập thông tin...'"
                           @blur="event => saveCustomFieldValue(field.id, event.target.value)"
                         />
@@ -589,7 +597,7 @@
                           class="estimate-hours-input"
                           style="width: 100%; max-width: 160px; font-size: 13px;"
                           :value="customFieldValues[field.id]"
-                          :disabled="!canUpdateTask"
+                          :disabled="!canEditTaskDetails"
                           :placeholder="field.isRequired ? 'Bắt buộc nhập...' : 'Nhập số...'"
                           @blur="event => saveCustomFieldValue(field.id, event.target.value)"
                         />
@@ -601,7 +609,7 @@
                           class="estimate-hours-input"
                           style="width: 100%; max-width: 200px; font-size: 13px;"
                           :value="customFieldValues[field.id] ? customFieldValues[field.id].substring(0, 10) : ''"
-                          :disabled="!canUpdateTask"
+                          :disabled="!canEditTaskDetails"
                           @change="event => saveCustomFieldValue(field.id, event.target.value)"
                         />
 
@@ -609,7 +617,7 @@
                         <el-checkbox
                           v-else-if="field.type === 'Checkbox'"
                           :model-value="customFieldValues[field.id] === 'true'"
-                          :disabled="!canUpdateTask"
+                          :disabled="!canEditTaskDetails"
                           @change="val => saveCustomFieldValue(field.id, val ? 'true' : 'false')"
                         >
                           {{ field.name }}
@@ -621,7 +629,7 @@
                           :model-value="customFieldValues[field.id] || null"
                           placeholder="Chọn tùy chọn..."
                           style="width: 100%; max-width: 320px;"
-                          :disabled="!canUpdateTask"
+                          :disabled="!canEditTaskDetails"
                           clearable
                           @change="val => saveCustomFieldValue(field.id, val)"
                         >
@@ -665,9 +673,9 @@
                  <div class="p-row">
                    <div class="p-label"><i class="fa-regular fa-user"></i> {{ tr('Assignee', 'Người thực hiện') }}</div>
                    <div class="p-val">
-                     <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" :disabled="!canManageTaskAssignees" @show="assigneeSearch = ''">
+                     <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" :disabled="!canManageTaskAssignees || !canEditTaskDetails" @show="assigneeSearch = ''">
                        <template #reference>
-                         <button class="property-trigger" :class="{ 'muted-val': !getAssigneeIds().length }" :disabled="!canManageTaskAssignees">
+                         <button class="property-trigger" :class="{ 'muted-val': !getAssigneeIds().length }" :disabled="!canManageTaskAssignees || !canEditTaskDetails">
                            <i class="fa-regular fa-user"></i>
                            <span>{{ tr('Assignee', 'Người thực hiện') }}</span>
                            <span class="property-value" style="display: flex; align-items: center; gap: 4px;">
@@ -769,15 +777,15 @@
                 <div class="p-row">
                   <div class="p-label"><i class="fa-solid fa-chart-simple"></i> {{ tr('Priority', 'Độ ưu tiên') }}</div>
                   <div class="p-val">
-                    <el-dropdown  trigger="click" @command="(cmd) => selectPriority(cmd)">
-                      <div class="property-trigger" :class="{ 'muted-val': !selectedTask?.priority }"><i :class="getPrioIcon(selectedTask?.priority)"></i><span>{{ tr('Priority', 'Độ ưu tiên') }}</span><span class="property-value" :style="{ color: getPriorityColor(selectedTask?.priority), padding: '2px 8px', borderRadius: '4px', background: `color-mix(in srgb, ${getPriorityColor(selectedTask?.priority)} 15%, transparent)` }">{{ getPrioLabel(selectedTask?.priority) }}</span></div>
+                    <el-dropdown :disabled="!canEditTaskDetails" trigger="click" @command="(cmd) => selectPriority(cmd)">
+                      <div class="property-trigger" :class="{ 'muted-val': !selectedTask?.priority }"><span>{{ tr('Priority', 'Độ ưu tiên') }}</span><span class="property-value" :style="{ color: getPriorityColor(selectedTask?.priority), padding: '2px 8px', borderRadius: '4px', background: `color-mix(in srgb, ${getPriorityColor(selectedTask?.priority)} 15%, transparent)`, display: 'inline-flex', alignItems: 'center', gap: '5px' }"><i :class="getPrioIcon(selectedTask?.priority)"></i>{{ getPrioLabel(selectedTask?.priority) }}</span></div>
                       <template #dropdown>
                         <el-dropdown-menu class="theme-dropdown">
-                          <el-dropdown-item :command="1"><i class="fa-solid fa-angles-up mr-2" style="color: var(--color-danger)"></i> {{ tr('Urgent', 'Khẩn cấp') }}</el-dropdown-item>
-                          <el-dropdown-item :command="2"><i class="fa-solid fa-chevron-up mr-2" style="color: var(--color-warning)"></i> {{ tr('High', 'Cao') }}</el-dropdown-item>
-                          <el-dropdown-item :command="3"><i class="fa-solid fa-minus mr-2" style="color: var(--color-accent)"></i> {{ tr('Medium', 'Trung bình') }}</el-dropdown-item>
-                          <el-dropdown-item :command="4"><i class="fa-solid fa-arrow-down mr-2" style="color: var(--color-text-muted)"></i> {{ tr('Low', 'Thấp') }}</el-dropdown-item>
-                          <el-dropdown-item :command="0"><i class="fa-solid fa-ban mr-2 text-muted"></i> {{ tr('None', 'Không có') }}</el-dropdown-item>
+                          <el-dropdown-item :command="1" class="priority-option priority-urgent"><i class="fa-solid fa-angles-up mr-2"></i> {{ tr('Urgent', 'Khẩn cấp') }}</el-dropdown-item>
+                          <el-dropdown-item :command="2" class="priority-option priority-high"><i class="fa-solid fa-chevron-up mr-2"></i> {{ tr('High', 'Cao') }}</el-dropdown-item>
+                          <el-dropdown-item :command="3" class="priority-option priority-medium"><i class="fa-solid fa-minus mr-2"></i> {{ tr('Medium', 'Trung bình') }}</el-dropdown-item>
+                          <el-dropdown-item :command="4" class="priority-option priority-low"><i class="fa-solid fa-arrow-down mr-2"></i> {{ tr('Low', 'Thấp') }}</el-dropdown-item>
+                          <el-dropdown-item :command="0" class="priority-option priority-none"><i class="fa-solid fa-ban mr-2"></i> {{ tr('None', 'Không có') }}</el-dropdown-item>
                         </el-dropdown-menu>
                       </template>
                     </el-dropdown>
@@ -794,6 +802,7 @@
                        max="21"
                        step="1"
                        class="estimate-hours-input"
+                       :disabled="!canEditTaskDetails"
                        @input="event => updateStoryPoints(event.target.value)"
                      />
                      <span class="estimate-unit">SP</span>
@@ -1052,12 +1061,12 @@
                      <div class="popover-content">
                        <input v-model="moduleSearch" type="text" class="popover-search" placeholder="Tìm module..." />
                        <div class="popover-list">
-                         <div class="popover-item" @click="updateTaskField(selectedTask, 'moduleId', null); selectedTask.moduleId = null">
+                         <div class="popover-item" @click="setTaskProperty(selectedTask, 'moduleId', null)">
                            <i class="fa-solid fa-cube mr-2"></i>
                            <span>No module</span>
                            <i v-if="!selectedTask?.moduleId" class="fa-solid fa-check ms-auto"></i>
                          </div>
-                         <div class="popover-item" v-for="module in filteredModules" :key="module.id" @click="updateTaskField(selectedTask, 'moduleId', module.id); selectedTask.moduleId = module.id">
+                         <div class="popover-item" v-for="module in filteredModules" :key="module.id" @click="setTaskProperty(selectedTask, 'moduleId', module.id)">
                            <i class="fa-solid fa-box mr-2 text-orange-500"></i>
                            <span>{{ module.name }}</span>
                            <i v-if="selectedTask?.moduleId === module.id" class="fa-solid fa-check ms-auto"></i>
@@ -1081,12 +1090,12 @@
                       <div class="popover-content">
                         <input v-model="cycleSearch" type="text" class="popover-search" placeholder="Tìm chu kỳ..." />
                         <div class="popover-list">
-                          <div class="popover-item" @click="updateTaskField(selectedTask, 'sprintId', null); selectedTask.sprintId = null">
+                          <div class="popover-item" @click="setTaskProperty(selectedTask, 'sprintId', null)">
                             <i class="fa-solid fa-circle-half-stroke mr-2"></i>
                             <span>No cycle</span>
                             <i v-if="!selectedTask?.sprintId" class="fa-solid fa-check ms-auto"></i>
                           </div>
-                          <div class="popover-item" v-for="cycle in filteredCycles" :key="cycle.id" @click="updateTaskField(selectedTask, 'sprintId', cycle.id); selectedTask.sprintId = cycle.id">
+                          <div class="popover-item" v-for="cycle in filteredCycles" :key="cycle.id" @click="setTaskProperty(selectedTask, 'sprintId', cycle.id)">
                             <i class="fa-solid fa-certificate mr-2 text-blue-500"></i>
                             <span>{{ cycle.name }}</span>
                             <i v-if="selectedTask?.sprintId === cycle.id" class="fa-solid fa-check ms-auto"></i>
@@ -1256,32 +1265,32 @@
                                        </span>
                                        <span class="backup-assignee">
                                           <i class="bi bi-person" aria-hidden="true"></i>
-                                          {{ task.assigneeName || task.assignedToName || task.assignees?.[0]?.fullName || 'Chưa phân công' }}
+                                          {{ task.assigneeName || task.assignedToName || task.assignees?.[0]?.fullName || tr('Unassigned', 'Chưa phân công') }}
                                        </span>
                                     </div>
                                  </div>
                                  <div class="backup-task-actions">
                                     <button v-if="!task.isActivated && !plan.isActivated" class="backup-activate-button" type="button" @click.stop="confirmActivateTask(plan, task)">
                                        <i class="bi bi-play-circle" aria-hidden="true"></i>
-                                       Kích hoạt
+                                       {{ tr('Activate', 'Kích hoạt') }}
                                     </button>
-                                    <span v-else-if="task.isActivated" class="backup-task-activated"><i class="bi bi-check-circle" aria-hidden="true"></i> Đã kích hoạt</span>
+                                    <span v-else-if="task.isActivated" class="backup-task-activated"><i class="bi bi-check-circle" aria-hidden="true"></i>{{ tr('Activated', 'Đã kích hoạt') }}</span>
                                  </div>
                               </article>
                               <button v-if="!plan.isActivated" type="button" class="backup-add-task-button" @click="openCreateTaskForm(plan.id)">
                                  <i class="bi bi-plus-lg" aria-hidden="true"></i>
-                                 Thêm Task dự phòng
+                                 {{ tr('Add contingency work item', 'Thêm công việc dự phòng') }}
                               </button>
                            </div>
                            <div v-else class="backup-task-empty">
                               <span class="backup-task-empty-icon" aria-hidden="true"><i class="bi bi-list-check"></i></span>
                               <div>
-                                 <strong>Chưa có task dự phòng</strong>
-                                 <p>Thêm công việc sẽ được sử dụng khi kế hoạch này được kích hoạt.</p>
+                                 <strong>{{ tr('No contingency work items yet', 'Chưa có công việc dự phòng') }}</strong>
+                                 <p>{{ tr('Add a work item to use when this plan is activated.', 'Thêm công việc sẽ được sử dụng khi kế hoạch này được kích hoạt.') }}</p>
                               </div>
                               <button v-if="!plan.isActivated" type="button" class="backup-add-task-button" @click="openCreateTaskForm(plan.id)">
                                  <i class="bi bi-plus-lg" aria-hidden="true"></i>
-                                 Tạo Task đầu tiên
+                                 {{ tr('Add the first work item', 'Thêm công việc đầu tiên') }}
                               </button>
                            </div>
                         </section>
@@ -1455,6 +1464,7 @@
 
     </div>
   </transition>
+  </Teleport>
 
   <div v-if="previewImage" class="image-lightbox" @click.self="previewImage = null">
     <div class="image-lightbox-panel">
@@ -1478,7 +1488,7 @@
     <!-- CONTINGENCY DIALOGS -->
 <Teleport to="body">
   <transition name="fade">
-    <div class="task-modal-overlay contingency-plan-overlay" v-if="showContingencyForm" @mousedown.self="showContingencyForm = false">
+    <div class="task-modal-overlay contingency-plan-overlay sa-data-modal-overlay sa-modal--form" v-if="showContingencyForm" @mousedown.self="showContingencyForm = false">
     <div class="contingency-plan-modal" role="dialog" aria-modal="true" aria-labelledby="contingency-plan-title">
       <header class="contingency-plan-header">
         <span class="contingency-plan-heading-icon" aria-hidden="true">
@@ -1495,10 +1505,6 @@
 
       <div class="contingency-plan-body">
         <section class="contingency-plan-section">
-          <div class="contingency-section-heading">
-            <i class="bi bi-card-text" aria-hidden="true"></i>
-            <span>Thông tin kế hoạch</span>
-          </div>
           <div class="contingency-field">
             <label for="contingency-plan-name">Tên kế hoạch</label>
             <input id="contingency-plan-name" type="text" class="contingency-input" placeholder="Nhập tên kế hoạch dự phòng..." v-model="contingencyPlanForm.name" />
@@ -1510,10 +1516,6 @@
         </section>
 
         <section class="contingency-plan-section">
-          <div class="contingency-section-heading">
-            <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
-            <span>Đánh giá rủi ro</span>
-          </div>
           <div class="contingency-field">
             <label>Mức độ nguy hiểm</label>
             <el-dropdown trigger="click" @command="(cmd) => contingencyPlanForm.riskLevel = cmd" class="contingency-risk-dropdown">
@@ -1537,24 +1539,20 @@
         </section>
 
         <section class="contingency-plan-section">
-          <div class="contingency-section-heading">
-            <i class="bi bi-journal-text" aria-hidden="true"></i>
-            <span>Ghi chú chi tiết</span>
-          </div>
-          <div class="contingency-plan-editor">
-            <editor-content :editor="recoveryPlanEditor" />
+          <div class="contingency-field">
+            <label>Ghi chú chi tiết</label>
+            <div class="contingency-plan-editor">
+              <editor-content :editor="recoveryPlanEditor" />
+            </div>
           </div>
         </section>
       </div>
 
       <footer class="contingency-plan-footer">
         <button type="button" class="contingency-cancel-button" @click="showContingencyForm = false">
-          <i class="bi bi-x-lg" aria-hidden="true"></i>
           Hủy
         </button>
         <button type="button" class="contingency-save-button" @click="saveContingencyPlan" :disabled="isSavingContingency">
-          <i class="bi bi-arrow-repeat contingency-spinner" v-if="isSavingContingency" aria-hidden="true"></i>
-          <i class="bi bi-shield-check" v-else aria-hidden="true"></i>
           {{ editingContingencyPlanId ? 'Cập nhật' : 'Tạo kế hoạch' }}
         </button>
       </footer>
@@ -1566,52 +1564,50 @@
 <!-- Thêm Task Dự Phòng Dialog -->
 <Teleport to="body">
   <transition name="fade">
-    <div class="task-modal-overlay contingency-task-overlay" v-if="showTaskForm" @mousedown.self="showTaskForm = false">
+    <div class="task-modal-overlay contingency-task-overlay sa-data-modal-overlay sa-modal--form" v-if="showTaskForm" @mousedown.self="showTaskForm = false">
       <div class="contingency-task-modal" role="dialog" aria-modal="true" aria-labelledby="contingency-task-title">
         <header class="contingency-task-header">
           <span class="contingency-task-heading-icon" aria-hidden="true"><i class="bi bi-list-check"></i></span>
           <div class="contingency-task-heading-copy">
-            <h2 id="contingency-task-title">Thêm Task dự phòng</h2>
-            <p>Tạo công việc sẽ được sử dụng khi phương án dự phòng kích hoạt</p>
+            <h2 id="contingency-task-title">{{ tr('Add contingency work item', 'Thêm công việc dự phòng') }}</h2>
+            <p>{{ tr('Create a work item to use when the contingency plan is activated', 'Tạo công việc sẽ được sử dụng khi phương án dự phòng kích hoạt') }}</p>
           </div>
-          <button type="button" class="contingency-task-close" aria-label="Đóng" @click="showTaskForm = false"><i class="bi bi-x-lg"></i></button>
+          <button type="button" class="contingency-task-close" :aria-label="tr('Close', 'Đóng')" @click="showTaskForm = false"><i class="bi bi-x-lg"></i></button>
         </header>
 
         <div class="contingency-task-body">
           <section class="contingency-task-section">
-            <div class="contingency-task-section-heading"><i class="bi bi-card-text" aria-hidden="true"></i><span>Thông tin Task</span></div>
             <div class="contingency-field">
-              <label for="contingency-task-name">Tiêu đề</label>
-              <input id="contingency-task-name" type="text" class="contingency-input" placeholder="Nhập tiêu đề Task dự phòng..." v-model="taskForm.title" />
+              <label for="contingency-task-name">{{ tr('Title', 'Tiêu đề') }}</label>
+              <input id="contingency-task-name" type="text" class="contingency-input" :placeholder="tr('Enter a contingency work item title...', 'Nhập tiêu đề công việc dự phòng...')" v-model="taskForm.title" />
             </div>
           </section>
 
           <section class="contingency-task-section">
-            <div class="contingency-task-section-heading"><i class="bi bi-sliders" aria-hidden="true"></i><span>Trạng thái và độ ưu tiên</span></div>
             <div class="contingency-task-select-grid">
               <div class="contingency-field">
-                <label>Trạng thái</label>
+                <label>{{ tr('Status', 'Trạng thái') }}</label>
                 <div class="contingency-task-select is-disabled">
-                  <span><i class="bi bi-circle-half" aria-hidden="true"></i>Cần làm</span>
+                  <span><i class="bi bi-circle-half" aria-hidden="true"></i>{{ tr('To do', 'Cần làm') }}</span>
                   <i class="bi bi-lock" aria-hidden="true"></i>
                 </div>
               </div>
               <div class="contingency-field">
-                <label>Độ ưu tiên</label>
+                <label>{{ tr('Priority', 'Độ ưu tiên') }}</label>
                 <el-dropdown trigger="click" @command="(cmd) => taskForm.priority = cmd" class="contingency-task-dropdown">
                   <div class="contingency-task-select">
                     <span>
                       <i class="bi bi-flag" aria-hidden="true"></i>
-                      {{ taskForm.priority === 1 ? 'Khẩn cấp' : (taskForm.priority === 2 ? 'Cao' : (taskForm.priority === 3 ? 'Trung bình' : 'Thấp')) }}
+                      {{ taskForm.priority === 1 ? tr('Urgent', 'Khẩn cấp') : (taskForm.priority === 2 ? tr('High', 'Cao') : (taskForm.priority === 3 ? tr('Medium', 'Trung bình') : tr('Low', 'Thấp'))) }}
                     </span>
                     <i class="bi bi-chevron-down" aria-hidden="true"></i>
                   </div>
                   <template #dropdown>
                     <el-dropdown-menu class="theme-dropdown">
-                      <el-dropdown-item :command="1"><i class="bi bi-flag-fill mr-2" style="color: #ef4444"></i> Khẩn cấp</el-dropdown-item>
-                      <el-dropdown-item :command="2"><i class="bi bi-flag-fill mr-2" style="color: #f59e0b"></i> Cao</el-dropdown-item>
-                      <el-dropdown-item :command="3"><i class="bi bi-flag mr-2" style="color: #3b82f6"></i> Trung bình</el-dropdown-item>
-                      <el-dropdown-item :command="4"><i class="bi bi-flag mr-2" style="color: var(--color-text-muted)"></i> Thấp</el-dropdown-item>
+                      <el-dropdown-item :command="1" class="priority-option priority-urgent"><i class="bi bi-flag-fill mr-2"></i>{{ tr('Urgent', 'Khẩn cấp') }}</el-dropdown-item>
+                      <el-dropdown-item :command="2" class="priority-option priority-high"><i class="bi bi-flag-fill mr-2"></i>{{ tr('High', 'Cao') }}</el-dropdown-item>
+                      <el-dropdown-item :command="3" class="priority-option priority-medium"><i class="bi bi-flag mr-2"></i>{{ tr('Medium', 'Trung bình') }}</el-dropdown-item>
+                      <el-dropdown-item :command="4" class="priority-option priority-low"><i class="bi bi-flag mr-2"></i>{{ tr('Low', 'Thấp') }}</el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
@@ -1620,18 +1616,17 @@
           </section>
 
           <section class="contingency-task-section">
-            <div class="contingency-task-section-heading"><i class="bi bi-person" aria-hidden="true"></i><span>Người thực hiện</span></div>
             <div class="contingency-field">
-              <label>Phân công</label>
+              <label>{{ tr('Assignment', 'Phân công') }}</label>
               <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" @show="assigneeSearch = ''">
                 <template #reference>
                   <div class="contingency-task-select">
-                    <span><i class="bi bi-person" aria-hidden="true"></i>{{ projectMembers.find(m => m.userId === taskForm.assigneeId)?.fullName || 'Chọn người thực hiện' }}</span>
+                    <span><i class="bi bi-person" aria-hidden="true"></i>{{ projectMembers.find(m => m.userId === taskForm.assigneeId)?.fullName || tr('Select an assignee', 'Chọn người thực hiện') }}</span>
                     <i class="bi bi-chevron-down" aria-hidden="true"></i>
                   </div>
                 </template>
                 <div class="popover-content">
-                  <input type="text" v-model="assigneeSearch" class="popover-search" placeholder="Tìm người thực hiện..." />
+                  <input type="text" v-model="assigneeSearch" class="popover-search" :placeholder="tr('Search assignees...', 'Tìm người thực hiện...')" />
                   <div class="popover-list">
                     <div class="popover-item flex items-center justify-between transition-colors cursor-pointer" v-for="user in projectMembers" :key="user.id" @click="taskForm.assigneeId = user.userId">
                       <div class="flex items-center gap-2"><i class="bi bi-person-circle" aria-hidden="true"></i><span class="user-name">{{ user.fullName || user.email }}</span></div>
@@ -1644,10 +1639,9 @@
           </section>
 
           <section class="contingency-task-section">
-            <div class="contingency-task-section-heading"><i class="bi bi-text-paragraph" aria-hidden="true"></i><span>Mô tả</span></div>
             <div class="contingency-field">
-              <label for="contingency-task-description">Mô tả chi tiết</label>
-              <textarea id="contingency-task-description" class="contingency-textarea" placeholder="Thêm mô tả cho Task dự phòng..." v-model="taskForm.description"></textarea>
+              <label for="contingency-task-description">{{ tr('Detailed description', 'Mô tả chi tiết') }}</label>
+              <textarea id="contingency-task-description" class="contingency-textarea" :placeholder="tr('Add a description for the contingency work item...', 'Thêm mô tả cho công việc dự phòng...')" v-model="taskForm.description"></textarea>
             </div>
           </section>
         </div>
@@ -1655,14 +1649,12 @@
         <footer class="contingency-task-footer">
           <label class="contingency-create-more">
             <el-switch v-model="createContingencyContinuously" />
-            <span>Tạo liên tục</span>
+            <span>{{ tr('Create another', 'Tạo liên tục') }}</span>
           </label>
           <div class="contingency-task-footer-actions">
-            <button type="button" class="contingency-cancel-button" @click="showTaskForm = false"><i class="bi bi-x-lg" aria-hidden="true"></i>Hủy</button>
+            <button type="button" class="contingency-cancel-button" @click="showTaskForm = false">{{ tr('Cancel', 'Hủy') }}</button>
             <button type="button" class="contingency-save-button" @click="saveContingencyTask" :disabled="isSavingTask">
-              <i class="bi bi-arrow-repeat contingency-spinner" v-if="isSavingTask" aria-hidden="true"></i>
-              <i class="bi bi-check2" v-else aria-hidden="true"></i>
-              Lưu Task
+              {{ tr('Add work item', 'Thêm công việc') }}
             </button>
           </div>
         </footer>
@@ -1712,6 +1704,7 @@ import { ElMessage, ElNotification, ElMessageBox } from 'element-plus';
 import { Editor, EditorContent } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import axiosClient from '@/api/axiosClient';
+import { signalRService } from '@/api/signalrService';
 import DOMPurify from 'dompurify';
 import { subscribeAdminRealtime } from '@/utils/adminRealtime';
 import { getStoredUser, hasSystemAdminAccess, normalizeProjectRole } from '@/utils/permissions';
@@ -1719,6 +1712,7 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { usePeopleStore } from '@/store/usePeopleStore';
 import { useI18nStore } from '@/store/useI18nStore';
 import UserAvatar from '@/components/common/UserAvatar.vue';
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue';
 import {
   buildFreshWorkSession,
   calculateWorkSessionHours,
@@ -1850,14 +1844,20 @@ const formatDateOnly = (value) => {
 };
 
 const getTodayDateString = () => formatDateOnly(new Date());
-const getParentId = (task = props.selectedTask) => task?.parentId || task?.parentTaskId || null;
 
-const currentProjectBadge = computed(() => {
-  const sequencePrefix = props.selectedTask?.sequenceId?.split('-')?.[0]
-    || cachedProjectTasks.value[0]?.sequenceId?.split('-')?.[0];
-  if (sequencePrefix) return sequencePrefix;
-  return `${props.projectId || 'WORK'}`.slice(0, 6).toUpperCase();
+const createTaskDateRange = computed({
+  get: () => {
+    const startDate = formatDateOnly(props.selectedTask?.plannedStartDate);
+    const dueDate = formatDateOnly(props.selectedTask?.dueDate);
+    return startDate && dueDate ? [startDate, dueDate] : [];
+  },
+  set: (value) => {
+    const [startDate, dueDate] = Array.isArray(value) ? value : [];
+    handleTaskDateChange('plannedStartDate', startDate || null);
+    handleTaskDateChange('dueDate', dueDate || null);
+  }
 });
+const getParentId = (task = props.selectedTask) => task?.parentId || task?.parentTaskId || null;
 
 const disablePastDates = (date) => {
   return false;
@@ -1994,6 +1994,7 @@ const applyProjectDefaultsToTask = (task = props.selectedTask, options = {}) => 
 
 const selectVisibilityMode = (mode, task = props.selectedTask) => {
   if (!task || !canEditTaskVisibility.value) return;
+  if (!ensureTaskAssignmentEdit(task)) return;
   task.visibilityMode = mode;
   if (mode !== 'role') {
     task.visibleToRoles = [];
@@ -2011,6 +2012,7 @@ const selectVisibilityMode = (mode, task = props.selectedTask) => {
 
 const toggleVisibleRole = (role, task = props.selectedTask) => {
   if (!task || !canEditTaskVisibility.value) return;
+  if (!ensureTaskAssignmentEdit(task)) return;
   const nextRole = normalizeProjectRole(role);
   const currentRoles = Array.isArray(task.visibleToRoles) ? [...task.visibleToRoles] : [];
   task.visibleToRoles = currentRoles.includes(nextRole)
@@ -2078,8 +2080,8 @@ const getPriorityColor = (p) => {
     if (p===1) return '#ef4444';
     if (p===2) return '#f59e0b';
     if (p===3) return '#3b82f6';
-    if (p===4) return '#94a3b8';
-    return '#cbd5e1';
+    if (p===4) return '#10b981';
+    return '#64748b';
 };
 
 const getPrioIcon = (p) => {
@@ -2152,13 +2154,44 @@ const getAssigneeLabel = (id) => {
 };
 
 const getAssigneeIds = (task = props.selectedTask) => {
-   if (!task) return [];
-   return Array.from(new Set([
+  if (!task) return [];
+  return Array.from(new Set([
      ...(Array.isArray(task.assigneeIds) ? task.assigneeIds : []),
      ...(Array.isArray(task.assignees) ? task.assignees.map(item => item.userId || item.id).filter(Boolean) : []),
      ...(task.assignedUserId ? [task.assignedUserId] : []),
      ...(task.assigneeId ? [task.assigneeId] : [])
-   ]));
+  ]));
+};
+
+const isTaskEditableByAssignee = (task = props.selectedTask) => {
+  if (!task || task.isNew) return true;
+
+  const assigneeIds = getAssigneeIds(task);
+  if (!assigneeIds.length) return true;
+
+  const currentUserId = getCurrentUserId();
+  return Boolean(currentUserId && assigneeIds.some(id => `${id}` === `${currentUserId}`));
+};
+
+const notifyAssignmentLock = () => {
+  ElMessage.warning(tr(
+    'Only the assigned member can change this work item.',
+    'Chỉ người được giao mới có thể thay đổi công việc này.'
+  ));
+};
+
+const ensureTaskAssignmentEdit = (task = props.selectedTask) => {
+  if (isTaskEditableByAssignee(task)) return true;
+  notifyAssignmentLock();
+  return false;
+};
+
+const canEditTaskDetails = computed(() => isTaskEditableByAssignee());
+
+const setTaskProperty = (task, field, value) => {
+  if (!task || !ensureTaskAssignmentEdit(task)) return;
+  task[field] = value;
+  if (!task.isNew) updateTaskField(task, field, value);
 };
 
 const buildTaskAssigneeRows = (task = props.selectedTask) => {
@@ -2238,6 +2271,7 @@ const canEditTaskProgress = () => false;
 
 const setTaskParent = (task, parentId) => {
    if (!task) return;
+   if (!ensureTaskAssignmentEdit(task)) return;
    task.parentId = parentId;
    task.parentTaskId = parentId;
    if (!task.isNew) {
@@ -2289,6 +2323,7 @@ const getLabelsSummary = (labelIds) => {
 
 const toggleSelectedLabel = (lId) => {
     if (!props.selectedTask) return;
+    if (!ensureTaskAssignmentEdit()) return;
     if (!props.selectedTask.labelIds) props.selectedTask.labelIds = [];
     if (props.selectedTask.labelIds.includes(lId)) {
         props.selectedTask.labelIds = props.selectedTask.labelIds.filter(id => id !== lId);
@@ -2298,6 +2333,7 @@ const toggleSelectedLabel = (lId) => {
 };
 const toggleSelectedLabelDetail = (lId) => {
     if (!props.selectedTask) return;
+    if (!ensureTaskAssignmentEdit()) return;
     if (!props.selectedTask.labelIds) props.selectedTask.labelIds = [];
     let newArr = [...props.selectedTask.labelIds];
     if (newArr.includes(lId)) {
@@ -2908,6 +2944,7 @@ const fetchAdditionalProjectData = async () => {
 };
 
 const toggleLabelDetail = async (labelId) => {
+    if (!ensureTaskAssignmentEdit()) return;
     if (!props.selectedTask?.id || props.selectedTask.isNew) {
         toggleSelectedLabelDetail(labelId);
         return;
@@ -2930,6 +2967,7 @@ const toggleLabelDetail = async (labelId) => {
 // ======================================================================
 
 let unsubscribeExecutionRulesRealtime = null;
+let taskMetadataRealtimeHandler = null;
 
 watch(showTaskModal, (val) => {
   if (!val) emit('close');
@@ -2940,6 +2978,70 @@ watch(workSession, () => {
 }, { deep: true });
 
 onMounted(() => {
+  signalRService.startConnection(props.projectId);
+  taskMetadataRealtimeHandler = (event) => {
+    if (event?.projectId && `${event.projectId}` !== `${props.projectId}`) return;
+    const entityType = `${event?.entityType || ''}`.toLowerCase();
+    const action = `${event?.action || ''}`.toLowerCase();
+    if (
+      entityType === 'taskdependency' &&
+      (`${event.entityId}` === `${props.selectedTask?.id}` ||
+        `${event.data?.relatedTaskId || ''}` === `${props.selectedTask?.id}`)
+    ) {
+      fetchDependencies();
+      return;
+    }
+    if (
+      entityType === 'taskcontingencyplan' &&
+      `${event.data?.taskId || event.entityId || ''}` === `${props.selectedTask?.id}`
+    ) {
+      fetchContingencyPlans();
+      return;
+    }
+    if (entityType === 'custom-field') {
+      if (action === 'deleted') {
+        customFields.value = customFields.value.filter(field => `${field.id}` !== `${event.entityId}`);
+        delete customFieldValues.value[event.entityId];
+      } else if (event.data?.id) {
+        const index = customFields.value.findIndex(field => `${field.id}` === `${event.data.id}`);
+        if (index >= 0) customFields.value[index] = { ...customFields.value[index], ...event.data };
+        else customFields.value.push(event.data);
+      }
+      return;
+    }
+    if (
+      entityType === 'task-custom-field-values' &&
+      `${event.entityId}` === `${props.selectedTask?.id}`
+    ) {
+      for (const item of event.data?.values || []) {
+        customFieldValues.value[item.fieldDefinitionId] = item.value;
+      }
+      return;
+    }
+    if (entityType === 'label') {
+      if (action === 'deleted' || action === 'removed') {
+        projectLabels.value = projectLabels.value.filter(label => label.id !== event.entityId);
+        assignedLabels.value = assignedLabels.value.filter(label => label.labelId !== event.entityId);
+      } else if (event.data?.id) {
+        const index = projectLabels.value.findIndex(label => label.id === event.data.id);
+        if (index >= 0) projectLabels.value[index] = { ...projectLabels.value[index], ...event.data };
+        else projectLabels.value.push(event.data);
+      }
+      return;
+    }
+    if (entityType !== 'task-label' || `${event.entityId}` !== `${props.selectedTask?.id}`) return;
+    const labelId = event.data?.labelId;
+    if (!labelId) return;
+    if (action === 'deleted' || action === 'removed') {
+      assignedLabels.value = assignedLabels.value.filter(label => label.labelId !== labelId);
+      return;
+    }
+    const label = projectLabels.value.find(item => item.id === labelId);
+    if (label && !assignedLabels.value.some(item => item.labelId === labelId)) {
+      assignedLabels.value.push({ labelId, name: label.name, colorCode: label.colorCode || label.color });
+    }
+  };
+  signalRService.on('EntityChanged', taskMetadataRealtimeHandler);
   startWorkSessionTicker();
   window.addEventListener('mousemove', touchWorkSessionActivity, { passive: true });
   window.addEventListener('keydown', touchWorkSessionActivity, { passive: true });
@@ -2966,6 +3068,7 @@ onUnmounted(() => {
   document.removeEventListener('click', closeFloatingPickers);
   document.removeEventListener('visibilitychange', syncWorkSessionOnVisibility);
   unsubscribeExecutionRulesRealtime?.();
+  if (taskMetadataRealtimeHandler) signalRService.off('EntityChanged', taskMetadataRealtimeHandler);
 });
 
 const formatDate = (dateStr) => {
@@ -3196,12 +3299,14 @@ const lastEditedBy = computed(() => {
 const lastEditedRelative = computed(() => formatRelativeTime(props.selectedTask?.updatedAt || props.selectedTask?.createdAt));
 
 const updateTaskField = (task, field, value) => {
+  if (!ensureTaskAssignmentEdit(task)) return;
   recordTaskFieldActivity(field, value);
   emit('updateTask', task, field, value);
   window.setTimeout(fetchAuditTimeline, 700);
 };
 
 const updateTaskFields = (task, payload) => {
+  if (!ensureTaskAssignmentEdit(task)) return;
   const fields = Object.keys(payload || {});
   if (fields.length === 1) {
     recordTaskFieldActivity(fields[0], payload[fields[0]]);
@@ -3214,6 +3319,7 @@ const updateTaskFields = (task, payload) => {
 
 const persistTaskPatch = async (task, payload) => {
   if (!task?.id || task?.isNew) return null;
+  if (!ensureTaskAssignmentEdit(task)) return null;
   const response = await axiosClient.patch(`/projects/${props.projectId}/WorkTasks/${task.id}`, payload);
   const normalized = normalizeTaskSnapshot({ ...(response.data?.data || {}) });
   Object.assign(task, normalized);
@@ -3251,7 +3357,7 @@ const getWorkSessionContext = (task = props.selectedTask) => ({
 const isAssignedToCurrentUser = computed(() => {
   const currentUserId = getCurrentUserId();
   if (!currentUserId || !props.selectedTask) return false;
-  return getAssigneeIds(props.selectedTask).includes(currentUserId);
+  return getAssigneeIds(props.selectedTask).some(id => `${id}` === `${currentUserId}`);
 });
 
 const isWorkSessionRunning = computed(() => workSession.value?.status === 'running');
@@ -3527,6 +3633,7 @@ const syncTaskAssignees = (task, assigneeIds) => {
 
 const applySelectedAssignees = async (assigneeIds, task = props.selectedTask) => {
   if (!task) return;
+  if (!ensureTaskAssignmentEdit(task)) return;
   const normalizedIds = Array.from(new Set(assigneeIds.filter(Boolean)));
   syncTaskAssignees(task, normalizedIds);
 
@@ -3548,6 +3655,7 @@ const toggleAssignee = async (memberId, task = props.selectedTask) => {
     ElMessage.warning('You do not have permission to manage assignees for this work item.');
     return;
   }
+  if (!ensureTaskAssignmentEdit(task)) return;
 
   const currentIds = getAssigneeIds(task);
   const nextIds = currentIds.includes(memberId)
@@ -3562,6 +3670,7 @@ const toggleInlineTaskAssignee = async (task, memberId) => {
 
 const updateAssigneeProgress = (memberId, rawValue, task = props.selectedTask) => {
   if (!task) return;
+  if (!ensureTaskAssignmentEdit(task)) return;
   const progressPercent = Math.min(100, Math.max(0, Number(rawValue) || 0));
   task.assignees = (task.assignees || []).map(assignee =>
     (assignee.userId || assignee.id) === memberId ? { ...assignee, progressPercent } : assignee
@@ -3577,6 +3686,7 @@ const updateAssigneeProgress = (memberId, rawValue, task = props.selectedTask) =
 
 const updateAssigneeContributionWeight = (memberId, rawValue, task = props.selectedTask) => {
   if (!task) return;
+  if (!ensureTaskAssignmentEdit(task)) return;
   task.assignees = normalizeAssigneeEstimateState(task).map(assignee =>
     assignee.userId === memberId
       ? { ...assignee, contributionWeight: Math.max(0.1, Number(rawValue) || 1) }
@@ -3588,6 +3698,7 @@ const updateAssigneeContributionWeight = (memberId, rawValue, task = props.selec
 
 const updateAssigneeEstimatedHours = (memberId, rawValue, task = props.selectedTask) => {
   if (!task) return;
+  if (!ensureTaskAssignmentEdit(task)) return;
   const normalizedEstimate = Math.max(0, Number(rawValue) || 0);
   task.assignees = normalizeAssigneeEstimateState(task).map(assignee =>
     assignee.userId === memberId
@@ -3612,6 +3723,7 @@ const updateAssigneeEstimatedHours = (memberId, rawValue, task = props.selectedT
 
 const updateTaskProgress = (task, rawValue) => {
   if (!task) return;
+  if (!ensureTaskAssignmentEdit(task)) return;
   const progressPercent = Math.min(100, Math.max(0, Number(rawValue) || 0));
   const assigneeIds = getAssigneeIds(task);
   if (!assigneeIds.length) {
@@ -3668,6 +3780,7 @@ const subtaskEstimateTotal = computed(() => {
 
 const updateEstimatedHours = (rawValue, task = props.selectedTask) => {
   if (!task) return;
+  if (!ensureTaskAssignmentEdit(task)) return;
   if ((subtasksList.value || []).length > 0 && task?.id === props.selectedTask?.id) {
     ElMessage.warning('Parent estimate is derived from sub-work items.');
     return;
@@ -3790,6 +3903,7 @@ const syncWorkSessionOnVisibility = () => {
 
 const handleTaskDateChange = (field, rawValue, task = props.selectedTask) => {
   if (!task) return;
+  if (!ensureTaskAssignmentEdit(task)) return;
 
   const normalizedValue = rawValue ? formatDateOnly(rawValue) : null;
 
@@ -3825,6 +3939,7 @@ const handleTaskDateChange = (field, rawValue, task = props.selectedTask) => {
 
 const selectStatus = (status, task = props.selectedTask) => {
   if (!task) return;
+  if (!ensureTaskAssignmentEdit(task)) return;
   const nextStatus = typeof status === 'string' ? status : status.name;
   task.statusName = nextStatus;
   if (!task.isNew) {
@@ -3834,6 +3949,7 @@ const selectStatus = (status, task = props.selectedTask) => {
 
 const selectPriority = (priority, task = props.selectedTask) => {
   if (!task) return;
+  if (!ensureTaskAssignmentEdit(task)) return;
   task.priority = priority;
   if (!task.isNew) {
     updateTaskField(task, 'priority', priority);
@@ -3842,6 +3958,7 @@ const selectPriority = (priority, task = props.selectedTask) => {
 
 const updateStoryPoints = (rawValue, task = props.selectedTask) => {
   if (!task) return;
+  if (!ensureTaskAssignmentEdit(task)) return;
   const nextValue = Math.min(21, Math.max(0, Number(rawValue) || 0));
   task.storyPoints = nextValue;
   if (!task.isNew) {
@@ -4247,6 +4364,7 @@ const applyAiAssigneeSuggestion = async (mode = 'top') => {
     }
 
     if (!props.selectedTask || !aiAssigneeSuggestion.value?.suggestions?.length) return;
+    if (!ensureTaskAssignmentEdit()) return;
 
     const recommendedCount = Math.max(1, Number(aiAssigneeSuggestion.value.recommendedAssigneeCount) || 1);
     const candidates = mode === 'team'
@@ -4293,7 +4411,8 @@ const applyAiAssigneeSuggestion = async (mode = 'top') => {
 };
 
 const applyAiEstimateSuggestion = async () => {
-    if (!aiEstimateSuggestion.value || !props.selectedTask) return;
+  if (!aiEstimateSuggestion.value || !props.selectedTask) return;
+  if (!ensureTaskAssignmentEdit()) return;
 
     const task = props.selectedTask;
     const suggestedHours = Math.max(0, Number(aiEstimateSuggestion.value.suggestedHours) || 0);
@@ -4475,13 +4594,13 @@ function openCreateTaskForm(planId) {
 
 async function saveContingencyTask() {
    if (!taskForm.value.title) {
-      ElMessage.warning('Vui lòng điền tiêu đề');
+      ElMessage.warning(tr('Please enter a title.', 'Vui lòng điền tiêu đề.'));
       return;
    }
    isSavingTask.value = true;
    try {
       await axiosClient.post(`/worktasks/${props.selectedTask.id}/contingency-plans/${activePlanIdForTask.value}/tasks/create`, taskForm.value);
-      ElMessage.success('Đã tạo Task dự phòng thành công');
+      ElMessage.success(tr('Contingency work item added successfully.', 'Đã thêm công việc dự phòng thành công.'));
       
       await fetchContingencyPlans();
       
@@ -4491,7 +4610,7 @@ async function saveContingencyTask() {
           showTaskForm.value = false;
       }
    } catch (err) {
-      ElMessage.error(err.response?.data?.message || 'Tạo task thất bại');
+      ElMessage.error(err.response?.data?.message || tr('Failed to add the contingency work item.', 'Thêm công việc dự phòng thất bại.'));
    } finally {
       isSavingTask.value = false;
    }
@@ -4569,6 +4688,16 @@ async function fetchAssignedLabels() {
 }
 
 const assignLabel = async (labelId) => {
+    if (!ensureTaskAssignmentEdit()) return;
+    const previous = [...assignedLabels.value];
+    const optimisticLabel = projectLabels.value.find(label => label.id === labelId);
+    if (optimisticLabel && !assignedLabels.value.some(label => label.labelId === labelId)) {
+        assignedLabels.value.push({
+            labelId: optimisticLabel.id,
+            name: optimisticLabel.name,
+            colorCode: optimisticLabel.colorCode
+        });
+    }
     try {
         await axiosClient.post(`/projects/${props.projectId}/WorkTasks/${props.selectedTask.id}/labels`, { labelId });
         const lbl = projectLabels.value.find(l => l.id === labelId);
@@ -4577,15 +4706,20 @@ const assignLabel = async (labelId) => {
         }
         ElMessage.success("Gắn nhãn thành công");
     } catch (e) {
+        assignedLabels.value = previous;
         ElMessage.error(e.response?.data?.message || "Lỗi khi gắn nhãn");
     }
 };
 
 const removeLabel = async (labelId) => {
+    if (!ensureTaskAssignmentEdit()) return;
+    const previous = [...assignedLabels.value];
+    assignedLabels.value = assignedLabels.value.filter(label => label.labelId !== labelId);
     try {
         await axiosClient.delete(`/projects/${props.projectId}/WorkTasks/${props.selectedTask.id}/labels/${labelId}`);
         assignedLabels.value = assignedLabels.value.filter(a => a.labelId !== labelId);
     } catch (e) {
+        assignedLabels.value = previous;
         ElMessage.error(e.response?.data?.message || "Lỗi khi gỡ nhãn");
     }
 };
@@ -4838,6 +4972,7 @@ async function fetchCustomFieldValues(taskId) {
 
 const saveCustomFieldValue = async (fieldId, val) => {
   if (!props.selectedTask?.id || props.selectedTask.isNew) return;
+  if (!ensureTaskAssignmentEdit()) return;
 
   const stringVal = val === null || val === undefined ? '' : String(val).trim();
   const def = customFields.value.find(f => f.id == fieldId);
@@ -4882,7 +5017,8 @@ const parseOptions = (json) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(3px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* UTILITIES */
@@ -5519,18 +5655,22 @@ const parseOptions = (json) => {
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 0;
-  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 86%, #b91c1c);
+  border-radius: 10px;
   outline: none;
-  color: var(--color-text-muted);
-  background: transparent;
+  color: #ffffff;
+  background: var(--color-danger);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--color-danger) 24%, transparent);
   cursor: pointer;
-  transition: color 180ms ease, background-color 180ms ease;
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
 }
 
 .contingency-plan-close:hover {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
+  transform: translateY(-1px);
+  border-color: #b91c1c;
+  color: #ffffff;
+  background: #dc2626;
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--color-danger) 32%, transparent);
 }
 
 .contingency-plan-close:focus-visible,
@@ -5538,6 +5678,10 @@ const parseOptions = (json) => {
 .contingency-save-button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.contingency-plan-close:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 24%, transparent);
 }
 
 .contingency-plan-body {
@@ -5556,26 +5700,7 @@ const parseOptions = (json) => {
 }
 
 .contingency-plan-section + .contingency-plan-section {
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
-}
-
-.contingency-section-heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--color-text-secondary);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: 0;
-}
-
-.contingency-section-heading .bi {
-  color: var(--color-accent);
-  font-size: 15px;
-  line-height: 1;
+  margin-top: 16px;
 }
 
 .contingency-field {
@@ -5810,23 +5935,27 @@ const parseOptions = (json) => {
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 0;
-  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 86%, #b91c1c);
+  border-radius: 10px;
   outline: none;
-  color: var(--color-text-muted);
-  background: transparent;
+  color: #ffffff;
+  background: var(--color-danger);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--color-danger) 24%, transparent);
   cursor: pointer;
-  transition: color 180ms ease, background-color 180ms ease;
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
 }
 
 .contingency-task-close:hover {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
+  transform: translateY(-1px);
+  border-color: #b91c1c;
+  color: #ffffff;
+  background: #dc2626;
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--color-danger) 32%, transparent);
 }
 
 .contingency-task-close:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 24%, transparent);
 }
 
 .contingency-task-body {
@@ -5845,24 +5974,7 @@ const parseOptions = (json) => {
 }
 
 .contingency-task-section + .contingency-task-section {
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
-}
-
-.contingency-task-section-heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--color-text-primary);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.contingency-task-section-heading .bi {
-  color: var(--color-accent);
-  font-size: 16px;
+  margin-top: 16px;
 }
 
 .contingency-task-select-grid {
@@ -6088,7 +6200,19 @@ const parseOptions = (json) => {
   gap: 12px;
   margin: 0;
   padding: 18px 28px;
-  border-top: 1px solid var(--color-border);
+}
+
+.cm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.cm-field > label {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
 .cm-inputbox, .cm-textareabox {
@@ -6118,6 +6242,10 @@ const parseOptions = (json) => {
   gap: 8px;
   margin: 0;
   padding: 0 28px 22px;
+}
+
+.parent-task-trigger {
+  margin-top: 4px;
 }
 
 .t-btn {
@@ -6189,7 +6317,7 @@ const parseOptions = (json) => {
 /* SIDE PANEL */
 .task-side-panel {
   position: absolute;
-  top: 0;
+  top: var(--sa-topbar-height, 52px);
   right: 0;
   bottom: 0;
   width: min(620px, 92vw);
@@ -6476,10 +6604,12 @@ const parseOptions = (json) => {
 
 .status-popover-item {
   border: 1px solid transparent;
+  color: var(--status-color) !important;
 }
 
-.status-popover-item i:first-child {
-  color: var(--status-color);
+.status-popover-item span,
+.status-popover-item i {
+  color: var(--status-color) !important;
 }
 
 .status-popover-item:hover {
@@ -7524,11 +7654,24 @@ const parseOptions = (json) => {
   border: 1px solid var(--color-border) !important;
 }
 
-.theme-dropdown :deep(.el-dropdown-menu__item) {
+:global(.theme-dropdown .el-dropdown-menu__item) {
   color: var(--color-text-primary) !important;
 }
 
-.theme-dropdown :deep(.el-dropdown-menu__item:hover) {
+:global(.theme-dropdown .el-dropdown-menu__item.status-option),
+:global(.theme-dropdown .el-dropdown-menu__item.status-option i) { color: var(--option-color) !important; }
+:global(.theme-dropdown .el-dropdown-menu__item.priority-urgent),
+:global(.theme-dropdown .el-dropdown-menu__item.priority-urgent i) { color: #ef4444 !important; }
+:global(.theme-dropdown .el-dropdown-menu__item.priority-high),
+:global(.theme-dropdown .el-dropdown-menu__item.priority-high i) { color: #f59e0b !important; }
+:global(.theme-dropdown .el-dropdown-menu__item.priority-medium),
+:global(.theme-dropdown .el-dropdown-menu__item.priority-medium i) { color: #3b82f6 !important; }
+:global(.theme-dropdown .el-dropdown-menu__item.priority-low),
+:global(.theme-dropdown .el-dropdown-menu__item.priority-low i) { color: #10b981 !important; }
+:global(.theme-dropdown .el-dropdown-menu__item.priority-none),
+:global(.theme-dropdown .el-dropdown-menu__item.priority-none i) { color: var(--color-text-muted) !important; }
+
+:global(.theme-dropdown .el-dropdown-menu__item:hover) {
   background: var(--color-surface-hover) !important;
 }
 

@@ -2,19 +2,93 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
+import { useProjectStore } from '@/store/useProjectStore'
 import axiosClient from '@/api/axiosClient'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true },
-  tasks: { type: Array, default: null }
+  tasks: { type: Array, default: null },
+  projectMembers: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['open-task', 'create-task'])
 
 const taskStore = useWorkTaskStore()
+const projectStore = useProjectStore()
 const sourceTasks = computed(() => props.tasks || taskStore.tasks)
 const loading = computed(() => taskStore.loading)
 const today = ref(new Date())
+
+const getTaskAssigneeIds = (task) => {
+  return Array.from(new Set([
+    ...(Array.isArray(task.assigneeIds) ? task.assigneeIds : []),
+    ...(Array.isArray(task.assignees) ? task.assignees.map(item => item.userId || item.id).filter(Boolean) : []),
+    ...(task.assignedUserId ? [task.assignedUserId] : [])
+  ]))
+}
+
+const getTaskAssignee = (task) => {
+  const ids = getTaskAssigneeIds(task)
+  if (!ids.length) return null
+  const members = (props.projectMembers && props.projectMembers.length > 0)
+    ? props.projectMembers
+    : (projectStore.members || [])
+  return members.find(m => (m.userId || m.id) === ids[0]) || { name: 'Assignee', initials: 'A', id: ids[0] }
+}
+
+const getPriorityLabel = (priority) => {
+  switch (priority) {
+    case 1: return 'Urgent'
+    case 2: return 'High'
+    case 3: return 'Medium'
+    case 4: return 'Low'
+    default: return 'None'
+  }
+}
+
+const getPrioIcon = (p) => {
+  if (p === 1) return 'fa-solid fa-angles-up'
+  if (p === 2) return 'fa-solid fa-chevron-up'
+  if (p === 3) return 'fa-solid fa-minus'
+  if (p === 4) return 'fa-solid fa-arrow-down'
+  return 'fa-solid fa-ban'
+}
+
+const getPriorityColor = (p) => {
+  if (p === 1) return '#ef4444'
+  if (p === 2) return '#f59e0b'
+  if (p === 3) return '#3b82f6'
+  if (p === 4) return '#94a3b8'
+  return '#cbd5e1'
+}
+
+const getStatusIcon = (s) => {
+  const st = (s || '').toUpperCase()
+  if (st.includes('CANCEL')) return 'fa-regular fa-circle-xmark'
+  if (st.includes('DONE') || st.includes('COMPLETE')) return 'fa-regular fa-circle-check'
+  if (st.includes('PROGRESS') || st.includes('DOING')) return 'fa-solid fa-circle-half-stroke'
+  if (st.includes('REVIEW')) return 'fa-regular fa-circle-play'
+  if (st.includes('TODO') || st.includes('TO DO')) return 'fa-regular fa-circle'
+  return 'fa-solid fa-circle-dashed'
+}
+
+const normalizeStatusLabel = (statusName) => {
+  if (!statusName) return 'Backlog'
+  const norm = `${statusName}`.toUpperCase().trim()
+  if (norm.includes('DONE') || norm.includes('COMPLETE')) return 'Done'
+  if (norm.includes('REVIEW')) return 'In Review'
+  if (norm.includes('PROGRESS') || norm.includes('DOING')) return 'In Progress'
+  if (norm.includes('TODO') || norm.includes('TO DO')) return 'To Do'
+  if (norm.includes('BACKLOG')) return 'Backlog'
+  return statusName
+}
+
+const formatDate = (val) => {
+  const d = parseTaskDate(val)
+  if (!d) return '-'
+  return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`
+}
 const viewMode = ref('Day')
 const showOptions = ref(false)
 const createMode = ref(false)
@@ -175,13 +249,19 @@ const getTaskBar = (task) => {
   }
 }
 
-const getStatusColor = (statusName) => {
-  const normalized = `${statusName || ''}`.toUpperCase()
-  if (normalized.includes('DONE') || normalized.includes('COMPLETE')) return '#16a34a'
-  if (normalized.includes('PROGRESS')) return '#2563eb'
-  if (normalized.includes('REVIEW')) return '#f59e0b'
-  if (normalized.includes('TODO')) return '#8b5cf6'
-  return '#64748b'
+const getStatusColor = (statusName, opacity = 1) => {
+  const normalized = `${statusName || ''}`.toUpperCase().trim()
+  let hex = '#64748b'
+  if (normalized.includes('DONE') || normalized.includes('COMPLETE')) hex = '#10b981'
+  else if (normalized.includes('PROGRESS') || normalized.includes('DOING')) hex = '#eab308'
+  else if (normalized.includes('REVIEW')) hex = '#f59e0b'
+  else if (normalized.includes('TODO') || normalized.includes('TO DO')) hex = '#3b82f6'
+  else if (normalized.includes('BLOCKED')) hex = '#ef4444'
+
+  if (opacity < 1) {
+    return `color-mix(in srgb, ${hex} ${opacity * 100}%, transparent)`
+  }
+  return hex
 }
 
 const getTaskIcon = (task) => {
@@ -583,7 +663,10 @@ function isWeekend(date) {
     <div class="tl-body">
       <div class="tl-left-panel">
         <div class="tl-left-header">
-          <div class="tl-col-workitems">WORK ITEMS</div>
+          <div class="tl-col-workitems">TASK</div>
+          <div class="tl-col-owner">OWNER</div>
+          <div class="tl-col-status">STATUS</div>
+          <div class="tl-col-progress">PROGRESS</div>
           <div class="tl-col-duration">DURATION</div>
         </div>
 
@@ -597,8 +680,26 @@ function isWeekend(date) {
           >
             <div class="tl-col-workitems">
               <span class="task-key">{{ task.sequenceId || task.id?.substring(0, 8)?.toUpperCase() }}</span>
-              <span class="task-title-text">{{ task.title }}</span>
-              <span class="task-emoji">{{ getTaskIcon(task) }}</span>
+              <span class="task-title-text" :title="task.title">{{ task.title }}</span>
+            </div>
+            <div class="tl-col-owner">
+              <div v-if="getTaskAssignee(task)" class="owner-cell">
+                <UserAvatar :user="getTaskAssignee(task)" :size="20" :fontSize="9" />
+                <span class="owner-name" :title="getTaskAssignee(task).fullName || getTaskAssignee(task).name || getTaskAssignee(task).email">{{ getTaskAssignee(task).fullName || getTaskAssignee(task).name || getTaskAssignee(task).email }}</span>
+              </div>
+              <div v-else class="owner-cell empty">
+                <div class="empty-avatar"><i class="fa-solid fa-user"></i></div>
+                <span class="owner-name">Unassigned</span>
+              </div>
+            </div>
+            <div class="tl-col-status">
+              <span class="status-badge" :style="{ background: getStatusColor(task.statusName, 0.15), color: getStatusColor(task.statusName) }">
+                <i :class="getStatusIcon(task.statusName)" class="status-icon"></i>
+                {{ normalizeStatusLabel(task.statusName) }}
+              </span>
+            </div>
+            <div class="tl-col-progress">
+              <span class="progress-val">{{ task.progressPercent || 0 }}%</span>
             </div>
             <div class="tl-col-duration">{{ taskDurationLabel(task) }}</div>
           </div>
@@ -667,22 +768,73 @@ function isWeekend(date) {
             <div class="today-line" :style="{ left: `${todayOffset}px` }"></div>
 
             <div v-for="task in visibleTasks" :key="`row-${task.id}`" class="tl-bar-row">
-              <div
+              <el-tooltip
                 v-if="getTaskBar(task)"
-                class="tl-task-bar"
-                :style="{
-                  left: getTaskBar(task).left,
-                  width: getTaskBar(task).width,
-                  '--task-color': getStatusColor(task.statusName)
-                }"
-                :title="`${task.title} (${taskDurationLabel(task)})`"
-                @click.stop="handleBarClick(task)"
-                @mousedown="onDragStart($event, task, 'move')"
+                placement="top"
+                popper-class="timeline-tooltip"
+                :show-after="150"
+                effect="light"
               >
-                <div class="resize-handle left" @mousedown.stop="onDragStart($event, task, 'resize-left')"></div>
-                <span class="bar-label">{{ task.title }}</span>
-                <div class="resize-handle right" @mousedown.stop="onDragStart($event, task, 'resize-right')"></div>
-              </div>
+                <template #content>
+                  <div class="tooltip-card">
+                    <div class="tt-header">
+                      <span class="tt-key">{{ task.sequenceId || task.id?.substring(0, 8)?.toUpperCase() }}</span>
+                      <span class="tt-title">{{ task.title }}</span>
+                    </div>
+                    <div class="tt-divider"></div>
+                    <div class="tt-body">
+                      <div class="tt-row">
+                        <span class="tt-lbl">Owner</span>
+                        <div class="tt-val-group">
+                          <UserAvatar v-if="getTaskAssignee(task)" :user="getTaskAssignee(task)" :size="16" :fontSize="8" />
+                          <span class="tt-val">{{ getTaskAssignee(task)?.fullName || getTaskAssignee(task)?.name || 'Unassigned' }}</span>
+                        </div>
+                      </div>
+                      <div class="tt-row">
+                        <span class="tt-lbl">Priority</span>
+                        <div class="tt-val-group">
+                          <i :class="getPrioIcon(task.priority)" :style="{ color: getPriorityColor(task.priority) }"></i>
+                          <span class="tt-val" :style="{ color: getPriorityColor(task.priority) }">{{ getPriorityLabel(task.priority) }}</span>
+                        </div>
+                      </div>
+                      <div class="tt-row">
+                        <span class="tt-lbl">Status</span>
+                        <div class="tt-val-group">
+                          <i :class="getStatusIcon(task.statusName)" :style="{ color: getStatusColor(task.statusName) }"></i>
+                          <span class="tt-val" :style="{ color: getStatusColor(task.statusName) }">{{ normalizeStatusLabel(task.statusName) }}</span>
+                        </div>
+                      </div>
+                      <div class="tt-row">
+                        <span class="tt-lbl">Progress</span>
+                        <span class="tt-val progress-tag">{{ task.progressPercent || 0 }}%</span>
+                      </div>
+                      <div class="tt-row">
+                        <span class="tt-lbl">Start</span>
+                        <span class="tt-val date-val">{{ formatDate(task.plannedStartDate) }}</span>
+                      </div>
+                      <div class="tt-row">
+                        <span class="tt-lbl">Deadline</span>
+                        <span class="tt-val date-val">{{ formatDate(task.dueDate || task.plannedEndDate) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
+                <div
+                  class="tl-task-bar"
+                  :style="{
+                    left: getTaskBar(task).left,
+                    width: getTaskBar(task).width,
+                    '--task-color': getStatusColor(task.statusName)
+                  }"
+                  @click.stop="handleBarClick(task)"
+                  @mousedown="onDragStart($event, task, 'move')"
+                >
+                  <div class="resize-handle left" @mousedown.stop="onDragStart($event, task, 'resize-left')"></div>
+                  <span class="bar-label">{{ task.title }}</span>
+                  <div class="resize-handle right" @mousedown.stop="onDragStart($event, task, 'resize-right')"></div>
+                </div>
+              </el-tooltip>
             </div>
 
             <button class="tl-bar-row tl-add-canvas-row" type="button" @click="requestQuickAdd(clickedBucket)">
@@ -770,8 +922,8 @@ function isWeekend(date) {
 
 /* LEFT PANEL */
 .tl-left-panel {
-  width: 280px;
-  min-width: 280px;
+  width: 550px;
+  min-width: 550px;
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -787,26 +939,206 @@ function isWeekend(date) {
   background: var(--color-bg);
 }
 
-.tl-col-workitems, .tl-col-duration {
+.tl-col-workitems, .tl-col-owner, .tl-col-status, .tl-col-progress, .tl-col-duration {
   height: 100%;
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 8px;
   font-size: 11px;
-  letter-spacing: 0.08em;
-  font-weight: 600;
+  letter-spacing: 0.05em;
+  font-weight: 700;
   color: var(--color-text-secondary);
   text-transform: uppercase;
+  box-sizing: border-box;
 }
 
 .tl-col-workitems {
   flex: 1;
+  min-width: 140px;
+  overflow: hidden;
+}
+
+.tl-col-owner {
+  width: 130px;
+  min-width: 130px;
+  border-left: 1px solid var(--color-border);
+}
+
+.tl-col-status {
+  width: 105px;
+  min-width: 105px;
+  border-left: 1px solid var(--color-border);
+  justify-content: center;
+}
+
+.tl-col-progress {
+  width: 65px;
+  min-width: 65px;
+  border-left: 1px solid var(--color-border);
+  justify-content: flex-end;
 }
 
 .tl-col-duration {
-  width: 80px;
+  width: 75px;
+  min-width: 75px;
   justify-content: flex-end;
   border-left: 1px solid var(--color-border);
+}
+
+.owner-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.owner-cell.empty {
+  color: var(--color-text-secondary);
+  opacity: 0.7;
+}
+
+.empty-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-text-secondary) 18%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+}
+
+.owner-name {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-primary);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.status-icon {
+  font-size: 11px;
+}
+
+.progress-val {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.tl-task-row .tl-col-duration {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+/* Tooltip Popup Design */
+:deep(.timeline-tooltip) {
+  padding: 0 !important;
+  border: 1px solid var(--color-border, #e2e8f0) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.18), 0 4px 12px -2px rgba(0, 0, 0, 0.08) !important;
+  background: var(--color-surface, #ffffff) !important;
+}
+
+.tooltip-card {
+  padding: 10px 14px;
+  min-width: 230px;
+  max-width: 290px;
+  font-family: inherit;
+}
+
+.tt-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tt-key {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-text-secondary, #64748b) 15%, transparent);
+  color: var(--color-text-secondary, #64748b);
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.tt-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--color-text-primary, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.tt-divider {
+  height: 1px;
+  background: var(--color-border, #e2e8f0);
+  margin-bottom: 8px;
+  opacity: 0.7;
+}
+
+.tt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.tt-lbl {
+  color: var(--color-text-secondary, #64748b);
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.tt-val-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.tt-val {
+  font-weight: 600;
+  color: var(--color-text-primary, #0f172a);
+}
+
+.progress-tag {
+  font-weight: 700;
+  color: var(--color-accent, #3b82f6);
+}
+
+.date-val {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--color-text-secondary, #475569);
 }
 
 .tl-left-rows {

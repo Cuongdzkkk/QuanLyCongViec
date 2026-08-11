@@ -21,7 +21,7 @@
           <option v-for="p in projectOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
         <!-- View all -->
-        <router-link to="/priority" class="dfw-viewall-btn">
+        <router-link to="/your-work" class="dfw-viewall-btn">
           {{ t('dailyFocusWidget.viewAll') }}
           <i class="fa-solid fa-arrow-right"></i>
         </router-link>

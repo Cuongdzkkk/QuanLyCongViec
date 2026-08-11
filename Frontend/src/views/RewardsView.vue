@@ -1,19 +1,17 @@
 <template>
-  <div>
-    <div class="jira-dashboard rewards-page-shell">
-      <section class="rewards-page rewards-surface sp-page-shell sprinta-section-panel sprinta-section-panel-blue">
-      <header class="section-header rewards-page-header">
-        <h1 class="rewards-page-title">
-          <span class="icon-glass rewards-page-icon" aria-hidden="true">
-            <i class="fa-solid fa-trophy"></i>
-          </span>
-          {{ t('rewards.title') }}
-        </h1>
-        <button class="refresh-btn" type="button" :disabled="loading" @click="loadRewards">
-          <i class="fa-solid fa-rotate"></i> {{ loading ? t('rewards.refreshing') : t('rewards.refresh') }}
-        </button>
-      </header>
+  <section class="rewards-page">
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">GAMIFICATION & REWARDS</span>
+        <h1>{{ t('rewards.title') }}</h1>
+        <p>Theo dõi thành tích, điểm thưởng và thăng tiến cấp độ của bạn trong hệ thống.</p>
+      </div>
+      <button class="refresh-btn" type="button" :disabled="loading" @click="loadRewards">
+        <i class="fa-solid fa-rotate" :class="{ 'fa-spin': loading }"></i> {{ loading ? t('rewards.refreshing') : t('rewards.refresh') }}
+      </button>
+    </header>
 
+    <main class="page-content">
       <section class="wallet-band">
         <div class="wallet-card">
           <span class="label"><i class="fa-solid fa-coins" aria-hidden="true"></i>{{ t('rewards.balance') }}</span>
@@ -166,9 +164,8 @@
           </article>
         </section>
       </section>
-      </section>
-    </div>
-  </div>
+    </main>
+  </section>
 </template>
 
 <script setup>
@@ -274,14 +271,53 @@ onMounted(loadRewards)
 
 <style scoped>
 .rewards-page {
-  min-height: calc(100vh - 56px);
+  --sa-page-x: 18px;
+  min-height: 100%;
+  width: 100%;
   background: var(--color-bg);
   color: var(--color-text-primary);
-  padding: 32px;
+  padding: 0;
+  margin: 0;
   font-family: 'Inter', sans-serif;
 }
 
-.rewards-header,
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px var(--sa-page-x, 24px) 18px;
+  background: var(--color-surface);
+  border-bottom: none !important;
+  margin-bottom: 0 !important;
+}
+
+.eyebrow {
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.page-header h1 {
+  margin: 3px 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--color-text-primary);
+}
+
+.page-header p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.page-content {
+  padding: 18px var(--sa-page-x, 24px) 28px;
+}
 .wallet-band,
 .formula-band,
 .rewards-grid,
@@ -295,7 +331,6 @@ onMounted(loadRewards)
   display: flex;
 }
 
-.rewards-header,
 .panel-head,
 .summary-row,
 .tx-row,
@@ -306,7 +341,6 @@ onMounted(loadRewards)
   align-items: center;
 }
 
-.rewards-header,
 .panel-head,
 .summary-row,
 .achievement-row,
@@ -314,25 +348,28 @@ onMounted(loadRewards)
   justify-content: space-between;
 }
 
-.rewards-header {
-  gap: 24px;
-  margin-bottom: 28px;
-}
-
 .eyebrow {
   color: var(--color-accent);
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 800;
   text-transform: uppercase;
-  font-weight: 700;
-  margin: 0 0 6px;
-  letter-spacing: 1px;
+  letter-spacing: 0.08em;
+  display: block;
 }
 
-h1 {
-  margin: 0;
-  font-size: 28px;
+.page-header h1 {
+  margin: 3px 0 4px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--color-text-primary);
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.page-header p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .muted,
@@ -668,7 +705,6 @@ small,
 .rewards-page {
   background:
     linear-gradient(180deg, #f8fbff 0%, #eef5fb 46%, #f8fafc 100%);
-  padding: 34px clamp(20px, 3vw, 44px);
   font-family: inherit;
 }
 
@@ -925,8 +961,10 @@ h1 {
 
 /* Compact density */
 .rewards-page {
-  padding: 18px var(--sa-page-x, 24px) 30px !important;
-  min-height: calc(100vh - var(--sa-topbar-height, 52px)) !important;
+  width: 100% !important;
+  min-height: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 .nexus-feature-header {
@@ -1435,8 +1473,8 @@ h1 {
 
 /* Rewards layout repair */
 .rewards-page {
-  max-width: 1180px;
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
 }
 
 .formula-band {
@@ -1627,97 +1665,6 @@ h1 {
   background: linear-gradient(180deg, #f8fcff 0%, #eef6fb 48%, #f8fafc 100%) !important;
 }
 
-.rewards-page.rewards-surface {
-  width: 100% !important;
-  max-width: none !important;
-  min-height: calc(100vh - 112px);
-  margin: 0 !important;
-  padding: 36px 32px 32px !important;
-  border: 1px solid rgba(12, 102, 228, 0.15) !important;
-  border-radius: 16px !important;
-  background: var(--color-surface, #ffffff) !important;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.07) !important;
-}
-
-.rewards-page-header {
-  min-height: 40px !important;
-  margin: 0 0 24px !important;
-  padding: 0 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 16px !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.rewards-page-title {
-  min-width: 0;
-  margin: 0 !important;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: #0f172a !important;
-  font-size: clamp(21px, 1.65vw, 28px) !important;
-  font-weight: 900 !important;
-  line-height: 1.12 !important;
-  letter-spacing: 0 !important;
-}
-
-.rewards-page-icon {
-  flex: 0 0 40px;
-  width: 40px;
-  height: 40px;
-  font-size: 20px;
-}
-
-.rewards-page-header .refresh-btn {
-  flex: 0 0 auto;
-  margin-left: auto;
-}
-
-[data-theme='dark'] .rewards-page-title {
-  color: #f8fafc !important;
-}
-
-[data-theme='dark'] .rewards-page-shell {
-  background: linear-gradient(180deg, #06111f, #0f172a 52%, #101827) !important;
-}
-
-[data-theme='dark'] .rewards-page.rewards-surface {
-  border-color: rgba(148, 163, 184, 0.2) !important;
-  background:
-    linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.86)),
-    #0f172a !important;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28) !important;
-}
-
-@media (max-width: 640px) {
-  .rewards-page-shell {
-    padding: 12px !important;
-  }
-
-  .rewards-page.rewards-surface {
-    padding: 28px 20px !important;
-  }
-}
-
-/* Keep the Rewards surface equally spaced from the top and both sides. */
-.rewards-page-shell {
-  max-width: none !important;
-  margin: 0 !important;
-  padding: 18px !important;
-}
-
-@media (max-width: 640px) {
-  .rewards-page-shell {
-    padding: 12px !important;
-  }
-}
-
-/* Premium enterprise pass: one restrained accent and one card system. */
 .rewards-surface {
   --reward-accent: #27c2f1;
   --reward-accent-strong: #0798c7;
@@ -1731,12 +1678,6 @@ h1 {
   --reward-radius: 10px;
   --reward-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
   --reward-shadow-hover: 0 12px 28px rgba(15, 23, 42, 0.085);
-}
-
-.rewards-page.rewards-surface {
-  border-color: var(--reward-border) !important;
-  background: var(--reward-surface) !important;
-  box-shadow: var(--reward-shadow) !important;
 }
 
 .wallet-band {

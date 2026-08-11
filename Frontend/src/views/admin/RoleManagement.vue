@@ -15,17 +15,9 @@
       </el-aside>
       
       <!-- Main Content -->
-      <el-main style="padding: 0; background: var(--el-bg-color-page); display: flex; flex-direction: column;">
+      <el-main class="role-management-main" style="padding: 0; background: var(--el-bg-color-page); display: flex; flex-direction: column;">
         <template v-if="selectedRole">
-          <div style="padding: 24px 32px; background: var(--el-bg-color); border-bottom: 1px solid var(--el-border-color-light);">
-            <RoleHeader 
-              :role="selectedRole" 
-              :userCount="roleUserCount"
-              @duplicate="duplicateRole(selectedRole)"
-            />
-          </div>
-          
-          <div style="flex: 1; padding: 24px 32px; overflow: hidden; display: flex; flex-direction: column;">
+          <div class="role-content-panel" style="flex: 1; padding: 0; overflow: hidden; display: flex; flex-direction: column;">
             <el-card shadow="never" style="flex: 1; display: flex; flex-direction: column; border: none; border-radius: 8px;" body-style="padding: 0; display: flex; flex-direction: column; height: 100%; overflow: hidden;">
               <el-tabs v-model="activeTab" style="height: 100%; display: flex; flex-direction: column;" class="content-tabs">
                 <el-tab-pane label="Permissions" name="permissions">
@@ -34,7 +26,17 @@
                     :allPermissions="permissions"
                     :saving="saving"
                     @save="saveRolePermissions"
-                  />
+                  >
+                    <template #role-header>
+                      <div class="role-header-panel">
+                        <RoleHeader
+                          :role="selectedRole"
+                          :userCount="roleUserCount"
+                          @duplicate="duplicateRole(selectedRole)"
+                        />
+                      </div>
+                    </template>
+                  </PermissionsTab>
                 </el-tab-pane>
                 <el-tab-pane :label="`Members (${roleUserCount})`" name="members">
                   <MembersTab 
@@ -64,10 +66,21 @@
     <!-- Create/Edit Dialog -->
     <el-dialog
       v-model="roleDialogVisible"
-      :title="editingRole ? 'Edit Role' : 'Create Role'"
       width="480px"
       destroy-on-close
+      append-to-body
+      class="sa-data-dialog sa-modal--form"
+      :show-close="false"
     >
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-person-badge"
+          :title="editingRole ? 'Edit Role' : 'Create Role'"
+          description="Define the role name and its responsibility"
+          close-label="Close"
+          @close="roleDialogVisible = false"
+        />
+      </template>
       <el-form :model="roleForm" :rules="roleRules" ref="roleFormRef" label-position="top">
         <el-form-item label="Role Name" prop="name">
           <el-input v-model="roleForm.name" placeholder="Enter role name" size="large" />
@@ -82,7 +95,7 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="roleDialogVisible = false">Cancel</el-button>
+        <el-button class="cancel-btn" @click="roleDialogVisible = false"><i class="bi bi-x-lg"></i> Cancel</el-button>
         <el-button type="primary" @click="submitRoleForm" :loading="saving">
           {{ editingRole ? 'Save' : 'Create' }}
         </el-button>
@@ -101,6 +114,7 @@ import RoleSidebar from '@/components/RoleManagement/RoleSidebar.vue'
 import RoleHeader from '@/components/RoleManagement/RoleHeader.vue'
 import PermissionsTab from '@/components/RoleManagement/PermissionsTab.vue'
 import MembersTab from '@/components/RoleManagement/MembersTab.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const adminUserStore = useAdminUserStore()
 const { users, roles, permissions } = storeToRefs(adminUserStore)
@@ -283,6 +297,39 @@ async function removeMember(user) {
 </script>
 
 <style scoped>
+.role-management-main {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.role-content-panel {
+  order: 1;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  box-sizing: border-box;
+  align-self: stretch;
+}
+
+.role-header-panel {
+  padding: 16px 24px;
+  background: var(--el-bg-color);
+  border-top: 1px solid var(--el-border-color-light);
+  border-bottom: 1px solid var(--el-border-color-light);
+  flex: 0 0 auto;
+}
+
+.role-content-panel :deep(.el-card),
+.role-content-panel :deep(.el-tabs),
+.role-content-panel :deep(.el-tab-pane) {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
 ::v-deep(.content-tabs > .el-tabs__header) {
   margin: 0;
   padding: 0 24px;

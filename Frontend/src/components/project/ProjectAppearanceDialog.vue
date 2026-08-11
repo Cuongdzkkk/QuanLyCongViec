@@ -1,29 +1,20 @@
 <template>
   <el-dialog
     v-model="visibleComp"
-    class="project-appearance-dialog"
+    class="project-appearance-dialog sa-data-dialog sa-modal--lg"
     width="880px"
     :show-close="false"
     append-to-body
     destroy-on-close
   >
+    <template #header>
+      <DataModalHeader icon="bi bi-palette2" title="Customize project" description="Choose a distinct avatar and cover for this project" close-label="Close" @close="handleClose" />
+    </template>
     <div class="appearance-shell">
-      <header class="appearance-header">
-        <div class="header-copy">
-          <span class="header-icon"><i class="bi bi-palette2"></i></span>
-          <div>
-            <h2>Customize project</h2>
-            <p>Choose a distinct avatar and cover for this project.</p>
-          </div>
-        </div>
-        <button type="button" class="close-button" aria-label="Close" @click="handleClose">
-          <i class="bi bi-x-lg"></i>
-        </button>
-      </header>
 
       <div class="appearance-body">
+        <DataModalSection icon="bi bi-eye" title="Live preview">
         <aside class="preview-column">
-          <p class="section-label">Live preview</p>
           <div class="project-preview" :style="{ background: previewBackground }">
             <ProjectAvatar :icon="form.icon" :background="form.background" size="xl" />
             <div class="preview-copy" :class="{ light: previewTone === 'light' }">
@@ -36,7 +27,9 @@
             <span>Avatar contrast is adjusted automatically.</span>
           </div>
         </aside>
+        </DataModalSection>
 
+        <DataModalSection icon="bi bi-sliders" title="Appearance options">
         <div class="picker-column">
           <div class="appearance-tabs" role="tablist" aria-label="Project appearance options">
             <button
@@ -69,10 +62,11 @@
             <ProjectBackgroundPicker v-model="form.background" />
           </section>
         </div>
+        </DataModalSection>
       </div>
 
       <footer class="appearance-footer">
-        <button type="button" class="secondary-action" @click="handleClose">Cancel</button>
+        <button type="button" class="secondary-action cancel-btn" @click="handleClose"><i class="bi bi-x-lg"></i>Cancel</button>
         <button type="button" class="primary-action" :disabled="saving" @click="saveAppearance">
           <i :class="saving ? 'bi bi-arrow-repeat spin' : 'bi bi-check2'"></i>
           {{ saving ? 'Saving...' : 'Save changes' }}
@@ -90,6 +84,8 @@ import { useProjectStore } from '@/store/useProjectStore'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import ProjectAvatarPicker from '@/components/project/ProjectAvatarPicker.vue'
 import ProjectBackgroundPicker from '@/components/project/ProjectBackgroundPicker.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import {
   DEFAULT_PROJECT_BACKGROUND,
   DEFAULT_PROJECT_ICON,

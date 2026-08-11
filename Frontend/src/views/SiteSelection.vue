@@ -105,19 +105,15 @@
       </div>
     </main>
 
+    <Teleport to="body">
     <!-- Create Site Modal -->
-    <div class="modal-overlay" v-if="isCreateModalOpen" @click.self="closeCreateModal">
+    <div class="modal-overlay sa-data-modal-overlay" v-if="isCreateModalOpen" @click.self="closeCreateModal">
       <div class="jira-modal">
+        <div class="jira-modal-header">
+          <DataModalHeader icon="bi bi-building-add" :title="t('siteSelection.startNewSite')" :description="t('siteSelection.pickUpShort')" @close="closeCreateModal" />
+        </div>
         <div class="jira-modal-body">
-          <h1 class="jira-modal-title text-center">
-            {{ t('siteSelection.welcomeBack') }}<template v-if="userName"> <span class="highlight-wrapper">&nbsp;{{ userName }}
-              <svg class="squiggly-line" width="100%" height="12" viewBox="0 0 100 12" preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M0 6 Q 12 0, 25 6 T 50 6 T 75 6 T 100 6" stroke="#FFAB00" stroke-width="3" stroke-linecap="round" fill="none"/>
-              </svg>
-            </span></template>
-          </h1>
-          <p class="jira-subtitle">{{ t('siteSelection.pickUpShort') }}</p>
-
+          <DataModalSection icon="bi bi-globe2" :title="t('siteSelection.yourSite')">
           <div class="form-group">
             <label class="jira-label">{{ t('siteSelection.yourSite') }}</label>
             <div class="jira-input-wrapper" :class="validationState">
@@ -137,6 +133,7 @@
               {{ errorMessage }}
             </div>
           </div>
+          </DataModalSection>
 
           <button
             class="pill-btn blue full-width jira-continue-btn"
@@ -154,18 +151,12 @@
     </div>
 
     <!-- Join / Pick Site Modal -->
-    <div class="modal-overlay" v-if="isJoinModalOpen" @click.self="closeJoinModal">
+    <div class="modal-overlay sa-data-modal-overlay" v-if="isJoinModalOpen" @click.self="closeJoinModal">
       <div class="jira-modal join-modal">
+        <div class="jira-modal-header">
+          <DataModalHeader icon="bi bi-buildings" :title="t('siteSelection.joinExisting')" :description="t('siteSelection.pickUpShort')" @close="closeJoinModal" />
+        </div>
         <div class="jira-modal-body">
-          <h1 class="jira-modal-title text-center">
-            {{ t('siteSelection.welcomeBack') }}<template v-if="userName"> <span class="highlight-wrapper">&nbsp;{{ userName }}
-              <svg class="squiggly-line" width="100%" height="12" viewBox="0 0 100 12" preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M0 6 Q 12 0, 25 6 T 50 6 T 75 6 T 100 6" stroke="#FFAB00" stroke-width="3" stroke-linecap="round" fill="none"/>
-              </svg>
-            </span></template>
-          </h1>
-          <p class="jira-subtitle">{{ t('siteSelection.pickUpShort') }}</p>
-
           <p class="logged-in-text" v-if="userEmail">
             {{ t('siteSelection.loggedInAs') }} <strong>{{ userEmail }}</strong>.
             <!-- switchAccount chưa có flow thật → disabled rõ ràng -->
@@ -176,6 +167,7 @@
             >{{ t('siteSelection.switchAccount') }}</button>
           </p>
 
+          <DataModalSection icon="bi bi-list-ul" :title="t('siteSelection.joinExisting')">
           <div class="site-list-container">
             <div v-if="siteStore.loading" class="state-box loading-box">
               <i class="fa-solid fa-circle-notch fa-spin"></i>
@@ -204,6 +196,7 @@
               </div>
             </div>
           </div>
+          </DataModalSection>
 
           <div class="jira-modal-footer">
             <span class="or-text">{{ t('siteSelection.or') }}</span><a href="#" class="join-link" @click.prevent="switchToCreateModal">{{ t('siteSelection.startNewSite') }}</a>
@@ -211,6 +204,7 @@
         </div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 
@@ -220,6 +214,8 @@ import { useRouter } from 'vue-router'
 import { useSiteStore } from '@/store/useSiteStore'
 import { getStoredUser } from '@/utils/permissions'
 import { useI18n } from '@/composables/useI18n'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 
 const router = useRouter()
 const siteStore = useSiteStore()

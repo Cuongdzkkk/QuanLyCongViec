@@ -21,7 +21,8 @@
     <!-- Chat Sidebar (Channels & Direct Messages) -->
     <div class="chat-sidebar">
 
-      <div class="sidebar-header" style="display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); margin-bottom: 14px;">
+      <div class="sidebar-header" style="display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); margin-bottom: 14px;">
+        <span class="eyebrow" style="font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: var(--color-accent); text-transform: uppercase;">TEAM COLLABORATION</span>
         <div class="flex items-center justify-between" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
           <h3 class="font-bold truncate" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0;">
             <i class="fa-solid fa-comments text-primary text-lg" style="margin-right: 4px;"></i>
@@ -560,7 +561,7 @@
     <el-dialog
       v-model="videoCallActive"
       width="800px"
-      class="video-call-dialog"
+      class="video-call-dialog sa-info-dialog"
       destroy-on-close
       append-to-body
     >
@@ -668,19 +669,22 @@
     <el-dialog
       v-model="addFriendActive"
       width="480px"
-      class="add-friend-dialog"
+      class="add-friend-dialog sa-data-dialog sa-modal--md"
       append-to-body
+      :show-close="false"
     >
       <template #header>
-        <div class="dialog-header flex items-center" style="display: flex; align-items: center; gap: 8px;">
-          <i class="fa-solid fa-user-plus text-primary text-base" style="margin-right: 8px;"></i>
-          <span class="text-sm font-semibold text-primary">Kết bạn & Mời thành viên</span>
-        </div>
+        <DataModalHeader
+          icon="bi bi-person-plus"
+          title="Kết bạn & Mời thành viên"
+          description="Chia sẻ mã kết bạn, gửi lời mời và xử lý yêu cầu"
+          @close="addFriendActive = false"
+        />
       </template>
       <div class="add-friend-content">
         <!-- My Invite Info -->
+        <DataModalSection icon="bi bi-person-badge" title="Tài khoản của bạn">
         <div class="my-invite-card mb-5">
-          <h5 class="field-label mb-3">Tài khoản của bạn</h5>
           <div class="flex flex-col gap-3">
             <div class="info-row">
               <span class="info-label">Mã kết bạn:</span>
@@ -702,10 +706,11 @@
             </div>
           </div>
         </div>
+        </DataModalSection>
 
         <!-- Send Invite Form -->
-        <div class="send-invite-section mb-6">
-          <h5 class="field-label" style="margin-bottom: 8px !important; margin-top: 20px !important;">Gửi lời mời kết bạn</h5>
+        <DataModalSection icon="bi bi-send" title="Gửi lời mời kết bạn">
+        <DataModalField>
           <div style="display: flex; gap: 10px; align-items: center; width: 100%;">
             <input
               v-model="searchFriendQuery"
@@ -714,15 +719,14 @@
               style="flex: 1; height: 38px;"
               @keyup.enter="sendFriendRequest"
             />
-            <button class="btn-save" style="height: 38px; padding: 0 16px;" @click="sendFriendRequest">Gửi yêu cầu</button>
+            <button class="btn-save" @click="sendFriendRequest">Gửi yêu cầu</button>
           </div>
-        </div>
+        </DataModalField>
+        </DataModalSection>
 
         <!-- Friend Requests List -->
+        <DataModalSection class="friend-requests-divider" icon="bi bi-inbox" :title="`Lời mời kết bạn đang chờ (${friendRequests.length})`">
         <div class="friend-requests-section">
-          <h5 class="field-label" style="margin-bottom: 10px !important; margin-top: 20px !important;">
-            Lời mời kết bạn đang chờ ({{ friendRequests.length }})
-          </h5>
           <div v-if="friendRequests.length === 0" class="text-center py-6 text-sm text-muted">
             Không có lời mời nào đang chờ
           </div>
@@ -742,6 +746,7 @@
             </div>
           </div>
         </div>
+        </DataModalSection>
       </div>
     </el-dialog>
 
@@ -749,23 +754,32 @@
     <!-- Create Server Dialog -->
     <el-dialog
       v-model="createServerActive"
-      title="Tạo Server mới"
       width="440px"
       append-to-body
+      class="sa-data-dialog sa-modal--sm"
+      :show-close="false"
     >
-      <div style="display: flex; flex-direction: column; gap: 12px;">
-        <label style="font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Tên Server</label>
-        <input 
-          v-model="newServerName" 
-          placeholder="Nhập tên server mới..." 
-          class="custom-friend-input"
-          style="width: 100%; height: 38px;"
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-hdd-network"
+          title="Tạo Server mới"
+          description="Tạo không gian chat nhóm với các kênh riêng"
+          @close="createServerActive = false"
         />
-      </div>
+      </template>
+      <DataModalSection icon="bi bi-card-text" title="Thông tin Server">
+        <DataModalField label="Tên Server">
+          <input
+            v-model="newServerName"
+            placeholder="Nhập tên server mới..."
+            class="custom-friend-input"
+          />
+        </DataModalField>
+      </DataModalSection>
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <el-button @click="createServerActive = false">Hủy</el-button>
-          <button class="btn-save" @click="createNewServer">Tạo Server</button>
+          <button class="btn-cancel-custom" @click="createServerActive = false"><i class="bi bi-x-lg"></i> Hủy</button>
+          <button class="btn-save" @click="createNewServer"><i class="fa-solid fa-plus"></i> Tạo Server</button>
         </div>
       </template>
     </el-dialog>
@@ -773,13 +787,21 @@
     <!-- Create Channel Dialog -->
     <el-dialog
       v-model="createChannelActive"
-      title="Tạo Kênh chat mới (#)"
       width="440px"
       append-to-body
+      class="sa-data-dialog sa-modal--sm"
+      :show-close="false"
     >
-      <div style="display: flex; flex-direction: column; gap: 16px;">
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <label style="font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Tên Kênh</label>
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-hash"
+          title="Tạo Kênh chat mới"
+          description="Tạo kênh thảo luận trong server hiện tại"
+          @close="createChannelActive = false"
+        />
+      </template>
+      <DataModalSection icon="bi bi-card-text" title="Thông tin kênh">
+        <DataModalField label="Tên Kênh">
           <input 
             v-model="newChannelName" 
             placeholder="Ví dụ: backend-dev" 
@@ -788,9 +810,8 @@
             maxlength="100"
             :disabled="creatingChannel"
           />
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <label style="font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Mô tả kênh</label>
+        </DataModalField>
+        <DataModalField label="Mô tả kênh">
           <input 
             v-model="newChannelDesc" 
             placeholder="Mô tả mục đích của kênh này..." 
@@ -799,8 +820,8 @@
             maxlength="500"
             :disabled="creatingChannel"
           />
-        </div>
-      </div>
+        </DataModalField>
+      </DataModalSection>
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
           <el-button :disabled="creatingChannel" @click="closeCreateChannelModal">Hủy</el-button>
@@ -818,24 +839,33 @@
     <!-- Create Voice Channel Dialog -->
     <el-dialog
       v-model="createVoiceActive"
-      title="Tạo Kênh thoại mới (Voice)"
       width="440px"
       append-to-body
+      class="sa-data-dialog sa-modal--sm"
+      :show-close="false"
     >
-      <div style="display: flex; flex-direction: column; gap: 12px;">
-        <label style="font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Tên Kênh thoại</label>
-        <input 
-          v-model="newVoiceName" 
-          placeholder="Ví dụ: Họp kỹ thuật" 
-          class="custom-friend-input"
-          style="width: 100%; height: 38px;"
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-mic"
+          title="Tạo Kênh thoại mới"
+          description="Tạo phòng thoại cho cuộc họp hoặc trao đổi nhanh"
+          @close="createVoiceActive = false"
         />
-      </div>
+      </template>
+      <DataModalSection icon="bi bi-card-text" title="Thông tin kênh thoại">
+        <DataModalField label="Tên Kênh thoại">
+          <input
+            v-model="newVoiceName"
+            placeholder="Ví dụ: Họp kỹ thuật"
+            class="custom-friend-input"
+          />
+        </DataModalField>
+      </DataModalSection>
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <button class="btn-cancel-custom" @click="createVoiceActive = false">Hủy</button>
+          <button class="btn-cancel-custom" @click="createVoiceActive = false"><i class="bi bi-x-lg"></i> Hủy</button>
           <button class="btn-primary-custom" @click="createNewVoice">
-            <i class="fa-solid fa-volume-high"></i> Tạo Kênh thoại
+            <i class="fa-solid fa-plus"></i> Tạo Kênh thoại
           </button>
         </div>
       </template>
@@ -844,12 +874,21 @@
     <!-- Invite Friends to Server Dialog -->
     <el-dialog
       v-model="inviteServerActive"
-      title="Mời bạn bè vào Server"
       width="460px"
       append-to-body
+      class="sa-data-dialog sa-modal--sm"
+      :show-close="false"
     >
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-person-plus"
+          title="Mời bạn bè vào Server"
+          description="Chọn bạn bè từ danh sách hệ thống để thêm vào server này"
+          @close="inviteServerActive = false"
+        />
+      </template>
+      <DataModalSection icon="bi bi-people" title="Danh sách bạn bè">
       <div style="display: flex; flex-direction: column; gap: 12px; max-height: 300px; overflow-y: auto;">
-        <span class="text-xs text-muted mb-2">Chọn bạn bè từ danh sách hệ thống để thêm vào Server này:</span>
         <div v-if="inviteableUsers.length === 0" class="text-center py-6 text-sm text-muted">
           Tất cả bạn bè đã ở trong Server này.
         </div>
@@ -870,10 +909,14 @@
           </div>
         </div>
       </div>
+      </DataModalSection>
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <el-button @click="inviteServerActive = false">Hủy</el-button>
-          <button class="btn-save" :disabled="inviteableUsers.filter(u => u.checked).length === 0" @click="confirmInviteToServer">Mời vào nhóm</button>
+          <button class="btn-cancel-custom" @click="inviteServerActive = false"><i class="bi bi-x-lg"></i> Hủy</button>
+          <button class="btn-save" :disabled="inviteableUsers.filter(u => u.checked).length === 0" @click="confirmInviteToServer">
+            <i class="bi bi-person-plus"></i>
+            Mời vào nhóm
+          </button>
         </div>
       </template>
     </el-dialog>
@@ -881,22 +924,29 @@
     <!-- Server Settings Dialog -->
     <el-dialog
       v-model="serverSettingsActive"
-      title="Cài đặt Server"
       width="480px"
       append-to-body
+      class="sa-data-dialog sa-modal--md"
+      :show-close="false"
     >
-      <div style="display: flex; flex-direction: column; gap: 16px;">
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <label style="font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Tên Server</label>
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-gear"
+          title="Cài đặt Server"
+          description="Cập nhật tên, màu chủ đạo và thao tác quản trị server"
+          @close="serverSettingsActive = false"
+        />
+      </template>
+      <div style="display: flex; flex-direction: column; gap: 0;">
+        <DataModalSection icon="bi bi-card-text" title="Thông tin Server">
+        <DataModalField label="Tên Server">
           <input 
             v-model="editServerName" 
             placeholder="Nhập tên server..." 
             class="custom-friend-input"
-            style="width: 100%; height: 38px;"
           />
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <label style="font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Màu chủ đạo</label>
+        </DataModalField>
+        <DataModalField label="Màu chủ đạo">
           <div style="display: flex; gap: 8px;">
             <div 
               v-for="color in colors" 
@@ -909,20 +959,23 @@
               <i class="fa-solid fa-check text-white text-xs" v-if="editServerColor === color"></i>
             </div>
           </div>
-        </div>
+        </DataModalField>
+        </DataModalSection>
 
         <!-- Danger Zone -->
-        <div style="margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;" v-if="activeServer.id !== 'srv-sprinta'">
+        <DataModalSection icon="bi bi-exclamation-triangle" title="Vùng nguy hiểm" v-if="activeServer.id !== 'srv-sprinta'">
+        <div>
           <h5 style="color: var(--color-danger); font-size: 14px; font-weight: 600; margin-bottom: 8px;">Vùng nguy hiểm</h5>
           <span style="font-size: 12px; color: var(--color-text-muted); display: block; margin-bottom: 12px;">Hành động này sẽ xóa hoàn toàn Server này cùng tất cả các kênh chat và lịch sử trò chuyện đi kèm.</span>
           <button class="btn-danger-custom" @click="deleteActiveServer">
             <i class="fa-solid fa-trash-can"></i> Xóa Server
           </button>
         </div>
+        </DataModalSection>
       </div>
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <button class="btn-cancel-custom" @click="serverSettingsActive = false">Hủy</button>
+          <button class="btn-cancel-custom" @click="serverSettingsActive = false"><i class="bi bi-x-lg"></i> Hủy</button>
           <button class="btn-primary-custom" @click="saveServerSettings">
             <i class="fa-solid fa-floppy-disk"></i> Lưu thay đổi
           </button>
@@ -933,27 +986,37 @@
     <!-- Create Server From Dm Dialog -->
     <el-dialog
       v-model="createServerFromDmActive"
-      title="Tạo nhóm Server từ cuộc trò chuyện"
       width="440px"
       append-to-body
+      class="sa-data-dialog sa-modal--sm"
+      :show-close="false"
     >
-      <div style="display: flex; flex-direction: column; gap: 12px;">
-        <label style="font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Tên nhóm Server mới</label>
-        <input 
-          v-model="dmServerName" 
-          placeholder="Nhập tên nhóm..." 
-          class="custom-friend-input"
-          style="width: 100%; height: 38px;"
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-people"
+          title="Tạo nhóm Server từ cuộc trò chuyện"
+          description="Tạo server mới với bạn và đối tác chat hiện tại"
+          @close="createServerFromDmActive = false"
         />
-        <span style="font-size: 11px; color: var(--color-text-muted);">
-          Thành viên sẽ bao gồm bạn và đối tác chat hiện tại. Hệ thống sẽ tự động chuyển sang tab Chat nhóm sau khi tạo thành công.
-        </span>
-      </div>
+      </template>
+      <DataModalSection
+        icon="bi bi-card-text"
+        title="Thông tin nhóm"
+        description="Hệ thống sẽ tự động chuyển sang tab Chat nhóm sau khi tạo thành công"
+      >
+        <DataModalField label="Tên nhóm Server mới">
+          <input
+            v-model="dmServerName"
+            placeholder="Nhập tên nhóm..."
+            class="custom-friend-input"
+          />
+        </DataModalField>
+      </DataModalSection>
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <button class="btn-cancel-custom" @click="createServerFromDmActive = false">Hủy</button>
+          <button class="btn-cancel-custom" @click="createServerFromDmActive = false"><i class="bi bi-x-lg"></i> Hủy</button>
           <button class="btn-primary-custom" @click="confirmCreateServerFromDm">
-            <i class="fa-solid fa-users"></i> Tạo nhóm
+            <i class="fa-solid fa-plus"></i> Tạo nhóm
           </button>
         </div>
       </template>
@@ -1133,6 +1196,9 @@ import { ref, onMounted, onBeforeUnmount, nextTick, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 
 import { useI18n } from '@/composables/useI18n'
 
@@ -4091,7 +4157,7 @@ onUnmounted(() => {
 
 .chat-container {
   display: flex;
-  width: min(100% - 44px, 1280px);
+  width: min(calc(100% - 36px), 1280px);
   height: calc(100vh - 132px);
   margin: 22px auto;
   background-color: var(--color-surface);

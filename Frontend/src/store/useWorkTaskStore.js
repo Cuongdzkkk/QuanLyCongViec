@@ -96,7 +96,8 @@ export const useWorkTaskStore = defineStore('workTask', {
     errorStatus: null,
     currentProjectId: null,
     fetchAbortController: null,
-    fetchRequestId: 0
+    fetchRequestId: 0,
+    taskVersions: {}
   }),
   getters: {
     backlogTasks: (state) => (state.tasks || []).filter(t => {
@@ -128,8 +129,64 @@ export const useWorkTaskStore = defineStore('workTask', {
     normalizeTaskRecord(task = {}, fallbackProjectId = null) {
       return normalizeTaskRecord(task, fallbackProjectId)
     },
+    upsertTask(task, fallbackProjectId = null) {
+      const normalized = normalizeTaskRecord(task, fallbackProjectId || this.currentProjectId)
+      if (!normalized.id) return null
+      if (this.currentProjectId && normalized.projectId && `${normalized.projectId}` !== `${this.currentProjectId}`) {
+        return null
+      }
+
+      const version = normalized.rowVersion
+      const previousVersion = this.taskVersions[normalized.id]
+      if (version && previousVersion === version) {
+        return this.tasks.find(item => item.id === normalized.id) || normalized
+      }
+
+      const index = this.tasks.findIndex(item => item.id === normalized.id)
+      if (index >= 0) {
+        this.tasks[index] = { ...this.tasks[index], ...normalized }
+      } else {
+        this.tasks.push(normalized)
+      }
+      if (version) {
+        this.taskVersions = { ...this.taskVersions, [normalized.id]: version }
+      }
+      return this.tasks.find(item => item.id === normalized.id) || normalized
+    },
+    removeTask(taskId) {
+      if (!taskId) return
+      this.tasks = this.tasks.filter(task => task.id !== taskId)
+      if (this.taskVersions[taskId]) {
+        const nextVersions = { ...this.taskVersions }
+        delete nextVersions[taskId]
+        this.taskVersions = nextVersions
+      }
+    },
+    applyRealtimeEntityEvent(event) {
+      if (!event) return null
+      const entityType = `${event.entityType || ''}`.toLowerCase()
+      if (event.projectId && this.currentProjectId && `${event.projectId}` !== `${this.currentProjectId}`) return null
+      const action = `${event.action || ''}`.toLowerCase()
+      if (entityType === 'task-label') {
+        const task = this.tasks.find(item => `${item.id}` === `${event.entityId}`)
+        const labelId = event.data?.labelId
+        if (!task || !labelId) return null
+        const currentLabelIds = Array.isArray(task.labelIds) ? task.labelIds : []
+        task.labelIds = action === 'deleted' || action === 'removed'
+          ? currentLabelIds.filter(id => `${id}` !== `${labelId}`)
+          : Array.from(new Set([...currentLabelIds, labelId]))
+        return task
+      }
+      if (entityType !== 'task') return null
+      if (action === 'deleted' || action === 'removed') {
+        this.removeTask(event.entityId)
+        return null
+      }
+      return this.upsertTask(event.data, event.projectId)
+    },
     clearTasks(projectId = null) {
       this.tasks = []
+      this.taskVersions = {}
       this.error = null
       this.errorStatus = null
       this.currentProjectId = projectId
@@ -164,8 +221,10 @@ export const useWorkTaskStore = defineStore('workTask', {
           return this.currentProjectId === projectId ? this.tasks : []
         }
 
-        this.tasks = (res.data?.data || [])
-          .map(task => normalizeTaskRecord(task, projectId))
+        this.tasks = (res.data?.data || []).map(task => normalizeTaskRecord(task, projectId))
+        this.taskVersions = Object.fromEntries(
+          this.tasks.filter(task => task.id && task.rowVersion).map(task => [task.id, task.rowVersion])
+        )
         this.fetchStarredTasks().catch(() => {})
         return this.tasks
       } catch (err) {
@@ -185,11 +244,22 @@ export const useWorkTaskStore = defineStore('workTask', {
       }
     },
     async createTask(projectId, payload) {
+      const tempId = `temp-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`
+      const optimisticTask = this.upsertTask({
+        ...payload,
+        id: tempId,
+        projectId,
+        statusName: payload.statusName || 'BACKLOG',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isOptimistic: true
+      }, projectId)
       try {
         const res = await axiosClient.post(`/projects/${projectId}/WorkTasks`, payload);
-        await this.fetchTasks(projectId);
-        return res.data?.data;
+        this.removeTask(tempId)
+        return this.upsertTask(res.data?.data, projectId);
       } catch (err) {
+        if (optimisticTask) this.removeTask(tempId)
         console.error('Error creating task:', err);
         throw err;
       }
@@ -208,13 +278,7 @@ export const useWorkTaskStore = defineStore('workTask', {
           ? await axiosClient.put(`/projects/${projectId}/WorkTasks/${taskId}`, payload)
           : await axiosClient.patch(`/projects/${projectId}/WorkTasks/${taskId}`, payload);
         const updatedTask = normalizeTaskRecord(res.data?.data || {}, projectId);
-        if (index >= 0 && updatedTask?.id) {
-          this.tasks[index] = {
-            ...this.tasks[index],
-            ...updatedTask
-          };
-        }
-        return updatedTask;
+        return this.upsertTask(updatedTask, projectId);
       } catch (err) {
         if (index >= 0 && previousTask) {
           this.tasks[index] = previousTask;
@@ -240,7 +304,8 @@ export const useWorkTaskStore = defineStore('workTask', {
         if (task && updatedTask?.id) {
           Object.assign(task, updatedTask)
         }
-        await this.fetchTasks(projectId);
+        this.upsertTask(updatedTask, projectId)
+        return updatedTask
       } catch (err) {
         if (task && previousTask) Object.assign(task, previousTask);
         this.error = err.response?.data?.message || err.message;
@@ -257,7 +322,7 @@ export const useWorkTaskStore = defineStore('workTask', {
 
       try {
         await axiosClient.put(`/projects/${projectId}/WorkTasks/${taskId}/reorder`, { sortOrder, newStatusName });
-        await this.fetchTasks(projectId);
+        return task
       } catch (err) {
         if (task && previousTask) Object.assign(task, previousTask);
         this.error = err.response?.data?.message || err.message;

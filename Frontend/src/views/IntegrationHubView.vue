@@ -1,50 +1,55 @@
 <template>
-    <main class="integration-page sp-page-shell">
-      <section class="hero-shell">
-        <div class="hero-copy">
-          <p class="kicker">Khôi · Integration Hub</p>
-          <h1>{{ t('Trung tâm tích hợp công việc', 'Work Integration Hub') }}</h1>
-          <p class="hero-subtitle">
-            {{ t(
-              'Kết nối Google Calendar thật để đưa cuộc họp, deadline và lịch sprint vào một inbox công việc có thể tạo task ngay.',
-              'Connect real Google Calendar events into a work inbox that can turn signals into tasks.'
-            ) }}
-          </p>
-        </div>
+  <section class="integration-page">
+    <header class="page-header">
+      <div class="hero-copy">
+        <span class="eyebrow">INTEGRATION HUB</span>
+        <h1>{{ t('Trung tâm tích hợp công việc', 'Work Integration Hub') }}</h1>
+        <p class="hero-subtitle">
+          {{ t(
+            'Kết nối Google Calendar thật để đưa cuộc họp, deadline và lịch sprint vào một inbox công việc có thể tạo task ngay.',
+            'Connect real Google Calendar events into a work inbox that can turn signals into tasks.'
+          ) }}
+        </p>
+      </div>
 
-        <div class="hero-action-card" :class="{ connected: connectedProviders.length > 0 }">
-          <span class="hero-status">{{ connectedProviders.length > 0 ? t('Đã kết nối', 'Connected') : t('Chưa kết nối', 'Not connected') }}</span>
-          <strong>{{ connectedProviders.length > 0 ? t('Đồng bộ tất cả ứng dụng', 'Sync all connected apps') : t('Bắt đầu bằng Google Calendar', 'Start with Google Calendar') }}</strong>
+      <div class="hero-action-card" :class="{ connected: connectedProviders.length > 0 }">
+        <div class="hero-card-main">
+          <div class="hero-card-header">
+            <span class="hero-status">{{ connectedProviders.length > 0 ? t('Đã kết nối', 'Connected') : t('Chưa kết nối', 'Not connected') }}</span>
+            <strong>{{ connectedProviders.length > 0 ? t('Đồng bộ tất cả ứng dụng', 'Sync all connected apps') : t('Bắt đầu bằng Google Calendar', 'Start with Google Calendar') }}</strong>
+          </div>
           <p>
             {{ connectedProviders.length > 0
               ? t('Một nút đồng bộ tất cả provider đã kết nối vào Unified Inbox.', 'One button syncs every connected provider into Unified Inbox.')
               : t('Kết nối một lần, sau đó Khôi có thể đồng bộ dữ liệu thật bất cứ lúc nào.', 'Connect once, then sync real data whenever needed.') }}
           </p>
-          <div class="hero-actions">
-            <button
-              v-if="connectedProviders.length === 0"
-              class="primary cta"
-              type="button"
-              :disabled="connecting"
-              @click="connectGoogleCalendar"
-            >
-              <i :class="connecting ? 'fa-solid fa-circle-notch fa-spin' : 'fa-brands fa-google'"></i>
-              {{ connecting ? t('Đang mở Google...', 'Opening Google...') : t('Kết nối Google Calendar', 'Connect Google Calendar') }}
-            </button>
-            <button
-              v-else
-              class="primary cta"
-              type="button"
-              :disabled="syncing"
-              @click="syncAllConnected"
-            >
-              <i class="fa-solid fa-rotate" :class="{ 'fa-spin': syncing }"></i>
-              {{ syncing ? t('Đang đồng bộ tất cả', 'Syncing all') : t('Đồng bộ ngay', 'Sync now') }}
-            </button>
-          </div>
         </div>
-      </section>
+        <div class="hero-actions">
+          <button
+            v-if="connectedProviders.length === 0"
+            class="primary cta"
+            type="button"
+            :disabled="connecting"
+            @click="connectGoogleCalendar"
+          >
+            <i :class="connecting ? 'fa-solid fa-circle-notch fa-spin' : 'fa-brands fa-google'"></i>
+            {{ connecting ? t('Đang mở Google...', 'Opening Google...') : t('Kết nối Google Calendar', 'Connect Google Calendar') }}
+          </button>
+          <button
+            v-else
+            class="primary cta"
+            type="button"
+            :disabled="syncing"
+            @click="syncAllConnected"
+          >
+            <i class="fa-solid fa-rotate" :class="{ 'fa-spin': syncing }"></i>
+            {{ syncing ? t('Đang đồng bộ', 'Syncing') : t('Đồng bộ ngay', 'Sync now') }}
+          </button>
+        </div>
+      </div>
+    </header>
 
+    <main class="page-content">
       <section v-if="notice" class="notice" :class="notice.type">
         <i :class="notice.type === 'error' ? 'fa-solid fa-triangle-exclamation' : 'fa-solid fa-circle-info'"></i>
         <span>{{ notice.message }}</span>
@@ -507,11 +512,13 @@
           </div>
         </Transition>
       </Teleport>
-  </main>
+    </main>
+  </section>
 </template>
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { signalRService } from '@/api/signalrService'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
@@ -525,6 +532,12 @@ const i18nStore = useI18nStore()
 const providers = ref([])
 const syncHistory = ref([])
 const inboxItems = ref([])
+let inboxRealtimeTimer = null
+const handleInboxRealtime = event => {
+  if (`${event?.entityType || ''}`.toLowerCase() !== 'inboxitem') return
+  if (inboxRealtimeTimer) clearTimeout(inboxRealtimeTimer)
+  inboxRealtimeTimer = setTimeout(loadInbox, 50)
+}
 const activeTab = ref('all')
 const selectedItemId = ref('')
 const loadingIntegrations = ref(false)
@@ -1137,6 +1150,7 @@ const formatFullDate = (value) => {
 }
 
 onMounted(async () => {
+  signalRService.on('EntityChanged', handleInboxRealtime)
   window.addEventListener('keydown', handleDetailKeydown)
   window.addEventListener('global-utility-drawer-opened', closeDetailForOtherUtility)
   await Promise.all([loadIntegrations(), loadInbox(), loadCreateTaskOptions()])
@@ -1144,6 +1158,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  signalRService.off('EntityChanged', handleInboxRealtime)
+  if (inboxRealtimeTimer) clearTimeout(inboxRealtimeTimer)
   window.removeEventListener('keydown', handleDetailKeydown)
   window.removeEventListener('global-utility-drawer-opened', closeDetailForOtherUtility)
 })
@@ -1183,57 +1199,42 @@ onUnmounted(() => {
 }
 
 .integration-page {
+  --sa-page-x: 18px;
   width: 100%;
   min-height: 100%;
-  padding: 16px 22px 28px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-bg) 72%, var(--color-surface)), var(--color-bg));
+  padding: 0;
+  margin: 0;
+  background: var(--color-bg);
   color: var(--color-text-primary);
 }
 
-.hero-shell,
-.hero-action-card,
-.stats-grid,
-.workspace-grid,
-.panel-head,
-.provider-card,
-.provider-top,
-.provider-meta,
-.provider-actions,
-.tabs,
-.inbox-item,
-.item-title,
-.item-tags,
-.detail-head,
-.history-row,
-.notice,
-.hero-actions,
-.section-title,
-.bulk-toolbar,
-.bulk-select-all {
+.page-header {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px var(--sa-page-x, 24px) 18px;
+  background: var(--color-surface);
+  border-bottom: none !important;
+  margin-bottom: 0 !important;
 }
 
-.hero-shell {
-  align-items: stretch;
-  justify-content: space-between;
-  gap: 16px;
-  max-width: 1420px;
-  margin: 0 auto 10px;
+.page-content {
+  padding: 18px var(--sa-page-x, 24px) 28px;
 }
 
 .hero-copy {
   flex: 1;
   min-width: 0;
-  padding: 2px 0;
 }
 
-.kicker {
-  margin: 0 0 7px;
+.eyebrow {
   color: var(--color-accent);
-  font-size: 12px;
-  font-weight: 900;
+  font-size: 10px;
+  font-weight: 800;
   text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: block;
 }
 
 h1,
@@ -1244,58 +1245,90 @@ p {
 }
 
 .hero-copy h1 {
-  margin-bottom: 6px;
-  font-size: clamp(26px, 2.25vw, 36px);
-  line-height: 1.06;
-  text-wrap: balance;
+  margin: 3px 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: 0;
+  line-height: 1.2;
 }
 
 .hero-subtitle {
   max-width: 780px;
-  margin-bottom: 0;
-  color: var(--color-text-secondary);
-  font-size: 14px;
-  line-height: 1.45;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .hero-action-card {
-  width: min(330px, 100%);
-  flex-direction: column;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 14px;
+  gap: 16px;
+  padding: 10px 14px;
   border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border));
-  border-radius: 18px;
+  border-radius: 12px;
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)), var(--color-surface)),
+    linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 8%, var(--color-surface)), var(--color-surface)),
     var(--color-surface);
-  box-shadow:
-    0 22px 60px color-mix(in srgb, var(--color-accent) 16%, transparent),
-    inset 0 1px 0 rgba(255,255,255,0.16);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
 .hero-action-card.connected {
   border-color: color-mix(in srgb, var(--color-success) 28%, var(--color-border));
 }
 
-.hero-action-card strong {
-  font-size: 16px;
+.hero-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 
-.hero-action-card p {
-  margin-bottom: 4px;
-  color: var(--color-text-secondary);
-  line-height: 1.5;
+.hero-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hero-card-header strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.hero-card-main p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 340px;
 }
 
 .hero-status {
-  width: max-content;
-  padding: 5px 9px;
-  border-radius: 8px;
+  padding: 2px 7px;
+  border-radius: 5px;
   background: var(--sa-primary-soft);
   color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.hero-actions .cta {
+  min-height: 32px;
+  padding: 0 12px;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
+  border-radius: 7px;
+  white-space: nowrap;
 }
 
 .primary,

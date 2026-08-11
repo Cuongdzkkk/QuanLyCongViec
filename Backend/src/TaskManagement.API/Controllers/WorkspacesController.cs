@@ -1,11 +1,14 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 using TaskManagement.Application.Common;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Domain.Entities;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 
 namespace TaskManagement.API.Controllers
 {
@@ -16,13 +19,16 @@ namespace TaskManagement.API.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IResourceAuthorizationService _authorizationService;
+        private readonly IHubContext<KanbanHub>? _hub;
 
         public WorkspacesController(
             ApplicationDbContext context,
-            IResourceAuthorizationService authorizationService)
+            IResourceAuthorizationService authorizationService,
+            IHubContext<KanbanHub>? hub = null)
         {
             _context = context;
             _authorizationService = authorizationService;
+            _hub = hub;
         }
 
         /// <summary>
@@ -190,6 +196,15 @@ namespace TaskManagement.API.Controllers
             }
 
             await _context.SaveChangesAsync();
+            if (_hub != null)
+            {
+                await _hub.PublishWorkspaceEntityChangedAsync(
+                    workspaceId,
+                    "WorkspaceMember",
+                    "created",
+                    targetUser.Id,
+                    new { userId = targetUser.Id, targetUser.FullName, targetUser.Email, role = request.Role ?? "MEMBER" });
+            }
 
             return Ok(new { statusCode = 200, message = "Thêm thành viên thành công." });
         }
@@ -264,6 +279,15 @@ namespace TaskManagement.API.Controllers
 
             workspace.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            if (_hub != null)
+            {
+                await _hub.PublishWorkspaceEntityChangedAsync(
+                    workspaceId,
+                    "Workspace",
+                    "updated",
+                    workspace.Id,
+                    new { workspace.Id, workspace.Name, workspace.Slug, workspace.Logo, workspace.Timezone });
+            }
 
             return Ok(new { statusCode = 200, message = "Cập nhật thành công.", data = workspace });
         }
@@ -293,6 +317,14 @@ namespace TaskManagement.API.Controllers
             workspace.IsDeleted = true;
             workspace.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            if (_hub != null)
+            {
+                await _hub.PublishWorkspaceEntityChangedAsync(
+                    workspaceId,
+                    "Workspace",
+                    "deleted",
+                    workspace.Id);
+            }
 
             return Ok(new { statusCode = 200, message = "Xóa workspace thành công." });
         }
@@ -328,6 +360,15 @@ namespace TaskManagement.API.Controllers
 
             targetMember.WorkspaceRole = request.Role.ToUpper();
             await _context.SaveChangesAsync();
+            if (_hub != null)
+            {
+                await _hub.PublishWorkspaceEntityChangedAsync(
+                    workspaceId,
+                    "WorkspaceMember",
+                    "updated",
+                    memberId,
+                    new { userId = memberId, role = targetMember.WorkspaceRole });
+            }
 
             return Ok(new { statusCode = 200, message = "Cập nhật vai trò thành công." });
         }
@@ -371,6 +412,15 @@ namespace TaskManagement.API.Controllers
 
             targetMember.IsActive = false;
             await _context.SaveChangesAsync();
+            if (_hub != null)
+            {
+                await _hub.PublishWorkspaceEntityChangedAsync(
+                    workspaceId,
+                    "WorkspaceMember",
+                    "deleted",
+                    memberId,
+                    new { userId = memberId });
+            }
 
             return Ok(new { statusCode = 200, message = "Xóa thành viên thành công." });
         }

@@ -1,11 +1,14 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.API.Filters;
 using TaskManagement.Application.DTOs.Common;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 using System.Security.Claims;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 
 namespace TaskManagement.API.Controllers
 {
@@ -16,10 +19,12 @@ namespace TaskManagement.API.Controllers
     public class ProjectViewsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IHubContext<KanbanHub> _hub;
 
-        public ProjectViewsController(ApplicationDbContext context)
+        public ProjectViewsController(ApplicationDbContext context, IHubContext<KanbanHub> hub)
         {
             _context = context;
+            _hub = hub;
         }
 
         [HttpGet]
@@ -96,6 +101,7 @@ namespace TaskManagement.API.Controllers
 
             _context.ProjectViews.Add(view);
             await _context.SaveChangesAsync();
+            await _hub.PublishEntityChangedAsync(projectId, "project-view", "upsert", view.Id, view);
 
             return Ok(new { statusCode = 201, data = view, message = "View created" });
         }
@@ -108,6 +114,7 @@ namespace TaskManagement.API.Controllers
 
             view.IsFavorite = !view.IsFavorite;
             await _context.SaveChangesAsync();
+            await _hub.PublishEntityChangedAsync(projectId, "project-view", "upsert", view.Id, view);
             return Ok(new { statusCode = 200, data = new { isFavorite = view.IsFavorite }, message = "Favorite toggled" });
         }
 
@@ -134,6 +141,7 @@ namespace TaskManagement.API.Controllers
 
             view.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            await _hub.PublishEntityChangedAsync(projectId, "project-view", "upsert", view.Id, view);
 
             return Ok(new
             {
@@ -160,6 +168,7 @@ namespace TaskManagement.API.Controllers
 
             _context.ProjectViews.Remove(view);
             await _context.SaveChangesAsync();
+            await _hub.PublishEntityChangedAsync(projectId, "project-view", "deleted", id);
 
             return Ok(new { statusCode = 200, message = "View deleted" });
         }

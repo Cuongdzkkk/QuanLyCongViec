@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -9,6 +10,8 @@ using System.Threading.Tasks;
 using TaskManagement.API.Filters;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 
 namespace TaskManagement.API.Controllers
 {
@@ -17,10 +20,12 @@ namespace TaskManagement.API.Controllers
     public class CustomFieldsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IHubContext<KanbanHub> _hub;
 
-        public CustomFieldsController(ApplicationDbContext context)
+        public CustomFieldsController(ApplicationDbContext context, IHubContext<KanbanHub> hub)
         {
             _context = context;
+            _hub = hub;
         }
 
         // =========================================================================
@@ -125,6 +130,7 @@ namespace TaskManagement.API.Controllers
 
                 _context.CustomFieldDefinitions.Add(field);
                 await _context.SaveChangesAsync();
+                await _hub.PublishEntityChangedAsync(projectId, "custom-field", "upsert", field.Id, field);
 
                 return CreatedAtAction(nameof(GetProjectCustomFields), new { projectId }, new
                 {
@@ -184,6 +190,7 @@ namespace TaskManagement.API.Controllers
                 field.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
+                await _hub.PublishEntityChangedAsync(projectId, "custom-field", "upsert", field.Id, field);
 
                 return Ok(new { statusCode = 200, message = "Đã cập nhật trường tùy chỉnh.", data = field });
             }
@@ -213,6 +220,7 @@ namespace TaskManagement.API.Controllers
                 field.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
+                await _hub.PublishEntityChangedAsync(projectId, "custom-field", "deleted", fieldId);
 
                 return Ok(new { statusCode = 200, message = "Đã xóa trường tùy chỉnh thành công (dữ liệu cũ được bảo lưu)." });
             }
@@ -391,6 +399,12 @@ namespace TaskManagement.API.Controllers
                 }
 
                 await _context.SaveChangesAsync();
+                await _hub.PublishEntityChangedAsync(
+                    task.ProjectId,
+                    "task-custom-field-values",
+                    "upsert",
+                    taskId,
+                    new { taskId, values = request.Values });
                 return Ok(new { statusCode = 200, message = "Đã lưu thông tin bổ sung thành công." });
             }
             catch (Exception ex)

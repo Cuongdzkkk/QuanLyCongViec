@@ -1,5 +1,5 @@
 <template>
-  <div style="position: relative; height: 100%; display: flex; flex-direction: column;">
+  <div class="permissions-tab-root" style="position: relative; height: 100%; display: flex; flex-direction: column;">
     
     <!-- PERMISSION SUMMARY -->
     <div style="padding: 24px 24px 16px 24px; background: var(--el-fill-color-light); border-bottom: 1px solid var(--el-border-color-light);">
@@ -12,7 +12,7 @@
         </el-col>
         <el-col :span="6">
           <el-card shadow="never" class="summary-card">
-            <div class="summary-title">Total Permissions</div>
+            <div class="summary-title">Total Functions</div>
             <div class="summary-value">{{ allPermissions.length }}</div>
           </el-card>
         </el-col>
@@ -33,68 +33,110 @@
       </el-row>
     </div>
 
-    <!-- FILTER TOOLBAR -->
-    <div style="padding: 16px 24px; border-bottom: 1px solid var(--el-border-color-light); display: flex; flex-direction: column; gap: 16px;">
-      <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; align-items: center;">
-        <el-space :size="16" wrap style="flex: 1;">
+    <div class="permissions-header-workspace">
+      <div class="permissions-role-column">
+        <slot name="role-header" />
+      </div>
+
+      <!-- FILTER TOOLBAR -->
+      <div class="permissions-toolbar">
+        <div class="permissions-toolbar-search-row">
           <el-input
+            class="permission-search-input"
             v-model="filters.search"
-            placeholder="Search action, module, desc..."
+            placeholder="Search permissions..."
             prefix-icon="Search"
             clearable
-            style="width: 260px;"
           />
-          <el-select v-model="filters.status" placeholder="Status" style="width: 140px;">
-            <el-option label="All Status" value="all" />
-            <el-option label="Enabled Only" value="enabled" />
-            <el-option label="Disabled Only" value="disabled" />
-          </el-select>
-          <el-select v-model="filters.modules" placeholder="Modules" clearable multiple collapse-tags collapse-tags-tooltip style="width: 200px;">
-            <el-option v-for="m in availableModules" :key="m" :label="formatModuleName(m)" :value="m" />
-          </el-select>
-          <el-select v-model="filters.risk" placeholder="Risk Level" clearable style="width: 140px;">
-            <el-option label="Critical Risk" :value="4" />
-            <el-option label="High Risk" :value="3" />
-            <el-option label="Medium Risk" :value="2" />
-            <el-option label="Low Risk" :value="1" />
-          </el-select>
-          <el-select v-model="filters.action" placeholder="Action Type" clearable style="width: 140px;">
-            <el-option v-for="a in allDistinctActions" :key="a" :label="formatActionNameStr(a)" :value="a" />
-          </el-select>
-        </el-space>
+          <el-popover
+            placement="bottom-end"
+            trigger="click"
+            :width="360"
+            popper-class="permission-filter-popover"
+          >
+            <template #reference>
+              <el-button class="permission-filter-trigger" :type="activeFilterCount > 0 ? 'primary' : 'default'" plain>
+                <el-icon><Filter /></el-icon>
+                <span>Filter</span>
+                <el-badge v-if="activeFilterCount > 0" :value="activeFilterCount" />
+              </el-button>
+            </template>
 
-        <el-space :size="16">
+            <div class="permission-filter-panel">
+              <div class="permission-filter-panel-header">
+                <div>
+                  <strong>Filter permissions</strong>
+                  <span>Refine the functions shown below</span>
+                </div>
+                <el-button v-if="activeFilterCount > 0" link type="primary" @click="clearPermissionFilters">Clear</el-button>
+              </div>
+
+              <div class="permission-filter-grid">
+                <label class="permission-filter-field">
+                  <span>Status</span>
+                  <el-select v-model="filters.status" placeholder="Status">
+                    <el-option label="All Status" value="all" />
+                    <el-option label="Enabled Only" value="enabled" />
+                    <el-option label="Disabled Only" value="disabled" />
+                  </el-select>
+                </label>
+
+                <label class="permission-filter-field permission-filter-field-wide">
+                  <span>Modules</span>
+                  <el-select v-model="filters.modules" placeholder="All modules" clearable multiple collapse-tags collapse-tags-tooltip>
+                    <el-option v-for="m in availableModules" :key="m" :label="getPermissionModuleLabel(m)" :value="m" />
+                  </el-select>
+                </label>
+
+                <label class="permission-filter-field">
+                  <span>Risk level</span>
+                  <el-select v-model="filters.risk" placeholder="All risks" clearable>
+                    <el-option label="Critical Risk" :value="4" />
+                    <el-option label="High Risk" :value="3" />
+                    <el-option label="Medium Risk" :value="2" />
+                    <el-option label="Low Risk" :value="1" />
+                  </el-select>
+                </label>
+
+                <label class="permission-filter-field">
+                  <span>Action type</span>
+                  <el-select v-model="filters.action" placeholder="All actions" clearable>
+                    <el-option v-for="a in allDistinctActions" :key="a" :label="getPermissionActionLabel(a)" :value="a" />
+                  </el-select>
+                </label>
+              </div>
+            </div>
+          </el-popover>
+        </div>
+
+        <div class="permissions-toolbar-main-row">
+          <div class="permissions-toolbar-controls">
+            <div class="permissions-toolbar-actions">
           <el-button type="primary" @click="editorVisible = true">
-            <el-icon style="margin-right: 6px;"><FullScreen /></el-icon> Open Permission Editor
+            <el-icon><FullScreen /></el-icon> Open Permission Editor
           </el-button>
-          
+
           <el-radio-group v-model="viewMode" size="small">
             <el-radio-button label="tree">
-              <el-icon style="vertical-align: middle; margin-right: 4px;"><DataBoard /></el-icon> Tree
+              <el-icon><DataBoard /></el-icon> Tree
             </el-radio-button>
             <el-radio-button label="matrix">
-              <el-icon style="vertical-align: middle; margin-right: 4px;"><Grid /></el-icon> Matrix
+              <el-icon><Grid /></el-icon> Matrix
             </el-radio-button>
           </el-radio-group>
-        </el-space>
-      </div>
-      
-      <!-- BULK ACTIONS -->
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <el-space :size="12">
-          <el-button size="small" @click="bulkEnableFiltered" type="primary" plain :disabled="role.isProtected || filteredTotalCount === 0">Enable Filtered</el-button>
-          <el-button size="small" @click="bulkDisableFiltered" type="danger" plain :disabled="role.isProtected || filteredTotalCount === 0">Disable Filtered</el-button>
-        </el-space>
-        
-        <el-space :size="12" v-if="viewMode === 'tree'">
-          <el-button size="small" @click="expandAll" text bg>Expand All</el-button>
-          <el-button size="small" @click="collapseAll" text bg>Collapse All</el-button>
-        </el-space>
+            </div>
+
+            <div class="permissions-toolbar-bulk">
+              <el-button size="small" @click="bulkEnableFiltered" type="primary" plain :disabled="role.isProtected || filteredTotalCount === 0">Enable Filtered</el-button>
+              <el-button size="small" @click="bulkDisableFiltered" type="danger" plain :disabled="role.isProtected || filteredTotalCount === 0">Disable Filtered</el-button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- MAIN CONTENT AREA -->
-    <el-scrollbar style="flex: 1;" ref="scrollbarRef">
+    <el-scrollbar class="permissions-content-scroll" style="flex: 1;" ref="scrollbarRef">
       <div style="padding: 24px; max-width: 100%; padding-bottom: 100px;">
         <el-alert
           v-if="role.isProtected"
@@ -108,7 +150,7 @@
         
         <template v-if="hasResults">
           <!-- TREE VIEW (Accordion) -->
-          <div v-if="viewMode === 'tree'" style="max-width: 900px;">
+          <div v-if="viewMode === 'tree'" class="permissions-tree-content" style="max-width: 900px;">
             <el-collapse v-model="activeModules" style="border-top: none; border-bottom: none;">
               <el-collapse-item 
                 v-for="(perms, moduleName) in filteredGroupedPermissions" 
@@ -118,7 +160,7 @@
               >
                 <template #title>
                   <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                    <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="permissions-module-title" style="display: flex; align-items: center; gap: 12px;">
                       <el-checkbox 
                         v-if="perms.length > 0"
                         :model-value="getModuleCheckState(moduleName)"
@@ -128,10 +170,10 @@
                         @click.stop
                       />
                       <el-text style="font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--el-text-color-primary);">
-                        {{ formatModuleName(moduleName) }}
+                        {{ getPermissionModuleLabel(moduleName) }}
                       </el-text>
                     </div>
-                    <el-text v-if="perms.length > 0" type="info" size="small">{{ getSelectedCount(moduleName) }} / {{ perms.length }} Selected</el-text>
+                    <el-text v-if="perms.length > 0" type="info" size="small">{{ perms.length }} functions - {{ getSelectedCount(moduleName) }} selected</el-text>
                     <el-tag v-else type="warning" size="small" effect="plain">No permission definitions available yet</el-tag>
                   </div>
                 </template>
@@ -142,9 +184,9 @@
                       <el-tooltip placement="top" effect="dark" :hide-after="50" :open-delay="400">
                         <template #content>
                           <div style="max-width: 260px; font-size: 13px; line-height: 1.5;">
-                            <div style="font-weight: bold; margin-bottom: 4px; font-size: 14px;">{{ formatActionName(perm.code) }}</div>
+                            <div style="font-weight: bold; margin-bottom: 4px; font-size: 14px;">{{ getPermissionActionLabel(perm) }}</div>
                             <div style="margin-bottom: 8px; color: #a3a6ad;">{{ perm.code }}</div>
-                            <div v-if="perm.description" style="margin-bottom: 8px;">{{ perm.description }}</div>
+                            <div style="margin-bottom: 8px;">{{ getPermissionDescription(perm) }}</div>
                             <div style="margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
                               <span style="font-weight: 600;">Risk:</span> 
                               <el-tag size="small" :type="getRiskTagType(perm.riskLevel)">{{ getRiskLevelStr(perm.riskLevel) }}</el-tag>
@@ -162,8 +204,8 @@
                           style="width: 100%; display: flex; align-items: flex-start; height: auto;"
                         >
                           <el-text style="white-space: normal; line-height: 1.4; display: inline-block;">
-                            {{ formatActionName(perm.code) }}
-                            <div style="font-size: 11px; color: var(--el-text-color-secondary);">{{ perm.code }}</div>
+                            {{ getPermissionActionLabel(perm) }}
+                            <div style="font-size: 11px; color: var(--el-text-color-secondary);">{{ getPermissionDescription(perm) }}</div>
                           </el-text>
                         </el-checkbox>
                       </el-tooltip>
@@ -183,11 +225,11 @@
               :header-cell-style="{ background: 'var(--el-fill-color-light)', color: 'var(--el-text-color-primary)', fontWeight: '600' }"
               border
             >
-              <el-table-column label="Module" min-width="200">
+              <el-table-column label="Module" min-width="200" align="center">
                 <template #default="{ row }">
-                  <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <el-text style="font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--el-text-color-primary);">
-                      {{ formatModuleName(row.moduleName) }}
+                  <div class="matrix-module-cell">
+                    <el-text style="font-weight: 600; color: var(--el-text-color-primary);">
+                      {{ getPermissionModuleLabel(row.moduleName) }}
                     </el-text>
                     <el-checkbox
                       :model-value="getModuleCheckState(row.moduleName)"
@@ -199,15 +241,15 @@
                 </template>
               </el-table-column>
               
-              <el-table-column label="Action" min-width="250">
+              <el-table-column label="Function" min-width="250">
                 <template #default="{ row }">
                   <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                     <el-tooltip placement="top" effect="dark" :hide-after="50" :open-delay="400">
                       <template #content>
                         <div style="max-width: 260px; font-size: 13px; line-height: 1.5;">
-                          <div style="font-weight: bold; margin-bottom: 4px; font-size: 14px;">{{ formatActionName(row.perm.code) }}</div>
+                          <div style="font-weight: bold; margin-bottom: 4px; font-size: 14px;">{{ getPermissionActionLabel(row.perm) }}</div>
                           <div style="margin-bottom: 8px; color: #a3a6ad;">{{ row.perm.code }}</div>
-                          <div v-if="row.perm.description" style="margin-bottom: 8px;">{{ row.perm.description }}</div>
+                          <div style="margin-bottom: 8px;">{{ getPermissionDescription(row.perm) }}</div>
                           <div style="margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
                             <span style="font-weight: 600;">Risk:</span> 
                             <el-tag size="small" :type="getRiskTagType(row.perm.riskLevel)">{{ getRiskLevelStr(row.perm.riskLevel) }}</el-tag>
@@ -219,8 +261,8 @@
                         </div>
                       </template>
                       <el-text style="display: flex; flex-direction: column; align-items: flex-start; line-height: 1.4;">
-                        <span>{{ formatActionName(row.perm.code) }}</span>
-                        <span style="font-size: 11px; color: var(--el-text-color-secondary);">{{ row.perm.code }}</span>
+                        <span>{{ getPermissionActionLabel(row.perm) }}</span>
+                        <span style="font-size: 11px; color: var(--el-text-color-secondary);">{{ getPermissionDescription(row.perm) }}</span>
                       </el-text>
                     </el-tooltip>
                     <el-tag v-if="row.perm.riskLevel >= 3" size="small" :type="getRiskTagType(row.perm.riskLevel)" effect="plain">
@@ -272,8 +314,13 @@
 
 <script setup>
 import { ref, computed, watch, reactive } from 'vue'
-import { Search, Grid, DataBoard, FullScreen } from '@element-plus/icons-vue'
+import { Search, Grid, DataBoard, FullScreen, Filter } from '@element-plus/icons-vue'
 import PermissionEditorDialog from './PermissionEditorDialog.vue'
+import {
+  getPermissionActionLabel,
+  getPermissionDescription,
+  getPermissionModuleLabel
+} from '@/utils/permissionPresentation'
 
 const props = defineProps({
   role: { type: Object, required: true },
@@ -312,11 +359,12 @@ const groupedPermissions = computed(() => {
   const groups = {}
   
   props.allPermissions.forEach(p => {
-    if (p.riskLevel === undefined) p.riskLevel = inferRiskLevel(p.code)
-    
-    const mod = p.module || 'general'
+    const permission = p.riskLevel === undefined
+      ? { ...p, riskLevel: inferRiskLevel(p.code) }
+      : p
+    const mod = permission.module || 'general'
     if (!groups[mod]) groups[mod] = []
-    groups[mod].push(p)
+    groups[mod].push(permission)
   })
   return groups
 })
@@ -354,9 +402,10 @@ const filteredGroupedPermissions = computed(() => {
     
     if (q) {
       matched = matched.filter(p => 
-        p.code.toLowerCase().includes(q) || 
-        mod.toLowerCase().includes(q) ||
-        (p.description && p.description.toLowerCase().includes(q))
+      p.code.toLowerCase().includes(q) ||
+      getPermissionModuleLabel(mod).toLowerCase().includes(q) ||
+      getPermissionActionLabel(p).toLowerCase().includes(q) ||
+      getPermissionDescription(p).toLowerCase().includes(q)
       )
     }
 
@@ -373,6 +422,15 @@ const filteredTotalCount = computed(() => {
   let count = 0
   Object.values(filteredGroupedPermissions.value).forEach(arr => count += arr.length)
   return count
+})
+
+const activeFilterCount = computed(() => {
+  return [
+    filters.status !== 'all',
+    filters.modules.length > 0,
+    filters.risk !== '',
+    filters.action !== ''
+  ].filter(Boolean).length
 })
 
 const highRiskCount = computed(() => {
@@ -443,12 +501,11 @@ function togglePermission(permId, val) {
 }
 
 // Bulk Actions
-function expandAll() {
-  activeModules.value = Object.keys(filteredGroupedPermissions.value)
-}
-
-function collapseAll() {
-  activeModules.value = []
+function clearPermissionFilters() {
+  filters.status = 'all'
+  filters.modules = []
+  filters.risk = ''
+  filters.action = ''
 }
 
 function bulkEnableFiltered() {
@@ -471,24 +528,9 @@ function bulkDisableFiltered() {
 }
 
 // Formatting
-function formatModuleName(name) {
-  if (!name) return 'General'
-  return name.split('.').map(part => {
-    return part.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-  }).join(' - ')
-}
-
 function getRawActionStr(code) {
   const parts = code.split('.')
   return parts[parts.length - 1]
-}
-
-function formatActionNameStr(actionStr) {
-  return actionStr.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-}
-
-function formatActionName(code) {
-  return formatActionNameStr(getRawActionStr(code))
 }
 
 function formatDependencies(depJson) {
@@ -548,15 +590,14 @@ const matrixTableData = computed(() => {
   return data
 })
 
-const matrixSpanMethod = ({ row, column, rowIndex, columnIndex }) => {
+const matrixSpanMethod = ({ row, columnIndex }) => {
   if (columnIndex === 0) {
-    if (row.isFirst) {
-      return { rowspan: row.rowspan, colspan: 1 }
-    } else {
-      return { rowspan: 0, colspan: 0 }
-    }
+    return row.isFirst
+      ? { rowspan: row.rowspan, colspan: 1 }
+      : { rowspan: 0, colspan: 0 }
   }
 }
+
 </script>
 
 <style scoped>
@@ -564,6 +605,253 @@ const matrixSpanMethod = ({ row, column, rowIndex, columnIndex }) => {
   border-radius: 8px;
   background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-light);
+}
+.permissions-tab-root,
+.permissions-content-scroll {
+  min-width: 0;
+  min-height: 0;
+}
+
+.permissions-tab-root {
+  flex: 1 1 auto;
+}
+
+.permissions-header-workspace {
+  display: grid;
+  grid-template-columns: minmax(360px, 42%) minmax(0, 1fr);
+  align-items: stretch;
+  min-width: 0;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.permissions-role-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.permissions-role-column :deep(.role-header-panel) {
+  border-bottom: none;
+}
+
+.permissions-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 24px 16px !important;
+}
+
+.permissions-toolbar-search-row,
+.permissions-toolbar-main-row,
+.permissions-toolbar-controls,
+.permissions-toolbar-actions {
+  display: flex;
+  align-items: center;
+}
+
+.permissions-toolbar-search-row {
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.permissions-toolbar-main-row {
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  align-items: flex-start;
+}
+
+.permission-search-input {
+  width: min(260px, calc(100% - 82px));
+  flex: 0 1 260px;
+  min-width: 0;
+}
+
+.permission-search-input :deep(.el-input__wrapper) {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 9px;
+  background: var(--el-bg-color);
+  box-shadow: 0 0 0 1px var(--el-border-color) inset;
+  transition: box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.permission-search-input :deep(.el-input__wrapper:hover),
+.permission-search-input :deep(.el-input__wrapper.is-focus) {
+  background: var(--el-bg-color-overlay);
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset, 0 0 0 3px color-mix(in srgb, var(--el-color-primary) 12%, transparent);
+}
+
+.permission-search-input :deep(.el-input__inner) {
+  font-size: 13.5px;
+}
+
+.permission-search-input :deep(.el-input__prefix) {
+  color: var(--el-text-color-secondary);
+}
+
+.permissions-toolbar-controls {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.permissions-toolbar-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.permissions-toolbar-actions :deep(.el-button),
+.permission-filter-trigger {
+  min-height: 36px;
+  border-radius: 9px;
+}
+
+.permission-filter-trigger :deep(.el-badge) {
+  margin-left: 2px;
+}
+
+.permissions-toolbar-actions :deep(.el-radio-group) {
+  height: 36px;
+}
+
+.permissions-toolbar-actions :deep(.el-radio-button__inner) {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.permissions-toolbar-bulk {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.permissions-filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.permission-filter-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.permission-filter-panel-header strong,
+.permission-filter-panel-header span {
+  display: block;
+}
+
+.permission-filter-panel-header strong {
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+}
+
+.permission-filter-panel-header span {
+  margin-top: 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.permission-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.permission-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.permission-filter-field-wide {
+  grid-column: 1 / -1;
+}
+
+.permission-filter-field > span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.permission-filter-field :deep(.el-select) {
+  width: 100%;
+}
+
+.permissions-content-scroll {
+  flex: 1 1 auto !important;
+  overflow: hidden;
+}
+
+.permissions-content-scroll :deep(.el-scrollbar__wrap) {
+  overflow-x: auto;
+}
+
+.permissions-tree-content {
+  width: 100%;
+  margin: 0;
+}
+
+.permissions-module-title {
+  margin-left: 24px;
+}
+
+:global(.permission-filter-popover) {
+  padding: 16px !important;
+  border-radius: 10px !important;
+}
+
+@media (max-width: 980px) {
+  .permissions-header-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .permissions-toolbar-search-row {
+    justify-content: flex-start;
+  }
+
+  .permission-search-input {
+    width: min(260px, calc(100% - 82px));
+  }
+
+  .permissions-toolbar-main-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .permissions-toolbar-controls {
+    align-items: flex-start;
+  }
+
+  .permissions-toolbar-actions {
+    justify-content: flex-start;
+  }
+}
+
+.matrix-module-cell {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 .summary-title {
   font-size: 13px;

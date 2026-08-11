@@ -538,7 +538,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { useGoalStore } from '@/store/useGoalStore'
@@ -552,9 +552,15 @@ import CommentSection from '@/components/common/CommentSection.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { AppUserChip } from '@/components/common/Foundation'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import { signalRService } from '@/api/signalrService'
 
 const route = useRoute()
 const projectStore = useHomeProjectStore()
+const handleProjectLinkRealtime = event => {
+  if (`${event?.entityType || ''}`.toLowerCase() !== 'projectlink') return
+  if (event.projectId && `${event.projectId}` !== `${route.params.id}`) return
+  loadProjectLinks()
+}
 const goalStore = useGoalStore()
 const starredStore = useStarredStore()
 
@@ -866,8 +872,10 @@ const recordRecentView = async () => {
 }
 
 onMounted(async () => {
+  signalRService.on('EntityChanged', handleProjectLinkRealtime)
   window.addEventListener('click', closePopovers)
   if (route.params.id) {
+    await projectStore.initializeRealtime(route.params.id)
     await Promise.all([
       projectStore.fetchProjectDetail(route.params.id),
       projectStore.fetchProjects(),
@@ -876,6 +884,11 @@ onMounted(async () => {
     await loadProjectLinks()
     await recordRecentView()
   }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('click', closePopovers)
+  signalRService.off('EntityChanged', handleProjectLinkRealtime)
 })
 </script>
 

@@ -112,7 +112,7 @@ import SettingsDropdown from '@/components/SettingsDropdown.vue'
 import { useProjectStore } from '@/store/useProjectStore'
 import { usePeopleStore } from '@/store/usePeopleStore'
 import { subscribeAdminRealtime } from '@/utils/adminRealtime'
-import { getScopedCurrentProjectId, setScopedCurrentProjectId } from '@/utils/projectContext'
+import { setScopedCurrentProjectId } from '@/utils/projectContext'
 import { useI18nStore } from '@/store/useI18nStore'
 import { toggleTheme, currentTheme } from '@/utils/theme'
 import { translateDemoText } from '@/utils/demoContentLocale'
@@ -133,7 +133,7 @@ const t = (key) => i18nStore.t(key)
 const demoText = (value) => translateDemoText(value, i18nStore.locale)
 
 const isHomeContext = computed(() => route.path.startsWith('/home') || route.path.startsWith('/sites'))
-const isSpaceContext = computed(() => !!route.meta.isSpaceContext)
+const isSpaceContext = computed(() => route.path.startsWith('/space/'))
 
 const isModule = (moduleName) => {
   if (moduleName === 'people') {
@@ -151,11 +151,14 @@ let searchAbortController = null
 let searchRequestId = 0
 
 const routeProjectId = computed(() => {
-  if (isSpaceContext.value && route.params.id) return route.params.id
-  return getScopedCurrentProjectId() || ''
+  return isSpaceContext.value && route.params.id ? String(route.params.id) : ''
 })
 const currentProjectId = computed(() => routeProjectId.value)
-const activeProject = computed(() => projectStore.allProjects.find(project => project.id === currentProjectId.value) || projectStore.currentProject)
+const activeProject = computed(() => (
+  currentProjectId.value
+    ? projectStore.allProjects.find(project => `${project.id}` === currentProjectId.value) || projectStore.currentProject
+    : null
+))
 const workspaceName = computed(() => demoText(activeProject.value?.name) || 'SprintA')
 const workspaceBadge = computed(() => activeProject.value?.icon || workspaceName.value.charAt(0).toUpperCase())
 const showSearchDropdown = computed(() => searchQuery.value.trim().length > 0 && (searching.value || searchResults.value.length > 0))

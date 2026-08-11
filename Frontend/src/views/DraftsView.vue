@@ -210,18 +210,31 @@
       </div>
     </div>
 
+    <Teleport to="body">
     <!-- Create / Edit Draft Modal -->
-    <div class="modal-overlay" v-if="showModal" @click.self="showModal = false">
-       <div class="draft-modal">
-          <h3 class="modal-title">{{ editMode ? 'Edit draft' : 'Create a draft' }}</h3>
+    <div class="modal-overlay sa-data-modal-overlay" v-if="showModal" @click.self="showModal = false">
+       <div class="draft-modal sa-modal--form">
+          <DataModalHeader
+            icon="bi bi-file-earmark-text"
+            :title="editMode ? 'Edit draft' : 'Create a draft'"
+            description="Prepare a work item before moving it into a project"
+            close-label="Close"
+            @close="showModal = false"
+          />
           
           <div class="proj-badge mt-4" v-if="projects.length > 0">
              <i class="fa-solid fa-bell" style="color: #F59E0B"></i>
              <span>{{ activeProject?.name || 'Project' }}</span>
           </div>
           
-          <input type="text" class="dm-title-input mt-4" placeholder="Title" v-model="form.title" />
-          <textarea class="dm-desc-input mt-2" placeholder="Click to add description" v-model="form.description"></textarea>
+          <div class="dm-field mt-4">
+            <label for="draft-title">Title</label>
+            <input id="draft-title" type="text" class="dm-title-input" placeholder="Enter a draft title" v-model="form.title" />
+          </div>
+          <div class="dm-field mt-2">
+            <label for="draft-description">Description</label>
+            <textarea id="draft-description" class="dm-desc-input" placeholder="Click to add description" v-model="form.description"></textarea>
+          </div>
           
           <div class="dm-toolbar mt-2">
              <!-- Status Dropdown -->
@@ -368,18 +381,23 @@
                 </label>
              </div>
              <div class="dm-footer-right">
-                <button class="discard-btn" @click="showModal = false">Discard</button>
-                <button class="save-btn" @click="saveDraft">{{ editMode ? 'Update Draft' : 'Save as Draft' }}</button>
+                <button class="discard-btn sa-btn-cancel" @click="showModal = false"><i class="bi bi-x-lg"></i> Cancel</button>
+                <button class="save-btn" @click="saveDraft"><i class="bi bi-check-lg"></i> {{ editMode ? 'Update draft' : 'Save as draft' }}</button>
              </div>
           </div>
        </div>
     </div>
 
     <!-- Move to Project Modal -->
-    <div class="modal-overlay" v-if="showMoveModal" @click.self="showMoveModal = false">
-       <div class="draft-modal" style="width: 420px;">
-          <h3 class="modal-title">Move to project</h3>
-          <p class="text-muted text-xs mt-2" style="margin-bottom: 16px;">Select a project to move this draft into as a work item.</p>
+    <div class="modal-overlay sa-data-modal-overlay" v-if="showMoveModal" @click.self="showMoveModal = false">
+       <div class="draft-modal sa-modal--sm">
+          <DataModalHeader
+            icon="bi bi-box-arrow-right"
+            title="Move to project"
+            description="Select a project to move this draft into as a work item"
+            close-label="Close"
+            @close="showMoveModal = false"
+          />
           <div class="project-list">
             <div 
               class="project-item" 
@@ -393,25 +411,34 @@
           </div>
           <div class="dm-footer mt-4">
             <div></div>
-            <button class="discard-btn" @click="showMoveModal = false">Cancel</button>
+            <button class="discard-btn sa-btn-cancel" @click="showMoveModal = false"><i class="bi bi-x-lg"></i> Cancel</button>
           </div>
        </div>
     </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, computed, onBeforeUnmount, nextTick, watch } from 'vue'
+import { signalRService } from '@/api/signalrService'
 import { useRoute } from 'vue-router'
 
 import axiosClient from '@/api/axiosClient'
 import { ElMessage } from 'element-plus'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const route = useRoute()
 const showModal = ref(false)
 const showMoveModal = ref(false)
 const editMode = ref(false)
 const drafts = ref([])
+let draftRealtimeTimer = null
+const handleDraftRealtime = event => {
+  if (`${event?.entityType || ''}`.toLowerCase() !== 'taskdraft') return
+  if (draftRealtimeTimer) clearTimeout(draftRealtimeTimer)
+  draftRealtimeTimer = setTimeout(() => fetchDrafts(pagination.value.page), 50)
+}
 const projects = ref([])
 const movingDraft = ref(null)
 const loadingDrafts = ref(false)
@@ -842,8 +869,14 @@ const moveToProject = async (projectId) => {
 }
 
 onMounted(() => {
+  signalRService.on('EntityChanged', handleDraftRealtime)
   fetchProjects()
   document.addEventListener('click', clickOutsidePopover)
+})
+
+onBeforeUnmount(() => {
+  signalRService.off('EntityChanged', handleDraftRealtime)
+  if (draftRealtimeTimer) clearTimeout(draftRealtimeTimer)
 })
 
 watch(selectedProjectId, async (projectId, previousProjectId) => {
@@ -1015,7 +1048,8 @@ h1 {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0,0,0,0.4);
-  backdrop-filter: blur(2px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -1049,6 +1083,18 @@ h1 {
   padding: 12px;
   border-radius: 8px;
   outline: none;
+}
+
+.dm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.dm-field > label {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 650;
 }
 
 .dm-title-input:focus, .dm-desc-input:focus {

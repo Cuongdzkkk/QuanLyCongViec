@@ -6,9 +6,18 @@
     width="min(1100px, calc(100vw - 24px))"
     destroy-on-close
     append-to-body
-    class="task-data-import-dialog"
+    class="task-data-import-dialog sa-data-dialog sa-modal--workspace"
     :close-on-click-modal="false"
+    :show-close="false"
   >
+    <template #header>
+      <DataModalHeader
+        icon="bi bi-cloud-arrow-up"
+        title="Nạp dữ liệu công việc"
+        description="Kiểm tra dữ liệu trước khi tạo công việc hàng loạt"
+        @close="$emit('update:modelValue', false)"
+      />
+    </template>
     <el-tabs v-model="activeTab" type="border-card" class="import-tabs">
       <!-- ═══════════ TAB 1: Import Excel/CSV ═══════════ -->
       <el-tab-pane label="Import Excel/CSV" name="csv">
@@ -288,6 +297,7 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 import { parseCSVText, parseXLSXBuffer, processRawRows, buildTaskPayload } from '@/utils/taskImportParser'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },

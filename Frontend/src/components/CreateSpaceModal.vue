@@ -1,18 +1,17 @@
 <template>
   <el-dialog
     v-model="visibleComp"
-    class="standard-dialog no-header-dialog"
+    class="standard-dialog no-header-dialog sa-data-dialog"
     :show-close="false"
     :before-close="handleClose"
     append-to-body
     width="760px"
     top="6vh"
   >
+    <template #header>
+      <DataModalHeader icon="bi bi-folder-plus" title="Create project" description="Set project identity, visibility and ownership" close-label="Close" @close="handleClose" />
+    </template>
     <div class="modal-content-inner">
-      <button class="floating-close-btn" @click="handleClose">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
-
       <div class="plane-cover-header" :style="{ background: selectedCover.value }">
         <button class="change-cover-btn" @click="showCoverPicker = !showCoverPicker">
           <i class="bi bi-palette2"></i>
@@ -32,6 +31,7 @@
       </div>
 
       <div class="plane-modal-body">
+        <DataModalSection icon="bi bi-palette2" title="Project appearance">
         <button class="floating-emoji-selector" type="button" @click="showIconPicker = !showIconPicker">
           <ProjectAvatar :icon="form.icon" :background="form.cover" size="lg" />
         </button>
@@ -46,7 +46,9 @@
           </div>
           <ProjectAvatarPicker v-model="form.icon" />
         </div>
+        </DataModalSection>
 
+        <DataModalSection icon="bi bi-card-text" title="Project information">
         <div class="form-container">
           <div class="form-row">
             <div class="form-group flex-1">
@@ -69,7 +71,11 @@
               placeholder="What is this project for?"
             ></textarea>
           </div>
+        </div>
+        </DataModalSection>
 
+        <DataModalSection icon="bi bi-shield-check" title="Access and ownership">
+        <div class="form-container">
           <div class="settings-grid">
             <div class="form-group">
               <label class="field-label">Visibility</label>
@@ -102,12 +108,13 @@
             </div>
           </div>
         </div>
+        </DataModalSection>
       </div>
 
       <div class="dialog-footer-standard">
         <div class="footer-spacer"></div>
         <div class="footer-actions">
-          <button class="btn-secondary-sm" @click="handleClose">Cancel</button>
+          <button class="btn-secondary-sm cancel-btn" @click="handleClose"><i class="bi bi-x-lg"></i>Cancel</button>
           <button class="btn-primary-sm" :disabled="loading" @click="handleSubmit">
             <i v-if="loading" class="fa-solid fa-spinner fa-spin"></i>
             <span>Create project</span>
@@ -125,6 +132,8 @@ import { ElMessage } from 'element-plus'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import ProjectAvatarPicker from '@/components/project/ProjectAvatarPicker.vue'
 import ProjectBackgroundPicker from '@/components/project/ProjectBackgroundPicker.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import {
   DEFAULT_PROJECT_BACKGROUND,
   DEFAULT_PROJECT_ICON,

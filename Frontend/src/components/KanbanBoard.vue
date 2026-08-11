@@ -1,11 +1,14 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import draggable from 'vuedraggable'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 import { useI18n } from '@/composables/useI18n'
+import { useStarredStore } from '@/store/useStarredStore'
+import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 
 const { t } = useI18n()
+const starredStore = useStarredStore()
 
 const props = defineProps({
   tasks: { type: Array, default: () => [] },
@@ -127,13 +130,68 @@ function onDragEnd(event, targetStatus) {
 
 function getPriorityInfo(priority) {
   const map = {
-    0: { label: t('workItems.priority.none', 'None'), color: 'var(--color-text-muted)', icon: '-' },
-    1: { label: t('workItems.priority.urgent'), color: 'var(--color-danger)', icon: '!!' },
-    2: { label: t('workItems.priority.high'), color: 'var(--color-danger)', icon: '!' },
-    3: { label: t('workItems.priority.normal'), color: 'var(--color-accent)', icon: '=' },
-    4: { label: t('workItems.priority.low'), color: 'var(--color-success)', icon: '.' }
+    0: {
+      label: t('workItems.priority.none', 'None'),
+      color: '#64748b',
+      bgColor: 'rgba(100, 116, 139, 0.12)',
+      icon: 'fa-solid fa-ban'
+    },
+    1: {
+      label: t('workItems.priority.urgent', 'Urgent'),
+      color: '#ef4444',
+      bgColor: 'rgba(239, 68, 68, 0.12)',
+      icon: 'fa-solid fa-angles-up'
+    },
+    2: {
+      label: t('workItems.priority.high', 'High'),
+      color: '#f97316',
+      bgColor: 'rgba(249, 115, 22, 0.12)',
+      icon: 'fa-solid fa-chevron-up'
+    },
+    3: {
+      label: t('workItems.priority.normal', 'Medium'),
+      color: '#3b82f6',
+      bgColor: 'rgba(59, 130, 246, 0.12)',
+      icon: 'fa-solid fa-minus'
+    },
+    4: {
+      label: t('workItems.priority.low', 'Low'),
+      color: '#10b981',
+      bgColor: 'rgba(16, 185, 129, 0.12)',
+      icon: 'fa-solid fa-chevron-down'
+    }
   }
   return map[priority] || map[0]
+}
+
+function getColumnTheme(column) {
+  return {
+    '--column-color': column.color,
+    '--column-tint': `color-mix(in srgb, ${column.color} 8%, white)`,
+    '--column-soft': `color-mix(in srgb, ${column.color} 18%, white)`,
+    '--column-border-soft': `color-mix(in srgb, ${column.color} 26%, white)`,
+    '--column-strong': `color-mix(in srgb, ${column.color} 82%, black 18%)`
+  }
+}
+
+function isTaskStarred(task) {
+  return starredStore.isStarred(STARRED_ENTITY_TYPES.WORK_TASK, task?.id)
+}
+
+async function toggleTaskStar(task) {
+  if (!task?.id || starredStore.isPending(STARRED_ENTITY_TYPES.WORK_TASK, task.id)) return
+  await starredStore.toggleStar(STARRED_ENTITY_TYPES.WORK_TASK, task.id)
+}
+
+function scrollQuickCreateIntoView(columnKey) {
+  nextTick(() => {
+    const body = document.querySelector(`[data-column-body="${columnKey}"]`)
+    if (body) {
+      body.scrollTop = 0
+    }
+    const form = document.querySelector(`[data-quick-create="${columnKey}"]`)
+    form?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  })
 }
 
 
@@ -203,6 +261,7 @@ function handleColumnClick(column) {
   if (!draftTitles.value[column.key]) {
     draftTitles.value = { ...draftTitles.value, [column.key]: '' }
   }
+  scrollQuickCreateIntoView(column.key)
 }
 </script>
 
@@ -216,19 +275,34 @@ function handleColumnClick(column) {
     </div>
 
     <div class="kanban-board" @wheel="handleBoardWheel">
-      <div v-for="column in statusColumns" :key="column.key" class="kanban-column" @click="handleColumnClick(column)">
+      <div
+        v-for="column in statusColumns"
+        :key="column.key"
+        class="kanban-column"
+        :style="getColumnTheme(column)"
+        @click="handleColumnClick(column)"
+      >
         <div class="column-header">
           <div class="column-header-left">
             <span class="column-status-dot" :style="{ background: column.color }"></span>
             <span class="column-title">{{ column.label }}</span>
             <span class="column-count">{{ column.tasks.length }}</span>
           </div>
-          <button v-if="column.key !== 'FALLBACK_UNCLASSIFIED'" class="column-add-btn" @click.stop="handleColumnClick(column); createMode = true">
+          <button
+            v-if="column.key !== 'FALLBACK_UNCLASSIFIED'"
+            class="column-add-btn"
+            @click.stop="createMode = true; handleColumnClick(column)"
+          >
             <i class="fa-solid fa-plus"></i>
           </button>
         </div>
 
-        <div v-if="createMode && column.key !== 'FALLBACK_UNCLASSIFIED'" class="quick-create" @click.stop>
+        <div
+          v-if="createMode && column.key !== 'FALLBACK_UNCLASSIFIED'"
+          :data-quick-create="column.key"
+          class="quick-create"
+          @click.stop
+        >
           <input
             v-model="draftTitles[column.key]"
             type="text"
@@ -257,15 +331,27 @@ function handleColumnClick(column) {
           :animation="250"
           :disabled="!dragEnabled || column.key === 'FALLBACK_UNCLASSIFIED'"
           class="column-body"
+          :data-column-body="column.key"
           @end="event => onDragEnd(event, column.key)"
         >
           <template #item="{ element }">
             <div class="kanban-card" @click="emit('task-click', element)">
               <div class="card-top">
-                <span class="card-seq">#{{ element.sequenceId || element.id?.substring(0, 4) }}</span>
-                <span class="card-priority" :style="{ color: getPriorityInfo(element.priority).color }">
-                  <i class="fa-solid fa-signal"></i>
-                </span>
+                <div class="card-top-left">
+                  <span v-if="element.dueDate || element.plannedEndDate" class="card-due" :class="{ overdue: new Date(element.dueDate || element.plannedEndDate) < new Date() }">
+                    <i class="fa-regular fa-calendar"></i> {{ formatDate(element.dueDate || element.plannedEndDate) }}
+                  </span>
+                  <span class="card-seq">#{{ element.sequenceId || element.id?.substring(0, 4) }}</span>
+                </div>
+                <button
+                  class="card-star-btn"
+                  type="button"
+                  :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.WORK_TASK, element.id)"
+                  :title="isTaskStarred(element) ? 'Bỏ đánh dấu' : 'Đánh dấu'"
+                  @click.stop="toggleTaskStar(element)"
+                >
+                  <i :class="isTaskStarred(element) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+                </button>
               </div>
 
               <div class="card-title">{{ element.title }}</div>
@@ -273,8 +359,9 @@ function handleColumnClick(column) {
               <div class="card-meta">
                 <div class="card-meta-left">
                   <span v-if="element.storyPoints" class="card-sp"><i class="fa-solid fa-bolt"></i> {{ element.storyPoints }}</span>
-                  <span v-if="element.dueDate" class="card-due" :class="{ overdue: new Date(element.dueDate) < new Date() }">
-                    <i class="fa-regular fa-calendar"></i> {{ formatDate(element.dueDate) }}
+                  <span class="card-priority" :style="{ color: getPriorityInfo(element.priority).color, backgroundColor: getPriorityInfo(element.priority).bgColor }">
+                    <i :class="getPriorityInfo(element.priority).icon"></i>
+                    {{ getPriorityInfo(element.priority).label }}
                   </span>
                 </div>
 
@@ -385,8 +472,9 @@ function handleColumnClick(column) {
   min-width: 320px;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
+  min-height: 0;
+  background: var(--column-tint, var(--color-bg));
+  border: 1px solid var(--column-border-soft, var(--color-border));
   border-radius: 2px;
   overflow: hidden;
 }
@@ -396,8 +484,8 @@ function handleColumnClick(column) {
   align-items: center;
   justify-content: space-between;
   padding: 16px;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--column-color, var(--color-accent)) 10%, white);
+  border-bottom: 1px solid var(--column-border-soft, var(--color-border));
 }
 
 .column-header-left {
@@ -423,9 +511,9 @@ function handleColumnClick(column) {
 .column-count {
   padding: 2px 8px;
   border-radius: 2px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--column-color, var(--color-accent)) 16%, white);
+  border: 1px solid var(--column-border-soft, var(--border-color));
+  color: var(--column-strong, var(--color-text-secondary));
   font-size: 11px;
   font-weight: 700;
 }
@@ -445,23 +533,24 @@ function handleColumnClick(column) {
 }
 
 .column-add-btn:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--column-color, var(--color-accent)) 12%, white);
+  color: var(--column-strong, var(--color-text-primary));
 }
 
 .quick-create {
   display: flex;
   gap: 8px;
   padding: 12px;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--column-color, var(--color-accent)) 6%, white);
+  border-bottom: 1px solid var(--column-border-soft, var(--color-border));
+  flex-wrap: wrap;
 }
 
 .quick-create-input {
-  flex: 1;
-  background: var(--bg-primary);
+  flex: 1 1 180px;
+  background: rgba(255, 255, 255, 0.92);
   color: var(--text-primary);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--column-border-soft, var(--border-color));
   border-radius: 2px;
   padding: 8px 12px;
   font-size: 13px;
@@ -469,11 +558,12 @@ function handleColumnClick(column) {
 }
 
 .quick-create-input:focus {
-  border-color: var(--color-accent);
+  border-color: var(--column-color, var(--color-accent));
 }
 
 .quick-create-btn {
-  background: var(--color-accent);
+  min-height: 36px;
+  background: var(--column-color, var(--color-accent));
   color: #fff;
   border: none;
   border-radius: 2px;
@@ -485,6 +575,7 @@ function handleColumnClick(column) {
 
 .column-body {
   flex: 1;
+  min-height: 0;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -493,9 +584,10 @@ function handleColumnClick(column) {
 }
 
 .kanban-card {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--column-border-soft, var(--color-border));
+  border-left: 4px solid var(--column-color, var(--color-accent));
   border-radius: 2px;
-  background: var(--color-surface);
+  background: rgba(255, 255, 255, 0.96);
   padding: 16px;
   cursor: pointer;
   box-shadow: none !important;
@@ -503,7 +595,7 @@ function handleColumnClick(column) {
 }
 
 .kanban-card:hover {
-  border-color: var(--color-accent);
+  border-color: var(--column-color, var(--color-accent));
   transform: translateY(-2px);
   box-shadow: none !important;
 }
@@ -511,7 +603,16 @@ function handleColumnClick(column) {
 .card-top {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: 12px;
+}
+
+.card-top-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .card-seq {
@@ -521,7 +622,40 @@ function handleColumnClick(column) {
 }
 
 .card-priority {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.card-star-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--column-border-soft, var(--color-border));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #94a3b8;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.card-star-btn:hover {
+  color: #f59e0b;
+  border-color: #fcd34d;
+}
+
+.card-star-btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 .card-title {
@@ -540,13 +674,42 @@ function handleColumnClick(column) {
 
 .card-meta-left {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   font-size: 12px;
   color: var(--color-text-muted);
 }
 
+.card-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .card-due.overdue {
+  background: rgba(239, 68, 68, 0.12);
   color: #ef4444;
+}
+
+.card-sp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.1);
+  color: #0369a1;
+  font-weight: 700;
 }
 
 .card-meta-right {
@@ -569,7 +732,7 @@ function handleColumnClick(column) {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: var(--color-surface);
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .ring-value {
@@ -601,8 +764,9 @@ function handleColumnClick(column) {
   color: var(--color-text-muted);
   padding: 40px 20px;
   font-size: 14px;
-  border: 2px dashed var(--border-color);
+  border: 2px dashed var(--column-border-soft, var(--border-color));
   border-radius: 2px;
+  background: rgba(255, 255, 255, 0.58);
 }
 
 .column-empty i {
@@ -671,7 +835,7 @@ function handleColumnClick(column) {
 }
 
 .quick-create {
-  padding: 8px !important;
+  padding: 10px !important;
 }
 
 .quick-create-input {
@@ -698,6 +862,10 @@ function handleColumnClick(column) {
 
 .card-top {
   margin-bottom: 8px !important;
+}
+
+.card-top-left {
+  gap: 6px !important;
 }
 
 .card-title {

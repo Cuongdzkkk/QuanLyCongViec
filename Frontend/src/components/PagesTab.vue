@@ -6,6 +6,7 @@ import { ElMessageBox, ElNotification, ElMessage } from 'element-plus'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 import { useActivityStore } from '@/store/useActivityStore'
 import { useI18nStore } from '@/store/useI18nStore'
+import { signalRService } from '@/api/signalrService'
 
 const actStore = useActivityStore()
 const i18nStore = useI18nStore()
@@ -162,12 +163,34 @@ const editor = useEditor({
   }
 })
 
-onMounted(() => {
+const handlePageRealtime = event => {
+  if (`${event?.projectId}` !== `${props.projectId}` || event?.entityType !== 'page') return
+  if (event.action === 'deleted') {
+    pages.value = pages.value.filter(page => `${page.id}` !== `${event.entityId}`)
+    if (`${activePage.value?.id}` === `${event.entityId}`) activePage.value = null
+    return
+  }
+  if (!event.data?.id) return
+  const index = pages.value.findIndex(page => `${page.id}` === `${event.data.id}`)
+  if (index >= 0) pages.value[index] = { ...pages.value[index], ...event.data }
+  else pages.value.unshift(event.data)
+  if (`${activePage.value?.id}` === `${event.data.id}`) {
+    activePage.value = { ...activePage.value, ...event.data }
+    if (!saving.value && editor.value) {
+      editor.value.commands.setContent(normalizePageContent(activePage.value.content), false)
+    }
+  }
+}
+
+onMounted(async () => {
+  signalRService.on('EntityChanged', handlePageRealtime)
+  await signalRService.startConnection(props.projectId)
   void fetchPages()
 })
 
 onBeforeUnmount(() => {
   if (saveTimeout) clearTimeout(saveTimeout)
+  signalRService.off('EntityChanged', handlePageRealtime)
   if (editor.value) editor.value.destroy()
 })
 
@@ -878,7 +901,7 @@ function pageMenuItems(page) {
 /* Image Staging Styles */
 .image-staging-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.85); backdrop-filter: blur(4px);
+  background: rgba(0,0,0,0.85); backdrop-filter: none; -webkit-backdrop-filter: none;
   z-index: 2000; display: flex; align-items: center; justify-content: center;
 }
 .image-staging-card {
@@ -990,7 +1013,7 @@ function pageMenuItems(page) {
 
 .pages-list {
   padding: 12px 0 18px !important;
-  overflow: auto !important;
+  overflow: visible !important;
 }
 
 .page-row {

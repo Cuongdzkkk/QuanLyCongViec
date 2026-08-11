@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.API.Filters;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 
@@ -14,10 +17,12 @@ namespace TaskManagement.API.Controllers
     public class LabelsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IHubContext<KanbanHub> _kanbanHub;
 
-        public LabelsController(ApplicationDbContext context)
+        public LabelsController(ApplicationDbContext context, IHubContext<KanbanHub> kanbanHub)
         {
             _context = context;
+            _kanbanHub = kanbanHub;
         }
 
         [HttpGet("labels")]
@@ -76,6 +81,17 @@ namespace TaskManagement.API.Controllers
 
             _context.Labels.Add(label);
             await _context.SaveChangesAsync();
+            await _kanbanHub.PublishEntityChangedAsync(projectId, "label", "upsert", label.Id, new
+            {
+                label.Id,
+                label.Name,
+                label.ColorCode,
+                color = label.ColorCode,
+                label.Description,
+                label.ProjectId,
+                IssueCount = 0,
+                label.CreatedAt
+            });
 
             return CreatedAtAction(nameof(GetByProject), new { projectId },
                 new
@@ -100,6 +116,7 @@ namespace TaskManagement.API.Controllers
             label.Description = request.Description ?? label.Description;
 
             await _context.SaveChangesAsync();
+            await PublishLabelAsync(projectId, label.Id);
 
             return Ok(new { statusCode = 200, message = "Cap nhat thanh cong." });
         }
@@ -115,6 +132,7 @@ namespace TaskManagement.API.Controllers
 
             _context.Labels.Remove(label);
             await _context.SaveChangesAsync();
+            await _kanbanHub.PublishEntityChangedAsync(projectId, "label", "deleted", labelId);
 
             return Ok(new { statusCode = 200, message = "Xoa thanh cong." });
         }
@@ -159,6 +177,11 @@ namespace TaskManagement.API.Controllers
             });
 
             await _context.SaveChangesAsync();
+            await _kanbanHub.PublishEntityChangedAsync(projectId, "task-label", "upsert", taskId, new
+            {
+                taskId,
+                labelId = request.LabelId
+            });
 
             return Ok(new { statusCode = 200, message = "Gan nhan thanh cong." });
         }
@@ -184,8 +207,36 @@ namespace TaskManagement.API.Controllers
 
             _context.IssueLabels.Remove(link);
             await _context.SaveChangesAsync();
+            await _kanbanHub.PublishEntityChangedAsync(projectId, "task-label", "deleted", taskId, new
+            {
+                taskId,
+                labelId
+            });
 
             return Ok(new { statusCode = 200, message = "Go nhan thanh cong." });
+        }
+
+        private async Task PublishLabelAsync(Guid projectId, Guid labelId)
+        {
+            var payload = await _context.Labels
+                .AsNoTracking()
+                .Where(label => label.Id == labelId && label.ProjectId == projectId)
+                .Select(label => new
+                {
+                    label.Id,
+                    label.Name,
+                    label.ColorCode,
+                    color = label.ColorCode,
+                    label.Description,
+                    label.ProjectId,
+                    IssueCount = label.IssueLabels.Count(link => !link.WorkTask.IsDeleted),
+                    label.CreatedAt
+                })
+                .FirstOrDefaultAsync();
+            if (payload != null)
+            {
+                await _kanbanHub.PublishEntityChangedAsync(projectId, "label", "upsert", labelId, payload);
+            }
         }
     }
 

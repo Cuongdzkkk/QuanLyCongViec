@@ -194,7 +194,8 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
   inset: var(--sa-topbar-height, 52px) 0 0;
   z-index: 1490;
   background: rgba(2, 6, 23, 0.48);
-  backdrop-filter: blur(3px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .notes-drawer {
   position: fixed;

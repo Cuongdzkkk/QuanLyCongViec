@@ -2,71 +2,73 @@
   <el-dialog
     v-model="visibleComp"
     width="940px"
-    class="standard-dialog"
+    class="standard-dialog sa-data-dialog sa-modal--lg"
     :show-close="false"
     append-to-body
   >
-    <template #header="{ close }">
-      <div class="dialog-header-standard">
-        <h2 class="dialog-title">Tạo dự án</h2>
-        <div class="header-actions">
-          <button class="icon-btn-ghost" @click="close" title="Đóng"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-      </div>
+    <template #header>
+      <DataModalHeader
+        icon="bi bi-briefcase"
+        title="Tạo dự án"
+        description="Thiết lập thông tin, phạm vi truy cập và diện mạo dự án"
+        @close="handleClose"
+      />
     </template>
 
     <div class="modal-layout">
       <div class="form-column">
-        <div class="form-group">
-          <label class="field-label">Tên dự án</label>
-          <input v-model="form.name" type="text" placeholder="Kế hoạch Sprint A" class="compact-input-field" />
-        </div>
+        <DataModalSection icon="bi bi-card-text" title="Thông tin dự án">
+          <DataModalField label="Tên dự án">
+            <input v-model="form.name" type="text" placeholder="Kế hoạch Sprint A" class="compact-input-field" />
+          </DataModalField>
 
-        <div class="form-group">
-          <label class="field-label">Mã dự án</label>
-          <input v-model="form.key" type="text" maxlength="8" placeholder="SPR" class="compact-input-field" />
-        </div>
+          <DataModalField label="Mã dự án">
+            <input v-model="form.key" type="text" maxlength="8" placeholder="SPR" class="compact-input-field" />
+          </DataModalField>
 
-        <div class="form-group">
-          <label class="field-label">Mô tả</label>
-          <textarea v-model="form.description" rows="3" placeholder="Dự án này dùng để quản lý việc gì?" class="compact-textarea-field"></textarea>
-        </div>
+          <DataModalField label="Mô tả">
+            <textarea v-model="form.description" rows="3" placeholder="Dự án này dùng để quản lý việc gì?" class="compact-textarea-field"></textarea>
+          </DataModalField>
+        </DataModalSection>
 
-        <div class="split-grid">
-          <div class="form-group">
-            <label class="field-label">Ngày bắt đầu</label>
+        <DataModalSection icon="bi bi-sliders" title="Phạm vi và thời gian">
+          <div class="split-grid">
+          <DataModalField label="Ngày bắt đầu">
             <input v-model="form.startDate" type="date" class="compact-input-field" />
-          </div>
+          </DataModalField>
 
-          <div class="form-group">
-            <label class="field-label">Quyền xem</label>
+          <DataModalField label="Quyền xem">
             <el-select v-model="form.networkType" class="full-width-select">
               <el-option label="Công khai" value="Public" />
               <el-option label="Riêng tư" value="Private" />
             </el-select>
+          </DataModalField>
           </div>
-        </div>
+        </DataModalSection>
 
-        <div class="form-group appearance-picker-field">
-          <label class="field-label">Project avatar</label>
-          <ProjectAvatarPicker v-model="form.icon" />
-        </div>
+        <DataModalSection icon="bi bi-palette2" title="Diện mạo">
+          <DataModalField label="Project avatar">
+            <ProjectAvatarPicker v-model="form.icon" />
+          </DataModalField>
+        </DataModalSection>
       </div>
 
       <div class="cover-column">
-        <div class="cover-preview" :style="{ background: previewBackground }">
-          <div class="cover-overlay">
-            <ProjectAvatar :icon="form.icon" :background="form.cover" size="lg" />
-            <strong class="preview-name">{{ form.name || 'Xem trước dự án' }}</strong>
+        <DataModalSection icon="bi bi-eye" title="Xem trước">
+          <div class="cover-preview" :style="{ background: previewBackground }">
+            <div class="cover-overlay">
+              <ProjectAvatar :icon="form.icon" :background="form.cover" size="lg" />
+              <strong class="preview-name">{{ form.name || 'Xem trước dự án' }}</strong>
+            </div>
           </div>
-        </div>
 
-        <ProjectBackgroundPicker v-model="form.cover" />
+          <ProjectBackgroundPicker v-model="form.cover" />
 
-        <div class="gallery-header">
-          <h4 class="section-title">Ảnh bìa dự án</h4>
-          <p class="helper-text-muted">SprintA sẽ không tự dùng ảnh mẫu. Bạn có thể cập nhật ảnh bìa thật trong phần cài đặt dự án.</p>
-        </div>
+          <div class="gallery-header">
+            <h4 class="section-title">Ảnh bìa dự án</h4>
+            <p class="helper-text-muted">SprintA sẽ không tự dùng ảnh mẫu. Bạn có thể cập nhật ảnh bìa thật trong phần cài đặt dự án.</p>
+          </div>
+        </DataModalSection>
       </div>
     </div>
 
@@ -74,9 +76,10 @@
       <div class="dialog-footer-standard">
         <div class="footer-spacer"></div>
         <div class="footer-actions">
-          <button class="btn-secondary-sm" @click="handleClose">Hủy</button>
+          <button class="cancel-btn" @click="handleClose"><i class="bi bi-x-lg"></i> Hủy</button>
           <button class="btn-primary-sm" :disabled="submitting" @click="handleSubmit">
             <i v-if="submitting" class="fa-solid fa-spinner fa-spin"></i>
+            <i v-else class="fa-solid fa-plus"></i>
             {{ submitting ? 'Đang tạo...' : 'Tạo dự án' }}
           </button>
         </div>
@@ -92,6 +95,9 @@ import axiosClient from '@/api/axiosClient'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import ProjectAvatarPicker from '@/components/project/ProjectAvatarPicker.vue'
 import ProjectBackgroundPicker from '@/components/project/ProjectBackgroundPicker.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 import {
   DEFAULT_PROJECT_BACKGROUND,
   DEFAULT_PROJECT_ICON,

@@ -8,7 +8,7 @@
         <button class="plane-primary-btn mt-4" @click="router.push('/spaces')">{{ t('Back to Home') }}</button>
       </div>
     </div>
-    <div v-else class="plane-board-container" style="display: flex; flex-direction: column;">
+    <div v-else class="plane-board-container" style="display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%;">
 
       <ProjectPageHeader
         icon="fa-solid fa-layer-group"
@@ -93,8 +93,13 @@
         </template>
       </section>
 
-      <ProjectPageToolbar v-if="!activeModuleFilterId">
-        <template #filters>
+      <ProjectPageToolbar
+        v-if="!activeModuleFilterId"
+        :showSearch="true"
+        v-model:searchQuery="searchQuery"
+        :searchPlaceholder="tr('Search work items...', 'Tìm kiếm công việc...')"
+      >
+        <template #left>
           <div class="view-toggles">
             <button class="toggle-btn" :class="{ active: currentTab === 'list' }" @click="currentTab = 'list'" :title="t('List view')"><i class="fa-solid fa-bars"></i></button>
             <button class="toggle-btn" :class="{ active: currentTab === 'board' }" @click="currentTab = 'board'" :title="t('Kanban view')"><i class="fa-solid fa-table-columns"></i></button>
@@ -102,14 +107,28 @@
             <button class="toggle-btn" :class="{ active: currentTab === 'spreadsheet' }" @click="currentTab = 'spreadsheet'" :title="t('Spreadsheet view')"><i class="fa-solid fa-table-cells"></i></button>
             <button class="toggle-btn" :class="{ active: currentTab === 'timeline' }" @click="currentTab = 'timeline'" :title="t('Gantt chart view')"><i class="fa-solid fa-chart-gantt"></i></button>
           </div>
+        </template>
 
-          <button class="plane-toolbar-btn" @click="showFilterPanel = !showFilterPanel" :class="{ active: showFilterPanel || activeTaskFilters.length }">
+        <template #filters>
+
+          <div class="filter-dropdown-wrapper">
+            <button class="timeline-filter-trigger" type="button" @click.stop="toggleFilterDropdown" :class="{ active: showFilterDropdown || activeTaskFilters.length }">
             <i class="fa-solid fa-filter"></i>
+            <span>{{ tr('Filters', 'Bộ lọc') }}</span>
             <span v-if="activeTaskFilters.length" class="filter-count">{{ activeTaskFilters.length }}</span>
           </button>
+          <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
+            <FilterBar
+              v-model:filters="activeTaskFilters"
+              @apply="applyTaskFilters"
+              @remove="removeTaskFilter"
+              @clear="clearTaskFilters"
+            />
+          </div>
+        </div>
 
           <div class="display-dropdown-wrapper">
-             <button class="plane-toolbar-btn" @click.stop="showDisplayDropdown = !showDisplayDropdown" :class="{ 'active': showDisplayDropdown }">{{ t('Display') }}</button>
+             <button class="plane-toolbar-btn" @click.stop="toggleDisplayDropdown" :class="{ 'active': showDisplayDropdown }">{{ t('Display') }}</button>
              <div class="plane-dropdown-menu" v-show="showDisplayDropdown" @click.stop>
                 <div class="nexus-display-properties-dropdown dd-section">
                    <div class="dd-title">
@@ -216,14 +235,14 @@
                  </div>
                  <div class="tr-right" @click.stop>
                    <div class="pill-group">
-                     <el-dropdown trigger="click" @command="(val) => updateTask(task, 'statusName', val, task.statusName)">
+                     <el-dropdown :disabled="!isTaskEditableByAssignee(task)" trigger="click" @command="(val) => updateTask(task, 'statusName', val, task.statusName)">
                        <div class="pill pill-status cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--pill-color': getStatusColor(task.statusName) }">
                          <i :class="getBoardStatusIcon(task.statusName)" :style="{ color: getStatusColor(task.statusName) }"></i>
                          {{ normalizeStatusLabel(task.statusName) }}
                        </div>
                        <template #dropdown>
                          <el-dropdown-menu class="plane-dropdown">
-                           <el-dropdown-item v-for="status in taskStatusOptions" :key="status.name" :command="status.name">
+                           <el-dropdown-item v-for="status in taskStatusOptions" :key="status.name" :command="status.name" class="color-option" :style="{ '--option-color': status.color }">
                              <i :class="status.icon" :style="{ color: status.color }"></i>
                              {{ status.label }}
                            </el-dropdown-item>
@@ -231,22 +250,22 @@
                        </template>
                      </el-dropdown>
 
-                     <el-dropdown trigger="click" @command="(val) => updateTask(task, 'priority', val, task.priority)">
+                     <el-dropdown :disabled="!isTaskEditableByAssignee(task)" trigger="click" @command="(val) => updateTask(task, 'priority', val, task.priority)">
                        <div class="pill pill-priority cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--pill-color': getPriorityColor(task.priority) }">
                          <i :class="getPriorityIcon(task.priority)"></i>
                        </div>
                        <template #dropdown>
                          <el-dropdown-menu class="plane-dropdown">
-                           <el-dropdown-item :command="1"><i class="fa-solid fa-angles-up text-red-500"></i> Urgent</el-dropdown-item>
-                           <el-dropdown-item :command="2"><i class="fa-solid fa-chevron-up text-orange-500"></i> High</el-dropdown-item>
-                           <el-dropdown-item :command="3"><i class="fa-solid fa-minus text-blue-500"></i> Normal</el-dropdown-item>
-                           <el-dropdown-item :command="4"><i class="fa-solid fa-chevron-down text-gray-400"></i> Low</el-dropdown-item>
-                           <el-dropdown-item :command="0"><i class="fa-solid fa-ban text-gray-500"></i> None</el-dropdown-item>
+                           <el-dropdown-item :command="1" class="color-option" style="--option-color:#ef4444"><i class="fa-solid fa-angles-up"></i> Urgent</el-dropdown-item>
+                           <el-dropdown-item :command="2" class="color-option" style="--option-color:#f97316"><i class="fa-solid fa-chevron-up"></i> High</el-dropdown-item>
+                           <el-dropdown-item :command="3" class="color-option" style="--option-color:#3b82f6"><i class="fa-solid fa-minus"></i> Medium</el-dropdown-item>
+                           <el-dropdown-item :command="4" class="color-option" style="--option-color:#10b981"><i class="fa-solid fa-chevron-down"></i> Low</el-dropdown-item>
+                           <el-dropdown-item :command="0" class="color-option" style="--option-color:#64748b"><i class="fa-solid fa-ban"></i> None</el-dropdown-item>
                          </el-dropdown-menu>
                        </template>
                      </el-dropdown>
 
-                     <el-popover placement="bottom" trigger="click" width="260" popper-class="plane-popover">
+                     <el-popover :disabled="!isTaskEditableByAssignee(task)" placement="bottom" trigger="click" width="260" popper-class="plane-popover">
                        <template #reference>
                          <div class="pill pill-user cursor-pointer hover:bg-[var(--color-border)]">
                            <div class="avatar-xxs" style="border: none; padding: 0;">
@@ -294,7 +313,7 @@
       <div v-if="currentTab === 'calendar' && !moduleDetailLoading && !moduleDetailError && (!activeModuleFilterId || moduleDetail?.taskCount > 0)" class="calendar-wrapper">
          <CalendarTab :tasks="filteredTasksList" @open-task="openTaskDetail" @create-task="openCreateTaskFromCalendar" />
       </div>
-      <div v-if="currentTab === 'spreadsheet' && !moduleDetailLoading && !moduleDetailError && (!activeModuleFilterId || moduleDetail?.taskCount > 0)" class="spreadsheet-wrapper" style="display: flex; flex: 1; overflow: hidden;">
+      <div v-if="currentTab === 'spreadsheet' && !moduleDetailLoading && !moduleDetailError && (!activeModuleFilterId || moduleDetail?.taskCount > 0)" class="spreadsheet-wrapper" style="display: flex; flex: 1; overflow: visible;">
           <SpreadsheetTab
             :tasks="filteredTasksList"
             :projectId="getProjectId()"
@@ -309,7 +328,7 @@
           />
       </div>
       <div v-if="currentTab === 'timeline' && !moduleDetailLoading && !moduleDetailError && (!activeModuleFilterId || moduleDetail?.taskCount > 0)" class="timeline-wrapper">
-         <TimelineTab :projectId="getProjectId()" :tasks="filteredTasksList" @open-task="openTaskDetail" @create-task="openCreateTaskFromCalendar" />
+         <TimelineTab :projectId="getProjectId()" :tasks="filteredTasksList" :projectMembers="projectMembers" @open-task="openTaskDetail" @create-task="openCreateTaskFromCalendar" />
       </div>
 
       <!-- Kanban Board Layout -->
@@ -337,6 +356,7 @@
           class="kanban-col"
           v-for="col in kanbanColumns"
           :key="col.id"
+          :data-col-id="col.id"
           :style="{ '--col-color': col.color, '--col-bg': col.bgColor }"
         >
           <div class="col-head">
@@ -354,13 +374,117 @@
             </small>
           </div>
 
-          <div class="col-body">
+          <div class="col-body" :class="{ 'is-creating': inlineCreateColId === col.id }">
+            <div
+              v-if="inlineCreateColId === col.id"
+              class="inline-create-box issue-card kanban-card-editor"
+              @click.stop
+            >
+              <div class="inline-create-top">
+                <div class="inline-create-planning">
+                  <div class="inline-date-slot">
+                    <el-date-picker
+                      v-model="inlineDateRange"
+                      type="daterange"
+                      range-separator="-"
+                      start-placeholder="Date"
+                      end-placeholder="Date"
+                      value-format="YYYY-MM-DDTHH:mm:ss.SSS[Z]"
+                      format="DD/MM/YYYY"
+                      size="default"
+                      class="ic-date-range-picker ic-date-range-inline"
+                    />
+                  </div>
+                  <div class="inline-assignee-slot">
+                    <el-popover placement="bottom" trigger="click" width="260" popper-class="plane-popover" @click.stop>
+                    <template #reference>
+                      <button type="button" class="inline-assignee-trigger" :aria-label="tr('Choose assignee', 'Chọn người thực hiện')" :title="tr('Choose assignee', 'Chọn người thực hiện')">
+                        <template v-if="inlineAssigneeIds.length">
+                          <UserAvatar v-if="inlineAssigneeIds.length === 1" :user="projectMembers.find(m => (m.userId || m.id) === inlineAssigneeIds[0])" :size="22" :fontSize="10" />
+                          <span v-else class="inline-assignee-count">+{{ inlineAssigneeIds.length }}</span>
+                        </template>
+                        <i v-else class="fa-solid fa-question"></i>
+                      </button>
+                    </template>
+                    <div class="popover-content" style="padding-top: 8px;">
+                      <input type="text" class="popover-search mb-2" v-model="assigneeSearch" placeholder="Search members" />
+                      <div class="popover-list mt-1">
+                        <div
+                          v-for="member in filteredProjectMembers"
+                          :key="member.userId || member.id"
+                          class="popover-item flex items-center justify-between transition-colors cursor-pointer"
+                          @click.stop="() => { const id = member.userId || member.id; const idx = inlineAssigneeIds.indexOf(id); if (idx > -1) inlineAssigneeIds.splice(idx, 1); else inlineAssigneeIds.push(id); }"
+                          :class="inlineAssigneeIds.includes(member.userId || member.id) ? 'bg-green-100 hover:bg-green-200 text-green-900 border-l-4 border-green-500 rounded-sm' : 'hover:bg-gray-100'"
+                        >
+                          <div class="flex items-center truncate max-w-[75%] pl-2">
+                            <UserAvatar :user="member" :size="22" :fontSize="10" class="mr-2" />
+                            <span class="truncate" :class="inlineAssigneeIds.includes(member.userId || member.id) ? 'font-semibold' : ''">{{ member.fullName || member.name || member.email }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    </el-popover>
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  class="ic-title-input w-full"
+                  v-model="inlineTaskTitle"
+                  placeholder="Nhập tiêu đề công việc..."
+                  @keyup.enter="submitInlineTask(col)"
+                  @keyup.esc="inlineCreateColId = null"
+                  ref="inlineInput"
+                />
+              </div>
+
+              <div class="inline-create-meta" @click.stop>
+                <el-dropdown trigger="click" @command="(val) => inlineStatusName = val">
+                  <div class="badge status-badge cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--badge-color': getStatusColor(inlineStatusName || col.name) }">
+                    <i :class="getBoardStatusIcon(inlineStatusName || col.name)" :style="{ color: getStatusColor(inlineStatusName || col.name) }"></i>
+                    <span>{{ normalizeStatusLabel(inlineStatusName || col.name) }}</span>
+                  </div>
+                  <template #dropdown>
+                    <el-dropdown-menu class="plane-dropdown">
+                      <el-dropdown-item v-for="status in taskStatusOptions" :key="status.name" :command="status.name" class="color-option" :style="{ '--option-color': status.color }">
+                        <i :class="status.icon" :style="{ color: status.color }"></i>
+                        {{ status.label }}
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+
+                <el-dropdown trigger="click" @command="(val) => inlinePriority = val">
+                  <div class="badge priority-badge cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--badge-color': getPriorityColor(inlinePriority) }">
+                    <i :class="getPriorityIcon(inlinePriority)"></i>
+                    <span>{{ getPriorityLabel(inlinePriority) }}</span>
+                  </div>
+                  <template #dropdown>
+                    <el-dropdown-menu class="plane-dropdown">
+                      <el-dropdown-item :command="1" class="color-option" style="--option-color:#ef4444"><i class="fa-solid fa-angles-up"></i> Urgent</el-dropdown-item>
+                      <el-dropdown-item :command="2" class="color-option" style="--option-color:#f97316"><i class="fa-solid fa-chevron-up"></i> High</el-dropdown-item>
+                      <el-dropdown-item :command="3" class="color-option" style="--option-color:#3b82f6"><i class="fa-solid fa-minus"></i> Medium</el-dropdown-item>
+                      <el-dropdown-item :command="4" class="color-option" style="--option-color:#10b981"><i class="fa-solid fa-chevron-down"></i> Low</el-dropdown-item>
+                      <el-dropdown-item :command="0" class="color-option" style="--option-color:#64748b"><i class="fa-solid fa-ban"></i> None</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+
+              </div>
+
+              <div class="inline-create-actions">
+                <button class="inline-cancel-btn" @click="inlineCreateColId = null">Hủy</button>
+                <button class="inline-submit-btn" @click="submitInlineTask(col)">
+                  <span>Thêm</span>
+                </button>
+              </div>
+            </div>
             <draggable
               class="col-draggable"
               :list="col.items"
               :group="{ name: 'tasks', put: col.name !== 'FALLBACK_UNCLASSIFIED' }"
               item-key="id"
               :disabled="!canCurrentUserUpdateTask || col.name === 'FALLBACK_UNCLASSIFIED'"
+              :move="canMoveAssignedTask"
               @change="(evt) => handleDraggableChange(evt, col)"
             >
               <template #item="{ element }">
@@ -370,17 +494,22 @@
                   :style="{ '--task-status-color': getStatusColor(element.statusName), '--task-priority-color': getPriorityColor(element.priority) }"
                   @click="openTaskDetail(element)"
                 >
-                  <div class="flex-between mb-1">
-                    <p class="issue-sequence">{{ element.sequenceId || element.id.substring(0,8).toUpperCase() }}</p>
+                  <div class="issue-card-header">
+                    <div class="issue-card-heading-copy">
+                      <p class="issue-sequence">{{ element.sequenceId || element.id.substring(0,8).toUpperCase() }}</p>
+                      <p class="issue-title" :title="element.title" :style="element.statusName === 'DONE' ? { textDecoration: 'line-through', color: 'var(--color-text-muted)' } : {}">
+                        <span v-if="element.title && element.title.startsWith('[DỰ PHÒNG]')" class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold mr-1 border border-blue-200 uppercase tracking-wider relative top-[-1px]">Dự phòng</span>
+                        {{ element.title && element.title.startsWith('[DỰ PHÒNG]') ? element.title.substring(11).trim() : element.title }}
+                      </p>
+                    </div>
                     <div class="card-top-right">
-                      <!-- Due date hiển thị đỏ nếu quá hạn -->
                       <span
-                        v-if="element.dueDate"
-                        class="card-due-badge"
-                        :class="{ 'card-due-overdue': new Date(element.dueDate) < new Date() && element.statusName !== 'DONE' }"
+                        class="card-due-badge card-due-compact"
+                        :class="{ 'card-due-overdue': (element.plannedEndDate || element.dueDate) && new Date(element.plannedEndDate || element.dueDate) < new Date() && element.statusName !== 'DONE', 'card-due-empty': !(element.plannedStartDate || element.plannedEndDate || element.dueDate) }"
+                        :title="element.plannedEndDate || element.dueDate || element.plannedStartDate ? new Date(element.plannedEndDate || element.dueDate || element.plannedStartDate).toLocaleDateString('vi-VN') : tr('No deadline', 'Chưa có hạn')"
                       >
                         <i class="fa-regular fa-calendar"></i>
-                        {{ new Date(element.dueDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) }}
+                        <span>{{ element.plannedEndDate || element.dueDate || element.plannedStartDate ? new Date(element.plannedEndDate || element.dueDate || element.plannedStartDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Date' }}</span>
                       </span>
                       <button
                         class="star-task-btn small"
@@ -393,50 +522,47 @@
                       </button>
                     </div>
                   </div>
-                  <p class="issue-title" :title="element.title" :style="element.statusName === 'DONE' ? { textDecoration: 'line-through', color: 'var(--color-text-muted)' } : {}">
-                        <span v-if="element.title && element.title.startsWith('[DỰ PHÒNG]')" class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold mr-1 border border-blue-200 uppercase tracking-wider relative top-[-1px]">Dự phòng</span>
-                        {{ element.title && element.title.startsWith('[DỰ PHÒNG]') ? element.title.substring(11).trim() : element.title }}
-                      </p>
                   <div class="issue-meta mt-2" style="display:flex; align-items:center; gap:8px;" @click.stop>
-                     <el-dropdown trigger="click" @command="(val) => updateTask(element, 'statusName', val, element.statusName)">
+                     <el-dropdown :disabled="!isTaskEditableByAssignee(element)" trigger="click" @command="(val) => updateTask(element, 'statusName', val, element.statusName)">
                        <div class="badge status-badge cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--badge-color': getStatusColor(element.statusName) }">
                          <i :class="getBoardStatusIcon(element.statusName)" :style="{ color: getStatusColor(element.statusName) }"></i>
                          <span>{{ normalizeStatusLabel(element.statusName) }}</span>
                        </div>
                        <template #dropdown>
                          <el-dropdown-menu class="plane-dropdown">
-                           <el-dropdown-item v-for="status in taskStatusOptions" :key="status.name" :command="status.name">
+                           <el-dropdown-item v-for="status in taskStatusOptions" :key="status.name" :command="status.name" class="color-option" :style="{ '--option-color': status.color }">
                              <i :class="status.icon" :style="{ color: status.color }"></i>
-                             {{ status.label }}
+                             <span :style="{ color: status.color }">{{ status.label }}</span>
                            </el-dropdown-item>
                          </el-dropdown-menu>
                        </template>
                      </el-dropdown>
 
-                     <el-dropdown trigger="click" @command="(val) => updateTask(element, 'priority', val, element.priority)">
-                       <div class="badge priority-badge cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--badge-color': getPriorityColor(element.priority) }">
-                         <i :class="getPriorityIcon(element.priority)"></i>
-                       </div>
+                     <el-dropdown :disabled="!isTaskEditableByAssignee(element)" trigger="click" @command="(val) => updateTask(element, 'priority', val, element.priority)">
+                      <div class="badge priority-badge cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--badge-color': getPriorityColor(element.priority) }">
+                        <i :class="getPriorityIcon(element.priority)"></i>
+                        <span>{{ getPriorityLabel(element.priority) }}</span>
+                      </div>
                        <template #dropdown>
                          <el-dropdown-menu class="plane-dropdown">
-                           <el-dropdown-item :command="1"><i class="fa-solid fa-angles-up text-red-500"></i> Urgent</el-dropdown-item>
-                           <el-dropdown-item :command="2"><i class="fa-solid fa-chevron-up text-orange-500"></i> High</el-dropdown-item>
-                           <el-dropdown-item :command="3"><i class="fa-solid fa-minus text-blue-500"></i> Medium</el-dropdown-item>
-                           <el-dropdown-item :command="4"><i class="fa-solid fa-chevron-down text-gray-400"></i> Low</el-dropdown-item>
-                           <el-dropdown-item :command="0"><i class="fa-solid fa-ban text-gray-500"></i> None</el-dropdown-item>
+                           <el-dropdown-item :command="1" class="color-option" style="--option-color:#ef4444"><i class="fa-solid fa-angles-up"></i> <span>Urgent</span></el-dropdown-item>
+                           <el-dropdown-item :command="2" class="color-option" style="--option-color:#f97316"><i class="fa-solid fa-chevron-up"></i> <span>High</span></el-dropdown-item>
+                           <el-dropdown-item :command="3" class="color-option" style="--option-color:#3b82f6"><i class="fa-solid fa-minus"></i> <span>Medium</span></el-dropdown-item>
+                          <el-dropdown-item :command="4" class="color-option" style="--option-color:#10b981"><i class="fa-solid fa-chevron-down"></i> <span>Low</span></el-dropdown-item>
+                           <el-dropdown-item :command="0" class="color-option" style="--option-color:#64748b"><i class="fa-solid fa-ban"></i> <span>None</span></el-dropdown-item>
                          </el-dropdown-menu>
                        </template>
                      </el-dropdown>
 
-                     <el-popover placement="bottom" trigger="click" width="260" popper-class="plane-popover">
+                     <el-popover :disabled="!isTaskEditableByAssignee(element)" placement="bottom" trigger="click" width="260" popper-class="plane-popover">
                        <template #reference>
-                         <div class="avatar-xs ms-auto cursor-pointer hover:bg-[var(--color-border)]" style="border: none; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center;" v-if="getTaskAssigneeSummary(element).label">
+                         <div class="avatar-xs card-assignee-trigger cursor-pointer hover:bg-[var(--color-border)]" style="border: none; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center;" v-if="getTaskAssigneeSummary(element).label">
                            <UserAvatar v-if="getTaskAssigneeIds(element).length === 1" :user="getAssigneeUser(element)" :size="24" :fontSize="11" />
                            <div v-else style="width: 24px; height: 24px; border-radius: 50%; background: #0c66e4; color: white; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">
                              +{{ getTaskAssigneeIds(element).length }}
                            </div>
                          </div>
-                         <div class="avatar-xs ms-auto cursor-pointer hover:bg-[var(--color-border)]" style="border: 1px dashed var(--color-text-muted); background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center;" v-else>
+                         <div class="avatar-xs card-assignee-trigger cursor-pointer hover:bg-[var(--color-border)]" style="border: 1px dashed var(--color-text-muted); background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center;" v-else>
                            <i class="fa-solid fa-question text-xs"></i>
                          </div>
                        </template>
@@ -467,73 +593,132 @@
 
               <!-- Empty state per-column -->
               <template #footer>
-                <div class="col-empty-state" v-if="col.items.length === 0 && !store.loading">
-                  <span v-if="col.name === 'DONE'">Bạn đã hoàn thành mọi việc! 🎉</span>
-                  <span v-else>Chưa có công việc nào</span>
+                <div 
+                  class="col-empty-state" 
+                  v-if="col.items.length === 0 && !store.loading && inlineCreateColId !== col.id"
+                  :class="{ 'clickable': col.name !== 'FALLBACK_UNCLASSIFIED' && canCurrentUserCreateTask }"
+                  @click="(col.name !== 'FALLBACK_UNCLASSIFIED' && canCurrentUserCreateTask) ? openInlineCreate(col.id) : null"
+                >
+                  <span v-if="col.name === 'FALLBACK_UNCLASSIFIED' || !canCurrentUserCreateTask" style="font-weight: normal; color: var(--color-text-muted);">Chưa có công việc nào</span>
+                  <span v-else class="add-action-text"><i class="fa-solid fa-plus"></i> Thêm công việc</span>
+                </div>
+                <div 
+                  class="col-empty-state col-bottom-add clickable" 
+                  v-else-if="col.items.length > 0 && col.name !== 'FALLBACK_UNCLASSIFIED' && canCurrentUserCreateTask && !store.loading && inlineCreateColId !== col.id"
+                  @click="openInlineCreate(col.id)"
+                >
+                  <span class="add-action-text"><i class="fa-solid fa-plus"></i> Thêm công việc</span>
                 </div>
               </template>
             </draggable>
 
             <!-- Inline create box nâng cấp (date + assignee) -->
-            <div class="inline-create-box" v-if="inlineCreateColId === col.id" @click.stop>
-               <div class="ic-top">
-                 <i class="fa-solid fa-plus ic-plus"></i>
-                 <input type="text" class="ic-input" v-model="inlineTaskTitle" placeholder="Tiêu đề công việc mới..." @keyup.enter="submitInlineTask(col)" @keyup.esc="inlineCreateColId = null" ref="inlineInput" />
+            <div class="inline-create-box issue-card kanban-card-editor shadow-sm border border-[var(--color-border)] rounded-xl p-3 bg-[var(--color-surface)]" v-if="false && inlineCreateColId === col.id" @click.stop>
+               <!-- Top Row: Date Range Picker (Height 34px, radius 9px, no text header) -->
+               <div class="mb-2">
+                 <el-date-picker
+                   v-model="inlineDateRange"
+                   type="daterange"
+                   range-separator="-"
+                   start-placeholder="Ngày bắt đầu"
+                   end-placeholder="Hạn chót"
+                   value-format="YYYY-MM-DDTHH:mm:ss.SSS[Z]"
+                   format="DD/MM/YYYY"
+                   size="default"
+                   class="ic-date-range-picker w-full"
+                 />
                </div>
-               <div class="ic-extras">
-                 <!-- Due date picker -->
-                 <label class="ic-extra-label">
-                   <i class="fa-regular fa-calendar" style="color: var(--color-text-muted);"></i>
-                   <input
-                     type="date"
-                     class="ic-date-input"
-                     v-model="inlineDueDate"
-                     title="Hạn chót"
-                   />
-                 </label>
-                 <!-- Assignee picker -->
-                 <el-popover placement="top-start" trigger="click" width="220" popper-class="plane-popover" @click.stop>
-                   <template #reference>
-                     <button class="ic-assignee-btn" type="button" title="Gán người thực hiện">
-                       <i class="fa-solid fa-user-plus"></i>
-                       <span v-if="inlineAssigneeIds.length">{{ inlineAssigneeIds.length }} người</span>
-                       <span v-else>Người thực hiện</span>
-                     </button>
-                   </template>
-                   <div class="popover-content">
-                     <div class="plane-list">
-                       <label
-                         class="plane-list-item"
-                         v-for="member in projectMembers"
-                         :key="member.userId || member.id"
-                         @click.stop
-                       >
-                         <input
-                           type="checkbox"
-                           :value="member.userId || member.id"
-                           v-model="inlineAssigneeIds"
-                         />
-                         {{ member.fullName || member.name || member.email }}
-                       </label>
+               <!-- Middle Row: Task Title Input (Height 34px, radius 9px) -->
+               <div class="mb-2.5">
+                 <input
+                   type="text"
+                   class="ic-title-input w-full"
+                   v-model="inlineTaskTitle"
+                   placeholder="Nhập tiêu đề công việc..."
+                   @keyup.enter="submitInlineTask(col)"
+                   @keyup.esc="inlineCreateColId = null"
+                   ref="inlineInput"
+                 />
+               </div>
+               <!-- Bottom Row: Meta Items (Status, Priority, Assignee) + Action Buttons (No HR divider line) -->
+               <div class="flex items-center justify-between gap-2">
+                 <!-- Meta Items Left (Exact match with task card issue-meta) -->
+                 <div class="issue-meta flex items-center gap-2" @click.stop>
+                   <!-- Status Dropdown -->
+                   <el-dropdown trigger="click" @command="(val) => inlineStatusName = val">
+                     <div class="badge status-badge cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--badge-color': getStatusColor(inlineStatusName || col.name) }">
+                       <i :class="getBoardStatusIcon(inlineStatusName || col.name)" :style="{ color: getStatusColor(inlineStatusName || col.name) }"></i>
+                       <span>{{ normalizeStatusLabel(inlineStatusName || col.name) }}</span>
                      </div>
-                   </div>
-                 </el-popover>
-               </div>
-               <div class="ic-actions">
-                 <button class="ic-submit-btn" @click="submitInlineTask(col)">
-                   <i class="fa-solid fa-check"></i> Thêm
-                 </button>
-                 <button class="ic-cancel-btn" @click="inlineCreateColId = null">
-                   <i class="fa-solid fa-xmark"></i>
-                 </button>
-               </div>
-            </div>
-            <div class="add-btn-bottom" v-else-if="col.name !== 'FALLBACK_UNCLASSIFIED'" @click="openInlineCreate(col.id)">
-               <i class="fa-solid fa-plus"></i> Thêm công việc
+                     <template #dropdown>
+                       <el-dropdown-menu class="plane-dropdown">
+                         <el-dropdown-item v-for="status in taskStatusOptions" :key="status.name" :command="status.name" class="color-option" :style="{ '--option-color': status.color }">
+                           <i :class="status.icon" :style="{ color: status.color }"></i>
+                           {{ status.label }}
+                         </el-dropdown-item>
+                       </el-dropdown-menu>
+                     </template>
+                   </el-dropdown>
+                   <!-- Priority Dropdown -->
+                   <el-dropdown trigger="click" @command="(val) => inlinePriority = val">
+                     <div class="badge priority-badge cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--badge-color': getPriorityColor(inlinePriority) }">
+                       <i :class="getPriorityIcon(inlinePriority)"></i>
+                     </div>
+                     <template #dropdown>
+                       <el-dropdown-menu class="plane-dropdown">
+                         <el-dropdown-item :command="1" class="color-option" style="--option-color:#ef4444"><i class="fa-solid fa-angles-up"></i> Urgent</el-dropdown-item>
+                         <el-dropdown-item :command="2" class="color-option" style="--option-color:#f97316"><i class="fa-solid fa-chevron-up"></i> High</el-dropdown-item>
+                         <el-dropdown-item :command="3" class="color-option" style="--option-color:#3b82f6"><i class="fa-solid fa-minus"></i> Medium</el-dropdown-item>
+                         <el-dropdown-item :command="4" class="color-option" style="--option-color:#10b981"><i class="fa-solid fa-chevron-down"></i> Low</el-dropdown-item>
+                         <el-dropdown-item :command="0" class="color-option" style="--option-color:#64748b"><i class="fa-solid fa-ban"></i> None</el-dropdown-item>
+                       </el-dropdown-menu>
+                     </template>
+                   </el-dropdown>
+                   <!-- Assignee Popover (Next to Priority badge, matching task card ? icon) -->
+                   <el-popover placement="bottom" trigger="click" width="260" popper-class="plane-popover" @click.stop>
+                     <template #reference>
+                       <div class="avatar-xs cursor-pointer hover:bg-[var(--color-border)]" style="border: none; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center;" v-if="inlineAssigneeIds.length">
+                         <UserAvatar v-if="inlineAssigneeIds.length === 1" :user="projectMembers.find(m => (m.userId || m.id) === inlineAssigneeIds[0])" :size="24" :fontSize="11" />
+                         <div v-else style="width: 24px; height: 24px; border-radius: 50%; background: #0c66e4; color: white; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">
+                           +{{ inlineAssigneeIds.length }}
+                         </div>
+                       </div>
+                       <div class="avatar-xs cursor-pointer hover:bg-[var(--color-border)]" style="border: 1px dashed var(--color-text-muted); background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;" v-else title="Gán người thực hiện">
+                         <i class="fa-solid fa-question text-xs"></i>
+                       </div>
+                     </template>
+                     <div class="popover-content" style="padding-top: 8px;">
+                       <input type="text" class="popover-search mb-2" v-model="assigneeSearch" placeholder="Search members" />
+                       <div class="popover-list mt-1">
+                         <div
+                           v-for="member in filteredProjectMembers"
+                           :key="member.userId || member.id"
+                           class="popover-item flex items-center justify-between transition-colors cursor-pointer"
+                           @click.stop="() => { const id = member.userId || member.id; const idx = inlineAssigneeIds.indexOf(id); if (idx > -1) inlineAssigneeIds.splice(idx, 1); else inlineAssigneeIds.push(id); }"
+                           :class="inlineAssigneeIds.includes(member.userId || member.id) ? 'bg-green-100 hover:bg-green-200 text-green-900 border-l-4 border-green-500 rounded-sm' : 'hover:bg-gray-100'"
+                         >
+                           <div class="flex items-center truncate max-w-[75%] pl-2">
+                             <UserAvatar :user="member" :size="22" :fontSize="10" class="mr-2" />
+                             <span class="truncate" :class="inlineAssigneeIds.includes(member.userId || member.id) ? 'font-semibold' : ''">{{ member.fullName || member.name || member.email }}</span>
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+                   </el-popover>
+                  </div>
+                </div>
+                <!-- Dedicated Action Row (Right aligned, clean separate row) -->
+                <div class="flex items-center justify-end gap-2 pt-2.5 mt-2 border-t border-[color-mix(in_srgb,var(--color-border)_50%,transparent)]">
+                  <button class="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-colors" @click="inlineCreateColId = null">
+                    Hủy
+                  </button>
+                  <button class="text-xs px-3 py-1 font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors flex items-center gap-1" @click="submitInlineTask(col)">
+                    <i class="fa-solid fa-check text-[10px]"></i> Thêm
+                  </button>
+                </div>
             </div>
           </div>
         </div>
-
       </div>
 
     </div>
@@ -731,6 +916,26 @@ use([
 ]);
 
 const showDisplayDropdown = ref(false)
+const showFilterDropdown = ref(false)
+
+function toggleFilterDropdown() {
+  showFilterDropdown.value = !showFilterDropdown.value
+  if (showFilterDropdown.value) {
+    showDisplayDropdown.value = false
+  }
+}
+
+function toggleDisplayDropdown() {
+  showDisplayDropdown.value = !showDisplayDropdown.value
+  if (showDisplayDropdown.value) {
+    showFilterDropdown.value = false
+  }
+}
+
+function handleGlobalDropdownClick() {
+  showFilterDropdown.value = false
+  showDisplayDropdown.value = false
+}
 const showAnalyticsSidebar = ref(false)
 const isAnalyticsExpanded = ref(false)
 const showFilterPanel = ref(false)
@@ -828,6 +1033,9 @@ const inlineCreateColId = ref(null)
 const inlineTaskTitle = ref('')
 const inlineDueDate = ref('')
 const inlineAssigneeIds = ref([])
+const inlineDateRange = ref([])
+const inlineStatusName = ref('BACKLOG')
+const inlinePriority = ref(0)
 
 const currentTab = ref('board')
 const searchQuery = ref('')
@@ -989,6 +1197,36 @@ const getTaskAssigneeIds = (task) => {
     ...(Array.isArray(task.assignees) ? task.assignees.map(item => item.userId || item.id).filter(Boolean) : []),
     ...(task.assignedUserId ? [task.assignedUserId] : [])
   ]))
+}
+
+const getCurrentUserId = () => {
+  const user = getStoredUserSession()
+  return user?.id || user?.userId || null
+}
+
+const isTaskEditableByAssignee = (task) => {
+  if (!task || task.isNew) return true
+
+  const assigneeIds = getTaskAssigneeIds(task)
+  if (!assigneeIds.length) return true
+
+  const currentUserId = getCurrentUserId()
+  return Boolean(currentUserId && assigneeIds.some(id => `${id}` === `${currentUserId}`))
+}
+
+const notifyAssignmentLock = () => {
+  ElMessage.warning('Chỉ người được giao mới có thể thay đổi công việc này.')
+}
+
+const canEditTaskByAssignment = (task) => {
+  const canEdit = isTaskEditableByAssignee(task)
+  if (!canEdit) notifyAssignmentLock()
+  return canEdit
+}
+
+const canMoveAssignedTask = (event) => {
+  const task = event?.draggedContext?.element
+  return isTaskEditableByAssignee(task) || (notifyAssignmentLock(), false)
 }
 
 const getTaskAssigneeSummary = (task) => {
@@ -1163,18 +1401,28 @@ const analyticsStatusBucket = (statusName) => {
 const getBoardStatusIcon = (value) => taskStatusOptions.value.find(item => item.name === normalizeStatus(value))?.icon || 'fa-regular fa-circle-dashed'
 const getStatusColor = (value) => taskStatusOptions.value.find(item => item.name === normalizeStatus(value))?.color || 'var(--color-text-muted)'
 const getPriorityIcon = (priority) => {
-  if (priority === 1) return 'fa-solid fa-angles-up text-red-500'
-  if (priority === 2) return 'fa-solid fa-chevron-up text-orange-500'
-  if (priority === 3) return 'fa-solid fa-minus text-blue-500'
-  if (priority === 4) return 'fa-solid fa-chevron-down text-gray-400'
+  const p = normalizePriority(priority)
+  if (p === 1 || p === '1') return 'fa-solid fa-angles-up text-red-500'
+  if (p === 2 || p === '2') return 'fa-solid fa-chevron-up text-orange-500'
+  if (p === 3 || p === '3') return 'fa-solid fa-minus text-blue-500'
+  if (p === 4 || p === '4') return 'fa-solid fa-chevron-down text-gray-400'
   return 'fa-solid fa-ban text-gray-500'
 }
 const getPriorityColor = (priority) => {
-  if (priority === 1) return '#F43F5E'
-  if (priority === 2) return '#F97316'
-  if (priority === 3) return '#38BDF8'
-  if (priority === 4) return '#94A3B8'
-  return '#64748B'
+  const p = normalizePriority(priority)
+  if (p === 1 || p === '1') return '#ef4444' // Vivid Crimson Red
+  if (p === 2 || p === '2') return '#f97316' // Vivid Orange
+  if (p === 3 || p === '3') return '#2563eb' // Vivid Royal Blue
+  if (p === 4 || p === '4') return '#10b981' // Emerald Green
+  return '#94a3b8' // Light Gray
+}
+const getPriorityLabel = (priority) => {
+  const p = normalizePriority(priority)
+  if (p === 1 || p === '1') return 'Urgent'
+  if (p === 2 || p === '2') return 'High'
+  if (p === 3 || p === '3') return 'Medium'
+  if (p === 4 || p === '4') return 'Low'
+  return 'None'
 }
 const normalizePriority = (value) => {
   const map = { urgent: 1, high: 2, normal: 3, low: 4, none: null }
@@ -1662,8 +1910,8 @@ const kanbanColumns = computed(() => {
   const statusBgMap = {
     'BACKLOG':     'rgba(148, 163, 184, 0.05)',
     'TO DO':       'rgba(167, 139, 250, 0.06)',
-    'IN PROGRESS': 'rgba(245, 158, 11, 0.06)',
-    'IN REVIEW':   'rgba(56, 189, 248, 0.06)',
+    'IN PROGRESS': 'rgba(56, 189, 248, 0.06)',
+    'IN REVIEW':   'rgba(245, 158, 11, 0.06)',
     'DONE':        'rgba(34, 197, 94, 0.05)',
     'CANCELLED':   'rgba(244, 63, 94, 0.05)'
   }
@@ -1749,6 +1997,8 @@ const toggleListGroup = (groupId) => {
 }
 
 const toggleTaskAssignee = (task, memberId) => {
+  if (!canEditTaskByAssignment(task)) return
+
   const currentIds = getTaskAssigneeIds(task)
   const nextIds = currentIds.includes(memberId)
     ? currentIds.filter(id => id !== memberId)
@@ -2027,6 +2277,7 @@ watch(
 const updateTask = async (task, field, value, previousValue = task ? task[field] : undefined) => {
   const pid = getProjectId()
   if (!pid || !task?.id) return
+  if (!canEditTaskByAssignment(task)) return
 
   const isBatchPayload = field && typeof field === 'object' && !Array.isArray(field)
   const payloadOverrides = isBatchPayload ? field : { [field]: value }
@@ -2104,7 +2355,12 @@ const openInlineCreate = (colId) => {
    inlineTaskTitle.value = '';
    inlineDueDate.value = '';
    inlineAssigneeIds.value = [];
+   inlineDateRange.value = [];
+   const targetCol = kanbanColumns.value.find(c => c.id === colId);
+   inlineStatusName.value = targetCol ? (targetCol.name === 'FALLBACK_UNCLASSIFIED' ? 'BACKLOG' : targetCol.name) : 'BACKLOG';
+   inlinePriority.value = 0;
    nextTick(() => {
+     const targetColumn = document.querySelector('.col-body.is-creating')
      if(inlineInput.value) {
         // inlineInput.value could be an array if inside v-for, or a proxy. We handle both:
         if (Array.isArray(inlineInput.value)) {
@@ -2112,6 +2368,32 @@ const openInlineCreate = (colId) => {
         } else {
            inlineInput.value.focus();
         }
+     }
+
+     // Focus can scroll the input into view before the full editor is laid out.
+     // Scroll again after layout so the complete create form remains visible.
+     const scrollEditorIntoView = () => {
+       if (!targetColumn) return;
+       const editor = targetColumn.querySelector('.inline-create-box');
+       if (!editor) return;
+       const columnRect = targetColumn.getBoundingClientRect();
+       const editorRect = editor.getBoundingClientRect();
+       const hiddenBelow = editorRect.bottom - columnRect.bottom;
+       if (hiddenBelow > 0) targetColumn.scrollTop += hiddenBelow + 8;
+       targetColumn.scrollTop = Math.max(0, targetColumn.scrollHeight - targetColumn.clientHeight);
+     };
+     scrollEditorIntoView();
+     requestAnimationFrame(() => {
+       scrollEditorIntoView();
+       requestAnimationFrame(scrollEditorIntoView);
+       window.setTimeout(scrollEditorIntoView, 120);
+     });
+
+     const editor = targetColumn?.querySelector('.inline-create-box');
+     if (targetColumn && editor && typeof ResizeObserver !== 'undefined') {
+       const resizeObserver = new ResizeObserver(scrollEditorIntoView);
+       resizeObserver.observe(editor);
+       window.setTimeout(() => resizeObserver.disconnect(), 600);
      }
    });
 }
@@ -2125,15 +2407,22 @@ const submitInlineTask = async (col) => {
       const payload = {
          title: inlineTaskTitle.value.trim(),
          description: '',
-         statusName: col.name || 'BACKLOG',
-         priority: 3,
+         statusName: inlineStatusName.value || col?.name || 'BACKLOG',
+         priority: Number.isFinite(Number(inlinePriority.value)) ? Number(inlinePriority.value) : 0,
          sprintId: activeSprintFilterId.value || null
       }
-      if (inlineDueDate.value) payload.dueDate = inlineDueDate.value
+      if (inlineDateRange.value && Array.isArray(inlineDateRange.value) && inlineDateRange.value.length === 2) {
+         payload.plannedStartDate = inlineDateRange.value[0];
+         payload.plannedEndDate = inlineDateRange.value[1];
+         payload.dueDate = inlineDateRange.value[1];
+      } else if (inlineDueDate.value) {
+         payload.dueDate = inlineDueDate.value;
+      }
       if (inlineAssigneeIds.value.length) payload.assigneeIds = inlineAssigneeIds.value
       await axiosClient.post(`/projects/${getProjectId()}/WorkTasks`, payload);
       inlineTaskTitle.value = '';
       inlineDueDate.value = '';
+      inlineDateRange.value = [];
       inlineAssigneeIds.value = [];
       inlineCreateColId.value = null;
       fetchTasks();
@@ -2165,6 +2454,10 @@ const handleListTaskCreate = async (payload) => {
 const handleDraggableChange = async (evt, group) => {
   if (evt.added || evt.moved) {
     const element = evt.added ? evt.added.element : evt.moved.element;
+    if (!canEditTaskByAssignment(element)) {
+      await fetchTasks()
+      return
+    }
     const newIndex = evt.added ? evt.added.newIndex : evt.moved.newIndex;
     const previousTask = { ...element };
     const getSortOrder = (task, fallback) => {
@@ -2360,6 +2653,15 @@ const startTaskRealtime = async (projectId) => {
   signalRTaskUpdatedHandler = handleRealtimeTaskUpdated
   signalRService.on('TaskUpdated', signalRTaskUpdatedHandler)
   signalRService.on('WorkTaskUpdated', signalRTaskUpdatedHandler)
+  signalREntityChangedHandler = (event) => {
+    if (`${event?.entityType || ''}`.toLowerCase() === 'task-collection' && `${event?.action || ''}`.toLowerCase() === 'reconcile') {
+      fetchTasks({ reset: false })
+      return
+    }
+    const updatedTask = store.applyRealtimeEntityEvent(event)
+    if (updatedTask) handleRealtimeTaskUpdated(updatedTask)
+  }
+  signalRService.on('EntityChanged', signalREntityChangedHandler)
   signalRProjectEventHandler = (event) => {
     if (!event?.type) return
     if (event?.projectId && `${event.projectId}` !== `${projectId}`) return
@@ -2369,6 +2671,7 @@ const startTaskRealtime = async (projectId) => {
 }
 
 onMounted(() => {
+  window.addEventListener('click', handleGlobalDropdownClick)
   startTaskRealtime(getProjectId())
   unsubscribeAdminRealtime = subscribeAdminRealtime(async ({ type, payload }) => {
     const pid = getProjectId()
@@ -2434,6 +2737,7 @@ watch(
 )
 
 onUnmounted(() => {
+  window.removeEventListener('click', handleGlobalDropdownClick)
   window.removeEventListener('global-create-task', handleGlobalCreate)
   analyticsThemeObserver?.disconnect()
   moduleDetailAbortController?.abort()
@@ -2464,7 +2768,7 @@ onUnmounted(() => {
   flex-direction: column;
   color: var(--color-text-primary);
   font-family: 'Inter', sans-serif;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .module-detail-context {
@@ -2847,6 +3151,16 @@ onUnmounted(() => {
 }
 
 /* Kanban Board */
+.space-summary-page,
+.plane-board-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
 .kanban-wrapper {
   display: flex;
   gap: 14px;
@@ -2855,7 +3169,7 @@ onUnmounted(() => {
   min-height: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 12px 4px 16px;
+  padding: 12px 4px 0;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 20%, transparent), transparent 220px);
 }
@@ -2928,11 +3242,36 @@ onUnmounted(() => {
 }
 .kanban-retry-btn:hover { background: #dc2626; }
 
-/* Card top right area (due date + star) */
+.issue-card-header {
+  min-height: 28px;
+  margin-bottom: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.issue-card-heading-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .card-top-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.issue-card-header .star-task-btn.small {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0;
+  font-size: 11px;
 }
 
 /* Due date badge */
@@ -2953,6 +3292,32 @@ onUnmounted(() => {
   border: 1px solid rgba(239, 68, 68, 0.28);
   animation: pulse-overdue 2s ease-in-out infinite;
 }
+.card-due-badge.card-due-empty {
+  color: var(--color-text-muted);
+  border-style: dashed !important;
+  background: color-mix(in srgb, var(--color-surface-hover) 62%, transparent) !important;
+}
+.card-due-compact {
+  min-height: 20px;
+  max-width: 88px;
+  margin-left: 0;
+  padding: 1px 5px;
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.card-due-compact span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-assignee-trigger {
+  flex: 0 0 22px;
+  margin-left: auto;
+}
 @keyframes pulse-overdue {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
@@ -2963,14 +3328,46 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 28px 16px;
+  height: 100px;
+  min-height: 100px;
+  padding: 12px 16px;
   font-size: 13px;
-  color: var(--color-text-muted);
-  border: 1.5px dashed color-mix(in srgb, var(--col-color) 24%, var(--color-border));
-  border-radius: 10px;
-  margin-top: 8px;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--col-color) 52%, var(--color-text-primary));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--col-color) 10%, transparent), transparent),
+    color-mix(in srgb, var(--color-bg) 72%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--col-color) 42%, var(--color-border));
+  border-radius: 11px;
+  margin-top: 0;
   text-align: center;
   line-height: 1.5;
+  box-sizing: border-box;
+  transition: background 160ms ease, transform 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.col-empty-state.clickable {
+  cursor: pointer;
+}
+
+.col-empty-state.clickable:hover {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--col-color) 14%, var(--color-bg));
+  border-color: color-mix(in srgb, var(--col-color) 62%, var(--color-border));
+  transform: translateY(-1px);
+}
+
+.col-empty-state.col-bottom-add {
+  height: 100px;
+  min-height: 100px;
+  padding: 12px 16px;
+  margin-top: 0;
+}
+
+.col-empty-state .add-action-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Inline create extras row */
@@ -3176,7 +3573,7 @@ onUnmounted(() => {
   position: absolute;
   inset: 0 auto 0 0;
   width: 4px;
-  background: linear-gradient(180deg, var(--task-status-color), color-mix(in srgb, var(--task-priority-color) 62%, var(--task-status-color)));
+  background: var(--task-status-color);
 }
 .issue-card:hover {
   transform: translateY(-2px);
@@ -3209,8 +3606,21 @@ onUnmounted(() => {
   font-weight: 800;
   letter-spacing: 0.02em;
 }
+
+.status-badge {
+  border: 1px solid color-mix(in srgb, var(--badge-color, var(--color-accent)) 50%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--badge-color, var(--color-accent)) 14%, var(--color-surface)) !important;
+  color: color-mix(in srgb, var(--badge-color, var(--color-accent)) 92%, var(--color-text-primary)) !important;
+  font-weight: 700 !important;
+}
+
+.status-badge i,
+.status-badge span {
+  color: var(--badge-color, var(--color-accent)) !important;
+}
 .issue-title {
   display: -webkit-box;
+  min-height: calc(2 * 1.42em);
   max-height: calc(2 * 1.42em);
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -3226,7 +3636,8 @@ onUnmounted(() => {
 .issue-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
+  min-width: 0;
 }
 
 .id { font-size: 12px; color: var(--color-text-muted); font-weight: 600; }
@@ -3266,29 +3677,6 @@ onUnmounted(() => {
   font-weight: 800;
 }
 
-.add-btn-bottom {
-  color: color-mix(in srgb, var(--col-color) 52%, var(--color-text-primary));
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  margin-top: 12px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--col-color) 10%, transparent), transparent),
-    color-mix(in srgb, var(--color-bg) 72%, transparent);
-  border: 1px dashed color-mix(in srgb, var(--col-color) 42%, var(--color-border));
-  border-radius: 10px;
-  transition: background 160ms ease, transform 160ms ease, border-color 160ms ease;
-}
-.add-btn-bottom:hover {
-  color: var(--color-text-primary);
-  background: color-mix(in srgb, var(--col-color) 14%, var(--color-bg));
-  border-color: color-mix(in srgb, var(--col-color) 62%, var(--color-border));
-  transform: translateY(-1px);
-}
 
 .inline-create-box {
   background: var(--color-surface);
@@ -3303,10 +3691,16 @@ onUnmounted(() => {
 }
 /* Kanban edge-to-edge layout fixes */
 :deep(.project-page-inner) {
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-  max-width: 100vw;
+  --sa-page-x: 18px;
+  padding-left: var(--sa-page-x) !important;
+  padding-right: var(--sa-page-x) !important;
+  max-width: 100%;
   overflow-x: hidden;
+}
+
+.space-summary-page {
+  width: 100%;
+  min-width: 0;
 }
 
 .plane-board-container > .project-page-header,
@@ -3315,8 +3709,8 @@ onUnmounted(() => {
 .plane-board-container > .list-wrapper,
 .plane-board-container > .calendar-wrapper,
 .plane-board-container > .timeline-wrapper {
-  padding-left: 0;
-  padding-right: 0;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
 
 .ic-top {
@@ -3370,7 +3764,8 @@ onUnmounted(() => {
 .kanban-wrapper::-webkit-scrollbar-thumb:hover, .col-body::-webkit-scrollbar-thumb:hover { background: #3F3F46; }
 
 /* Display Dropdown Styles */
-.display-dropdown-wrapper { position: relative; display: inline-block; }
+.display-dropdown-wrapper,
+.filter-dropdown-wrapper { position: relative; display: inline-block; }
 .plane-dropdown-menu {
   position: absolute;
   top: 100%;
@@ -3380,12 +3775,28 @@ onUnmounted(() => {
   border: 1px solid var(--color-border);
   border-radius: 10px;
   width: 260px;
+  max-height: min(450px, calc(100vh - 180px));
+  overflow-y: auto;
   box-shadow: var(--shadow-popover);
   z-index: var(--z-popover);
   color: var(--color-text-primary);
   font-size: 13px;
   padding: 8px;
 }
+.filter-dropdown-menu {
+  left: 0;
+  right: auto;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+}
+.filter-dropdown-menu .filter-bar-container {
+  border: none;
+  background: transparent;
+  padding: 4px;
+  min-height: auto;
+  box-shadow: none;
+}
+
 .dd-section { padding: 8px; }
 .dd-section.border-top { border-top: 1px solid var(--color-border); }
 .dd-title { display: flex; justify-content: space-between; color: var(--color-text-muted); font-size: 12px; font-weight: 700; margin-bottom: 8px; }
@@ -3598,6 +4009,16 @@ onUnmounted(() => {
   color: var(--text-primary) !important;
 }
 
+:global(.plane-dropdown .el-dropdown-menu__item) {
+  color: var(--badge-color, var(--color-text-primary)) !important;
+}
+
+:global(.plane-dropdown .el-dropdown-menu__item.color-option),
+:global(.plane-dropdown .el-dropdown-menu__item.color-option span),
+:global(.plane-dropdown .el-dropdown-menu__item.color-option i) {
+  color: var(--option-color) !important;
+}
+
 .no-shadow-context :global(.plane-popover) {
   box-shadow: none !important;
 }
@@ -3709,7 +4130,8 @@ onUnmounted(() => {
   z-index: 9999;
   display: flex;
   justify-content: flex-end;
-  backdrop-filter: blur(2px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .analytics-panel {
   width: min(760px, 88vw);
@@ -4143,8 +4565,7 @@ onUnmounted(() => {
   border-left: 3px solid color-mix(in srgb, var(--color-accent) 70%, transparent);
 }
 
-.pill-status,
-.pill-priority {
+.pill-status {
   border-color: color-mix(in srgb, var(--pill-color, var(--color-accent)) 34%, var(--color-border)) !important;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--pill-color, var(--color-accent)) 14%, transparent), transparent 70%),
@@ -4152,9 +4573,26 @@ onUnmounted(() => {
   color: var(--color-text-primary) !important;
 }
 
-.pill-status i,
-.pill-priority i {
+.pill-status i {
   color: var(--pill-color, var(--color-accent)) !important;
+}
+
+.priority-badge,
+.pill-priority {
+  border: 1px solid color-mix(in srgb, var(--pill-color, var(--badge-color, var(--color-accent))) 50%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--pill-color, var(--badge-color, var(--color-accent))) 18%, var(--color-surface)) !important;
+  color: color-mix(in srgb, var(--pill-color, var(--badge-color, var(--color-accent))) 92%, var(--color-text-primary)) !important;
+  font-weight: 700 !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  transition: all 0.2s ease;
+}
+
+.priority-badge i,
+.pill-priority i {
+  color: var(--pill-color, var(--badge-color, var(--color-accent))) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
 }
 
 .analytics-panel {
@@ -4278,13 +4716,20 @@ onUnmounted(() => {
 }
 
 .kanban-wrapper {
+  display: flex !important;
   gap: 14px !important;
-  padding: 12px 4px 16px !important;
-  scroll-padding: 12px;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding: 12px 16px 16px !important;
+  scroll-padding-inline: 16px;
   scroll-behavior: smooth;
-  scrollbar-gutter: stable;
   overscroll-behavior-x: contain;
   touch-action: pan-x pan-y;
+  box-sizing: border-box !important;
+}
+
+.kanban-col:last-child {
+  margin-right: 0 !important;
 }
 
 .kanban-wrapper::-webkit-scrollbar {
@@ -4360,5 +4805,393 @@ onUnmounted(() => {
 [data-theme='dark'] .kanban-col {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--col-color) 10%, #17233a), color-mix(in srgb, var(--color-surface) 78%, #020617)) !important;
+}
+
+
+.inline-create-box {
+  background: var(--color-surface);
+  border: 1px solid color-mix(in srgb, var(--sp-blue-500, #3b82f6) 40%, var(--color-border));
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+.col-body.is-creating .col-draggable {
+  order: 1;
+  padding-bottom: 0;
+}
+.col-body.is-creating > .inline-create-box {
+  order: 2;
+  margin-top: 0;
+  margin-bottom: 0;
+  flex: 0 0 auto !important;
+  height: auto !important;
+  min-height: max-content !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
+}
+.col-body.is-creating > .col-draggable {
+  flex: 0 0 auto !important;
+}
+.inline-create-top {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.inline-create-planning {
+  display: grid;
+  width: 100%;
+  max-width: 194px !important;
+  grid-template-columns: 156px 30px !important;
+  align-items: center;
+  justify-content: end;
+  gap: 8px;
+}
+
+.inline-assignee-slot {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inline-date-slot {
+  width: 156px !important;
+  min-width: 156px !important;
+  max-width: 156px !important;
+  height: 30px;
+  min-height: 30px;
+  overflow: hidden;
+}
+
+.inline-date-slot :deep(.el-date-editor),
+.inline-date-slot .ic-date-range-inline {
+  width: 156px !important;
+  min-width: 156px !important;
+  max-width: 156px !important;
+}
+
+.inline-assignee-slot :deep(.el-popover__reference-wrapper),
+.inline-assignee-slot :deep(.el-tooltip__trigger),
+.inline-assignee-slot :deep(.el-popper__trigger) {
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+.inline-assignee-trigger {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.inline-assignee-trigger:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.inline-assignee-count {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #ffffff;
+  font-size: 10px;
+}
+.inline-create-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.inline-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: 0;
+}
+.inline-cancel-btn,
+.inline-submit-btn {
+  min-height: 32px;
+  border-radius: 9px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.18s ease;
+}
+.inline-cancel-btn {
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  color: var(--color-text-secondary);
+}
+.inline-cancel-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+.inline-submit-btn {
+  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
+  background: linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 72%, #0f172a));
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.18);
+}
+.inline-submit-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.24);
+}
+.priority-badge span {
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ic-date-editor {
+  display: flex;
+  align-items: center;
+}
+.ic-date-editor :deep(.el-date-editor) {
+  height: 28px !important;
+  line-height: 28px !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+}
+.ic-date-editor :deep(.el-range-separator) {
+  font-size: 11px !important;
+  line-height: 28px !important;
+}
+.ic-date-editor :deep(.el-range-input) {
+  font-size: 11.5px !important;
+}
+
+
+.ic-title-input {
+  width: 100% !important;
+  height: 34px !important;
+  padding: 0 12px !important;
+  border-radius: 9px !important;
+  border: 1px solid var(--color-border) !important;
+  background-color: var(--color-surface) !important;
+  color: var(--color-text-primary) !important;
+  font-size: 13px !important;
+  outline: none !important;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.ic-title-input:focus {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important;
+}
+
+.ic-date-range-picker {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+.ic-date-range-inline,
+.ic-date-range-inline.el-date-editor,
+.ic-date-range-inline :deep(.el-date-editor) {
+  width: 156px !important;
+  min-width: 156px !important;
+  max-width: 156px !important;
+}
+.ic-date-range-picker.ic-date-compact {
+  position: relative;
+  width: 82px !important;
+  flex: 0 0 82px;
+}
+.ic-date-range-picker.ic-date-compact::after {
+  content: "Date";
+  position: absolute;
+  inset: 0 8px 0 28px;
+  display: flex;
+  align-items: center;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+.ic-date-range-picker.ic-date-compact :deep(.el-range-input),
+.ic-date-range-picker.ic-date-compact :deep(.el-range-separator),
+.ic-date-range-picker.ic-date-compact :deep(.el-range__close-icon) {
+  visibility: hidden;
+  width: 0 !important;
+  flex: 0 0 0 !important;
+}
+.ic-date-range-picker :deep(.el-date-editor),
+.ic-date-range-picker.el-date-editor {
+  width: 100% !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  border-radius: 9px !important;
+  border: 1px solid var(--color-border) !important;
+  background-color: var(--color-surface) !important;
+  color: var(--color-text-primary) !important;
+  padding: 0 10px !important;
+  box-sizing: border-box !important;
+}
+.ic-date-range-picker :deep(.el-range-input) {
+  width: 34px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  font-size: 12px !important;
+  color: var(--color-text-primary) !important;
+}
+.ic-date-range-picker :deep(.el-range-separator) {
+  width: 12px !important;
+  min-width: 12px !important;
+  padding: 0 !important;
+  font-size: 12px !important;
+  line-height: 32px !important;
+  color: var(--color-text-muted) !important;
+}
+.ic-date-range-picker :deep(.el-range__icon) {
+  font-size: 13px !important;
+}
+
+/* Keep the active create form aligned with the compact task-card header. */
+.inline-create-box .inline-create-planning {
+  display: grid !important;
+  grid-template-columns: minmax(0, 220px) 22px !important;
+  width: 250px !important;
+  max-width: 100% !important;
+  gap: 8px !important;
+  justify-content: end !important;
+  margin-left: auto !important;
+}
+
+.inline-create-box {
+  gap: 8px !important;
+}
+
+.inline-create-box .inline-create-meta {
+  margin-top: 0 !important;
+}
+
+.inline-create-box .inline-date-slot {
+  width: 220px !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  overflow: visible !important;
+}
+
+.inline-create-box .inline-date-slot :deep(.el-date-editor.ic-date-range-inline) {
+  width: 220px !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  line-height: 20px !important;
+  padding: 0 5px !important;
+  border-radius: 6px !important;
+  box-sizing: border-box !important;
+  font-size: 10.5px !important;
+}
+
+.inline-create-box .inline-date-slot :deep(.el-range-input) {
+  width: 76px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  font-size: 10.5px !important;
+  line-height: 20px !important;
+}
+
+.inline-create-box .inline-date-slot :deep(.el-range-separator) {
+  width: 10px !important;
+  min-width: 10px !important;
+  padding: 0 !important;
+  font-size: 10.5px !important;
+  line-height: 20px !important;
+}
+
+.inline-create-box .inline-date-slot :deep(.el-range__icon),
+.inline-create-box .inline-date-slot :deep(.el-range__close-icon) {
+  flex: 0 0 auto !important;
+  font-size: 11px !important;
+  line-height: 20px !important;
+}
+
+.inline-create-box .inline-assignee-slot {
+  width: 22px !important;
+  height: 22px !important;
+}
+
+.inline-create-box .inline-assignee-slot :deep(.el-popover__reference-wrapper),
+.inline-create-box .inline-assignee-slot :deep(.el-tooltip__trigger),
+.inline-create-box .inline-assignee-slot :deep(.el-popper__trigger),
+.inline-create-box .inline-assignee-trigger {
+  width: 22px !important;
+  min-width: 22px !important;
+  height: 22px !important;
+}
+
+.inline-create-box .inline-assignee-trigger {
+  font-size: 10px !important;
+  border: 1px dashed var(--color-text-muted) !important;
+  background: #e2e8f0 !important;
+  color: #64748b !important;
+}
+
+.inline-create-box .inline-create-actions {
+  gap: 8px !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+  border-top: 0 !important;
+}
+
+.inline-create-box .inline-cancel-btn,
+.inline-create-box .inline-submit-btn {
+  flex: 1 1 0 !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.inline-create-box .inline-cancel-btn {
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  color: #ffffff !important;
+}
+
+.inline-create-box .inline-cancel-btn:hover {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+.inline-create-box .inline-submit-btn {
+  background: #0ea5e9 !important;
+  border-color: #0ea5e9 !important;
+  color: #ffffff !important;
+}
+
+.inline-create-box .inline-submit-btn:hover {
+  background: #0284c7 !important;
+  border-color: #0284c7 !important;
+  color: #ffffff !important;
 }
 </style>

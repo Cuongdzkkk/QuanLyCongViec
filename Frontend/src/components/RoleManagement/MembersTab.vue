@@ -88,8 +88,14 @@
       :title="`Assign Users to ${role.name}`"
       fullscreen
       destroy-on-close
+      class="sa-data-dialog"
+      :show-close="false"
     >
+      <template #header>
+        <DataModalHeader icon="bi bi-person-plus" :title="`Assign users to ${role.name}`" description="Search and select users for this role" close-label="Close" @close="dialogVisible = false" />
+      </template>
       <div style="display: flex; flex-direction: column; height: calc(100vh - 140px); max-width: 1200px; margin: 0 auto; width: 100%;">
+        <DataModalSection icon="bi bi-search" title="Find users">
         <div style="margin-bottom: 24px;">
           <el-text type="info" style="margin-bottom: 16px; display: block;">Select users to assign them the {{ role.name }} role.</el-text>
           <el-space :size="16">
@@ -99,7 +105,9 @@
             </el-select>
           </el-space>
         </div>
+        </DataModalSection>
         
+        <DataModalSection icon="bi bi-people" title="Available users">
         <div style="flex: 1; border: 1px solid var(--el-border-color-light); border-radius: 8px; overflow: hidden; box-shadow: var(--el-box-shadow-light);">
           <el-table 
             :data="nonMembers" 
@@ -134,13 +142,14 @@
             </el-table-column>
           </el-table>
         </div>
+        </DataModalSection>
       </div>
       
       <template #footer>
         <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
           <el-text type="info">{{ addSelectedRows.length }} users selected</el-text>
           <el-space :size="16">
-            <el-button @click="dialogVisible = false" size="large">Cancel</el-button>
+            <el-button class="cancel-btn" @click="dialogVisible = false" size="large"><i class="bi bi-x-lg"></i>Cancel</el-button>
             <el-button type="primary" :disabled="addSelectedRows.length === 0" @click="submitAddMembers" size="large">
               Assign Role
             </el-button>
@@ -154,6 +163,8 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { Search, Plus } from '@element-plus/icons-vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 
 const props = defineProps({
   role: { type: Object, required: true },

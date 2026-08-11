@@ -1360,10 +1360,20 @@
     <!-- Dialog thêm/sửa trường tùy chỉnh -->
     <el-dialog
       v-model="showCustomFieldModal"
-      :title="isEditingCustomField ? 'Sửa trường tùy chỉnh' : 'Thêm trường tùy chỉnh'"
       width="480px"
       custom-class="plane-dialog"
+      append-to-body
+      class="sa-data-dialog sa-modal--form"
+      :show-close="false"
     >
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-ui-checks-grid"
+          :title="isEditingCustomField ? 'Sửa trường tùy chỉnh' : 'Thêm trường tùy chỉnh'"
+          description="Thiết lập kiểu dữ liệu, tùy chọn và cách hiển thị trên công việc"
+          @close="showCustomFieldModal = false"
+        />
+      </template>
       <div class="dialog-form">
         <div class="form-group">
           <label class="form-label">Tên trường <span class="text-red-500">*</span></label>
@@ -1394,7 +1404,7 @@
       </div>
       <template #footer>
         <span class="dialog-footer" style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
-          <el-button @click="showCustomFieldModal = false">Hủy</el-button>
+          <el-button class="cancel-btn" @click="showCustomFieldModal = false"><i class="bi bi-x-lg"></i> Hủy</el-button>
           <el-button type="primary" :loading="savingCustomField" @click="saveCustomField">Lưu thay đổi</el-button>
         </span>
       </template>
@@ -1418,6 +1428,7 @@ import { getDefaultPermissionMatrix, normalizeRole } from '@/utils/permissionGua
 import { hasProjectWritePermission } from '@/utils/permissions'
 import { getSprintApiError, getSprintErrorMessage, getSprintStateMeta, normalizeSprintState } from '@/utils/sprintState'
 import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -1474,6 +1485,17 @@ const labels = ref([])
 const modules = ref([])
 const sprints = ref([])
 const integrations = ref([])
+
+const upsertById = (collectionRef, item) => {
+  if (!item?.id) return
+  const index = collectionRef.value.findIndex(existing => existing.id === item.id)
+  if (index >= 0) collectionRef.value[index] = { ...collectionRef.value[index], ...item }
+  else collectionRef.value.push(item)
+}
+
+const removeById = (collectionRef, id) => {
+  collectionRef.value = collectionRef.value.filter(item => item.id !== id)
+}
 const integrationAnalysis = ref(null)
 const pointManagement = ref({
   totalProjectPoints: 0,
@@ -2510,14 +2532,22 @@ const createLabel = async () => {
 
   savingLabel.value = true
   try {
-    await axiosClient.post(`/projects/${projectId}/labels`, {
+    const response = await axiosClient.post(`/projects/${projectId}/labels`, {
       name: newLabel.value.name.trim(),
       colorCode: newLabel.value.colorCode,
       description: newLabel.value.description?.trim() || ''
     })
+    const createdLabel = response.data?.data
+    if (createdLabel?.id) {
+      upsertById(labels, {
+        ...createdLabel,
+        colorCode: createdLabel.colorCode || createdLabel.color || newLabel.value.colorCode,
+        description: newLabel.value.description?.trim() || ''
+      })
+      projectStore.upsertLabel(`${projectId}`, createdLabel)
+    }
     newLabel.value = { name: '', colorCode: '#3b82f6', description: '' }
     ElMessage.success('Label created')
-    await loadProjectSettings()
     notifyProjectSettingsRealtime()
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Could not create label')
@@ -2530,8 +2560,9 @@ const deleteLabel = async (label) => {
   try {
     await ElMessageBox.confirm(`Delete label "${label.name}"?`, 'Delete label', { type: 'warning' })
     await axiosClient.delete(`/projects/${projectId}/labels/${label.id}`)
+    removeById(labels, label.id)
+    projectStore.removeLabel(`${projectId}`, label.id)
     ElMessage.success('Label deleted')
-    await loadProjectSettings()
     notifyProjectSettingsRealtime()
   } catch (error) {
     if (error !== 'cancel') {
@@ -3032,6 +3063,7 @@ const goToCyclesWorkspace = () => {
 
 let unsubscribeAdminRealtime = null
 let projectRealtimeHandler = null
+let entityRealtimeHandler = null
 
 onMounted(async () => {
   clearLegacyGitHubCredentialStorage()
@@ -3047,6 +3079,38 @@ onMounted(async () => {
     broadcastAdminRealtime(event.type, event.payload || { projectId })
   }
   signalRService.on('ProjectRealtimeEvent', projectRealtimeHandler)
+  entityRealtimeHandler = async (event) => {
+    if (event?.projectId && `${event.projectId}` !== `${projectId}`) return
+    const entityType = `${event?.entityType || ''}`.toLowerCase()
+    const action = `${event?.action || ''}`.toLowerCase()
+    if (entityType === 'project-member') {
+      const userId = event?.data?.userId || event?.entityId
+      if (action === 'deleted') {
+        members.value = members.value.filter(member => `${member.userId || member.id}` !== `${userId}`)
+      } else if (action === 'role-updated') {
+        const member = members.value.find(item => `${item.userId || item.id}` === `${userId}`)
+        if (member) member.projectRole = event.data?.role
+      } else {
+        const response = await axiosClient.get(`/projects/${projectId}/members`)
+        members.value = response.data?.data || []
+      }
+      return
+    }
+    const target = entityType === 'label'
+      ? labels
+      : entityType === 'custom-field'
+        ? customFields
+      : entityType === 'module'
+        ? modules
+        : entityType === 'sprint'
+          ? sprints
+          : null
+    if (!target) return
+    if (action === 'deleted' || action === 'removed') removeById(target, event.entityId)
+    else upsertById(target, event.data)
+    if (entityType === 'label') projectStore.applyRealtimeEntityEvent(event)
+  }
+  signalRService.on('EntityChanged', entityRealtimeHandler)
   unsubscribeAdminRealtime = subscribeAdminRealtime(async ({ type, payload }) => {
     if (payload?.projectId && `${payload.projectId}` !== `${projectId}`) {
       return
@@ -3075,6 +3139,9 @@ onUnmounted(() => {
   unsubscribeAdminRealtime?.()
   if (projectRealtimeHandler) {
     signalRService.off('ProjectRealtimeEvent', projectRealtimeHandler)
+  }
+  if (entityRealtimeHandler) {
+    signalRService.off('EntityChanged', entityRealtimeHandler)
   }
 })
 </script>

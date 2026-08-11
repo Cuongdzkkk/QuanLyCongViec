@@ -2,20 +2,29 @@
   <el-dialog
     :model-value="modelValue"
     @update:model-value="$emit('update:modelValue', $event)"
-    :title="title"
-    :width="width"
+    :width="resolvedWidth"
     :destroy-on-close="destroyOnClose"
-    :close-on-click-modal="false"
-    class="sprinta-app-modal"
+    :close-on-click-modal="closeOnOverlayClick"
+    :lock-scroll="preventBackgroundScroll"
+    :modal-class="overlayClass"
+    :style="modalStyle"
+    :class="['sprinta-app-modal', 'sa-data-dialog', sizeClass]"
+    :show-close="false"
     @close="$emit('close')"
     @closed="$emit('closed')"
     append-to-body
   >
-    <template #header v-if="$slots.header">
-      <slot name="header"></slot>
+    <template #header>
+      <DataModalHeader
+        :icon="icon"
+        :title="title"
+        :description="subtitle"
+        :close-label="closeLabel"
+        @close="handleCancel"
+      />
     </template>
     
-    <div class="sprinta-app-modal-body">
+    <div :class="['sprinta-app-modal-body', bodyClassName]">
       <slot></slot>
     </div>
 
@@ -33,6 +42,9 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+import DataModalHeader from './DataModalHeader.vue'
+
 const props = defineProps({
   modelValue: {
     type: Boolean,
@@ -42,9 +54,47 @@ const props = defineProps({
     type: String,
     default: ''
   },
+  subtitle: {
+    type: String,
+    default: ''
+  },
+  icon: {
+    type: String,
+    default: 'bi bi-pencil-square'
+  },
+  closeLabel: {
+    type: String,
+    default: 'Đóng'
+  },
+  size: {
+    type: String,
+    default: 'medium',
+    validator: value => ['small', 'medium', 'form', 'large'].includes(value)
+  },
   width: {
     type: String,
-    default: '500px'
+    default: ''
+  },
+  topOffset: {
+    type: String,
+    default: ''
+  },
+  overlayVariant: {
+    type: String,
+    default: 'subtle',
+    validator: value => ['none', 'subtle', 'blur'].includes(value)
+  },
+  closeOnOverlayClick: {
+    type: Boolean,
+    default: false
+  },
+  preventBackgroundScroll: {
+    type: Boolean,
+    default: true
+  },
+  bodyClassName: {
+    type: String,
+    default: ''
   },
   loading: {
     type: Boolean,
@@ -69,6 +119,26 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'confirm', 'cancel', 'close', 'closed'])
+
+const widthBySize = {
+  small: '440px',
+  medium: '560px',
+  form: '680px',
+  large: '760px'
+}
+
+const resolvedWidth = computed(() => props.width || widthBySize[props.size])
+const modalStyle = computed(() => ({
+  '--sa-modal-instance-width': resolvedWidth.value,
+  ...(props.topOffset ? { '--sa-modal-top-offset': props.topOffset } : {})
+}))
+const sizeClass = computed(() => `sa-modal--${props.size === 'medium' ? 'md' : props.size}`)
+const overlayClass = computed(() => [
+  'sa-data-modal-overlay',
+  `sa-modal--${props.size === 'medium' ? 'md' : props.size}`,
+  props.overlayVariant === 'blur' ? 'sa-modal--blur' : '',
+  props.overlayVariant === 'none' ? 'sa-modal--clear' : ''
+].filter(Boolean).join(' '))
 
 const handleConfirm = () => {
   emit('confirm')
@@ -114,6 +184,13 @@ const handleCancel = () => {
   gap: 16px;
 }
 
+.sprinta-app-modal-subtitle {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .sprint-app-modal-footer {
   display: flex;
   justify-content: flex-end;
@@ -121,24 +198,24 @@ const handleCancel = () => {
 }
 
 .sprint-app-modal-footer .cancel-btn {
-  background: transparent;
-  color: var(--sp-text-secondary, #5E6C84);
-  border: none;
+  background: var(--color-danger);
+  color: var(--color-text-inverse);
+  border: 1px solid var(--color-danger);
   font-weight: 500;
 }
 
 .sprint-app-modal-footer .cancel-btn:hover {
-  background: rgba(9, 30, 66, 0.08);
+  background: color-mix(in srgb, var(--color-danger) 88%, var(--color-text-primary));
 }
 
 .sprint-app-modal-footer .primary-btn {
-  background-color: var(--sp-brand-primary, #0052CC);
-  color: white;
+  background-color: var(--color-accent);
+  color: var(--color-text-inverse);
   border: none;
   font-weight: 500;
 }
 
 .sprint-app-modal-footer .primary-btn:hover {
-  background-color: #0047B3;
+  background-color: var(--color-accent-hover);
 }
 </style>

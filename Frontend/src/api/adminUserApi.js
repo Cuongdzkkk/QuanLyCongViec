@@ -13,6 +13,9 @@ export const adminUserApi = {
   getRoles(params) {
     return axiosClient.get('/admin/users/roles', { params });
   },
+  getPermissionCatalog() {
+    return axiosClient.get('/permissions/catalog');
+  },
   createRole(data) {
     return axiosClient.post('/admin/users/roles', data);
   },

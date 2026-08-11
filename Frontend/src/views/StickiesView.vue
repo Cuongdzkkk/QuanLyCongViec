@@ -140,14 +140,13 @@ onBeforeUnmount(() => clearTimeout(searchTimer))
 </script>
 
 <style scoped>
-.stickies-page { min-height: 100%; background: var(--color-background); color: var(--color-text-primary); }
+.stickies-page { --sa-page-x: 18px; min-height: 100%; background: var(--color-background); color: var(--color-text-primary); }
 .page-header {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 20px;
   padding: 22px var(--sa-page-x, 24px) 18px;
-  border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
 }
 .eyebrow { color: var(--color-accent); font-size: 10px; font-weight: 800; }
@@ -170,7 +169,6 @@ h1 { margin: 3px 0 4px; font-size: 22px; letter-spacing: 0; }
   align-items: center;
   gap: 10px;
   padding: 10px var(--sa-page-x, 24px);
-  border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
 }
 .search-field { width: min(360px, 100%); display: flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-muted); }

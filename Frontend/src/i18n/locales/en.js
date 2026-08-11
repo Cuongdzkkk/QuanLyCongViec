@@ -640,6 +640,7 @@ export default {
     loadMore: 'Load more modules',
     editModule: 'Edit module',
     createModule: 'Create module',
+    name: 'Module name',
     moduleNamePlaceholder: 'Module name',
     lead: 'Lead',
     noLead: 'No lead',
@@ -677,6 +678,10 @@ export default {
     }
   },
   reports: {
+    suggestedForToday: 'Suggested for today',
+    viewAllTasks: 'View all',
+    continueWorking: 'Continue working',
+    teamWorkload: 'Team Workload',
     analyticsReport: 'Analytics Report',
     analyticsAndInsights: 'Analytics and insights for this project',
     refresh: 'Refresh',

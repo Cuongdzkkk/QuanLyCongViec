@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axiosClient from '@/api/axiosClient'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true }
@@ -87,7 +88,15 @@ function formatDate(d) {
     </div>
 
     <!-- Create Module Modal -->
-    <el-dialog v-model="showCreateModal" title="Tạo Module mới" width="480px">
+    <el-dialog v-model="showCreateModal" width="480px" append-to-body class="sa-data-dialog sa-modal--form" :show-close="false">
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-box-seam"
+          title="Tạo Module mới"
+          description="Nhóm các công việc liên quan theo một tính năng lớn"
+          @close="showCreateModal = false"
+        />
+      </template>
       <el-form label-position="top">
         <el-form-item label="Tên Module">
           <el-input v-model="newModule.name" placeholder="VD: Authentication System" />
@@ -103,8 +112,8 @@ function formatDate(d) {
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showCreateModal = false">Hủy</el-button>
-        <el-button type="primary" @click="createModule" :disabled="!newModule.name.trim()">Tạo</el-button>
+        <el-button class="cancel-btn" @click="showCreateModal = false"><i class="bi bi-x-lg"></i> Hủy</el-button>
+        <el-button type="primary" @click="createModule" :disabled="!newModule.name.trim()"><i class="bi bi-plus-lg"></i> Tạo Module</el-button>
       </template>
     </el-dialog>
   </div>

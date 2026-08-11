@@ -6,6 +6,8 @@ import { useStarredStore } from '@/store/useStarredStore'
 import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 
 const PROJECT_BUNDLE_CACHE_TTL_MS = 30000
+let allProjectsRequest = null
+const projectDetailsRequests = new Map()
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api'
 const apiOrigin = new URL(apiBaseUrl, window.location.origin).origin
 const resolveProjectId = (project) => project?.id || project?.Id || project?.projectId || project?.ProjectId || null
@@ -80,12 +82,6 @@ const defaultProjectNodes = (projectId) => ([
     key: 'work-items',
     label: 'Work items',
     route: `/space/${projectId}/work-items`
-  },
-  {
-    id: `${projectId}-timeline`,
-    key: 'timeline',
-    label: 'Timeline',
-    route: `/space/${projectId}/timeline`
   },
   {
     id: `${projectId}-cycles`,
@@ -190,17 +186,49 @@ export const useProjectStore = defineStore('project', {
       }
       return mappedProject
     },
+    upsertLabel(projectId, label) {
+      if (!projectId || !label?.id) return null
+      const labels = [...(this.labelsByProjectId[projectId] || [])]
+      const index = labels.findIndex(item => item.id === label.id)
+      if (index >= 0) labels[index] = { ...labels[index], ...label }
+      else labels.push(label)
+      this.labelsByProjectId = { ...this.labelsByProjectId, [projectId]: labels }
+      if (resolveProjectId(this.currentProject) === projectId) this.tags = labels
+      return labels.find(item => item.id === label.id)
+    },
+    removeLabel(projectId, labelId) {
+      if (!projectId || !labelId) return
+      const labels = (this.labelsByProjectId[projectId] || []).filter(item => item.id !== labelId)
+      this.labelsByProjectId = { ...this.labelsByProjectId, [projectId]: labels }
+      if (resolveProjectId(this.currentProject) === projectId) this.tags = labels
+    },
+    applyRealtimeEntityEvent(event) {
+      const projectId = event?.projectId ? `${event.projectId}` : null
+      if (!projectId || `${event?.entityType || ''}`.toLowerCase() !== 'label') return null
+      const action = `${event.action || ''}`.toLowerCase()
+      if (action === 'deleted' || action === 'removed') {
+        this.removeLabel(projectId, event.entityId)
+        return null
+      }
+      return this.upsertLabel(projectId, event.data)
+    },
     
     
     
 
     async fetchAllProjects(force = false) {
       if (!force && this.allProjects.length > 0) return this.allProjects;
+      if (allProjectsRequest) {
+        await allProjectsRequest
+        return this.allProjects
+      }
 
       this.loading = true;
       this.error = null;
+      const request = axiosClient.get('/projects/discovery')
+      allProjectsRequest = request
       try {
-        const response = await axiosClient.get('/projects/discovery');
+        const response = await request;
         const rows = response.data?.data || response.data || [];
         this.allProjects = dedupeProjects(rows.map(mapProjectRow));
         const currentId = resolveProjectId(this.currentProject)
@@ -219,6 +247,7 @@ export const useProjectStore = defineStore('project', {
         reportExpectedError('Failed to fetch all projects', err);
         return [];
       } finally {
+        if (allProjectsRequest === request) allProjectsRequest = null
         this.loading = false;
       }
     },
@@ -380,6 +409,10 @@ export const useProjectStore = defineStore('project', {
         this.clearProjectContext(projectId);
         return null;
       }
+      if (projectDetailsRequests.has(projectId)) {
+        await projectDetailsRequests.get(projectId)
+        return this.projectDetailsById[projectId] || this.currentProject
+      }
 
       this.detailsAbortController?.abort();
       const controller = new AbortController();
@@ -394,11 +427,13 @@ export const useProjectStore = defineStore('project', {
       }
 
       try {
-        const [projRes, membersRes, tagsRes] = await Promise.all([
+        const detailRequest = Promise.all([
           axiosClient.get(`/projects/${projectId}`, { signal: controller.signal }),
           axiosClient.get(`/projects/${projectId}/members`, { signal: controller.signal }),
           axiosClient.get(`/projects/${projectId}/labels`, { signal: controller.signal })
-        ]);
+        ])
+        projectDetailsRequests.set(projectId, detailRequest)
+        const [projRes, membersRes, tagsRes] = await detailRequest;
 
         if (requestId !== this.detailsRequestId) {
           return null;
@@ -436,6 +471,7 @@ export const useProjectStore = defineStore('project', {
         reportExpectedError('Failed to fetch project details', err);
         return null;
       } finally {
+        projectDetailsRequests.delete(projectId)
         if (requestId === this.detailsRequestId) {
           this.loading = false;
           this.detailsAbortController = null;

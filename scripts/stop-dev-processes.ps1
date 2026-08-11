@@ -5,6 +5,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = [System.IO.Path]::GetFullPath($RepositoryRoot).TrimEnd('\')
+$singleFileBackendRoot = [System.IO.Path]::GetFullPath(
+    (Join-Path $env:LOCALAPPDATA 'QuanLyCongViec\TaskManagement.API\singlefile-debug')
+).TrimEnd('\') + '\'
 $processes = @(Get-CimInstance Win32_Process)
 $processById = @{}
 
@@ -14,8 +17,16 @@ foreach ($process in $processes) {
 
 $appProcesses = @($processes | Where-Object {
     $commandLine = [string]$_.CommandLine
+    $executablePath = [string]$_.ExecutablePath
+    $isSingleFileBackend = $_.Name -ieq 'TaskManagement.API.exe' -and
+        -not [string]::IsNullOrWhiteSpace($executablePath) -and
+        [System.IO.Path]::GetFullPath($executablePath).StartsWith(
+            $singleFileBackendRoot,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+
     if ([string]::IsNullOrWhiteSpace($commandLine)) {
-        return $false
+        return $isSingleFileBackend
     }
 
     $belongsToRepository = $commandLine.IndexOf(
@@ -24,7 +35,7 @@ $appProcesses = @($processes | Where-Object {
     ) -ge 0
 
     if (-not $belongsToRepository) {
-        return $false
+        return $isSingleFileBackend
     }
 
     $isBackend = $commandLine -like '*TaskManagement.API.dll*'

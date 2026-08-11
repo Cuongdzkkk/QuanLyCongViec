@@ -3,9 +3,12 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 using TaskManagement.Application.DTOs.Common;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 
 namespace TaskManagement.API.Controllers
 {
@@ -15,14 +18,16 @@ namespace TaskManagement.API.Controllers
     public class TaskContingencyPlansController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IHubContext<KanbanHub>? _hub;
         private static readonly string[] ManageRoles = { "PM", "PO", "SM", "PROJECT_MANAGER", "PROJECT_ADMIN", "Project Lead", "Admin" };
         private static readonly string[] OverrideRoles = { "SuperAdmin", "Admin", "System Admin", "Organization Admin", "AccessAdmin", "Access Admin" };
         private static readonly string[] ImpactLevels = { "Low", "Medium", "High", "Critical" };
         private static readonly string[] Statuses = { "Open", "Draft", "Active", "Triggered", "Resolved", "Archived" };
 
-        public TaskContingencyPlansController(ApplicationDbContext context)
+        public TaskContingencyPlansController(ApplicationDbContext context, IHubContext<KanbanHub>? hub = null)
         {
             _context = context;
+            _hub = hub;
         }
 
         public sealed class UpsertContingencyPlanRequest
@@ -105,6 +110,7 @@ namespace TaskManagement.API.Controllers
             _context.TaskContingencyPlans.Add(plan);
             await Audit(userId, "TASK_CONTINGENCY_CREATE", projectId, taskId, plan.Id);
             await _context.SaveChangesAsync();
+            await PublishChangedAsync(projectId, taskId, plan.Id, "created");
 
             return CreatedAtAction(nameof(List), new { projectId, taskId }, ApiResponse<object>.Success(Project(plan)));
         }
@@ -133,6 +139,7 @@ namespace TaskManagement.API.Controllers
 
             await Audit(userId, "TASK_CONTINGENCY_UPDATE", projectId, taskId, plan.Id);
             await _context.SaveChangesAsync();
+            await PublishChangedAsync(projectId, taskId, plan.Id, "updated");
 
             return Ok(ApiResponse<object>.Success(Project(plan)));
         }
@@ -148,8 +155,21 @@ namespace TaskManagement.API.Controllers
             _context.TaskContingencyPlans.Remove(plan);
             await Audit(userId, "TASK_CONTINGENCY_DELETE", projectId, taskId, plan.Id);
             await _context.SaveChangesAsync();
+            await PublishChangedAsync(projectId, taskId, plan.Id, "deleted");
 
             return Ok(ApiResponse<object>.Success(new { deleted = true, planId }));
+        }
+
+        private Task PublishChangedAsync(Guid projectId, Guid taskId, Guid planId, string action)
+        {
+            return _hub == null
+                ? Task.CompletedTask
+                : _hub.PublishEntityChangedAsync(
+                    projectId,
+                    "TaskContingencyPlan",
+                    action,
+                    planId,
+                    new { taskId, planId });
         }
 
         private async Task<WorkTask?> LoadTask(Guid projectId, Guid taskId)

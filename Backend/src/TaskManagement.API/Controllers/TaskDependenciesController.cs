@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 using TaskManagement.API.Filters;
 using TaskManagement.Application.Common;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 
 namespace TaskManagement.API.Controllers
 {
@@ -16,13 +19,16 @@ namespace TaskManagement.API.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly ITaskDependencyService _dependencyService;
+        private readonly IHubContext<KanbanHub>? _hub;
 
         public TaskDependenciesController(
             ApplicationDbContext context,
-            ITaskDependencyService dependencyService)
+            ITaskDependencyService dependencyService,
+            IHubContext<KanbanHub>? hub = null)
         {
             _context = context;
             _dependencyService = dependencyService;
+            _hub = hub;
         }
 
         [HttpGet]
@@ -75,6 +81,15 @@ namespace TaskManagement.API.Controllers
                     HttpContext.RequestAborted);
 
                 var statusCode = mutation == TaskDependencyMutation.Created ? 201 : 200;
+                if (_hub != null)
+                {
+                    await _hub.PublishEntityChangedAsync(
+                        projectId,
+                        "TaskDependency",
+                        mutation == TaskDependencyMutation.Created ? "created" : "updated",
+                        taskId,
+                        new { taskId, relatedTaskId = request.RelatedTaskId, relationType = request.RelationType });
+                }
                 return Ok(new
                 {
                     statusCode,
@@ -120,6 +135,15 @@ namespace TaskManagement.API.Controllers
 
             _context.TaskDependencies.Remove(dependency);
             await _context.SaveChangesAsync();
+            if (_hub != null)
+            {
+                await _hub.PublishEntityChangedAsync(
+                    projectId,
+                    "TaskDependency",
+                    "deleted",
+                    taskId,
+                    new { taskId, relatedTaskId });
+            }
             return Ok(new { statusCode = 200, message = "Dependency removed." });
         }
     }

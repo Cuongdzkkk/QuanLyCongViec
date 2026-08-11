@@ -518,112 +518,160 @@
   </div>
   <!-- End of Layout Wrapper -->
   </div>
+    <Teleport to="body">
     <!-- Modals -->
     <!-- Add Member Modal -->
-    <div class="modal-overlay" v-if="isAddMemberOpen" @click.self="isAddMemberOpen = false">
+    <div class="modal-overlay sa-data-modal-overlay" v-if="isAddMemberOpen" @click.self="isAddMemberOpen = false">
       <div class="modal-content">
-        <div class="modal-header">
-          <h2>Add Members to {{ team.name }}</h2>
-          <button class="close-btn" @click="isAddMemberOpen = false">&times;</button>
-        </div>
+        <DataModalHeader
+          icon="bi bi-person-plus"
+          :title="`Add Members to ${team.name}`"
+          description="Search and add members to this team"
+          @close="isAddMemberOpen = false"
+        />
         <div class="modal-body">
-          <p class="info-text">Search and add members to your team. You can add up to 50 members at once.</p>
-          <div class="search-box">
-            <i class="fa-solid fa-magnifying-glass search-icon" style="z-index: 1;"></i>
-            <input type="text" placeholder="Search by name or email..." v-model="memberSearch" @focus="isMemberDropdownOpen = true" style="padding-left: 44px; position: relative; z-index: 0;" />
-          </div>
-
-          <!-- Selected Tags Display -->
-          <div class="selected-tags" v-if="selectedMembers.length > 0">
-            <div class="tag-chip" v-for="id in selectedMembers" :key="id">
-               {{ getSelectedUserName(id) }}
-               <i class="fa-solid fa-xmark remove-tag" @click="toggleSelectMember(id)"></i>
+          <DataModalSection
+            icon="bi bi-search"
+            title="Find members"
+            description="You can add up to 50 members at once"
+          >
+            <div class="search-box">
+              <i class="fa-solid fa-magnifying-glass search-icon" style="z-index: 1;"></i>
+              <input type="text" placeholder="Search by name or email..." v-model="memberSearch" @focus="isMemberDropdownOpen = true" style="padding-left: 44px; position: relative; z-index: 0;" />
             </div>
-          </div>
 
-          <div class="member-select-list mt-16" v-if="isMemberDropdownOpen">
-            <div class="empty-state-micro" v-if="filteredUsers.length === 0">
-              <span v-if="!memberSearch">Type to search directory...</span>
-              <span v-else>No members found matching "{{ memberSearch }}"</span>
-            </div>
-            <div class="select-item" v-for="user in filteredUsers" :key="user.id" @click="toggleSelectMember(user.id)">
-              <UserAvatar :user="{ ...user, fullName: user.fullName || user.name, avatarColor: getAvatarColor(user.email || user.id) }" :size="24" :fontSize="10" />
-              <div class="user-details" style="margin-left: 8px;">
-                <span class="user-name">{{ user.fullName || user.name }}</span>
-                <span class="user-email">{{ user.email }}</span>
+            <div class="selected-tags" v-if="selectedMembers.length > 0">
+              <div class="tag-chip" v-for="id in selectedMembers" :key="id">
+                 {{ getSelectedUserName(id) }}
+                 <i class="fa-solid fa-xmark remove-tag" @click="toggleSelectMember(id)"></i>
               </div>
-              <i class="fa-solid fa-check check-icon" v-if="selectedMembers.includes(user.id)"></i>
             </div>
-          </div>
+
+            <div class="member-select-list mt-16" v-if="isMemberDropdownOpen">
+              <div class="empty-state-micro" v-if="filteredUsers.length === 0">
+                <span v-if="!memberSearch">Type to search directory...</span>
+                <span v-else>No members found matching "{{ memberSearch }}"</span>
+              </div>
+              <div class="select-item" v-for="user in filteredUsers" :key="user.id" @click="toggleSelectMember(user.id)">
+                <UserAvatar :user="{ ...user, fullName: user.fullName || user.name, avatarColor: getAvatarColor(user.email || user.id) }" :size="24" :fontSize="10" />
+                <div class="user-details" style="margin-left: 8px;">
+                  <span class="user-name">{{ user.fullName || user.name }}</span>
+                  <span class="user-email">{{ user.email }}</span>
+                </div>
+                <i class="fa-solid fa-check check-icon" v-if="selectedMembers.includes(user.id)"></i>
+              </div>
+            </div>
+          </DataModalSection>
         </div>
         <div class="modal-footer">
-          <button class="cancel-btn" @click="isAddMemberOpen = false">Cancel</button>
-          <button class="submit-btn" :disabled="selectedMembers.length === 0" @click="submitAddMember">Add Selected</button>
+          <button class="cancel-btn" @click="isAddMemberOpen = false">
+            <i class="bi bi-x-lg"></i>
+            Cancel
+          </button>
+          <button class="submit-btn" :disabled="selectedMembers.length === 0" @click="submitAddMember">
+            <i class="bi bi-person-plus"></i>
+            Add Selected
+          </button>
         </div>
       </div>
     </div>
 
     <!-- Quick Create Goal Modal -->
-    <div class="modal-overlay" v-if="isCreateGoalOpen" @click.self="isCreateGoalOpen = false">
+    <div class="modal-overlay sa-data-modal-overlay" v-if="isCreateGoalOpen" @click.self="isCreateGoalOpen = false">
       <div class="modal-content">
-        <div class="modal-header">
-          <h2>Quick Create Goal</h2>
-          <button class="close-btn" @click="isCreateGoalOpen = false">&times;</button>
-        </div>
+        <DataModalHeader
+          icon="bi bi-bullseye"
+          title="Quick Create Goal"
+          description="Create a team goal without leaving this page"
+          @close="isCreateGoalOpen = false"
+        />
         <div class="modal-body">
-          <div class="form-group">
-            <label>Goal Title</label>
-            <input type="text" placeholder="What do you want to achieve?" v-model="newGoalTitle" />
-          </div>
+          <DataModalSection icon="bi bi-pencil-square" title="Goal information">
+            <DataModalField label="Goal Title">
+              <input type="text" placeholder="What do you want to achieve?" v-model="newGoalTitle" />
+            </DataModalField>
+          </DataModalSection>
         </div>
         <div class="modal-footer">
-          <button class="cancel-btn" @click="isCreateGoalOpen = false">Cancel</button>
-          <button class="submit-btn" :disabled="!newGoalTitle" @click="isCreateGoalOpen = false; newGoalTitle = ''">Create Goal</button>
+          <button class="cancel-btn" @click="isCreateGoalOpen = false">
+            <i class="bi bi-x-lg"></i>
+            Cancel
+          </button>
+          <button class="submit-btn" :disabled="!newGoalTitle" @click="isCreateGoalOpen = false; newGoalTitle = ''">
+            <i class="bi bi-plus-lg"></i>
+            Create Goal
+          </button>
         </div>
       </div>
     </div>
 
     <!-- Edit Hierarchy Modal -->
-    <div class="modal-overlay" v-if="isEditHierarchyOpen" @click.self="isEditHierarchyOpen = false">
+    <div class="modal-overlay sa-data-modal-overlay" v-if="isEditHierarchyOpen" @click.self="isEditHierarchyOpen = false">
       <div class="modal-content">
-        <div class="modal-header">
-          <h2>Update Parent Team</h2>
-          <button class="close-btn" @click="isEditHierarchyOpen = false">&times;</button>
-        </div>
+        <DataModalHeader
+          icon="bi bi-diagram-3"
+          title="Update Parent Team"
+          description="Select a parent team to establish hierarchy"
+          @close="isEditHierarchyOpen = false"
+        />
         <div class="modal-body">
-          <p class="info-text">Select a parent team to establish hierarchy. A team can only have one parent.</p>
-          <div class="form-group">
-            <label>Search Teams</label>
-            <input type="text" placeholder="Type team name..." v-model="teamSearch" />
-          </div>
-          <!-- In a real implementation we would search and list available teams -->
-          <div class="empty-state-micro mt-16">
-            <span>Type to search existing teams...</span>
-          </div>
+          <DataModalSection
+            icon="bi bi-search"
+            title="Find parent team"
+            description="A team can only have one parent"
+          >
+            <DataModalField label="Search Teams">
+              <input type="text" placeholder="Type team name..." v-model="teamSearch" />
+            </DataModalField>
+            <div class="empty-state-micro mt-16">
+              <span>Type to search existing teams...</span>
+            </div>
+          </DataModalSection>
         </div>
         <div class="modal-footer">
-          <button class="cancel-btn" @click="isEditHierarchyOpen = false">Cancel</button>
-          <button class="submit-btn" disabled>Save Changes</button>
+          <button class="cancel-btn" @click="isEditHierarchyOpen = false">
+            <i class="bi bi-x-lg"></i>
+            Cancel
+          </button>
+          <button class="submit-btn" disabled>
+            <i class="bi bi-check-lg"></i>
+            Save Changes
+          </button>
         </div>
       </div>
     </div>
 
     <!-- Delete Confirm Modal -->
-    <div class="modal-overlay" v-if="isDeleteConfirmOpen" @click.self="isDeleteConfirmOpen = false">
+    <div class="modal-overlay sa-data-modal-overlay" v-if="isDeleteConfirmOpen" @click.self="isDeleteConfirmOpen = false">
       <div class="modal-content danger-modal">
-        <div class="modal-header">
-          <h2>Delete Team?</h2>
-          <button class="close-btn" @click="isDeleteConfirmOpen = false">&times;</button>
-        </div>
+        <DataModalHeader
+          icon="bi bi-exclamation-triangle"
+          title="Delete Team?"
+          description="Confirm before removing this team"
+          @close="isDeleteConfirmOpen = false"
+        />
         <div class="modal-body">
-          <p>Are you sure you want to delete <strong>{{ team.name }}</strong>? This action cannot be undone and will remove all hierarchy associations.</p>
+          <DataModalSection
+            icon="bi bi-trash3"
+            title="Delete confirmation"
+            description="This action cannot be undone"
+          >
+            <p>Are you sure you want to delete <strong>{{ team.name }}</strong>? This action will remove all hierarchy associations.</p>
+          </DataModalSection>
         </div>
         <div class="modal-footer">
-          <button class="cancel-btn" @click="isDeleteConfirmOpen = false">Cancel</button>
-          <button class="submit-btn danger" @click="confirmDelete">Delete Team</button>
+          <button class="cancel-btn" @click="isDeleteConfirmOpen = false">
+            <i class="bi bi-x-lg"></i>
+            Cancel
+          </button>
+          <button class="submit-btn danger" @click="confirmDelete">
+            <i class="bi bi-trash3"></i>
+            Delete Team
+          </button>
         </div>
       </div>
     </div>
+    </Teleport>
 
     <!-- Give Kudos Full Screen Overlay -->
     <div class="give-kudos-overlay" v-if="isGiveKudosOpen" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #FFF4F8; z-index: var(--sp-z-modal, 1200); overflow-y: auto; display: flex; flex-direction: column;">
@@ -776,6 +824,9 @@ import { getStoredUser } from '@/utils/permissions'
 import { getAvatarColor } from '@/utils/avatarHelper'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import RichTextEditor from '@/components/common/RichTextEditor.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -1065,6 +1116,7 @@ const submitKudos = async () => {
 }
 
 onMounted(async () => {
+  await teamStore.initializeRealtime()
   const id = route.params.id
   await teamStore.fetchTeamDetail(id)
   if (siteStore.sites.length === 0) {

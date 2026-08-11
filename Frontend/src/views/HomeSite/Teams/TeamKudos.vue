@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="team-kudos-container">
     <div class="kudos-empty-state" v-if="teamStore.kudos.length === 0">
       <div class="kudos-illustration">
@@ -179,6 +179,7 @@ const projectStore = useHomeProjectStore()
 const siteStore = useSiteStore()
 
 onMounted(async () => {
+  await teamStore.initializeRealtime()
   if (siteStore.sites.length === 0) {
     await siteStore.fetchSites()
   }

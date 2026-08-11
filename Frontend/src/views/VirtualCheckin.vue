@@ -1,28 +1,27 @@
 <template>
-  <div class="checkin-container admin-page sp-page-shell">
-    <div class="page-header flex justify-between items-center mb-6">
+  <section class="checkin-page">
+    <header class="page-header">
       <div>
-        <h1 class="page-title" style="display:flex; align-items:center;">
-          <i class="fa-solid fa-calendar-check text-success" style="margin-right: 10px; flex-shrink: 0;"></i>
-          <span>{{ t('checkin.title') }}</span>
-        </h1>
-        <p class="page-subtitle">{{ t('checkin.subtitle') }}</p>
+        <span class="eyebrow">DAILY CHECK-IN</span>
+        <h1>{{ t('checkin.title') }}</h1>
+        <p>{{ t('checkin.subtitle') }}</p>
       </div>
 
       <!-- Quick Action: Submit Checkin -->
       <div v-if="!userCheckedIn">
-        <el-button class="btn-primary" type="primary" @click="openCheckinModal">
-          <i class="fa-solid fa-plus" style="margin-right: 6px;"></i>{{ t('checkin.report') }}
-        </el-button>
+        <button class="primary-action" type="button" @click="openCheckinModal">
+          <i class="fa-solid fa-plus"></i>{{ t('checkin.report') }}
+        </button>
       </div>
       <div v-else>
         <el-tag type="success" size="large" class="flex items-center gap-2 font-semibold">
           <i class="fa-solid fa-circle-check" style="margin-right: 5px;"></i>Đã Check-in hôm nay
         </el-tag>
       </div>
-    </div>
+    </header>
 
-    <!-- Project Selector ComboBox -->
+    <div class="page-content">
+      <!-- Project Selector ComboBox -->
     <div 
       class="project-selector-wrapper"
       @mouseenter="handleMouseEnter"
@@ -125,19 +124,28 @@
           
           <div v-else class="empty-checkin flex flex-col items-center justify-center py-6 text-center">
             <i class="fa-regular fa-bell text-2xl text-muted mb-2"></i>
-            <span class="text-xs text-muted">Chưa nộp báo cáo hàng ngày</span>
           </div>
         </div>
       </div>
+    </div>
     </div>
 
     <!-- Virtual Check-in Modal Dialog -->
     <el-dialog
       v-model="checkinModalOpen"
-      title="Báo cáo tiến độ hàng ngày"
       width="540px"
       append-to-body
+      class="sa-data-dialog sa-modal--form"
+      :show-close="false"
     >
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-calendar-check"
+          title="Báo cáo tiến độ hàng ngày"
+          description="Chia sẻ kết quả hôm qua, mục tiêu hôm nay và khó khăn đang gặp"
+          @close="checkinModalOpen = false"
+        />
+      </template>
       <div class="checkin-form-body flex flex-col gap-4">
         <!-- Project Select field -->
         <div>
@@ -190,12 +198,12 @@
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <el-button class="btn-secondary" @click="checkinModalOpen = false">Hủy</el-button>
-          <el-button class="btn-primary" type="primary" @click="submitCheckin">Gửi báo cáo</el-button>
+          <el-button class="cancel-btn" @click="checkinModalOpen = false"><i class="bi bi-x-lg"></i> Hủy</el-button>
+          <el-button class="btn-primary" type="primary" @click="submitCheckin"><i class="fa-solid fa-paper-plane"></i> Gửi báo cáo</el-button>
         </div>
       </template>
     </el-dialog>
-  </div>
+  </section>
 </template>
 
 <script setup>
@@ -205,6 +213,7 @@ import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 
 import { useI18nStore } from '@/store/useI18nStore'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const { t } = useI18nStore()
 
@@ -496,34 +505,74 @@ const renderMarkdown = (text) => {
 </script>
 
 <style scoped>
-.checkin-container {
-  width: min(100%, 1080px) !important;
-  max-width: 1080px !important;
-  margin: 0 auto !important;
-  padding: 22px 24px 32px !important;
-}
-
-.checkin-container .page-header {
-  margin-bottom: 16px !important;
-  padding: 16px 18px !important;
-  border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
-  border-radius: 14px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--color-success) 7%, var(--color-surface)), var(--color-surface));
-  box-shadow: 0 16px 42px color-mix(in srgb, #020617 10%, transparent);
-}
-
-.checkin-container .page-title {
-  margin-bottom: 4px !important;
-  font-size: clamp(24px, 2.2vw, 34px) !important;
-  line-height: 1.1 !important;
-}
-
-.checkin-container .page-subtitle {
-  max-width: 760px;
+.checkin-page {
+  --sa-page-x: 18px;
+  min-height: 100%;
+  width: 100%;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  padding: 0 !important;
   margin: 0 !important;
-  font-size: 14px !important;
-  line-height: 1.5 !important;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px var(--sa-page-x, 24px) 18px;
+  background: var(--color-surface);
+  border-bottom: none !important;
+  margin-bottom: 0 !important;
+}
+
+.eyebrow {
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: block;
+}
+
+.page-header h1 {
+  margin: 3px 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.page-header p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.primary-action {
+  min-height: 36px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 14px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 0.15s ease;
+}
+.primary-action:hover {
+  opacity: 0.9;
+}
+
+.page-content {
+  padding: 18px var(--sa-page-x, 24px) 32px;
+  max-width: 1080px;
+  margin: 0 auto;
 }
 
 /* Project Selector wrapper */

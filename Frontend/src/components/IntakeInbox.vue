@@ -1,9 +1,13 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
 import { ElMessage } from 'element-plus'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
+import { signalRService } from '@/api/signalrService'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true }
@@ -31,7 +35,18 @@ const newIntake = ref({
   source: 'FORM'
 })
 
-onMounted(() => loadIntakes())
+const handleIntakeRealtime = event => {
+  if (`${event?.entityType || ''}`.toLowerCase() !== 'intake') return
+  if (event.projectId && `${event.projectId}` !== `${props.projectId}`) return
+  loadIntakes()
+}
+
+onMounted(() => {
+  signalRService.on('EntityChanged', handleIntakeRealtime)
+  loadIntakes()
+})
+
+onUnmounted(() => signalRService.off('EntityChanged', handleIntakeRealtime))
 
 async function loadIntakes() {
   loading.value = true
@@ -243,27 +258,38 @@ function navigateToTask(taskId) {
     </div>
 
     <!-- Dialog: Gửi yêu cầu mới -->
-    <el-dialog v-model="showCreate" title="Gửi yêu cầu công việc mới" width="500px" destroy-on-close>
+    <el-dialog v-model="showCreate" width="560px" destroy-on-close append-to-body class="sa-data-dialog sa-modal--form" :show-close="false">
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-inbox"
+          title="Gửi yêu cầu công việc mới"
+          description="Mô tả nhu cầu để người phụ trách xem xét và tạo công việc"
+          @close="showCreate = false"
+        />
+      </template>
       <el-form label-position="top">
-        <el-form-item label="Tiêu đề yêu cầu" required>
+        <DataModalSection icon="bi bi-card-text" title="Thông tin yêu cầu">
+        <DataModalField label="Tiêu đề yêu cầu" required>
           <el-input v-model="newIntake.title" placeholder="Nhập tiêu đề ngắn gọn..." />
-        </el-form-item>
+        </DataModalField>
         
-        <el-form-item label="Mô tả chi tiết">
+        <DataModalField label="Mô tả chi tiết">
           <el-input v-model="newIntake.description" type="textarea" :rows="4" placeholder="Nhập chi tiết yêu cầu, lỗi gặp phải hoặc mục tiêu công việc..." />
-        </el-form-item>
+        </DataModalField>
+        </DataModalSection>
 
-        <div class="form-grid">
-          <el-form-item label="Mức độ ưu tiên">
+        <DataModalSection icon="bi bi-calendar2-check" title="Ưu tiên và thời hạn">
+        <div class="form-grid sa-modal-form-grid">
+          <DataModalField label="Mức độ ưu tiên">
             <el-select v-model="newIntake.priority" class="w-full" style="width: 100%;">
               <el-option :value="1" label="🚨 Khẩn cấp" />
               <el-option :value="2" label="🟠 Cao" />
               <el-option :value="3" label="🔵 Trung bình" />
               <el-option :value="4" label="⚪ Thấp" />
             </el-select>
-          </el-form-item>
+          </DataModalField>
 
-          <el-form-item label="Hạn mong muốn">
+          <DataModalField label="Hạn mong muốn">
             <el-date-picker 
               v-model="newIntake.dueDate" 
               type="date" 
@@ -273,19 +299,28 @@ function navigateToTask(taskId) {
               class="w-full" 
               style="width: 100%;"
             />
-          </el-form-item>
+          </DataModalField>
         </div>
+        </DataModalSection>
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="showCreate = false">Hủy bỏ</el-button>
-          <el-button type="primary" @click="createIntake" :disabled="!newIntake.title.trim()">Gửi yêu cầu</el-button>
+          <el-button class="cancel-btn" @click="showCreate = false"><i class="bi bi-x-lg"></i> Hủy</el-button>
+          <el-button type="primary" @click="createIntake" :disabled="!newIntake.title.trim()"><i class="fa-solid fa-paper-plane"></i> Gửi yêu cầu</el-button>
         </div>
       </template>
     </el-dialog>
 
     <!-- Dialog: Chi tiết yêu cầu -->
-    <el-dialog v-model="showDetail" title="Chi tiết yêu cầu công việc" width="540px">
+    <el-dialog v-model="showDetail" width="540px" append-to-body class="sa-data-dialog sa-modal--form" :show-close="false">
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-card-checklist"
+          title="Chi tiết yêu cầu công việc"
+          description="Kiểm tra nội dung trước khi duyệt, từ chối hoặc tạo công việc"
+          @close="showDetail = false"
+        />
+      </template>
       <div v-if="selectedIntake" class="intake-detail-modal">
         <div class="detail-row">
           <span class="detail-label">Tiêu đề:</span>
@@ -343,7 +378,7 @@ function navigateToTask(taskId) {
       </div>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="showDetail = false">Đóng lại</el-button>
+          <el-button class="cancel-btn" @click="showDetail = false"><i class="bi bi-x-lg"></i> Đóng</el-button>
           <template v-if="selectedIntake && selectedIntake.status === 'Pending' && intakePermissions.canReview">
             <el-button type="danger" plain @click="updateStatus(selectedIntake.id, 'Declined'); showDetail = false">Từ chối</el-button>
             <el-button type="success" @click="updateStatus(selectedIntake.id, 'Accepted'); showDetail = false">Duyệt & Tạo việc</el-button>

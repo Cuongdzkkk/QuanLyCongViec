@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
@@ -8,6 +9,8 @@ using TaskManagement.API.Filters;
 using TaskManagement.Application.Common;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Domain.Entities;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 
 namespace TaskManagement.API.Controllers
 {
@@ -25,10 +28,12 @@ namespace TaskManagement.API.Controllers
         };
 
         private readonly ApplicationDbContext _context;
+        private readonly IHubContext<KanbanHub>? _hub;
 
-        public IntakesController(ApplicationDbContext context)
+        public IntakesController(ApplicationDbContext context, IHubContext<KanbanHub>? hub = null)
         {
             _context = context;
+            _hub = hub;
         }
 
         [HttpGet("intakes")]
@@ -120,6 +125,21 @@ namespace TaskManagement.API.Controllers
 
             _context.Intakes.Add(intake);
             await _context.SaveChangesAsync();
+            if (_hub != null)
+            {
+                await _hub.PublishEntityChangedAsync(projectId, "Intake", "created", intake.Id, new
+                {
+                    intake.Id,
+                    intake.Title,
+                    intake.Description,
+                    intake.Source,
+                    intake.Status,
+                    intake.Priority,
+                    intake.DesiredDueDate,
+                    intake.CreatedIssueId,
+                    intake.CreatedAt
+                });
+            }
 
             return CreatedAtAction(nameof(GetByProject), new { projectId },
                 new { statusCode = 201, message = "Gửi yêu cầu thành công.", data = new { intake.Id } });
@@ -211,6 +231,21 @@ namespace TaskManagement.API.Controllers
             intake.ReviewedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+            if (_hub != null)
+            {
+                await _hub.PublishEntityChangedAsync(projectId, "Intake", "updated", intake.Id, new
+                {
+                    intake.Id,
+                    intake.Status,
+                    intake.ReviewedById,
+                    intake.ReviewedAt,
+                    intake.CreatedIssueId
+                });
+                if (intake.CreatedIssueId.HasValue)
+                {
+                    await _hub.PublishEntityChangedAsync(projectId, "WorkTask", "created", intake.CreatedIssueId.Value);
+                }
+            }
 
             return Ok(new
             {

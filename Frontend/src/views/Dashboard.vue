@@ -146,7 +146,16 @@
         </div>
       </section>
 
-      <el-dialog v-model="taskModalVisible" :title="t('dashboard.dialogTitle')" width="560px" append-to-body>
+      <el-dialog v-model="taskModalVisible" width="560px" append-to-body class="sa-data-dialog sa-modal--form" :show-close="false">
+        <template #header>
+          <DataModalHeader
+            icon="bi bi-list-check"
+            :title="t('dashboard.dialogTitle')"
+            :description="t('dashboard.descriptionPlaceholder')"
+            :close-label="t('common.close')"
+            @close="taskModalVisible = false"
+          />
+        </template>
         <div class="task-form">
           <label>
             {{ t('common.project') }}
@@ -179,7 +188,7 @@
 
         <template #footer>
           <div class="dialog-actions">
-            <button class="secondary-btn" type="button" @click="taskModalVisible = false">{{ t('common.cancel') }}</button>
+            <button class="cancel-btn" type="button" @click="taskModalVisible = false"><i class="bi bi-x-lg"></i>{{ t('common.cancel') }}</button>
             <button class="primary-btn" type="button" :disabled="submittingTask" @click="submitTask">
               {{ submittingTask ? t('common.creating') : t('dashboard.newWorkItem') }}
             </button>
@@ -204,6 +213,7 @@ import { translateDemoText } from '@/utils/demoContentLocale'
 import DailyFocusWidget from '@/components/DailyFocusWidget.vue'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import { getProjectBackgroundStyle } from '@/config/projectAppearance'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
