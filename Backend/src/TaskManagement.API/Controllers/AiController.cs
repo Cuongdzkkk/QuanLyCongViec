@@ -373,7 +373,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("attachment-chat")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiHeavy")]
         public async Task<IActionResult> ChatWithAttachments(
             [FromBody] AiAttachmentChatRequest request,
             CancellationToken cancellationToken)
@@ -411,7 +411,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("transcribe-audio")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiHeavy")]
         [RequestSizeLimit(VoiceAudioMaxBytes + 128 * 1024)]
         public async Task<IActionResult> TranscribeAudio(
             [FromForm] IFormFile audio,
@@ -474,7 +474,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("analyze-file")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiHeavy")]
         [RequestSizeLimit(15 * 1024 * 1024)]
         public async Task<IActionResult> AnalyzeFile(
             [FromForm] IFormFile file,
@@ -539,14 +539,14 @@ namespace TaskManagement.API.Controllers
             {
                 return StatusCode(StatusCodes.Status429TooManyRequests, ApiResponse<object>.Error("AI tạm thời hết hạn mức, vui lòng thử lại sau"));
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not AiCreditsExhaustedException && ex is not AiProviderException)
             {
                 return BadRequest(ApiResponse<object>.Error(ex.Message));
             }
         }
 
         [HttpPost("chat")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiGeneration")]
         public async Task<IActionResult> Chat([FromBody] AiChatRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.Message))
@@ -585,7 +585,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("project-assistant")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiGeneration")]
         public async Task<IActionResult> ProjectAssistant([FromBody] AiProjectAssistantRequestDto request)
         {
             if (request == null)
@@ -615,7 +615,7 @@ namespace TaskManagement.API.Controllers
                 var response = await _aiService.ProjectAssistantAsync(userId, request);
                 return Ok(ApiResponse<AiProjectAssistantResponseDto>.Success(response));
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not AiCreditsExhaustedException && ex is not AiProviderException)
             {
                 return BadRequest(ApiResponse<object>.Error(ex.Message));
             }
@@ -635,7 +635,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("context-chat")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiGeneration")]
         public async Task<IActionResult> ContextChat([FromBody] AiContextChatRequestDto request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.Message))
@@ -703,7 +703,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("actions/execute")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiAction")]
         public Task<IActionResult> ExecuteAction([FromBody] AiExecuteActionRequestDto request)
         {
             return Task.FromResult<IActionResult>(BadRequest(new
@@ -715,7 +715,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("actions/preview")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiAction")]
         public async Task<IActionResult> PreviewAction([FromBody] AiExecuteActionRequestDto request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.Type))
@@ -801,7 +801,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("actions/{actionId:guid}/confirm")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiAction")]
         public async Task<IActionResult> ConfirmAction(Guid actionId)
         {
             var userId = GetUserId();
@@ -1004,7 +1004,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("command")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiGeneration")]
         public async Task<IActionResult> Command([FromBody] AiCommandRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Prompt))
@@ -1095,7 +1095,7 @@ namespace TaskManagement.API.Controllers
                     message = response
                 }));
             }
-            catch (Exception ex) when (IsTransientAiFailure(ex) || ex is InvalidOperationException)
+            catch (Exception ex) when (ex is not AiCreditsExhaustedException && ex is not AiProviderException && (IsTransientAiFailure(ex) || ex is InvalidOperationException))
             {
                 return Ok(ApiResponse<object>.Success(new
                 {
@@ -1106,7 +1106,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("generate-description")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiGeneration")]
         public async Task<IActionResult> GenerateDescription([FromBody] AiGenerateDescriptionRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.Prompt))
@@ -1127,7 +1127,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("breakdown-task")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiGeneration")]
         public async Task<IActionResult> BreakdownTask([FromBody] AiBreakdownRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.Title))
@@ -1181,7 +1181,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("create-subtasks-from-preview")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiAction")]
         public async Task<IActionResult> CreateSubtasksFromPreview([FromBody] AiCreateSubtasksFromPreviewRequestDto request)
         {
             if (request.ProjectId == Guid.Empty || request.ParentTaskId == Guid.Empty)
@@ -1206,7 +1206,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("suggest-estimate")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiGeneration")]
         public async Task<IActionResult> SuggestEstimate([FromBody] AiEstimateSuggestionRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.Title))
@@ -1248,7 +1248,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("suggest-assignees")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiGeneration")]
         public async Task<IActionResult> SuggestAssignees([FromBody] AiAssigneeSuggestionRequestDto request)
         {
             if (request.ProjectId == Guid.Empty)
@@ -1283,7 +1283,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("repo-analysis")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiHeavy")]
         public async Task<IActionResult> AnalyzeRepository([FromBody] AiRepositoryAnalysisRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.RepoUrl))
@@ -1326,7 +1326,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("repo-analysis/create-work-items")]
-        [EnableRateLimiting("FixedWindow")]
+        [EnableRateLimiting("AiAction")]
         public async Task<IActionResult> CreateBacklogItemsFromAnalysis([FromBody] AiCreateBacklogFromAnalysisRequestDto request)
         {
             if (request.ProjectId == Guid.Empty)
@@ -1364,7 +1364,7 @@ namespace TaskManagement.API.Controllers
                 {
                     return await action();
                 }
-                catch (Exception ex) when (IsTransientAiFailure(ex))
+                catch (Exception ex) when (ex is not AiCreditsExhaustedException && ex is not AiProviderException && IsTransientAiFailure(ex))
                 {
                     lastException = ex;
 

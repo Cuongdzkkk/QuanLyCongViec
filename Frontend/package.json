@@ -50,7 +50,6 @@
   },
   "devDependencies": {
     "@element-plus/icons-vue": "^2.3.2",
-    "@rolldown/binding-win32-x64-msvc": "^1.1.0",
     "@vitejs/plugin-vue": "^6.0.5",
     "autoprefixer": "^10.4.27",
     "element-plus": "^2.13.5",

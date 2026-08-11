@@ -663,10 +663,11 @@ namespace TaskManagement.API.Controllers
         {
             try
             {
-                var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (Guid.TryParse(userIdString, out Guid userId))
+                var refreshToken = Request.Cookies["refreshToken"];
+
+                if (!string.IsNullOrWhiteSpace(refreshToken))
                 {
-                    await _authService.RevokeTokenAsync(userId);
+                    await _authService.RevokeTokenAsync(refreshToken);
                 }
 
                 Response.Cookies.Delete("refreshToken");

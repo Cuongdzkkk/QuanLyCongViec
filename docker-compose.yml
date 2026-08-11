@@ -1,0 +1,49 @@
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Express"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD}"
+    volumes:
+      - mssql_data:/var/opt/mssql
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Backend/Dockerfile.production
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:8080"
+
+      ConnectionStrings__DefaultConnection: "Server=db,1433;Database=TaskManagementDB;User Id=sa;Password=${MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=true;"
+
+      Jwt__SecretKey: "${JWT_SECRET}"
+      Cors__AllowedOrigins__0: "${FRONTEND_URL}"
+      Cors__AllowedOrigins__1: "https://www.sprinta.id.vn"
+      Frontend__BaseUrl: "${FRONTEND_URL}"
+
+      Features__AIEnabled: "true"
+      Google__Enabled: "true"
+      Google__ClientId: "${GOOGLE_CLIENT_ID}"
+      GitHub__ClientId: "${GITHUB_CLIENT_ID}"
+      GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET}"
+      GitHub__RedirectUri: "https://www.sprinta.id.vn/auth/github/callback"
+      ZenMux__ApiKey: "${ZENMUX_API_KEY}"
+      ZenMux__Model: "deepseek/deepseek-v4-flash"
+      ZenMux__TimeoutSeconds: "60"
+
+    depends_on:
+      - db
+    volumes:
+      - api_uploads:/app/uploads
+      - data_keys:/app/data-protection-keys
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  mssql_data:
+  api_uploads:
+  data_keys:

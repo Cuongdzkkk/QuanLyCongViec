@@ -54,7 +54,6 @@ public static class HostingConfigurationExtensions
         if (!environment.IsEnvironment("Testing") && configuration.GetValue("Features:AIEnabled", true))
         {
             RequireSecret(configuration, "ZenMux:ApiKey", environment, 20);
-            RequireSecret(configuration, "Gemini:ApiKey", environment, 20);
         }
 
         foreach (var provider in new[] { "GoogleCalendar", "Gmail", "Slack", "MicrosoftMail" })
