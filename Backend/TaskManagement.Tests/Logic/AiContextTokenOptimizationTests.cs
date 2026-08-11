@@ -68,6 +68,25 @@ public sealed class AiContextTokenOptimizationTests
         handler.RequestBody.Should().Contain("\"max_completion_tokens\":800");
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MissingProviderUsage_FallbackEstimateIncludesSystemInstruction(bool includesZeroUsage)
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(ResponseWithoutUsage(includesZeroUsage));
+        var service = CreateService(context, handler);
+        const string message = "AI đang hoạt động bình thường, bạn có thể làm gì?";
+        const string output = "{\"answer\":\"ok\",\"suggestions\":[],\"warnings\":[],\"actions\":[]}";
+
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto { Message = message });
+
+        var usage = await context.AITokenUsages.SingleAsync();
+        var promptOnlyEstimate = Math.Max(1, ($"User message: {message}".Length + output.Length) / 4);
+        usage.TokensUsed.Should().BeGreaterThan(promptOnlyEstimate);
+        usage.TokensUsed.Should().BeGreaterThan(0);
+    }
+
     [Fact]
     public async Task ProductionShapedDashboardMetadata_DoesNotForceGenericMessageIntoContext()
     {
@@ -120,6 +139,132 @@ public sealed class AiContextTokenOptimizationTests
         handler.CallCount.Should().Be(1);
         handler.RequestBody.Should().Contain("Route: /dashboard");
         handler.RequestBody.Should().Contain("Page type: dashboard; view: overview");
+    }
+
+    [Theory]
+    [InlineData("Rủi ro nào cần xử lý trước?")]
+    [InlineData("Tóm tắt dashboard hiện tại")]
+    public async Task DashboardVisibleTasks_AreHydratedAndPermissionFiltered(string message)
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var workspaceId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        var secretProjectId = Guid.NewGuid();
+        var statusId = Guid.NewGuid();
+        var secretStatusId = Guid.NewGuid();
+        var taskAId = Guid.NewGuid();
+        var taskBId = Guid.NewGuid();
+        var secretTaskId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        context.Projects.AddRange(
+            new Project
+            {
+                Id = projectId,
+                Name = "Dashboard Project",
+                Identifier = "DASH",
+                WorkspaceId = workspaceId,
+                CreatorId = userId,
+                CreatedAt = now,
+                UpdatedAt = now,
+                Status = true
+            },
+            new Project
+            {
+                Id = secretProjectId,
+                Name = "SECRET PROJECT",
+                Identifier = "SECRET",
+                WorkspaceId = workspaceId,
+                CreatorId = Guid.NewGuid(),
+                CreatedAt = now,
+                UpdatedAt = now,
+                Status = true
+            });
+        context.ProjectMembers.Add(new ProjectMember
+        {
+            ProjectId = projectId,
+            UserId = userId,
+            Status = true,
+            JoinedAt = now
+        });
+        context.WorkspaceMembers.Add(new WorkspaceMember
+        {
+            WorkspaceId = workspaceId,
+            UserId = userId,
+            IsActive = true,
+            JoinedAt = now
+        });
+        context.TaskStatuses.AddRange(
+            new DomainTaskStatus { Id = statusId, ProjectId = projectId, Name = "In Progress" },
+            new DomainTaskStatus { Id = secretStatusId, ProjectId = secretProjectId, Name = "Secret" });
+        context.WorkTasks.AddRange(
+            new WorkTask
+            {
+                Id = taskAId,
+                ProjectId = projectId,
+                WorkspaceId = workspaceId,
+                TaskStatusId = statusId,
+                TaskTypeId = Guid.NewGuid(),
+                ReporterId = userId,
+                Title = "Accessible task A",
+                Priority = 1,
+                DueDate = now.Date.AddDays(1),
+                CreatedAt = now,
+                UpdatedAt = now
+            },
+            new WorkTask
+            {
+                Id = taskBId,
+                ProjectId = projectId,
+                WorkspaceId = workspaceId,
+                TaskStatusId = statusId,
+                TaskTypeId = Guid.NewGuid(),
+                ReporterId = userId,
+                Title = "Accessible task B",
+                Priority = 2,
+                DueDate = now.Date.AddDays(2),
+                CreatedAt = now,
+                UpdatedAt = now
+            },
+            new WorkTask
+            {
+                Id = secretTaskId,
+                ProjectId = secretProjectId,
+                WorkspaceId = workspaceId,
+                TaskStatusId = secretStatusId,
+                TaskTypeId = Guid.NewGuid(),
+                ReporterId = Guid.NewGuid(),
+                Title = "SECRET task must not leak",
+                Priority = 1,
+                DueDate = now.Date,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        await context.SaveChangesAsync();
+
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Route = "/dashboard",
+            WorkspaceId = workspaceId,
+            PageContext = new AiContextPageDto
+            {
+                PageType = "dashboard",
+                CurrentView = "Dashboard",
+                VisibleTaskIds = [taskAId, taskBId, secretTaskId],
+                VisibleStatuses = ["In Progress"]
+            },
+            Message = message
+        });
+
+        handler.RequestBody.Should().Contain("Visible task context (trusted server data):");
+        handler.RequestBody.Should().Contain("Accessible task A");
+        handler.RequestBody.Should().Contain("Accessible task B");
+        handler.RequestBody.Should().Contain("Dashboard Project");
+        handler.RequestBody.Should().NotContain("SECRET task must not leak");
+        handler.RequestBody.Split("Visible task context (trusted server data):", StringSplitOptions.None).Length.Should().Be(2);
+        handler.RequestBody.Split("- [", StringSplitOptions.None).Length.Should().BeLessThanOrEqualTo(21);
     }
 
     [Fact]
@@ -367,6 +512,15 @@ public sealed class AiContextTokenOptimizationTests
     {
         Content = new StringContent(
             "{\"choices\":[{\"message\":{\"content\":\"{\\\"answer\\\":\\\"ok\\\",\\\"suggestions\\\":[],\\\"warnings\\\":[],\\\"actions\\\":[]}\"}}],\"usage\":{\"total_tokens\":1}}",
+            Encoding.UTF8,
+            "application/json")
+    };
+
+    private static HttpResponseMessage ResponseWithoutUsage(bool includesZeroUsage) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(
+            $"{{\"choices\":[{{\"message\":{{\"content\":\"{{\\\"answer\\\":\\\"ok\\\",\\\"suggestions\\\":[],\\\"warnings\\\":[],\\\"actions\\\":[]}}\"}}}}]" +
+            (includesZeroUsage ? ",\"usage\":{\"total_tokens\":0}" : string.Empty) + "}",
             Encoding.UTF8,
             "application/json")
     };

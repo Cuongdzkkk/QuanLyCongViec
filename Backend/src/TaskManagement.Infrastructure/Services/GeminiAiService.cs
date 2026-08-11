@@ -158,9 +158,9 @@ namespace TaskManagement.Infrastructure.Services
 
             var explicitlyNamedProject = accessibleProjects.Any(p =>
                 (!string.IsNullOrWhiteSpace(p.Name) &&
-                 message.Contains(p.Name, StringComparison.OrdinalIgnoreCase)) ||
+                 ContainsProjectReference(message, p.Name)) ||
                 (!string.IsNullOrWhiteSpace(p.Identifier) &&
-                 message.Contains(p.Identifier, StringComparison.OrdinalIgnoreCase)));
+                 ContainsProjectReference(message, p.Identifier)));
 
             var asksForOverdue =
                 normalizedMessage.Contains("quá hạn") ||
@@ -274,7 +274,7 @@ namespace TaskManagement.Infrastructure.Services
                 var resolvedProject = accessibleProjectDirectory
                     .Where(p =>
                         !string.IsNullOrWhiteSpace(p.Name) &&
-                        message.Contains(p.Name, StringComparison.OrdinalIgnoreCase))
+                        ContainsProjectReference(message, p.Name))
                     .OrderByDescending(p => p.Name.Length)
                     .FirstOrDefault();
 
@@ -283,7 +283,7 @@ namespace TaskManagement.Infrastructure.Services
                     resolvedProject = accessibleProjects
                         .Where(p =>
                             !string.IsNullOrWhiteSpace(p.Identifier) &&
-                            message.Contains(p.Identifier, StringComparison.OrdinalIgnoreCase))
+                            ContainsProjectReference(message, p.Identifier))
                         .OrderByDescending(p => p.Identifier.Length)
                         .FirstOrDefault();
                 }
@@ -294,7 +294,7 @@ namespace TaskManagement.Infrastructure.Services
                     prompt.AppendLine(
                         $"Project automatically resolved from user message: {Limit(resolvedProject.Name, 200)} ({resolvedProject.Id})");
                 }
-                else if (accessibleProjectDirectory.Count == 1)
+                else if (accessibleProjectDirectory.Count == 1 && page.VisibleTaskIds.Count == 0)
                 {
                     effectiveProjectId = accessibleProjectDirectory[0].Id;
                     prompt.AppendLine(
@@ -356,8 +356,45 @@ namespace TaskManagement.Infrastructure.Services
                 }
             }
 
+            if (!effectiveProjectId.HasValue && page.VisibleTaskIds.Count > 0)
+            {
+                var visibleTaskIds = page.VisibleTaskIds
+                    .Distinct()
+                    .Take(20)
+                    .ToList();
+                var accessibleProjectIds = accessibleProjectDirectory
+                    .Select(project => project.Id)
+                    .ToList();
+                var visibleTasks = await _context.WorkTasks
+                    .AsNoTracking()
+                    .Where(task =>
+                        visibleTaskIds.Contains(task.Id) &&
+                        accessibleProjectIds.Contains(task.ProjectId) &&
+                        !task.IsDeleted &&
+                        !task.IsArchived)
+                    .Select(task => new
+                    {
+                        task.Id,
+                        task.Title,
+                        Status = task.TaskStatus != null ? task.TaskStatus.Name : "N/A",
+                        task.Priority,
+                        task.DueDate,
+                        ProjectName = task.Project.Name
+                    })
+                    .ToListAsync();
+
+                if (visibleTasks.Count > 0)
+                {
+                    prompt.AppendLine("Visible task context (trusted server data):");
+                    foreach (var task in visibleTasks)
+                    {
+                        prompt.AppendLine(
+                            $"- [{Limit(task.ProjectName, 80)}] {Limit(task.Title, 200)} | {Limit(task.Status, 80)} | P{task.Priority} | due {task.DueDate?.ToString("yyyy-MM-dd") ?? "none"}");
+                    }
+                }
+            }
+
             prompt.AppendLine($"Visible statuses: {string.Join(", ", page.VisibleStatuses.Take(20).Select(value => Limit(value, 80)))}");
-            prompt.AppendLine($"Visible task ids: {string.Join(", ", page.VisibleTaskIds.Take(20))}");
             prompt.AppendLine($"Filters: {FormatSafePairs(page.Filters)}");
             prompt.AppendLine($"User message: {message}");
 
@@ -485,6 +522,27 @@ namespace TaskManagement.Infrastructure.Services
             var normalized = message.ToLowerInvariant();
             return new[] { "tạo", "create", "sửa", "đổi", "update", "assign", "gán", "thêm bình luận", "add comment", "due date" }
                 .Any(normalized.Contains);
+        }
+
+        private static bool ContainsProjectReference(string message, string? reference)
+        {
+            if (string.IsNullOrWhiteSpace(reference)) return false;
+
+            var start = 0;
+            while (start < message.Length)
+            {
+                var index = message.IndexOf(reference, start, StringComparison.OrdinalIgnoreCase);
+                if (index < 0) return false;
+
+                var beforeIsWord = index > 0 && char.IsLetterOrDigit(message[index - 1]);
+                var afterIndex = index + reference.Length;
+                var afterIsWord = afterIndex < message.Length && char.IsLetterOrDigit(message[afterIndex]);
+                if (!beforeIsWord && !afterIsWord) return true;
+
+                start = afterIndex;
+            }
+
+            return false;
         }
 
         private static string BuildContextSystemInstruction(bool includeWriteActionPolicy)
@@ -1194,14 +1252,17 @@ namespace TaskManagement.Infrastructure.Services
             int? maxCompletionTokens = null)
         {
             prompt = AiSafetyGuard.RedactSecrets(prompt);
+            var effectiveSystemInstruction = systemInstruction ?? "You must follow the user requested output format exactly.";
             var result = await _zenMuxAiClient.GenerateTextAsync(
                 prompt,
-                systemInstruction ?? "You must follow the user requested output format exactly.",
+                effectiveSystemInstruction,
                 forceJson,
                 forceJson ? 0.2 : 0.5,
                 cancellationToken,
                 maxCompletionTokens);
-            var fallbackTokenEstimate = Math.Max(1, (prompt.Length + result.Text.Length) / 4);
+            var fallbackTokenEstimate = Math.Max(
+                1,
+                (effectiveSystemInstruction.Length + prompt.Length + result.Text.Length) / 4);
 
             _context.AITokenUsages.Add(new AITokenUsage
             {
