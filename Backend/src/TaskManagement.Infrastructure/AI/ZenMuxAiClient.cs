@@ -25,7 +25,8 @@ public sealed class ZenMuxAiClient
         string systemInstruction,
         bool forceJson = false,
         double? temperature = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int? maxCompletionTokens = null)
     {
         var apiKey = _configuration["ZenMux:ApiKey"];
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -51,6 +52,11 @@ public sealed class ZenMuxAiClient
         if (forceJson)
         {
             payload["response_format"] = new { type = "json_object" };
+        }
+
+        if (maxCompletionTokens is > 0)
+        {
+            payload["max_completion_tokens"] = maxCompletionTokens;
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
