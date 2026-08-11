@@ -96,7 +96,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { signalRService } from '@/api/signalrService'
 import { useRouter } from 'vue-router'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useActivityStore } from '@/store/useActivityStore'

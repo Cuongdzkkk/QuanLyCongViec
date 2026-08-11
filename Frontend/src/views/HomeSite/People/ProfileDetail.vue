@@ -245,39 +245,57 @@
   </div>
 
   <!-- Edit Profile Modal -->
-  <div class="modal-overlay" v-if="isEditModalOpen" @click.self="closeEditProfile">
+  <Teleport to="body">
+  <div class="modal-overlay sa-data-modal-overlay" v-if="isEditModalOpen" @click.self="closeEditProfile">
     <div class="modal-content">
-      <div class="modal-header">
-        <h2>Edit Profile</h2>
-        <button class="close-btn" @click="closeEditProfile">&times;</button>
-      </div>
+      <DataModalHeader
+        icon="bi bi-person-gear"
+        title="Edit Profile"
+        description="Update public profile information shown across the workspace"
+        @close="closeEditProfile"
+      />
       <div class="modal-body">
-        <div class="form-group">
-          <label>Full Name</label>
-          <input type="text" v-model="editForm.fullName" class="form-input" />
-        </div>
-        <div class="form-group">
-          <label>Job Title</label>
-          <input type="text" v-model="editForm.jobTitle" class="form-input" />
-        </div>
-        <div class="form-group">
-          <label>Location</label>
-          <input type="text" v-model="editForm.location" class="form-input" />
-        </div>
-        <div class="form-group">
-          <label>Bio</label>
-          <textarea v-model="editForm.bio" class="form-input" rows="4"></textarea>
-        </div>
+        <DataModalSection
+          icon="bi bi-person-lines-fill"
+          title="Basic information"
+          description="Keep name, role, and location consistent for teammates"
+        >
+          <div class="sa-modal-form-grid">
+            <DataModalField label="Full Name">
+              <input type="text" v-model="editForm.fullName" class="form-input" />
+            </DataModalField>
+            <DataModalField label="Job Title">
+              <input type="text" v-model="editForm.jobTitle" class="form-input" />
+            </DataModalField>
+          </div>
+          <DataModalField label="Location">
+            <input type="text" v-model="editForm.location" class="form-input" />
+          </DataModalField>
+        </DataModalSection>
+        <DataModalSection
+          icon="bi bi-card-text"
+          title="Profile bio"
+          description="Describe responsibilities, focus, or useful context"
+        >
+          <DataModalField label="Bio">
+            <textarea v-model="editForm.bio" class="form-input" rows="4"></textarea>
+          </DataModalField>
+        </DataModalSection>
         <div class="error-message" v-if="editError">{{ editError }}</div>
       </div>
       <div class="modal-footer">
-        <button class="cancel-btn" @click="closeEditProfile" :disabled="isSaving">Cancel</button>
+        <button class="cancel-btn" @click="closeEditProfile" :disabled="isSaving">
+          <i class="bi bi-x-lg"></i>
+          Cancel
+        </button>
         <button class="primary-btn" @click="saveProfile" :disabled="isSaving">
+          <i class="bi bi-check-lg"></i>
           {{ isSaving ? 'Saving...' : 'Save Changes' }}
         </button>
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup>
@@ -289,6 +307,9 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
 import RichTextEditor from '@/components/common/RichTextEditor.vue'
 import { useGoalStore } from '@/store/useGoalStore'
 import { useHomeProjectStore as useProjectStore } from '@/store/useHomeProjectStore'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 
 const route = useRoute()
 const router = useRouter()

@@ -1,5 +1,19 @@
 import { defineStore } from 'pinia'
 import axiosClient from '@/api/axiosClient'
+import { signalRService } from '@/api/signalrService'
+
+let peopleRealtimeRegistered = false
+let activePeopleStore = null
+
+const handlePeopleRealtime = (event) => {
+  if (`${event?.entityType || ''}`.toLowerCase() !== 'user' || !event?.data?.id) return
+  const data = event.data
+  const index = activePeopleStore?.users.findIndex(user => `${user.id}` === `${data.id}`) ?? -1
+  if (index >= 0) activePeopleStore.users[index] = { ...activePeopleStore.users[index], ...data }
+  if (`${activePeopleStore?.currentUser?.id || ''}` === `${data.id}`) {
+    activePeopleStore.currentUser = { ...activePeopleStore.currentUser, ...data }
+  }
+}
 
 export const usePeopleStore = defineStore('people', {
   state: () => ({
@@ -18,7 +32,14 @@ export const usePeopleStore = defineStore('people', {
     pageSize: 20
   }),
   actions: {
+    registerRealtime() {
+      activePeopleStore = this
+      if (peopleRealtimeRegistered) return
+      signalRService.on('EntityChanged', handlePeopleRealtime)
+      peopleRealtimeRegistered = true
+    },
     async fetchPeople(search = '', page = 1, pageSize = 20, filters = {}) {
+      this.registerRealtime()
       this.isLoading = true
       this.error = null
       this.isEmpty = false
@@ -61,6 +82,7 @@ export const usePeopleStore = defineStore('people', {
       }
     },
     async fetchProfileDetail(id) {
+      this.registerRealtime()
       this.isLoading = true
       this.error = null
       try {

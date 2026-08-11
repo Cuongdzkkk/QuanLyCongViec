@@ -1,16 +1,13 @@
 <template>
-  <div class="modal-overlay" v-if="isOpen" @click.self="closeModal">
+  <Teleport to="body">
+  <div class="modal-overlay sa-data-modal-overlay" v-if="isOpen" @click.self="closeModal">
     <div class="share-dialog">
       <div class="share-header">
-        <h2>Share</h2>
-        <div class="header-right-actions">
-          <button class="icon-btn" title="Copy link"><i class="fa-solid fa-link"></i></button>
-          <button class="icon-btn"><i class="fa-solid fa-ellipsis"></i></button>
-          <button class="icon-btn close-btn" @click="closeModal"><i class="fa-solid fa-xmark"></i></button>
-        </div>
+        <DataModalHeader icon="bi bi-share" title="Share" description="Invite people and manage access" close-label="Close" @close="closeModal" />
       </div>
       
       <div class="share-body">
+        <DataModalSection icon="bi bi-person-plus" title="People and access">
         <!-- Search Input & Selected Chips -->
         <div class="search-container" :class="{ 'has-selection': selectedUsers.length > 0 }">
           <div class="selected-chips" v-if="selectedUsers.length > 0">
@@ -33,8 +30,10 @@
             </select>
           </div>
         </div>
+        </DataModalSection>
 
         <!-- Suggested Users (when NO user is selected) -->
+        <DataModalSection icon="bi bi-people" title="Suggested people">
         <div class="suggested-users" v-if="selectedUsers.length === 0">
           <button 
             class="suggestion-btn" 
@@ -45,6 +44,7 @@
             <i class="fa-solid fa-plus"></i> {{ user.name }}
           </button>
         </div>
+        </DataModalSection>
 
         <!-- SHARE MODE (when a user IS selected) -->
         <div class="share-actions-mode" v-if="selectedUsers.length > 0">
@@ -137,6 +137,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup>
@@ -145,6 +146,8 @@ import axiosClient from '@/api/axiosClient'
 import { useSiteStore } from '@/store/useSiteStore'
 import { usePeopleStore } from '@/store/usePeopleStore'
 import { ensureWorkspaceIdFromState, resolveWorkspaceIdFromState } from '@/utils/contextIds'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 
 import UserAvatar from '@/components/common/UserAvatar.vue'
 

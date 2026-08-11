@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 using TaskManagement.Infrastructure.Data;
 
 namespace TaskManagement.API.Controllers
@@ -15,11 +18,17 @@ namespace TaskManagement.API.Controllers
     public class NotificationsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IHubContext<KanbanHub>? _hub;
 
-        public NotificationsController(ApplicationDbContext context)
+        public NotificationsController(ApplicationDbContext context, IHubContext<KanbanHub>? hub = null)
         {
             _context = context;
+            _hub = hub;
         }
+
+        private Task PublishChangedAsync(Guid userId, string action, Guid entityId) =>
+            _hub?.PublishUserEntityChangedAsync(userId, "Notification", action, entityId)
+            ?? Task.CompletedTask;
 
         private Guid? GetUserId()
         {
@@ -94,6 +103,7 @@ namespace TaskManagement.API.Controllers
 
             notification.IsRead = true;
             await _context.SaveChangesAsync();
+            await PublishChangedAsync(userId.Value, "updated", notification.Id);
             return Ok(new { statusCode = 200, message = "Marked as read." });
         }
 
@@ -113,6 +123,7 @@ namespace TaskManagement.API.Controllers
             }
 
             await _context.SaveChangesAsync();
+            await PublishChangedAsync(userId.Value, "reconcile", Guid.Empty);
             return Ok(new { statusCode = 200, message = "Marked all as read." });
         }
 
@@ -123,7 +134,7 @@ namespace TaskManagement.API.Controllers
             if (actorId == null) return Unauthorized();
             if (request.AssigneeUserId == Guid.Empty || request.AssigneeUserId == actorId.Value) return Ok(new { statusCode = 200, message = "Skipped." });
 
-            _context.Notifications.Add(new TaskManagement.Domain.Entities.Notification
+            var notification = new TaskManagement.Domain.Entities.Notification
             {
                 Id = Guid.NewGuid(),
                 UserId = request.AssigneeUserId,
@@ -136,9 +147,11 @@ namespace TaskManagement.API.Controllers
                 LinkUrl = $"/space/{request.ProjectId}?task={request.TaskId}",
                 CreatedAt = DateTime.UtcNow,
                 IsRead = false
-            });
+            };
+            _context.Notifications.Add(notification);
 
             await _context.SaveChangesAsync();
+            await PublishChangedAsync(request.AssigneeUserId, "created", notification.Id);
             return Ok(new { statusCode = 200, message = "Created." });
         }
 
@@ -173,6 +186,7 @@ namespace TaskManagement.API.Controllers
             }
 
             await _context.SaveChangesAsync();
+            await Task.WhenAll(targetUserIds.Select(id => PublishChangedAsync(id, "created", Guid.Empty)));
             return Ok(new { statusCode = 200, message = "Created.", count = targetUserIds.Count });
         }
 
@@ -207,6 +221,7 @@ namespace TaskManagement.API.Controllers
             }
 
             await _context.SaveChangesAsync();
+            await Task.WhenAll(targetUserIds.Select(id => PublishChangedAsync(id, "created", Guid.Empty)));
             return Ok(new { statusCode = 200, message = "Created.", count = targetUserIds.Count });
         }
 
@@ -248,6 +263,7 @@ namespace TaskManagement.API.Controllers
             });
 
             await _context.SaveChangesAsync();
+            await PublishChangedAsync(request.AssigneeUserId, "created", notificationId);
             return Ok(new
             {
                 statusCode = 200,

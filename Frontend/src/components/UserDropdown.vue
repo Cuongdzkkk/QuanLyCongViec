@@ -81,6 +81,7 @@ import axiosClient from '@/api/axiosClient'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useSprintStore } from '@/store/useSprintStore'
 import UserAvatar from '@/components/common/UserAvatar.vue'
+import { signalRService } from '@/api/signalrService'
 
 const router = useRouter()
 const langSubVisible = ref(false)
@@ -115,13 +116,23 @@ const handleAvatarUpdate = (event) => {
   }
 }
 
+const handleUserRealtime = (event) => {
+  if (`${event?.entityType || ''}`.toLowerCase() !== 'user') return
+  const user = event?.data
+  const currentUserId = profileData.value?.id || getStoredUser()?.id
+  if (!user?.id || `${user.id}` !== `${currentUserId || ''}`) return
+  profileData.value = { ...(profileData.value || {}), ...user }
+}
+
 onMounted(() => {
   fetchProfile()
   window.addEventListener('user-avatar-updated', handleAvatarUpdate)
+  signalRService.on('EntityChanged', handleUserRealtime)
 })
 
 onUnmounted(() => {
   window.removeEventListener('user-avatar-updated', handleAvatarUpdate)
+  signalRService.off('EntityChanged', handleUserRealtime)
 })
 
 const toggleLangSub = () => {

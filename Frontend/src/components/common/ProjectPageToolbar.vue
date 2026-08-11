@@ -13,13 +13,14 @@
         />
       </div>
       <slot name="search"></slot>
+      <div class="ppt-group ppt-filters" v-if="$slots.filters"><slot name="filters"></slot></div>
       <slot name="left"></slot>
     </div>
     <div class="ppt-right">
       <!-- Standardized Slots for exact alignment -->
-      <div class="ppt-group ppt-filters" v-if="$slots.filters">
-        <slot name="filters"></slot>
-      </div>
+
+
+
       
       <div class="ppt-group ppt-sort" v-if="$slots.sort">
         <slot name="sort"></slot>
@@ -48,18 +49,21 @@ defineEmits(['update:searchQuery'])
 
 <style scoped>
 .project-page-toolbar {
+  position: relative;
+  z-index: 5;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 10px;
   min-height: 42px;
   width: 100%;
-  padding: 8px;
+  padding: 8px !important;
   border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
   border-radius: 12px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 86%, transparent), color-mix(in srgb, var(--color-surface-hover) 46%, transparent));
   box-shadow: 0 10px 24px color-mix(in srgb, #020617 6%, transparent);
+  flex: 0 0 auto;
 }
 
 .ppt-left, .ppt-right {
@@ -68,6 +72,9 @@ defineEmits(['update:searchQuery'])
   gap: 8px;
   min-width: 0;
 }
+
+.ppt-left { flex: 1 1 auto; }
+.ppt-right { flex: 0 1 auto; margin-left: auto; }
 
 .ppt-group {
   display: flex;
@@ -107,6 +114,30 @@ defineEmits(['update:searchQuery'])
   border-color: var(--color-accent) !important;
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important;
   outline: none;
+}
+
+/* Standardized Filter Trigger Button across all tabs */
+:deep(.timeline-filter-trigger) {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  height: 34px !important;
+  padding: 0 12px !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 9px !important;
+  background: var(--color-surface) !important;
+  color: var(--color-text-secondary) !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+:deep(.timeline-filter-trigger:hover),
+:deep(.timeline-filter-trigger.active) {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
 }
 
 /* Force standard height and typography for all toolbar elements */
@@ -168,20 +199,39 @@ defineEmits(['update:searchQuery'])
   border: 1px solid var(--color-border) !important;
 }
 
-:deep(.view-toggles button) {
+:deep(.view-toggles button),
+:deep(.view-toggles .toggle-btn) {
   height: 28px !important;
   min-height: 28px !important;
   width: 28px !important;
-  border: none !important;
+  border: 1px solid transparent !important;
   background: transparent !important;
   color: var(--color-text-muted) !important;
   border-radius: 6px !important;
+  transition: all 0.2s ease !important;
+  cursor: pointer !important;
 }
 
-:deep(.view-toggles button.active) {
-  background-color: var(--color-surface) !important;
-  color: var(--color-text-primary) !important;
+:deep(.view-toggles button:hover),
+:deep(.view-toggles .toggle-btn:hover) {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
+}
+
+:deep(.view-toggles button.active),
+:deep(.view-toggles .toggle-btn.active) {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+}
+
+@media (max-width: 900px) {
+  .project-page-toolbar { align-items: stretch; flex-wrap: wrap; }
+  .ppt-left, .ppt-right { width: 100%; flex-wrap: wrap; }
+  .ppt-right { margin-left: 0; justify-content: flex-end; }
+  .ppt-search { width: min(100%, 320px); }
 }
 
 </style>

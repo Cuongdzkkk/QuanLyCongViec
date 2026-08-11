@@ -55,22 +55,28 @@ axiosClient.interceptors.response.use(
     },
     async (error) => {
         const originalRequest = error.config;
+        if (!originalRequest) {
+            return Promise.reject(error);
+        }
+        const requestUrl = String(originalRequest.url || '');
 
-        const isAuthRequest = originalRequest.url.includes('/auth/login') || 
-                              originalRequest.url.includes('/auth/register') ||
-                              originalRequest.url.includes('/auth/send-otp') ||
-                              originalRequest.url.includes('/auth/verify-otp') ||
-                              originalRequest.url.includes('/auth/reset-password') ||
-                              originalRequest.url.includes('/auth/google-login') ||
-                              originalRequest.url.includes('/auth/github-login') ||
-                              originalRequest.url.includes('/auth/invite-info') ||
-                              originalRequest.url.includes('/auth/accept-invite-token');
+        const isAuthRequest = requestUrl.includes('/auth/login') ||
+                              requestUrl.includes('/auth/register') ||
+                              requestUrl.includes('/auth/send-otp') ||
+                              requestUrl.includes('/auth/verify-otp') ||
+                              requestUrl.includes('/auth/reset-password') ||
+                              requestUrl.includes('/auth/refresh-token') ||
+                              requestUrl.includes('/auth/google-login') ||
+                              requestUrl.includes('/auth/github-login') ||
+                              requestUrl.includes('/auth/invite-info') ||
+                              requestUrl.includes('/auth/accept-invite-token');
 
         if (error.response?.status === 401 && !originalRequest._retry && !isAuthRequest) {
             if (isRefreshing) {
                 return new Promise(function (resolve, reject) {
                     failedQueue.push({ resolve, reject });
                 }).then(token => {
+                    originalRequest.headers = originalRequest.headers || {};
                     originalRequest.headers['Authorization'] = 'Bearer ' + token;
                     return axiosClient(originalRequest);
                 }).catch(err => {
@@ -91,11 +97,15 @@ axiosClient.interceptors.response.use(
                     withCredentials: true
                 });
 
-                const newAccessToken = data.data.accessToken;
+                const newAccessToken = data?.data?.accessToken ?? data?.accessToken;
+                if (!newAccessToken) {
+                    throw new Error('Refresh token response did not include an access token.');
+                }
                 sessionStorage.setItem('accessToken', newAccessToken);
                 localStorage.removeItem('accessToken');
 
                 axiosClient.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
+                originalRequest.headers = originalRequest.headers || {};
                 originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
 
                 processQueue(null, newAccessToken);

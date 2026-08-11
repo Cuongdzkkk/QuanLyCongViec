@@ -1,12 +1,15 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using System.Text.Json;
 using TaskManagement.Application.DTOs.Common;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 
 namespace TaskManagement.API.Controllers
 {
@@ -17,10 +20,12 @@ namespace TaskManagement.API.Controllers
     {
         private const int MaxFloatingNotes = 5;
         private readonly ApplicationDbContext _context;
+        private readonly IHubContext<KanbanHub>? _hub;
 
-        public StickiesController(ApplicationDbContext context)
+        public StickiesController(ApplicationDbContext context, IHubContext<KanbanHub>? hub = null)
         {
             _context = context;
+            _hub = hub;
         }
 
         [HttpGet("floating")]
@@ -127,6 +132,7 @@ namespace TaskManagement.API.Controllers
             _context.StickyNotes.Add(note);
             AddAudit(userId, "sticky.create", note, "Success");
             await _context.SaveChangesAsync();
+            await PublishStickyChangedAsync(userId, "created", note);
 
             return CreatedAtAction(nameof(GetSticky), new { id = note.Id }, ApiResponse<object>.Success(ToResponse(note)));
         }
@@ -158,6 +164,7 @@ namespace TaskManagement.API.Controllers
             note.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+            await PublishStickyChangedAsync(userId, "updated", note);
             return Ok(ApiResponse<object>.Success(ToResponse(note)));
         }
 
@@ -173,6 +180,7 @@ namespace TaskManagement.API.Controllers
             note.IsPinned = dto.IsPinned;
             note.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            await PublishStickyChangedAsync(userId, "updated", note);
 
             return Ok(ApiResponse<object>.Success(ToResponse(note)));
         }
@@ -207,6 +215,7 @@ namespace TaskManagement.API.Controllers
             }
             note.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            await PublishStickyChangedAsync(userId, "updated", note);
 
             return Ok(ApiResponse<object>.Success(ToResponse(note)));
         }
@@ -224,6 +233,7 @@ namespace TaskManagement.API.Controllers
             note.UpdatedAt = DateTime.UtcNow;
             AddAudit(userId, "sticky.delete", note, "Success");
             await _context.SaveChangesAsync();
+            await PublishStickyChangedAsync(userId, "deleted", note);
 
             return Ok(ApiResponse<object>.Success(new { note.Id }, "Đã xóa ghi chú."));
         }
@@ -231,6 +241,13 @@ namespace TaskManagement.API.Controllers
         private bool TryGetUserId(out Guid userId)
         {
             return Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out userId);
+        }
+
+        private Task PublishStickyChangedAsync(Guid userId, string action, StickyNote note)
+        {
+            return _hub == null
+                ? Task.CompletedTask
+                : _hub.PublishUserEntityChangedAsync(userId, "StickyNote", action, note.Id, ToResponse(note));
         }
 
         private async Task<StickyContextValidation> ResolveContextAsync(Guid userId, StickyNoteDto dto)

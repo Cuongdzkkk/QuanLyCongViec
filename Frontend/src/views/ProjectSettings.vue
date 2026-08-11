@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="project-settings-route">
     <div class="project-settings-page" v-loading="loading">
       <header class="settings-header">
         <div>
@@ -1360,17 +1360,27 @@
     <!-- Dialog thêm/sửa trường tùy chỉnh -->
     <el-dialog
       v-model="showCustomFieldModal"
-      :title="isEditingCustomField ? 'Sửa trường tùy chỉnh' : 'Thêm trường tùy chỉnh'"
       width="480px"
       custom-class="plane-dialog"
+      append-to-body
+      class="sa-data-dialog sa-modal--form"
+      :show-close="false"
     >
-      <div class="dialog-form" style="display: flex; flex-direction: column; gap: 16px;">
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-ui-checks-grid"
+          :title="isEditingCustomField ? 'Sửa trường tùy chỉnh' : 'Thêm trường tùy chỉnh'"
+          description="Thiết lập kiểu dữ liệu, tùy chọn và cách hiển thị trên công việc"
+          @close="showCustomFieldModal = false"
+        />
+      </template>
+      <div class="dialog-form">
         <div class="form-group">
-          <label class="form-label" style="display: block; margin-bottom: 6px; font-weight: 500;">Tên trường <span class="text-red-500">*</span></label>
-          <input type="text" class="form-control" v-model="customFieldForm.name" placeholder="Ví dụ: Mã khách hàng, Ngày bàn giao" style="width: 100%; height: 36px; border: 1px solid var(--border-color); border-radius: 4px; padding: 0 12px; background: var(--bg-primary); color: var(--text-primary);" />
+          <label class="form-label">Tên trường <span class="text-red-500">*</span></label>
+          <input type="text" class="form-control" v-model="customFieldForm.name" placeholder="Ví dụ: Mã khách hàng, Ngày bàn giao" />
         </div>
         <div class="form-group">
-          <label class="form-label" style="display: block; margin-bottom: 6px; font-weight: 500;">Loại dữ liệu <span class="text-red-500">*</span></label>
+          <label class="form-label">Loại dữ liệu <span class="text-red-500">*</span></label>
           <el-select v-model="customFieldForm.type" placeholder="Chọn loại dữ liệu" style="width: 100%;" :disabled="isEditingCustomField">
             <el-option label="Văn bản (Text)" value="Text" />
             <el-option label="Số (Number)" value="Number" />
@@ -1380,21 +1390,21 @@
           </el-select>
         </div>
         <div class="form-group" v-if="customFieldForm.type === 'Select'">
-          <label class="form-label" style="display: block; margin-bottom: 6px; font-weight: 500;">Tùy chọn (Options) <span class="text-red-500">*</span></label>
-          <textarea class="form-control" v-model="customFieldForm.optionsText" rows="4" placeholder="Nhập mỗi tùy chọn trên một dòng (Ví dụ:&#10;Thấp&#10;Trung bình&#10;Cao)" style="width: 100%; border: 1px solid var(--border-color); border-radius: 4px; padding: 8px 12px; background: var(--bg-primary); color: var(--text-primary); font-family: inherit;"></textarea>
+          <label class="form-label">Tùy chọn (Options) <span class="text-red-500">*</span></label>
+          <textarea class="form-control" v-model="customFieldForm.optionsText" rows="4" placeholder="Nhập mỗi tùy chọn trên một dòng (Ví dụ:&#10;Thấp&#10;Trung bình&#10;Cao)"></textarea>
         </div>
         <div class="form-group flex items-center gap-4" style="display: flex; gap: 24px; margin-top: 8px;">
           <el-checkbox v-model="customFieldForm.isRequired">Bắt buộc nhập</el-checkbox>
           <el-checkbox v-model="customFieldForm.isVisible">Hiển thị trên Task Detail</el-checkbox>
         </div>
         <div class="form-group">
-          <label class="form-label" style="display: block; margin-bottom: 6px; font-weight: 500;">Thứ tự hiển thị (Sort Order)</label>
-          <input type="number" class="form-control" v-model.number="customFieldForm.sortOrder" min="0" style="width: 100%; height: 36px; border: 1px solid var(--border-color); border-radius: 4px; padding: 0 12px; background: var(--bg-primary); color: var(--text-primary);" />
+          <label class="form-label">Thứ tự hiển thị (Sort Order)</label>
+          <input type="number" class="form-control" v-model.number="customFieldForm.sortOrder" min="0" />
         </div>
       </div>
       <template #footer>
         <span class="dialog-footer" style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
-          <el-button @click="showCustomFieldModal = false">Hủy</el-button>
+          <el-button class="cancel-btn" @click="showCustomFieldModal = false"><i class="bi bi-x-lg"></i> Hủy</el-button>
           <el-button type="primary" :loading="savingCustomField" @click="saveCustomField">Lưu thay đổi</el-button>
         </span>
       </template>
@@ -1418,6 +1428,7 @@ import { getDefaultPermissionMatrix, normalizeRole } from '@/utils/permissionGua
 import { hasProjectWritePermission } from '@/utils/permissions'
 import { getSprintApiError, getSprintErrorMessage, getSprintStateMeta, normalizeSprintState } from '@/utils/sprintState'
 import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -1474,6 +1485,17 @@ const labels = ref([])
 const modules = ref([])
 const sprints = ref([])
 const integrations = ref([])
+
+const upsertById = (collectionRef, item) => {
+  if (!item?.id) return
+  const index = collectionRef.value.findIndex(existing => existing.id === item.id)
+  if (index >= 0) collectionRef.value[index] = { ...collectionRef.value[index], ...item }
+  else collectionRef.value.push(item)
+}
+
+const removeById = (collectionRef, id) => {
+  collectionRef.value = collectionRef.value.filter(item => item.id !== id)
+}
 const integrationAnalysis = ref(null)
 const pointManagement = ref({
   totalProjectPoints: 0,
@@ -2510,14 +2532,22 @@ const createLabel = async () => {
 
   savingLabel.value = true
   try {
-    await axiosClient.post(`/projects/${projectId}/labels`, {
+    const response = await axiosClient.post(`/projects/${projectId}/labels`, {
       name: newLabel.value.name.trim(),
       colorCode: newLabel.value.colorCode,
       description: newLabel.value.description?.trim() || ''
     })
+    const createdLabel = response.data?.data
+    if (createdLabel?.id) {
+      upsertById(labels, {
+        ...createdLabel,
+        colorCode: createdLabel.colorCode || createdLabel.color || newLabel.value.colorCode,
+        description: newLabel.value.description?.trim() || ''
+      })
+      projectStore.upsertLabel(`${projectId}`, createdLabel)
+    }
     newLabel.value = { name: '', colorCode: '#3b82f6', description: '' }
     ElMessage.success('Label created')
-    await loadProjectSettings()
     notifyProjectSettingsRealtime()
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Could not create label')
@@ -2530,8 +2560,9 @@ const deleteLabel = async (label) => {
   try {
     await ElMessageBox.confirm(`Delete label "${label.name}"?`, 'Delete label', { type: 'warning' })
     await axiosClient.delete(`/projects/${projectId}/labels/${label.id}`)
+    removeById(labels, label.id)
+    projectStore.removeLabel(`${projectId}`, label.id)
     ElMessage.success('Label deleted')
-    await loadProjectSettings()
     notifyProjectSettingsRealtime()
   } catch (error) {
     if (error !== 'cancel') {
@@ -3032,6 +3063,7 @@ const goToCyclesWorkspace = () => {
 
 let unsubscribeAdminRealtime = null
 let projectRealtimeHandler = null
+let entityRealtimeHandler = null
 
 onMounted(async () => {
   clearLegacyGitHubCredentialStorage()
@@ -3047,6 +3079,38 @@ onMounted(async () => {
     broadcastAdminRealtime(event.type, event.payload || { projectId })
   }
   signalRService.on('ProjectRealtimeEvent', projectRealtimeHandler)
+  entityRealtimeHandler = async (event) => {
+    if (event?.projectId && `${event.projectId}` !== `${projectId}`) return
+    const entityType = `${event?.entityType || ''}`.toLowerCase()
+    const action = `${event?.action || ''}`.toLowerCase()
+    if (entityType === 'project-member') {
+      const userId = event?.data?.userId || event?.entityId
+      if (action === 'deleted') {
+        members.value = members.value.filter(member => `${member.userId || member.id}` !== `${userId}`)
+      } else if (action === 'role-updated') {
+        const member = members.value.find(item => `${item.userId || item.id}` === `${userId}`)
+        if (member) member.projectRole = event.data?.role
+      } else {
+        const response = await axiosClient.get(`/projects/${projectId}/members`)
+        members.value = response.data?.data || []
+      }
+      return
+    }
+    const target = entityType === 'label'
+      ? labels
+      : entityType === 'custom-field'
+        ? customFields
+      : entityType === 'module'
+        ? modules
+        : entityType === 'sprint'
+          ? sprints
+          : null
+    if (!target) return
+    if (action === 'deleted' || action === 'removed') removeById(target, event.entityId)
+    else upsertById(target, event.data)
+    if (entityType === 'label') projectStore.applyRealtimeEntityEvent(event)
+  }
+  signalRService.on('EntityChanged', entityRealtimeHandler)
   unsubscribeAdminRealtime = subscribeAdminRealtime(async ({ type, payload }) => {
     if (payload?.projectId && `${payload.projectId}` !== `${projectId}`) {
       return
@@ -3076,14 +3140,28 @@ onUnmounted(() => {
   if (projectRealtimeHandler) {
     signalRService.off('ProjectRealtimeEvent', projectRealtimeHandler)
   }
+  if (entityRealtimeHandler) {
+    signalRService.off('EntityChanged', entityRealtimeHandler)
+  }
 })
 </script>
 
 <style scoped>
+.project-settings-route {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--color-bg);
+}
+
 .project-settings-page {
-  height: calc(100vh - 66px);
-  padding: 28px;
-  color: #e4e4e7;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  box-sizing: border-box;
+  color: var(--color-text-primary);
+  background: var(--color-bg);
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -3106,23 +3184,40 @@ onUnmounted(() => {
 }
 
 .breadcrumb {
-  color: #60a5fa;
+  color: var(--color-accent);
   font-size: 12px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   margin-bottom: 8px;
 }
 
 .settings-header h1,
 .card-head h2 {
   margin: 0;
+  color: var(--color-text-primary);
+  letter-spacing: 0;
+}
+
+.settings-header h1 {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.card-head h2 {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .settings-header p,
 .card-head p,
 .row-main p {
   margin: 4px 0 0;
-  color: #a1a1aa;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .switch-row {
@@ -3151,10 +3246,14 @@ onUnmounted(() => {
   position: sticky;
   top: 84px;
   display: grid;
-  gap: 10px;
+  gap: 4px;
   max-height: calc(100vh - 160px);
   overflow-y: auto;
-  padding-right: 4px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: 0 4px 14px rgb(15 23 42 / 0.04);
 }
 
 .settings-nav::-webkit-scrollbar,
@@ -3167,23 +3266,20 @@ onUnmounted(() => {
 .settings-content::-webkit-scrollbar-thumb,
 .project-settings-page::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(56, 189, 248, 0.35);
-}
-
-.nav-tab,
-.settings-card,
-.stack-row {
-  background: #16181d;
-  border: 1px solid #1f232a;
-  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent) 24%, var(--color-border));
 }
 
 .nav-tab {
-  padding: 14px 16px;
+  min-height: 58px;
+  padding: 10px 12px;
   text-align: left;
-  color: #d4d4d8;
+  color: var(--color-text-secondary);
+  border: 1px solid transparent;
+  border-left: 4px solid transparent;
+  border-radius: 9px;
+  background: transparent;
   cursor: pointer;
-  transition: 0.2s ease;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
 }
 
 .nav-tab span,
@@ -3193,12 +3289,35 @@ onUnmounted(() => {
 
 .nav-tab small {
   margin-top: 4px;
-  color: #71717a;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.nav-tab:hover {
+  color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--color-border));
+  border-left-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--color-surface));
+}
+
+.nav-tab:hover small {
+  color: var(--color-text-secondary);
 }
 
 .nav-tab.active {
-  border-color: #38bdf8;
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(15, 23, 42, 0.92));
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 18%, var(--color-border));
+  border-left-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+}
+
+.nav-tab.active span {
+  font-weight: 600;
+}
+
+.nav-tab.active small {
+  color: var(--color-text-secondary);
 }
 
 .settings-content {
@@ -3209,6 +3328,10 @@ onUnmounted(() => {
 
 .settings-card {
   padding: 24px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.055);
 }
 
 .form-grid,
@@ -3311,25 +3434,62 @@ label.wide {
 }
 
 label span {
-  color: #a1a1aa;
-  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 input,
 textarea,
 select {
   width: 100%;
-  border: 1px solid #27272a;
-  background: #0f1115;
-  color: #fff;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 0 14px;
   font: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+input,
+select {
+  height: 44px;
+}
+
+textarea {
+  min-height: 104px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  padding: 0;
+  accent-color: var(--color-accent);
 }
 
 input:disabled {
-  opacity: 0.7;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-hover);
+  opacity: 1;
   cursor: not-allowed;
 }
 
@@ -3337,7 +3497,7 @@ input:disabled {
   justify-content: flex-start;
   flex-wrap: wrap;
   margin-top: 20px;
-  color: #94a3b8;
+  color: var(--color-text-secondary);
   font-size: 13px;
 }
 
@@ -3352,6 +3512,16 @@ input:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.stack-row:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 24%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 2%, var(--color-surface));
+  box-shadow: 0 5px 14px rgb(15 23 42 / 0.04);
 }
 
 .row-main {
@@ -3388,38 +3558,56 @@ input:disabled {
 .danger-outline-btn {
   min-height: 42px;
   padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 10px;
   cursor: pointer;
-  font-weight: 600;
   font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
 
 .primary-btn {
-  background: #0ea5e9;
-  color: #fff;
-  border: 1px solid #0284c7;
+  background: var(--color-accent);
+  color: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 84%, #0369a1);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.primary-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--color-accent) 86%, #0369a1);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
 
 .secondary-btn,
 .danger-outline-btn {
-  background: transparent;
-  color: #e4e4e7;
-  border: 1px solid #27272a;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.secondary-btn:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--color-surface));
 }
 
 .danger-btn {
   background: #b91c1c;
-  color: #fff;
+  color: #ffffff;
   border: 1px solid #ef4444;
 }
 
 .danger-outline-btn {
-  color: #fca5a5;
-  border-color: rgba(239, 68, 68, 0.4);
+  color: #dc2626;
+  border-color: rgb(239 68 68 / 0.35);
 }
 
 .danger-card {
-  border-color: rgba(239, 68, 68, 0.25);
+  border-color: rgb(239 68 68 / 0.24);
 }
 
 .danger-actions {
@@ -3440,9 +3628,9 @@ input:disabled {
 
 .analysis-card {
   padding: 12px;
-  border: 1px solid #27272a;
+  border: 1px solid var(--color-border);
   border-radius: 10px;
-  background: #0f1115;
+  background: var(--color-surface-hover);
 }
 
 .analysis-card strong {
@@ -3457,7 +3645,7 @@ input:disabled {
 
 .analysis-card li {
   margin-bottom: 6px;
-  color: #e4e4e7;
+  color: var(--color-text-secondary);
 }
 
 .metric-grid,
@@ -3478,20 +3666,25 @@ input:disabled {
 
 .metric-card {
   padding: 16px;
-  border: 1px solid #27272a;
-  border-radius: 10px;
-  background: #0f1115;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: 0 4px 12px rgb(15 23 42 / 0.035);
 }
 
 .metric-card span {
   display: block;
-  color: #94a3b8;
-  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
   margin-bottom: 8px;
 }
 
 .metric-card strong {
+  color: var(--color-text-primary);
   font-size: 26px;
+  font-weight: 600;
 }
 
 .compact-list .stack-row {
@@ -3505,14 +3698,15 @@ input:disabled {
 }
 
 .negative-chip {
-  color: #fca5a5;
+  color: #dc2626;
 }
 
 .empty-state {
   padding: 18px;
   border-radius: 10px;
-  border: 1px dashed #334155;
-  color: #94a3b8;
+  border: 1px dashed var(--color-border);
+  color: var(--color-text-muted);
+  background: var(--color-surface-hover);
 }
 
 .section-split {
@@ -3521,17 +3715,107 @@ input:disabled {
 
 .section-split h3 {
   margin: 0;
-  font-size: 14px;
+  color: var(--color-text-primary);
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .section-split p {
   margin: 6px 0 0;
-  color: #94a3b8;
-  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
 }
 
 .helper-panel {
   margin-top: 16px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  min-width: 0;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+:deep(.plane-dialog) {
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: 0 20px 56px rgb(15 23 42 / 0.16);
+}
+
+:deep(.plane-dialog .el-dialog__header) {
+  margin: 0;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+:deep(.plane-dialog .el-dialog__title) {
+  color: var(--color-text-primary);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+:deep(.plane-dialog .el-dialog__body) {
+  padding: 22px 24px;
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+}
+
+:deep(.plane-dialog .el-dialog__footer) {
+  padding: 14px 24px 18px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+:deep(.plane-dialog .el-select__wrapper) {
+  min-height: 44px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+:deep(.plane-dialog .el-select__wrapper.is-focused) {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+:deep(.plane-dialog .el-button) {
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.primary-btn:disabled,
+.secondary-btn:disabled,
+.danger-btn:disabled,
+.danger-outline-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+  box-shadow: none;
 }
 
 @media (max-width: 1100px) {
@@ -3608,37 +3892,39 @@ input:disabled {
 .role-selector-tabs {
   display: flex;
   gap: 8px;
-  border-bottom: 1px solid #1f232a;
+  border-bottom: 1px solid var(--color-border);
   padding-bottom: 12px;
 }
 
 .role-tab {
-  background: #16181d;
-  border: 1px solid #27272a;
-  color: #a1a1aa;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
   padding: 8px 16px;
   border-radius: 8px;
   cursor: pointer;
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
 }
 
 .role-tab:hover {
-  border-color: #38bdf8;
-  color: #fff;
+  border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-border));
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--color-surface));
 }
 
 .role-tab.active {
-  background: #0ea5e9;
-  border-color: #0ea5e9;
-  color: #fff;
+  background: color-mix(in srgb, var(--color-accent) 9%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+  color: var(--color-accent);
+  font-weight: 600;
 }
 
 .matrix-container {
   overflow-x: auto;
-  border: 1px solid #1f232a;
-  border-radius: 10px;
-  background: #0b0d11;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
 }
 
 .matrix-table {
@@ -3650,23 +3936,24 @@ input:disabled {
 .matrix-table th,
 .matrix-table td {
   padding: 12px 16px;
-  border-bottom: 1px solid #1f232a;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .matrix-table th {
-  background: #16181d;
-  color: #a1a1aa;
-  font-size: 13px;
+  background: var(--color-surface-hover);
+  color: var(--color-text-secondary);
+  font-size: 12px;
   font-weight: 600;
+  text-transform: uppercase;
 }
 
 .matrix-table td {
-  color: #e4e4e7;
+  color: var(--color-text-primary);
   font-size: 14px;
 }
 
 .matrix-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--color-accent) 3%, var(--color-surface));
 }
 
 .text-center {
@@ -3676,11 +3963,11 @@ input:disabled {
 .matrix-table input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: #0ea5e9;
+  accent-color: var(--color-accent);
   cursor: pointer;
-  border: 1px solid #27272a;
+  border: 1px solid var(--color-border);
   border-radius: 4px;
-  background: #0f1115;
+  background: var(--color-surface);
 }
 
 .matrix-table input[type="checkbox"]:disabled {
@@ -3699,7 +3986,7 @@ input:disabled {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #d4d4d8;
+  color: var(--color-text-secondary);
   cursor: pointer;
 }
 

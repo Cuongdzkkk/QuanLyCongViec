@@ -1,12 +1,12 @@
 <template>
-  <div class="df-page sp-page-shell">
+  <div class="df-page">
 
       <!-- ══ HEADER ══ -->
-      <header class="df-header">
-        <div class="df-header-left">
-          <p class="df-eyebrow">{{ t('dailyFocus.eyebrow') }}</p>
+      <header class="page-header">
+        <div>
+          <span class="eyebrow">{{ t('dailyFocus.eyebrow') }}</span>
           <h1><i class="fa-solid fa-fire df-fire-icon"></i> {{ t('dailyFocus.title') }}</h1>
-          <p class="df-subtitle">{{ todayLabel }} · {{ t('dailyFocus.subtitle') }}</p>
+          <p>{{ todayLabel }} · {{ t('dailyFocus.subtitle') }}</p>
         </div>
         <div class="df-header-right">
           <!-- Smart Filter -->
@@ -393,12 +393,11 @@ onMounted(loadTasks)
    BASE LAYOUT
 ════════════════════════════════════════════════ */
 .df-page {
-  min-height: 100vh;
-  padding: 22px 24px 32px;
-  background:
-    radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--color-danger) 8%, transparent), transparent 28%),
-    radial-gradient(circle at 85% 6%, color-mix(in srgb, var(--color-warning) 8%, transparent), transparent 24%),
-    var(--color-bg);
+  min-height: 100%;
+  width: 100%;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: var(--color-bg);
   color: var(--color-text-primary);
   animation: df-rise 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
@@ -411,34 +410,33 @@ onMounted(loadTasks)
 /* ════════════════════════════════════════════════
    HEADER
 ════════════════════════════════════════════════ */
-.df-header {
+.page-header {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
-  max-width: 1080px;
-  margin: 0 auto 16px;
-  padding: 16px 18px;
-  border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
-  border-radius: 14px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--color-warning) 7%, var(--color-surface)), var(--color-surface));
-  box-shadow: 0 16px 42px color-mix(in srgb, #020617 10%, transparent);
+  gap: 20px;
+  padding: 22px var(--sa-page-x, 24px) 18px;
+  background: var(--color-surface);
+  border-bottom: none !important;
+  margin-bottom: 0 !important;
 }
 
-.df-eyebrow {
-  margin: 0 0 6px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .08em;
+.eyebrow {
   color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: block;
 }
 
-.df-header h1 {
-  margin: 0 0 4px;
-  font-size: clamp(24px, 2.2vw, 34px);
+.page-header h1 {
+  margin: 3px 0 4px;
+  font-size: 22px;
   font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: 0;
+  line-height: 1.2;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -449,10 +447,10 @@ onMounted(loadTasks)
   filter: drop-shadow(0 0 6px rgba(249,115,22,.45));
 }
 
-.df-subtitle {
+.page-header p {
   margin: 0;
-  font-size: 13px;
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .df-header-right {
@@ -769,7 +767,8 @@ onMounted(loadTasks)
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,.45);
-  backdrop-filter: blur(3px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   z-index: 1000;
   display: flex;
   align-items: center;

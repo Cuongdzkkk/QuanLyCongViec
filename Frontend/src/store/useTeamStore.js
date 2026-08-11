@@ -1,6 +1,9 @@
 import { defineStore } from 'pinia'
 import axiosClient from '@/api/axiosClient'
 import { useStarredStore } from '@/store/useStarredStore'
+import { signalRService } from '@/api/signalrService'
+
+let teamRealtimeHandler = null
 
 export const useTeamStore = defineStore('team', {
   state: () => ({
@@ -18,6 +21,53 @@ export const useTeamStore = defineStore('team', {
     allTeams: []
   }),
   actions: {
+    async initializeRealtime() {
+      if (!teamRealtimeHandler) {
+        teamRealtimeHandler = event => this.applyRealtimeEntityEvent(event)
+        signalRService.on('EntityChanged', teamRealtimeHandler)
+      }
+      await signalRService.startAuthenticatedConnection()
+    },
+    upsertTeam(team) {
+      if (!team?.id) return
+      const index = this.allTeams.findIndex(item => `${item.id}` === `${team.id}`)
+      if (index >= 0) this.allTeams[index] = { ...this.allTeams[index], ...team }
+      else this.allTeams.unshift(team)
+      if (`${this.currentTeam?.id}` === `${team.id}`) {
+        this.currentTeam = {
+          ...this.currentTeam,
+          ...team,
+          status: team.isActive === false || team.isArchived ? 'Archived' : 'Active'
+        }
+      }
+      this.isEmpty = this.allTeams.length === 0
+    },
+    async applyRealtimeEntityEvent(event) {
+      if (!event) return
+      if (event.entityType === 'Kudo') {
+        const departmentId = event.data?.departmentId
+        if ((!departmentId || `${this.currentTeam?.id}` === `${departmentId}`) && this.currentTeam?.id && !this.isLoading) {
+          await this.fetchTeamDetail(this.currentTeam.id)
+        }
+        return
+      }
+      if (event.entityType === 'department') {
+        if (event.action === 'deleted') {
+          this.allTeams = this.allTeams.filter(team => `${team.id}` !== `${event.entityId}`)
+          if (`${this.currentTeam?.id}` === `${event.entityId}`) this.currentTeam = null
+        } else if (event.data) {
+          this.upsertTeam(event.data)
+        }
+        return
+      }
+      if (
+        event.entityType === 'department-detail' &&
+        `${this.currentTeam?.id}` === `${event.entityId}` &&
+        !this.isLoading
+      ) {
+        await this.fetchTeamDetail(event.entityId)
+      }
+    },
     async fetchAllTeams() {
       this.isLoading = true
       try {
@@ -152,8 +202,9 @@ export const useTeamStore = defineStore('team', {
     async createTeam(data) {
       try {
         const response = await axiosClient.post('/departments', data)
-        await this.fetchAllTeams()
-        return response.data?.data || response.data
+        const team = response.data?.data || response.data
+        this.upsertTeam(team)
+        return team
       } catch (err) {
         console.error('Failed to create team', err)
         throw err

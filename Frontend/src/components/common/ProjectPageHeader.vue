@@ -26,17 +26,22 @@ defineProps({
 <style scoped>
 .project-page-header {
   display: flex;
+  flex: 0 0 auto;
   justify-content: space-between;
   align-items: center;
   gap: 14px;
   min-height: 46px;
   padding: 0 0 8px;
+  overflow: visible;
 }
 .pph-left {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   gap: 12px;
   min-width: 0;
+  min-height: 46px;
+  overflow: visible;
 }
 .pph-icon {
   width: 46px;
@@ -56,15 +61,18 @@ defineProps({
 .pph-content {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   gap: 2px;
   min-width: 0;
+  padding-block: 2px;
+  overflow: visible;
 }
 .pph-title {
   margin: 0;
   font-size: clamp(22px, 1.7vw, 28px);
   font-weight: 900;
   color: var(--color-text-primary, #172b4d);
-  line-height: 1.08;
+  line-height: 1.2;
   overflow-wrap: anywhere;
 }
 .pph-desc {

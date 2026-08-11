@@ -271,3 +271,202 @@ button:not(:disabled):active,
     transition-duration: 0.001ms !important;
   }
 }
+
+.jira-dashboard {
+  position: relative;
+  width: 100%;
+  max-width: 1120px;
+  min-height: calc(100vh - var(--sa-topbar-height, 52px));
+  margin: 0 auto;
+  padding: 18px var(--sa-page-x, 24px) 30px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--color-text-primary, #0f172a);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  letter-spacing: 0;
+  line-height: 1.5;
+  background:
+    linear-gradient(180deg, #f8fcff 0%, #eef6fb 48%, #f8fafc 100%);
+}
+
+@media (min-width: 1200px) {
+  .jira-dashboard {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.main-content-column {
+  display: grid;
+  gap: 28px;
+  width: 100%;
+  max-width: 100%;
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 100px;
+}
+
+.main-content-column > section {
+  margin: 0 !important;
+}
+
+
+.page-title {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--color-text-primary, #0f172a);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  letter-spacing: -0.02em;
+}
+
+.sprinta-section-panel {
+  position: relative;
+  border-radius: 16px;
+  padding: 36px 32px 32px 32px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--color-border, #dfe1e6);
+  background: var(--color-surface, #ffffff);
+}
+
+.sprinta-page-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.sprinta-page-hero-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.sprinta-page-hero-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sprinta-page-hero-copy .section-title {
+  min-width: 0;
+}
+
+.sprinta-page-hero-meta {
+  margin: 0;
+  color: var(--color-text-muted, #64748b);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.sprinta-section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.sprinta-content-panel {
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 16px;
+  background: var(--color-surface, #ffffff);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.sprinta-section-panel-blue {
+  border-color: rgba(12, 102, 228, 0.15);
+}
+
+.sprinta-section-panel-purple {
+  border-color: rgba(143, 73, 222, 0.15);
+}
+
+.section-title {
+  font-size: clamp(22px, 1.7vw, 30px);
+  font-weight: 900;
+  color: var(--color-text-primary, #0f172a);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  letter-spacing: 0;
+  line-height: 1.12;
+}
+
+.icon-glass {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  font-size: 20px;
+  background: linear-gradient(135deg, rgba(12, 102, 228, 0.12), rgba(12, 102, 228, 0.04));
+  color: var(--color-accent, #0c66e4);
+  border: 1px solid rgba(12, 102, 228, 0.15);
+  box-shadow: 0 4px 12px rgba(12, 102, 228, 0.08);
+  transition: all 0.3s ease;
+}
+.icon-glass:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(12, 102, 228, 0.12);
+}
+
+.icon-glass.purple {
+  background: linear-gradient(135deg, rgba(143, 73, 222, 0.12), rgba(143, 73, 222, 0.04));
+  color: #8f49de;
+  border-color: rgba(143, 73, 222, 0.15);
+  box-shadow: 0 4px 12px rgba(143, 73, 222, 0.08);
+}
+
+.view-all-link {
+  font-size: 14px;
+  color: var(--color-accent, #0c66e4);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+.view-all-link:hover {
+  color: var(--sp-blue-600);
+}
+
+[data-theme='dark'] .jira-dashboard {
+  background:
+    linear-gradient(180deg, #0f172a 0%, #111827 52%, #0b1120 100%);
+}
+
+[data-theme='dark'] .sprinta-section-panel,
+[data-theme='dark'] .sprinta-content-panel {
+  border-color: rgba(148, 163, 184, 0.2);
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.86)),
+    #0f172a;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='dark'] .sprinta-page-hero-meta {
+  color: #94a3b8;
+}
+
+@media (max-width: 720px) {
+  .jira-dashboard {
+    padding-inline: var(--sa-page-x, 16px);
+  }
+
+  .sprinta-page-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sprinta-section-panel {
+    padding: 28px 20px;
+  }
+}

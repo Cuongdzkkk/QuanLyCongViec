@@ -616,10 +616,14 @@ function copyToClipboard(text) {
 
 <style scoped>
 .ai-file-intake-container {
-  padding: 24px;
-  max-width: 1440px;
-  margin: 0 auto;
-  min-height: 100vh;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  max-width: none;
+  margin: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .header-section {

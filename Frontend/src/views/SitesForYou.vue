@@ -59,9 +59,7 @@
               @click="goToProject(project)"
               @keydown.enter.prevent="goToProject(project)"
             >
-              <div class="recent-icon purple">
-                <i class="fa-solid fa-rocket"></i>
-              </div>
+              <ProjectAvatar :icon="project.icon" :background="project.cover" size="md" />
               <div class="recent-info">
                 <div class="recent-title">{{ project.name || project.title }}</div>
                 <div class="recent-subtitle">{{ homeLabels.project }} • {{ project.owner || homeLabels.homeSite }}</div>
@@ -101,13 +99,14 @@
       </div>
 
       <!-- Create Site Modal -->
-      <div class="modal-overlay" v-if="isCreateModalVisible" @click.self="isCreateModalVisible = false">
+      <Teleport to="body">
+      <div class="modal-overlay sa-data-modal-overlay" v-if="isCreateModalVisible" @click.self="isCreateModalVisible = false">
         <div class="modal-dialog">
           <div class="modal-header">
-            <h2>{{ t('Create a new site') }}</h2>
-            <button class="close-btn" @click="isCreateModalVisible = false"><i class="fa-solid fa-xmark"></i></button>
+            <DataModalHeader icon="bi bi-building-add" :title="t('Create a new site')" :description="t('Create a workspace for your teams and projects')" @close="isCreateModalVisible = false" />
           </div>
           <div class="modal-body">
+            <DataModalSection icon="bi bi-card-text" :title="t('Site information')">
             <div class="form-group">
               <label>{{ t('Site Name') }} <span class="required">*</span></label>
               <input type="text" v-model="newSiteName" :placeholder="homeLabels.sitePlaceholder" class="text-input" :class="{ 'error': errorMessage }" />
@@ -115,21 +114,23 @@
                 <i class="fa-solid fa-triangle-exclamation"></i> {{ errorMessage }}
               </div>
             </div>
+            </DataModalSection>
           </div>
           <div class="modal-footer">
-            <button class="secondary-btn" @click="isCreateModalVisible = false">{{ t('Cancel') }}</button>
+            <button class="secondary-btn cancel-btn" @click="isCreateModalVisible = false"><i class="bi bi-x-lg"></i>{{ t('Cancel') }}</button>
             <button class="primary-btn" :disabled="isCreating || !newSiteName.trim()" @click="submitCreateSite">
               {{ isCreating ? t('Creating...') : t('Create') }}
             </button>
           </div>
         </div>
       </div>
+      </Teleport>
 
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSiteStore } from '@/store/useSiteStore'
 import { useI18nStore } from '@/store/useI18nStore'
@@ -138,6 +139,10 @@ import { useActivityStore } from '@/store/useActivityStore'
 import { useStarredStore } from '@/store/useStarredStore'
 import { getStoredUser } from '@/utils/permissions'
 import axiosClient from '@/api/axiosClient'
+import { signalRService } from '@/api/signalrService'
+import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 
 const router = useRouter()
 const siteStore = useSiteStore()
@@ -210,16 +215,38 @@ const fetchRecentViews = async () => {
   await starredStore.fetchRecentItems({ page: 1, pageSize: 8 }).catch(() => {})
 }
 
+let recentViewRefreshTimer = null
+const handleRecentViewChanged = (event) => {
+  if (event?.entityType !== 'RecentView') return
+  if (recentViewRefreshTimer) clearTimeout(recentViewRefreshTimer)
+  recentViewRefreshTimer = setTimeout(fetchRecentViews, 50)
+}
+
+onMounted(() => {
+  signalRService.on('EntityChanged', handleRecentViewChanged)
+  signalRService.startAuthenticatedConnection()
+})
+
+onUnmounted(() => {
+  signalRService.off('EntityChanged', handleRecentViewChanged)
+  if (recentViewRefreshTimer) clearTimeout(recentViewRefreshTimer)
+})
+
 const recentProjects = computed(() => {
   const viewedProjects = starredStore.recentItems
     .filter(item => item.entityType === 'Project')
-    .map(item => ({
-      id: item.entityId,
-      name: item.title,
-      title: item.title,
-      owner: item.subtitle || homeLabels.value.homeSite,
-      updatedAt: item.viewedAt
-    }))
+    .map(item => {
+      const storedProject = (projectStore.projects || []).find(project => project.id === item.entityId)
+      return {
+        id: item.entityId,
+        name: item.title,
+        title: item.title,
+        owner: item.subtitle || homeLabels.value.homeSite,
+        updatedAt: item.viewedAt,
+        icon: storedProject?.icon,
+        cover: storedProject?.cover
+      }
+    })
 
   return viewedProjects.slice(0, 4)
 })
@@ -654,7 +681,6 @@ const submitCreateSite = async () => {
 
 [data-theme='dark'] .welcome-banner {
   background-image:
-    radial-gradient(circle at 8% 12%, rgba(20, 184, 166, 0.18), transparent 28%),
     linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(15, 23, 42, 0.92)),
     url('data:image/svg+xml;utf8,<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="grid3" width="44" height="44" patternUnits="userSpaceOnUse"><path d="M 44 0 L 0 0 0 44" fill="none" stroke="rgba(125,211,252,0.10)" stroke-width="1"/></pattern></defs><rect width="100%" height="100%" fill="url(%23grid3)"/><path d="M 620 115 L 700 48 L 790 104 L 900 28" stroke="%237dd3fc" stroke-width="3" fill="none" /><circle cx="900" cy="28" r="4" fill="%237dd3fc" /></svg>');
 }

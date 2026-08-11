@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 using System.Security.Claims;
 using System.Text.Json;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 
 namespace TaskManagement.API.Controllers
 {
@@ -14,14 +17,16 @@ namespace TaskManagement.API.Controllers
     public class DraftsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IHubContext<KanbanHub>? _hub;
         private static readonly JsonSerializerOptions PayloadSerializerOptions = new()
         {
             PropertyNameCaseInsensitive = true
         };
 
-        public DraftsController(ApplicationDbContext context)
+        public DraftsController(ApplicationDbContext context, IHubContext<KanbanHub>? hub = null)
         {
             _context = context;
+            _hub = hub;
         }
 
         private static object? ConvertJsonElement(JsonElement value)
@@ -192,6 +197,7 @@ namespace TaskManagement.API.Controllers
 
             _context.TaskDrafts.Add(draft);
             await _context.SaveChangesAsync();
+            await PublishDraftChangedAsync(userId, "created", draft);
 
             return Ok(new
             {
@@ -231,6 +237,7 @@ namespace TaskManagement.API.Controllers
             draft.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+            await PublishDraftChangedAsync(userId, "updated", draft);
 
             return Ok(new
             {
@@ -251,8 +258,21 @@ namespace TaskManagement.API.Controllers
 
             _context.TaskDrafts.Remove(draft);
             await _context.SaveChangesAsync();
+            await PublishDraftChangedAsync(userId, "deleted", draft);
 
             return Ok(new { message = "Draft deleted" });
+        }
+
+        private Task PublishDraftChangedAsync(Guid userId, string action, TaskDraft draft)
+        {
+            return _hub == null
+                ? Task.CompletedTask
+                : _hub.PublishUserEntityChangedAsync(
+                    userId,
+                    "TaskDraft",
+                    action,
+                    draft.Id,
+                    action == "deleted" ? null : BuildDraftResponse(draft));
         }
 
         public class DraftCreateUpdateDto

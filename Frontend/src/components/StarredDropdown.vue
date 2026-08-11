@@ -37,9 +37,9 @@
             @keydown.enter.prevent="goToProject(project)"
             @keydown.space.prevent="goToProject(project)"
           >
-            <span class="project-icon" :style="{ background: projectColor(project) }">
-              {{ project.icon || project.name?.charAt(0)?.toUpperCase() || 'P' }}
-            </span>
+            <div class="jd-item-icon">
+              <ProjectAvatar :icon="project.icon" :background="project.cover || projectColor(project)" size="sm" />
+            </div>
             <span class="item-copy">
               <strong>{{ project.name || 'Space' }}</strong>
               <small>Space</small>
@@ -102,6 +102,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStarredStore } from '@/store/useStarredStore'
 import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
+import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 
 const emit = defineEmits(['close'])
 const router = useRouter()

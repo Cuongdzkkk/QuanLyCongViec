@@ -320,9 +320,7 @@ function formatDateOnly(value) {
   display: flex;
   flex-direction: column;
   min-height: calc(100vh - 150px);
-  background:
-    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 30%),
-    var(--color-bg);
+  background: var(--color-bg);
   color: var(--color-text-primary);
 }
 

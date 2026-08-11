@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using System;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using TaskManagement.API.Filters;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 using TaskManagement.Application.DTOs.Project;
 using TaskManagement.Application.Interfaces;
 
@@ -13,10 +16,12 @@ namespace TaskManagement.API.Controllers
     public class ProjectMembersController : ControllerBase
     {
         private readonly IProjectMemberService _projectMemberService;
+        private readonly IHubContext<KanbanHub> _hub;
 
-        public ProjectMembersController(IProjectMemberService projectMemberService)
+        public ProjectMembersController(IProjectMemberService projectMemberService, IHubContext<KanbanHub> hub)
         {
             _projectMemberService = projectMemberService;
+            _hub = hub;
         }
 
         [HttpGet]
@@ -51,6 +56,10 @@ namespace TaskManagement.API.Controllers
                     ProjectInvitationOutcome.InvitationAlreadyPending => "An invitation is already pending for this member.",
                     _ => "This user is already an active project member."
                 };
+                await _hub.PublishEntityChangedAsync(projectId, "project-member", "reconcile", projectId, new
+                {
+                    outcome = outcome.ToString()
+                });
                 return Ok(new { statusCode = 200, message = "Success", data = message, outcome = outcome.ToString() });
             }
             catch (InvalidOperationException ex)
@@ -80,6 +89,7 @@ namespace TaskManagement.API.Controllers
                 }
 
                 await _projectMemberService.RemoveMemberAsync(projectId, userId, removedBy);
+                await _hub.PublishEntityChangedAsync(projectId, "project-member", "deleted", userId, new { userId });
                 return Ok(new { statusCode = 200, message = "Success", data = "Member access revoked; assignment history was preserved." });
             }
             catch (ArgumentException ex)
@@ -104,6 +114,11 @@ namespace TaskManagement.API.Controllers
                 }
 
                 await _projectMemberService.UpdateMemberRoleAsync(projectId, userId, request.Role);
+                await _hub.PublishEntityChangedAsync(projectId, "project-member", "role-updated", userId, new
+                {
+                    userId,
+                    role = request.Role
+                });
                 return Ok(new { statusCode = 200, message = "Success", data = "Cap nhat role thanh cong." });
             }
             catch (ArgumentException ex)

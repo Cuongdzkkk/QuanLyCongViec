@@ -98,8 +98,8 @@
 
           <el-table-column width="80" align="right">
             <template #default="{ row }">
-              <el-dropdown trigger="click" placement="bottom-end" v-if="!isCurrentUser(row.userId)">
-                <el-button text size="small">
+              <el-dropdown trigger="click" placement="bottom-end">
+                <el-button text size="small" aria-label="Member actions" title="Member actions">
                   <i class="fa-solid fa-ellipsis"></i>
                 </el-button>
                 <template #dropdown>
@@ -201,7 +201,16 @@
     </el-tabs>
 
     <!-- Modal Mời Thành Viên -->
-    <el-dialog v-model="showAddMemberModal" title="Mời thành viên vào dự án" width="550px" destroy-on-close>
+    <el-dialog v-model="showAddMemberModal" width="560px" destroy-on-close append-to-body class="sa-data-dialog sa-modal--form" :show-close="false">
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-person-plus"
+          title="Mời thành viên vào dự án"
+          description="Chọn thành viên, phương thức mời và vai trò trong dự án"
+          @close="showAddMemberModal = false"
+        />
+      </template>
+      <DataModalSection icon="bi bi-person-lines-fill" title="Thông tin thành viên">
       <el-tabs v-model="inviteTab" class="nexus-tabs-small mb-4">
         <el-tab-pane label="Chọn từ hệ thống" name="system">
           <div class="mt-2">
@@ -241,9 +250,10 @@
           </div>
         </el-tab-pane>
       </el-tabs>
+      </DataModalSection>
 
-      <div class="mb-4">
-        <label class="block text-sm font-medium mb-1">Vai trò</label>
+      <DataModalSection icon="bi bi-person-badge" title="Vai trò và quyền">
+      <DataModalField label="Vai trò" helper="Vai trò quyết định quyền thao tác của thành viên trong dự án">
         <el-select v-model="inviteForm.role" class="w-full">
                 <el-option
             v-for="role in roleOptions"
@@ -252,18 +262,34 @@
             :value="role.value"
           />
         </el-select>
-      </div>
+      </DataModalField>
+      </DataModalSection>
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="showAddMemberModal = false">Hủy</el-button>
-          <el-button type="primary" @click="inviteMember" :loading="isInviting">Thêm vào dự án</el-button>
+          <el-button class="cancel-btn" @click="showAddMemberModal = false"><i class="bi bi-x-lg"></i> Hủy</el-button>
+          <el-button type="primary" @click="inviteMember" :loading="isInviting"><i class="fa-solid fa-plus"></i> Thêm vào dự án</el-button>
         </span>
       </template>
     </el-dialog>
 
     <!-- Modal Liên kết Team -->
-    <el-dialog v-model="showAddTeamModal" title="Liên kết Team phụ trách" width="550px" destroy-on-close>
-      <p class="text-sm text-gray-600 mb-4">Chọn team từ hệ thống để phân công phụ trách dự án này.</p>
+    <el-dialog v-model="showAddTeamModal" width="560px" destroy-on-close append-to-body class="sa-data-dialog sa-modal--form" :show-close="false">
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-people"
+          title="Liên kết Team phụ trách"
+          description="Chọn team sẽ chịu trách nhiệm chính cho dự án"
+          @close="showAddTeamModal = false"
+        />
+      </template>
+      <DataModalSection icon="bi bi-search" title="Tìm và chọn Team">
+      <DataModalField label="Tìm kiếm Team">
+        <el-input v-model="linkTeamQuery" clearable placeholder="Tìm theo tên hoặc mô tả Team...">
+          <template #prefix><i class="bi bi-search"></i></template>
+        </el-input>
+      </DataModalField>
+      </DataModalSection>
+      <DataModalSection icon="bi bi-people" title="Danh sách Team" description="Chọn Team chịu trách nhiệm chính cho dự án">
       <div v-if="allTeams.length === 0" class="text-center py-4 text-gray-500">
         <el-icon class="is-loading mr-2" v-if="loadingAllTeams"><Loading /></el-icon>
         <span v-if="loadingAllTeams">Đang tải danh sách team...</span>
@@ -290,10 +316,11 @@
           Tất cả các team đã được liên kết với dự án này.
         </div>
       </div>
+      </DataModalSection>
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="showAddTeamModal = false">Hủy</el-button>
-          <el-button type="primary" @click="linkSelectedTeam" :loading="isLinking" :disabled="!selectedTeamToLink">Liên kết Team</el-button>
+          <el-button class="cancel-btn" @click="showAddTeamModal = false"><i class="bi bi-x-lg"></i> Hủy</el-button>
+          <el-button type="primary" @click="linkSelectedTeam" :loading="isLinking" :disabled="!selectedTeamToLink"><i class="fa-solid fa-link"></i> Liên kết Team</el-button>
         </span>
       </template>
     </el-dialog>
@@ -301,19 +328,26 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { Loading } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getStoredUser } from '@/utils/permissions'
+import { useProjectStore } from '@/store/useProjectStore'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
 import { useI18n } from '@/composables/useI18n'
+import { signalRService } from '@/api/signalrService'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 
 const route = useRoute()
+const router = useRouter()
+const projectStore = useProjectStore()
 const projectId = computed(() => route.params.id)
 const currentUser = getStoredUser()
 const { isVietnamese } = useI18n()
@@ -362,6 +396,7 @@ const loadingTeams = ref(false)
 const allTeams = ref([])
 const loadingAllTeams = ref(false)
 const selectedTeamToLink = ref(null)
+const linkTeamQuery = ref('')
 
 const showAddMemberModal = ref(false)
 const showAddTeamModal = ref(false)
@@ -501,7 +536,11 @@ const openLinkTeamModal = async () => {
 const availableTeamsToLink = computed(() => {
   // Lọc ra các team chưa được liên kết trực tiếp
   const linkedIds = linkedTeams.value.filter(t => t.isDirectlyLinked).map(t => t.id)
-  return allTeams.value.filter(t => !linkedIds.includes(t.id))
+  const query = linkTeamQuery.value.trim().toLowerCase()
+  return allTeams.value.filter(t =>
+    !linkedIds.includes(t.id) &&
+    (!query || `${t.name || ''} ${t.description || ''}`.toLowerCase().includes(query))
+  )
 })
 
 const linkSelectedTeam = async () => {
@@ -616,6 +655,8 @@ const updateMemberRole = async (userId, newRole) => {
 }
 
 const removeMember = async (userId) => {
+  const removingCurrentUser = isCurrentUser(userId)
+
   ElMessageBox.confirm(
     'Bạn có chắc chắn muốn xóa thành viên này khỏi dự án? Các công việc của họ sẽ bị bỏ trống.',
     'Xác nhận xóa',
@@ -628,6 +669,11 @@ const removeMember = async (userId) => {
     try {
       await axiosClient.delete(`/projects/${projectId.value}/members/${userId}`)
       ElMessage.success('Đã xóa thành viên khỏi dự án.')
+      if (removingCurrentUser) {
+        projectStore.fetchAllProjects(true).catch(() => {})
+        await router.push('/dashboard')
+        return
+      }
       await fetchMembers()
     } catch (error) {
       ElMessage.error(error.response?.data?.message || 'Không thể xóa thành viên.')
@@ -635,11 +681,30 @@ const removeMember = async (userId) => {
   }).catch(() => {})
 }
 
-onMounted(() => {
+const handleMemberRealtime = event => {
+  if (`${event?.projectId}` !== `${projectId.value}` || event?.entityType !== 'project-member') return
+  const userId = event?.data?.userId || event?.entityId
+  if (event.action === 'deleted') {
+    members.value = members.value.filter(member => `${member.userId || member.id}` !== `${userId}`)
+  } else if (event.action === 'role-updated') {
+    const member = members.value.find(item => `${item.userId || item.id}` === `${userId}`)
+    if (member) member.projectRole = normalizeMemberRole(event.data?.role)
+  } else {
+    fetchMembers()
+  }
+}
+
+onMounted(async () => {
   if (projectId.value) {
+    signalRService.on('EntityChanged', handleMemberRealtime)
+    await signalRService.startConnection(projectId.value)
     fetchMembers()
     fetchLinkedTeams()
   }
+})
+
+onUnmounted(() => {
+  signalRService.off('EntityChanged', handleMemberRealtime)
 })
 </script>
 

@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using System;
 using System.Threading.Tasks;
 using TaskManagement.Application.Interfaces;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 
 namespace TaskManagement.API.Controllers
 {
@@ -12,10 +15,12 @@ namespace TaskManagement.API.Controllers
     public class ProjectLinksController : ControllerBase
     {
         private readonly IProjectLinkService _projectLinkService;
+        private readonly IHubContext<KanbanHub>? _hub;
 
-        public ProjectLinksController(IProjectLinkService projectLinkService)
+        public ProjectLinksController(IProjectLinkService projectLinkService, IHubContext<KanbanHub>? hub = null)
         {
             _projectLinkService = projectLinkService;
+            _hub = hub;
         }
 
         [HttpGet]
@@ -32,6 +37,8 @@ namespace TaskManagement.API.Controllers
             try
             {
                 var result = await _projectLinkService.CreateLinkAsync(userId, projectId, dto);
+                if (_hub != null)
+                    await _hub.PublishEntityChangedAsync(projectId, "ProjectLink", "created", projectId, result);
                 return Ok(result);
             }
             catch (InvalidOperationException ex)
@@ -48,6 +55,8 @@ namespace TaskManagement.API.Controllers
         public async Task<IActionResult> Delete(Guid workspaceId, Guid projectId, Guid id)
         {
             await _projectLinkService.DeleteLinkAsync(id);
+            if (_hub != null)
+                await _hub.PublishEntityChangedAsync(projectId, "ProjectLink", "deleted", id);
             return NoContent();
         }
     }

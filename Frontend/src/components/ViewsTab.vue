@@ -1,10 +1,11 @@
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
 import { ElNotification, ElMessageBox } from 'element-plus'
 import ListView from '@/components/ListView.vue'
 import { useI18nStore } from '@/store/useI18nStore'
+import { signalRService } from '@/api/signalrService'
 
 const i18nStore = useI18nStore()
 const t = (key) => i18nStore.t(key)
@@ -13,6 +14,9 @@ import FilterBar from '@/components/FilterBar.vue'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 
 const route = useRoute()
 const projectId = computed(() => route.params.id || localStorage.getItem('currentProjectId') || 'default')
@@ -504,12 +508,33 @@ const clearListFilters = () => {
     listGlobalOnly.value = false
 }
 
-onMounted(() => {
+const handleViewRealtime = event => {
+  if (`${event?.projectId}` !== `${projectId.value}` || event?.entityType !== 'project-view') return
+  if (event.action === 'deleted') {
+    views.value = views.value.filter(view => `${view.id}` !== `${event.entityId}`)
+    if (`${activeView.value?.id}` === `${event.entityId}`) activeView.value = null
+    return
+  }
+  if (!event.data?.id) return
+  const index = views.value.findIndex(view => `${view.id}` === `${event.data.id}`)
+  if (index >= 0) views.value[index] = { ...views.value[index], ...event.data }
+  else views.value.unshift(event.data)
+  if (`${activeView.value?.id}` === `${event.data.id}`) {
+    activeView.value = { ...activeView.value, ...event.data }
+  }
+}
+
+onMounted(async () => {
+  signalRService.on('EntityChanged', handleViewRealtime)
+  await signalRService.startConnection(projectId.value)
   fetchViews()
   fetchProjectMembers()
 })
 
+onUnmounted(() => signalRService.off('EntityChanged', handleViewRealtime))
+
 watch(projectId, async () => {
+    await signalRService.startConnection(projectId.value)
     activeView.value = null
     tasks.value = []
     originalTasks.value = []
@@ -737,16 +762,29 @@ const getInitials = (name) => {
       </div>
     </main>
 
-    <div class="modal-overlay" v-if="showCreateModal" @click.self="resetModal">
+    <Teleport to="body">
+    <div class="modal-overlay sa-data-modal-overlay sa-modal--form" v-if="showCreateModal" @click.self="resetModal">
       <div class="view-modal premium">
-        <div class="modal-header"><h3>{{ t('Create View') }}</h3></div>
+        <div class="modal-header">
+          <DataModalHeader
+            icon="bi bi-eye"
+            :title="t('Create View')"
+            :description="t('Save filters, grouping and display settings as a reusable view')"
+            :close-label="t('Close')"
+            @close="resetModal"
+          />
+        </div>
         <div class="modal-body">
-            <div class="input-row">
-                <div class="icon-box"><i class="fa-solid fa-layer-group"></i></div>
-                <input type="text" v-model="newView.name" :placeholder="t('Title')" class="title-input" />
-            </div>
+          <DataModalSection icon="bi bi-card-text" :title="t('View information')">
+            <DataModalField :label="t('Title')" required>
+              <input type="text" v-model="newView.name" :placeholder="t('Title')" class="title-input" />
+            </DataModalField>
+            <DataModalField :label="t('Description')">
             <textarea v-model="newView.description" :placeholder="t('Description')" rows="4" class="desc-input"></textarea>
-            
+            </DataModalField>
+          </DataModalSection>
+
+          <DataModalSection icon="bi bi-funnel" :title="t('Filters')">
             <div class="m-filter-section">
                 <FilterBar 
                     :filters="activeFilters" 
@@ -755,11 +793,13 @@ const getInitials = (name) => {
                     @add="handleAddFilter"
                 />
             </div>
-            
+          </DataModalSection>
+
+          <DataModalSection icon="bi bi-layout-three-columns" :title="t('Display settings')">
             <div class="modal-controls-bar">
                 <div class="toggle-group">
                     <button class="m-toggle" :class="{ active: modalTab === 'list' }" @click="modalTab = 'list'" type="button">
-                        <i :class="viewTypeIcon" class="mr-2"></i> {{ t('List') }}
+                        {{ t('List') }}
                     </button>
                     <el-dropdown trigger="click" popper-class="display-popper-final" placement="right-start" :hide-on-click="false" :z-index="5000">
                         <button class="m-toggle" :class="{ active: modalTab === 'display' }" @click="modalTab = 'display'" type="button">{{ t('Display') }}</button>
@@ -805,7 +845,7 @@ const getInitials = (name) => {
                     </el-dropdown>
                 </div>
                 <el-dropdown trigger="click" popper-class="filter-modal-popper" placement="bottom-start" :z-index="5000">
-                    <button class="filter-btn" type="button"><i class="fa-solid fa-filter-circle-plus mr-2"></i> {{ t('Filters') }}</button>
+                    <button class="filter-btn" type="button">{{ t('Filters') }}</button>
                     <template #dropdown>
                         <div class="filter-modal-dropdown">
                             <div class="f-search">
@@ -828,6 +868,7 @@ const getInitials = (name) => {
                     </template>
                 </el-dropdown>
             </div>
+          </DataModalSection>
         </div>
         <div class="modal-footer">
             <button class="cancel-btn" type="button" @click="resetModal">{{ t('Cancel') }}</button>
@@ -835,23 +876,22 @@ const getInitials = (name) => {
         </div>
       </div>
     </div>
+    </Teleport>
   </ProjectPageContainer>
 </template>
 
 <style scoped>
 .views-page {
-  --views-bg: color-mix(in srgb, var(--color-bg) 92%, #020617);
-  --views-panel: color-mix(in srgb, var(--color-surface) 82%, #020617);
-  --views-panel-strong: color-mix(in srgb, var(--color-surface) 92%, #0b1220);
-  --views-line: color-mix(in srgb, var(--color-border) 74%, #38bdf8);
+  --views-bg: var(--color-bg);
+  --views-panel: var(--color-surface);
+  --views-panel-strong: var(--color-surface);
+  --views-line: var(--color-border);
   --views-muted-line: color-mix(in srgb, var(--color-border) 84%, transparent);
   --views-accent-soft: color-mix(in srgb, var(--color-accent) 14%, transparent);
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--views-bg) 94%, #38bdf8) 0%, var(--views-bg) 240px),
-    var(--views-bg);
+  background: var(--views-bg);
   color: var(--color-text-primary);
   font-family: 'Inter', system-ui, sans-serif;
 }
@@ -1087,7 +1127,7 @@ const getInitials = (name) => {
 .views-content {
   flex: 1;
   padding: 22px 28px 32px;
-  overflow: auto;
+  overflow: visible;
 }
 
 .views-list,
@@ -1357,7 +1397,8 @@ const getInitials = (name) => {
   justify-content: center;
   padding: 24px;
   background: color-mix(in srgb, #020617 74%, transparent);
-  backdrop-filter: blur(10px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .view-modal.premium {
@@ -1368,8 +1409,8 @@ const getInitials = (name) => {
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border));
   border-radius: 8px;
-  background: color-mix(in srgb, var(--views-panel-strong) 96%, #020617);
-  box-shadow: 0 26px 80px color-mix(in srgb, #020617 54%, transparent);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xl);
 }
 
 .modal-header,
@@ -1397,21 +1438,6 @@ const getInitials = (name) => {
   overflow: auto;
 }
 
-.input-row {
-  display: flex;
-  align-items: center;
-  border: 1px solid var(--views-muted-line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--color-bg) 64%, #020617);
-}
-
-.icon-box {
-  display: grid;
-  place-items: center;
-  width: 46px;
-  color: var(--color-text-muted);
-}
-
 .title-input,
 .desc-input {
   width: 100%;
@@ -1422,7 +1448,7 @@ const getInitials = (name) => {
 }
 
 .title-input {
-  padding: 13px 14px 13px 0;
+  padding: 0 12px;
 }
 
 .desc-input {
@@ -1431,7 +1457,7 @@ const getInitials = (name) => {
   padding: 13px 14px;
   border-color: var(--views-muted-line);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-bg) 64%, #020617);
+  background: var(--color-input-bg);
   color: var(--color-text-secondary);
 }
 
@@ -1457,7 +1483,7 @@ const getInitials = (name) => {
   padding: 3px;
   border: 1px solid var(--views-muted-line);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-bg) 72%, #020617);
+  background: var(--color-input-bg);
 }
 
 .m-toggle,
@@ -1480,7 +1506,7 @@ const getInitials = (name) => {
 .filter-btn:hover,
 .cancel-btn:hover {
   border-color: var(--views-muted-line);
-  background: color-mix(in srgb, var(--views-panel-strong) 90%, #ffffff);
+  background: var(--color-surface-hover);
   color: var(--color-text-primary);
 }
 
@@ -1489,7 +1515,7 @@ const getInitials = (name) => {
   align-items: center;
   padding: 7px 12px;
   border-color: var(--views-muted-line);
-  background: color-mix(in srgb, var(--color-bg) 72%, #020617);
+  background: var(--color-input-bg);
 }
 
 .modal-footer {
@@ -1498,7 +1524,7 @@ const getInitials = (name) => {
   gap: 10px;
   padding: 14px 22px;
   border-top: 1px solid var(--views-muted-line);
-  background: color-mix(in srgb, var(--color-bg) 68%, #020617);
+  background: var(--color-surface);
 }
 
 .cancel-btn {
@@ -1506,9 +1532,9 @@ const getInitials = (name) => {
 }
 
 .create-btn {
-  border: 1px solid color-mix(in srgb, var(--color-accent) 72%, #ffffff);
+  border: 1px solid var(--color-accent);
   background: var(--color-accent);
-  color: #020617;
+  color: #fff;
   font-size: 13px;
   font-weight: 760;
   padding: 8px 16px;
@@ -1521,7 +1547,7 @@ const getInitials = (name) => {
 }
 
 .display-scroll-vfinal {
-  --views-panel-strong: color-mix(in srgb, var(--color-surface) 92%, #020617);
+  --views-panel-strong: var(--color-surface);
   --views-muted-line: color-mix(in srgb, var(--color-border) 84%, transparent);
   --views-accent-soft: color-mix(in srgb, var(--color-accent) 14%, transparent);
   width: 330px;
@@ -1530,7 +1556,7 @@ const getInitials = (name) => {
   border: 1px solid var(--views-muted-line);
   border-radius: 8px;
   background: var(--views-panel-strong);
-  box-shadow: 0 18px 54px color-mix(in srgb, #020617 48%, transparent);
+  box-shadow: var(--shadow-xl);
 }
 
 .display-scroll-vfinal::-webkit-scrollbar {
@@ -1572,7 +1598,7 @@ const getInitials = (name) => {
   padding: 6px 9px;
   border: 1px solid var(--views-muted-line);
   border-radius: 7px;
-  background: color-mix(in srgb, var(--color-bg) 68%, #020617);
+  background: var(--color-input-bg);
   color: var(--color-text-secondary);
   cursor: pointer;
   font-size: 12px;
@@ -1585,7 +1611,7 @@ const getInitials = (name) => {
 }
 
 .p-chip-st.selected {
-  border-color: color-mix(in srgb, var(--color-accent) 72%, #ffffff);
+  border-color: var(--color-accent);
   background: var(--views-accent-soft);
   color: var(--color-accent);
 }
@@ -1662,7 +1688,7 @@ const getInitials = (name) => {
   top: 1px;
   width: 4px;
   height: 8px;
-  border: solid #020617;
+  border: solid var(--color-text-inverse);
   border-width: 0 1.5px 1.5px 0;
   transform: rotate(45deg);
 }
@@ -1795,15 +1821,9 @@ const getInitials = (name) => {
     var(--color-bg) !important;
 }
 
-:deep(.project-page-header) {
-  padding-right: min(520px, 42vw);
-}
-
 :deep(.project-page-toolbar) {
-  align-self: flex-end;
-  width: min(500px, 42vw);
-  margin-top: -62px;
-  min-height: 38px;
+  width: 100%;
+  margin-top: 0;
 }
 
 :deep(.project-page-toolbar .ppt-left) {
@@ -1852,16 +1872,6 @@ const getInitials = (name) => {
   padding: 18px !important;
 }
 
-@media (max-width: 980px) {
-  :deep(.project-page-header) {
-    padding-right: 0;
-  }
-
-  :deep(.project-page-toolbar) {
-    width: 100%;
-    margin-top: 0;
-  }
-}
 </style>
 
 

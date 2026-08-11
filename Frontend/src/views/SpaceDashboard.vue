@@ -1,5 +1,5 @@
 <template>
-  <ProjectPageContainer>
+  <ProjectPageContainer scrollable>
       <ProjectPageHeader
         :title="t('Dashboard')"
         :description="t('Project overview and quick insights')"
@@ -30,9 +30,7 @@
 
           <!-- Project Info -->
           <div class="header-project-badge">
-            <div class="hpb-avatar" :style="{ backgroundColor: project?.avatarColor || '#0c66e4' }">
-              {{ project?.initials || project?.key?.substring(0, 2) || 'P' }}
-            </div>
+            <ProjectAvatar :icon="project?.icon" :background="project?.cover" size="md" />
             <div class="hpb-details">
               <span class="hpb-key">{{ project?.key }}</span>
               <span class="hpb-name">{{ project?.name }}</span>
@@ -89,149 +87,6 @@
           </div>
         </div>
 
-        <!-- Dashboard panels -->
-        <div class="panels-grid">
-          <!-- Suggested Tasks Panel -->
-          <div class="dashboard-panel">
-            <div class="panel-header">
-              <h3 class="panel-title">
-                <i class="fa-solid fa-fire text-orange-500"></i> {{ t('Suggested for today') }}
-              </h3>
-              <router-link
-                :to="{ name: 'SpaceSummary', params: { id: projectId } }"
-                class="panel-link"
-              >
-                {{ t('View all tasks') }} <i class="fa-solid fa-arrow-right"></i>
-              </router-link>
-            </div>
-
-            <div v-if="suggestedTasks.length === 0" class="empty-state">
-              <i class="fa-solid fa-mug-hot"></i>
-              <h4>{{ t('You are all caught up!') }}</h4>
-              <p>{{ t('No urgent tasks suggested for today.') }}</p>
-            </div>
-
-            <div v-else class="task-list">
-              <div
-                v-for="task in suggestedTasks"
-                :key="task.id"
-                class="task-row"
-              >
-                <div class="task-info-left">
-                  <span class="task-seq-id">
-                    {{ task.sequenceId || t('Task') }}
-                  </span>
-                  <button
-                    @click="navigateToTask(task.id)"
-                    class="task-title-btn"
-                  >
-                    {{ task.title }}
-                  </button>
-                </div>
-
-                <div class="task-meta-right">
-                  <span class="priority-badge" :class="getPriorityClass(task.priority)">
-                    {{ getPriorityLabel(task.priority) }}
-                  </span>
-                  <span class="task-status-tag" :class="getStatusClass(task.statusName)">
-                    {{ normalizeStatusLabel(task.statusName) }}
-                  </span>
-                </div>
-              </div>
-            </div>
-            
-            <div class="panel-header" style="margin-top: 24px; border-top: 1px dashed rgba(148, 163, 184, 0.4); padding-top: 20px;">
-              <h3 class="panel-title text-gray-500">
-                <i class="fa-solid fa-list-ul"></i> {{ t('Continue working') }}
-              </h3>
-            </div>
-
-            <div v-if="continueTasks.length === 0" class="empty-state" style="min-height: 120px; padding: 16px;">
-              <i class="fa-solid fa-inbox text-gray-300" style="font-size: 24px;"></i>
-              <p style="margin-top: 8px;">{{ t('No other active tasks.') }}</p>
-            </div>
-
-            <div v-else class="task-list" style="opacity: 0.85;">
-              <div
-                v-for="task in continueTasks"
-                :key="task.id"
-                class="task-row"
-              >
-                <div class="task-info-left">
-                  <span class="task-seq-id">
-                    {{ task.sequenceId || t('Task') }}
-                  </span>
-                  <button
-                    @click="navigateToTask(task.id)"
-                    class="task-title-btn"
-                  >
-                    {{ task.title }}
-                  </button>
-                </div>
-
-                <div class="task-meta-right">
-                  <span class="priority-badge" :class="getPriorityClass(task.priority)">
-                    {{ getPriorityLabel(task.priority) }}
-                  </span>
-                  <span class="task-status-tag" :class="getStatusClass(task.statusName)">
-                    {{ normalizeStatusLabel(task.statusName) }}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Team Workload Panel -->
-          <div class="dashboard-panel">
-            <div class="panel-header">
-              <h3 class="panel-title">
-                <i class="fa-solid fa-users text-blue-500"></i> {{ t('Team Workload') }}
-              </h3>
-            </div>
-
-            <div v-if="teamWorkload.length === 0" class="empty-state">
-              <i class="fa-solid fa-users"></i>
-              <h4>{{ t('Workload distribution') }}</h4>
-              <p>{{ t('Assign tasks to your team members to see their workload here.') }}</p>
-            </div>
-
-            <div v-else class="workload-list">
-              <div
-                v-for="member in teamWorkload"
-                :key="member.userId"
-                class="workload-item"
-              >
-                <div class="workload-item-header">
-                  <div class="workload-user">
-                    <div class="user-avatar" style="background: transparent; border: none;" v-if="member.userId === 'unassigned'">
-                      <div style="width: 26px; height: 26px; border-radius: 50%; background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center;">
-                        <i class="fa-solid fa-question text-xs"></i>
-                      </div>
-                    </div>
-                    <UserAvatar v-else :user="{ id: member.userId, fullName: member.fullName, name: member.fullName, avatarColor: member.avatarColor, avatarUrl: member.avatarUrl }" :size="26" :fontSize="11" />
-                    <span class="user-name">{{ member.fullName }}</span>
-                  </div>
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <span style="font-size: 13px; font-weight: 800; color: var(--color-accent);">{{ member.percentage }}%</span>
-                    <span class="workload-count" style="min-width: 50px; text-align: right;">
-                      {{ member.count }} {{ t(member.count === 1 ? 'task' : 'tasks') }}
-                    </span>
-                  </div>
-                </div>
-
-                <div class="workload-progress-track">
-                  <div
-                    class="workload-progress-bar"
-                    :class="{ 'is-unassigned': member.userId === 'unassigned' }"
-                    :style="{ width: `${member.percentage}%` }"
-                  ></div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-        
         <!-- Compact Daily Focus integration; the full page remains at /priority. -->
         <div style="margin-top: 24px; padding-top: 24px; border-top: 1px dashed rgba(148, 163, 184, 0.4);">
           <DailyFocusWidget :tasks="allTasks" :project-id="projectId" />
@@ -246,6 +101,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
+import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import DailyFocusWidget from '@/components/DailyFocusWidget.vue'
 
 import { useI18nStore } from '@/store/useI18nStore'
@@ -407,8 +263,29 @@ const teamWorkload = computed(() => {
     .sort((a, b) => b.count - a.count)
 })
 
+const normalizePriorityValue = (p) => {
+  if (p === null || p === undefined) return 0
+  if (typeof p === 'number') return p
+  const str = String(p).toLowerCase().trim()
+  if (str === '1' || str === 'urgent' || str === 'critical') return 1
+  if (str === '2' || str === 'high') return 2
+  if (str === '3' || str === 'medium' || str === 'normal') return 3
+  if (str === '4' || str === 'low') return 4
+  return 0
+}
+
+const getPriorityIcon = (priority) => {
+  const p = normalizePriorityValue(priority)
+  if (p === 1) return 'fa-solid fa-angles-up'
+  if (p === 2) return 'fa-solid fa-chevron-up'
+  if (p === 3) return 'fa-solid fa-minus'
+  if (p === 4) return 'fa-solid fa-chevron-down'
+  return 'fa-solid fa-ban'
+}
+
 const getPriorityLabel = (priority) => {
-  switch (Number(priority)) {
+  const p = normalizePriorityValue(priority)
+  switch (p) {
     case 1: return t('Urgent')
     case 2: return t('High')
     case 3: return t('Medium')
@@ -417,20 +294,31 @@ const getPriorityLabel = (priority) => {
   }
 }
 
-const normalizeStatusLabel = (statusName = '') => {
-  const normalized = `${statusName || ''}`.trim().toUpperCase()
-  if (!normalized) return t('No status')
-  return t(normalized)
-}
-
 const getPriorityClass = (priority) => {
-  switch (Number(priority)) {
+  const p = normalizePriorityValue(priority)
+  switch (p) {
     case 1: return 'priority-urgent'
     case 2: return 'priority-high'
     case 3: return 'priority-medium'
     case 4: return 'priority-low'
     default: return 'priority-none'
   }
+}
+
+const getStatusIcon = (statusName = '') => {
+  const status = `${statusName}`.toLowerCase().trim()
+  if (status.includes('cancel')) return 'fa-regular fa-circle-xmark'
+  if (status.includes('done') || status.includes('complete')) return 'fa-solid fa-circle-check'
+  if (status.includes('progress') || status.includes('doing')) return 'fa-solid fa-circle-half-stroke'
+  if (status.includes('review') || status.includes('test')) return 'fa-solid fa-clock'
+  if (status.includes('todo') || status.includes('to do')) return 'fa-regular fa-circle'
+  return 'fa-regular fa-circle-dashed'
+}
+
+const normalizeStatusLabel = (statusName = '') => {
+  const normalized = `${statusName || ''}`.trim().toUpperCase()
+  if (!normalized) return t('No status')
+  return t(normalized)
 }
 
 const getStatusClass = (statusName = '') => {
@@ -442,6 +330,34 @@ const getStatusClass = (statusName = '') => {
   if (status.includes('backlog')) return 'status-backlog'
   if (status.includes('todo') || status.includes('to do')) return 'status-todo'
   return 'status-default'
+}
+
+const calcDaysLeft = (task) => {
+  const dateStr = task?.dueDate || task?.deadline || task?.plannedEndDate || task?.endDate || task?.DueDate || task?.Deadline
+  if (!dateStr) return null
+  const due = new Date(dateStr)
+  if (isNaN(due.getTime())) return null
+  due.setHours(23, 59, 59, 999)
+  const today = new Date()
+  return Math.ceil((due - today) / (1000 * 60 * 60 * 24))
+}
+
+const getDeadlineText = (task) => {
+  const d = calcDaysLeft(task)
+  if (d === null) return t('No deadline')
+  if (d < 0) return t('Overdue {days}d', { days: Math.abs(d) })
+  if (d === 0) return t('Due today')
+  if (d === 1) return t('Due tomorrow')
+  return t('{days} days left', { days: d })
+}
+
+const getDeadlineClass = (task) => {
+  const d = calcDaysLeft(task)
+  if (d === null) return 'deadline-none'
+  if (d < 0) return 'deadline-overdue'
+  if (d <= 1) return 'deadline-urgent'
+  if (d <= 3) return 'deadline-warning'
+  return 'deadline-ok'
 }
 
 const navigateToTask = (taskId) => {
@@ -844,9 +760,9 @@ watch(projectId, () => {
 }
 
 .task-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(82px, 96px) minmax(88px, 104px);
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   min-height: 44px;
   padding: 0 12px;
@@ -872,6 +788,7 @@ watch(projectId, () => {
   gap: 10px;
   overflow: hidden;
   min-width: 0;
+  flex: 1;
 }
 
 .task-seq-id {
@@ -910,44 +827,102 @@ watch(projectId, () => {
 }
 
 .task-meta-right {
-  display: contents;
+  display: grid;
+  grid-template-columns: 110px 85px 90px;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .priority-badge,
 .task-status-tag {
-  justify-self: stretch;
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   min-height: 24px;
+  height: 24px;
   border: 1px solid transparent;
   border-radius: 999px;
   padding: 0 8px;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.02em;
   line-height: 1;
   text-transform: uppercase;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
-.priority-urgent { background: rgba(239, 68, 68, 0.16); border-color: rgba(239, 68, 68, 0.46); color: #f87171; }
-.priority-high { background: rgba(249, 115, 22, 0.16); border-color: rgba(249, 115, 22, 0.46); color: #fb923c; }
-.priority-medium { background: rgba(59, 130, 246, 0.16); border-color: rgba(59, 130, 246, 0.46); color: #60a5fa; }
-.priority-low { background: rgba(148, 163, 184, 0.14); border-color: rgba(148, 163, 184, 0.34); color: #cbd5e1; }
-.priority-none { background: rgba(148, 163, 184, 0.1); border-color: rgba(148, 163, 184, 0.24); color: #94a3b8; }
+.priority-badge i,
+.task-status-tag i,
+.task-deadline-tag i {
+  font-size: 11px;
+}
 
-.status-blocked { background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.36); color: #f87171; }
-.status-progress { background: rgba(245, 158, 11, 0.14); border-color: rgba(245, 158, 11, 0.36); color: #fbbf24; }
-.status-review { background: rgba(168, 85, 247, 0.14); border-color: rgba(168, 85, 247, 0.36); color: #c084fc; }
-.status-done { background: rgba(16, 185, 129, 0.14); border-color: rgba(16, 185, 129, 0.36); color: #34d399; }
-.status-backlog { background: rgba(148, 163, 184, 0.12); border-color: rgba(148, 163, 184, 0.28); color: #cbd5e1; }
-.status-todo { background: rgba(59, 130, 246, 0.12); border-color: rgba(59, 130, 246, 0.30); color: #93c5fd; }
-.status-default { background: rgba(148, 163, 184, 0.10); border-color: rgba(148, 163, 184, 0.24); color: #cbd5e1; }
+.priority-urgent { background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.35); color: #dc2626; }
+.priority-high { background: rgba(249, 115, 22, 0.12); border-color: rgba(249, 115, 22, 0.35); color: #ea580c; }
+.priority-medium { background: rgba(14, 165, 233, 0.12); border-color: rgba(14, 165, 233, 0.35); color: #0284c7; }
+.priority-low { background: rgba(100, 116, 139, 0.12); border-color: rgba(100, 116, 139, 0.30); color: #475569; }
+.priority-none { background: rgba(100, 116, 139, 0.08); border-color: rgba(100, 116, 139, 0.20); color: #64748b; }
+
+[data-theme='dark'] .priority-urgent { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.45); color: #f87171; }
+[data-theme='dark'] .priority-high { background: rgba(249, 115, 22, 0.2); border-color: rgba(249, 115, 22, 0.45); color: #fb923c; }
+[data-theme='dark'] .priority-medium { background: rgba(56, 189, 248, 0.2); border-color: rgba(56, 189, 248, 0.45); color: #38bdf8; }
+[data-theme='dark'] .priority-low { background: rgba(148, 163, 184, 0.2); border-color: rgba(148, 163, 184, 0.35); color: #cbd5e1; }
+[data-theme='dark'] .priority-none { background: rgba(148, 163, 184, 0.12); border-color: rgba(148, 163, 184, 0.25); color: #94a3b8; }
+
+.status-blocked { background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.35); color: #dc2626; }
+.status-progress { background: rgba(14, 165, 233, 0.12); border-color: rgba(14, 165, 233, 0.35); color: #0284c7; }
+.status-review { background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); color: #d97706; }
+.status-done { background: rgba(22, 163, 74, 0.12); border-color: rgba(22, 163, 74, 0.35); color: #16a34a; }
+.status-backlog { background: rgba(100, 116, 139, 0.12); border-color: rgba(100, 116, 139, 0.30); color: #475569; }
+.status-todo { background: rgba(124, 58, 237, 0.12); border-color: rgba(124, 58, 237, 0.35); color: #7c3aed; }
+.status-default { background: rgba(100, 116, 139, 0.10); border-color: rgba(100, 116, 139, 0.22); color: #64748b; }
+
+[data-theme='dark'] .status-blocked { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.45); color: #f87171; }
+[data-theme='dark'] .status-progress { background: rgba(56, 189, 248, 0.2); border-color: rgba(56, 189, 248, 0.45); color: #38bdf8; }
+[data-theme='dark'] .status-review { background: rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.45); color: #fbbf24; }
+[data-theme='dark'] .status-done { background: rgba(34, 197, 94, 0.2); border-color: rgba(34, 197, 94, 0.45); color: #34d399; }
+[data-theme='dark'] .status-backlog { background: rgba(148, 163, 184, 0.2); border-color: rgba(148, 163, 184, 0.35); color: #cbd5e1; }
+[data-theme='dark'] .status-todo { background: rgba(167, 139, 250, 0.2); border-color: rgba(167, 139, 250, 0.45); color: #c4b5fd; }
+[data-theme='dark'] .status-default { background: rgba(148, 163, 184, 0.12); border-color: rgba(148, 163, 184, 0.25); color: #94a3b8; }
+
+.task-deadline-tag {
+  justify-self: start;
+  width: fit-content;
+  min-width: 86px;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-sizing: border-box;
+  text-transform: none;
+}
+
+.deadline-overdue { color: #dc2626; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); }
+.deadline-urgent { color: #d97706; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); }
+.deadline-warning { color: #b45309; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); }
+.deadline-ok { color: #64748b; background: rgba(100, 116, 139, 0.08); border: 1px solid rgba(100, 116, 139, 0.2); }
+.deadline-none { color: #94a3b8; background: rgba(148, 163, 184, 0.08); border: 1px dashed rgba(148, 163, 184, 0.3); }
+
+[data-theme='dark'] .deadline-overdue { color: #f87171; background: rgba(239, 68, 68, 0.18); border-color: rgba(239, 68, 68, 0.4); }
+[data-theme='dark'] .deadline-urgent { color: #fbbf24; background: rgba(245, 158, 11, 0.18); border-color: rgba(245, 158, 11, 0.4); }
+[data-theme='dark'] .deadline-warning { color: #fcd34d; background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.3); }
+[data-theme='dark'] .deadline-ok { color: #94a3b8; background: rgba(148, 163, 184, 0.12); border-color: rgba(148, 163, 184, 0.25); }
+[data-theme='dark'] .deadline-none { color: #64748b; background: rgba(148, 163, 184, 0.08); border-color: rgba(148, 163, 184, 0.2); }
 
 /* Team Workload list styles */
 .workload-list {
@@ -1022,7 +997,7 @@ watch(projectId, () => {
 }
 
 .workload-progress-bar.is-unassigned {
-  background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+  background: linear-gradient(90deg, #94a3b8 0%, #64748b 100%);
 }
 
 .dashboard-content {
@@ -1076,12 +1051,6 @@ watch(projectId, () => {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-}
-
-@keyframes overview-glow-drift {
-  0% { transform: translate3d(-1%, -1%, 0) scale(1); opacity: 0.55; }
-  50% { transform: translate3d(1.5%, 1%, 0) scale(1.02); opacity: 0.85; }
-  100% { transform: translate3d(0.5%, -0.5%, 0) scale(1.01); opacity: 0.65; }
 }
 
 @keyframes overview-border-flow {

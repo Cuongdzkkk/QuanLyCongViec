@@ -1,7 +1,9 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import axiosClient from '@/api/axiosClient'
+import { signalRService } from '@/api/signalrService'
 import { ElMessage } from 'element-plus'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true }
@@ -11,6 +13,14 @@ const labels = ref([])
 const loading = ref(false)
 const showCreate = ref(false)
 const newLabel = ref({ name: '', colorCode: '#3b82f6', description: '' })
+
+const upsertLabel = (label) => {
+  if (!label?.id) return
+  const normalized = { ...label, colorCode: label.colorCode || label.color || '#3b82f6' }
+  const index = labels.value.findIndex(item => item.id === normalized.id)
+  if (index >= 0) labels.value[index] = { ...labels.value[index], ...normalized }
+  else labels.value.push(normalized)
+}
 
 const presetColors = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#14b8a6', '#06b6d4',
@@ -43,16 +53,20 @@ const createLabel = async () => {
   if (!newLabel.value.name.trim()) return
 
   try {
-    await axiosClient.post(`/projects/${props.projectId}/labels`, {
+    const tempId = `temp-${globalThis.crypto?.randomUUID?.() || Date.now()}`
+    upsertLabel({ ...newLabel.value, id: tempId, issueCount: 0 })
+    const response = await axiosClient.post(`/projects/${props.projectId}/labels`, {
       name: newLabel.value.name.trim(),
       colorCode: newLabel.value.colorCode,
       description: newLabel.value.description?.trim() || ''
     })
+    labels.value = labels.value.filter(label => label.id !== tempId)
+    upsertLabel(response.data?.data)
     newLabel.value = { name: '', colorCode: '#3b82f6', description: '' }
     showCreate.value = false
-    await loadLabels()
     ElMessage.success('Label created')
   } catch (error) {
+    labels.value = labels.value.filter(label => !`${label.id}`.startsWith('temp-'))
     ElMessage.error(error.response?.data?.message || 'Failed to create label')
   }
 }
@@ -60,11 +74,14 @@ const createLabel = async () => {
 const deleteLabel = async (labelId) => {
   if (!confirm('Delete this label?')) return
 
+  let previous = null
   try {
+    previous = labels.value
+    labels.value = labels.value.filter(label => label.id !== labelId)
     await axiosClient.delete(`/projects/${props.projectId}/labels/${labelId}`)
-    await loadLabels()
     ElMessage.success('Label deleted')
   } catch (error) {
+    if (previous) labels.value = previous
     ElMessage.error('Failed to delete label')
   }
 }
@@ -72,10 +89,25 @@ const deleteLabel = async (labelId) => {
 watch(
   () => props.projectId,
   async () => {
+    signalRService.startConnection(props.projectId)
     await loadLabels()
   },
   { immediate: true }
 )
+
+const labelRealtimeHandler = (event) => {
+  if (event?.projectId && `${event.projectId}` !== `${props.projectId}`) return
+  if (`${event?.entityType || ''}`.toLowerCase() !== 'label') return
+  const action = `${event.action || ''}`.toLowerCase()
+  if (action === 'deleted' || action === 'removed') {
+    labels.value = labels.value.filter(label => label.id !== event.entityId)
+  } else {
+    upsertLabel(event.data)
+  }
+}
+signalRService.on('EntityChanged', labelRealtimeHandler)
+
+onUnmounted(() => signalRService.off('EntityChanged', labelRealtimeHandler))
 </script>
 
 <template>
@@ -102,7 +134,16 @@ watch(
       </div>
     </div>
 
-    <el-dialog v-model="showCreate" title="Create label" width="400px">
+    <el-dialog v-model="showCreate" width="400px" append-to-body class="sa-data-dialog sa-modal--form" :show-close="false">
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-tag"
+          title="Create label"
+          description="Create a reusable label for project work items"
+          close-label="Close"
+          @close="showCreate = false"
+        />
+      </template>
       <el-form label-position="top">
         <el-form-item label="Label name">
           <el-input v-model="newLabel.name" placeholder="Bug, Feature, Urgent..." />
@@ -124,7 +165,7 @@ watch(
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showCreate = false">Cancel</el-button>
+        <el-button class="cancel-btn" @click="showCreate = false"><i class="bi bi-x-lg"></i> Cancel</el-button>
         <el-button type="primary" :disabled="!newLabel.name.trim()" @click="createLabel">Create</el-button>
       </template>
     </el-dialog>

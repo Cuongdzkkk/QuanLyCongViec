@@ -8,11 +8,13 @@ import { hasProjectWritePermission, normalizeProjectRole } from '@/utils/permiss
 import { getSprintErrorMessage, getSprintStateMeta, SPRINT_STATE } from '@/utils/sprintState'
 import { useI18n } from '@/composables/useI18n'
 import axiosClient from '@/api/axiosClient'
+import { signalRService } from '@/api/signalrService'
 import { subscribeAdminRealtime } from '@/utils/adminRealtime'
 import { currentTheme } from '@/utils/theme'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 
 import { use } from 'echarts/core'
@@ -449,7 +451,7 @@ const createNewCycle = async () => {
   }
 
   try {
-    await axiosClient.post(`/projects/${props.projectId}/sprints`, {
+    await sprintStore.createSprint(props.projectId, {
       name: newCycle.value.name.trim(),
       description: newCycle.value.description,
       startDate: fixDateOffset(newCycle.value.startDate),
@@ -459,7 +461,7 @@ const createNewCycle = async () => {
     showCreateModal.value = false
     showCalendar.value = false
     newCycle.value = { name: '', description: '', startDate: null, endDate: null }
-    await loadCycles()
+    await fetchBurndowns()
   } catch (error) {
     alert(error.response?.data?.message || 'Không thể tạo cycle')
   }
@@ -656,8 +658,17 @@ watch(currentTheme, () => {
 
 let cycleRefreshTimer = null
 let unsubscribeAdminRealtime = null
+let sprintRealtimeHandler = null
 onMounted(() => {
   window.addEventListener('keydown', handleTransitionEscape)
+  signalRService.startConnection(props.projectId)
+  sprintRealtimeHandler = (event) => {
+    if (event?.projectId && `${event.projectId}` !== `${props.projectId}`) return
+    if (`${event?.entityType || ''}`.toLowerCase() !== 'sprint') return
+    sprintStore.applyRealtimeEntityEvent(event)
+    fetchBurndowns()
+  }
+  signalRService.on('EntityChanged', sprintRealtimeHandler)
   cycleRefreshTimer = window.setInterval(() => {
     if (props.projectId) {
       loadCycles()
@@ -688,6 +699,7 @@ onUnmounted(() => {
     window.clearInterval(cycleRefreshTimer)
   }
   unsubscribeAdminRealtime?.()
+  if (sprintRealtimeHandler) signalRService.off('EntityChanged', sprintRealtimeHandler)
 })
 </script>
 
@@ -713,7 +725,7 @@ onUnmounted(() => {
         
         <template #filters>
           <div class="cycle-filter-wrapper">
-            <button class="nexus-btn-outlined" type="button" @click="showCycleFilters = !showCycleFilters" :class="{ active: showCycleFilters || hasCycleFilters }">
+            <button class="timeline-filter-trigger" type="button" @click="showCycleFilters = !showCycleFilters" :class="{ active: showCycleFilters || hasCycleFilters }">
               <i class="fa-solid fa-filter"></i> {{ t('cyclesTab.filters', 'Filters') }}
             </button>
             <div class="cycle-filter-menu" v-if="showCycleFilters" @click.stop>
@@ -1085,16 +1097,28 @@ onUnmounted(() => {
       </section>
     </div>
 
-    <div class="modal-overlay" v-if="showCreateModal && canManageSprint" @click.self="showCreateModal = false; showCalendar = false">
-      <div class="create-cycle-modal">
+    <Teleport to="body">
+    <div class="modal-overlay sa-data-modal-overlay" v-if="showCreateModal && canManageSprint" @click.self="showCreateModal = false; showCalendar = false">
+      <div class="create-cycle-modal sa-modal--form">
         <div class="cm-header">
-          <div class="cm-badge"><i class="fa-solid fa-certificate text-orange"></i> CYBWF</div>
-          <h2 class="cm-title">Create cycle</h2>
+          <DataModalHeader
+            icon="bi bi-arrow-repeat"
+            title="Create cycle"
+            description="Plan a focused timebox for the selected project"
+            close-label="Close"
+            @close="showCreateModal = false; showCalendar = false"
+          />
         </div>
 
         <div class="cm-body" :style="{ paddingBottom: showCalendar ? '300px' : '24px' }">
-          <input v-model="newCycle.name" type="text" class="cm-input" placeholder="Title" autofocus />
-          <textarea v-model="newCycle.description" class="cm-textarea" placeholder="Description" rows="4"></textarea>
+          <div class="cm-field">
+            <label for="new-cycle-title">Title</label>
+            <input id="new-cycle-title" v-model="newCycle.name" type="text" class="cm-input" placeholder="Enter a cycle title" autofocus />
+          </div>
+          <div class="cm-field">
+            <label for="new-cycle-description">Description</label>
+            <textarea id="new-cycle-description" v-model="newCycle.description" class="cm-textarea" placeholder="Add a description" rows="4"></textarea>
+          </div>
 
           <div class="dp-wrapper mt-4">
             <button class="dp-btn" @click="toggleCalendar">
@@ -1133,11 +1157,12 @@ onUnmounted(() => {
         </div>
 
         <div class="cm-footer">
-          <button class="cm-btn-cancel" @click="showCreateModal = false">Cancel</button>
-          <button class="cm-btn-create" @click="createNewCycle">Create Cycle</button>
+          <button class="cm-btn-cancel sa-btn-cancel" @click="showCreateModal = false"><i class="bi bi-x-lg"></i> Cancel</button>
+          <button class="cm-btn-create" @click="createNewCycle"><i class="bi bi-plus-lg"></i> Create cycle</button>
         </div>
       </div>
     </div>
+    </Teleport>
   </ProjectPageContainer>
 </template>
 
@@ -1148,9 +1173,7 @@ onUnmounted(() => {
   height: 100%;
   color: var(--color-text-primary);
   font-family: inherit;
-  background:
-    radial-gradient(circle at 16% 0%, color-mix(in srgb, var(--sp-sky-400) 10%, transparent), transparent 30%),
-    var(--color-bg);
+  background: var(--color-bg);
   min-height: calc(100vh - 100px);
 }
 
@@ -1262,7 +1285,7 @@ onUnmounted(() => {
 .primary-action { background: var(--sp-blue-700); color: white; border: 1px solid var(--sp-blue-700); border-radius: 10px; padding: 8px 16px; font-size: 13px; cursor: pointer; font-weight: 800; box-shadow: 0 8px 18px color-mix(in srgb, var(--sp-blue-700) 20%, transparent); }
 .primary-action:hover { background: var(--sp-blue-600); border-color: var(--sp-sky-400); }
 
-.cycles-body { width: 100%; max-width: 1600px; margin: 0 auto; padding: 16px 24px 28px; flex: 1; overflow: auto; }
+.cycles-body { width: 100%; max-width: 1600px; margin: 0 auto; padding: 16px 24px 28px; flex: 1; overflow: visible; }
 .cycle-section { margin-bottom: 24px; }
 .cs-header { display: flex; align-items: center; gap: 12px; padding: 10px 0; cursor: pointer; user-select: none; }
 .chevron { font-size: 12px; color: var(--color-text-muted); width: 16px; text-align: center; }
@@ -1421,7 +1444,6 @@ onUnmounted(() => {
 
 [data-theme='dark'] .plane-cycles-wrapper {
   background:
-    radial-gradient(circle at 14% 0%, rgba(14, 165, 233, 0.11), transparent 30%),
     linear-gradient(180deg, #07111f, #0f172a 52%, #101827);
 }
 
@@ -1486,8 +1508,10 @@ onUnmounted(() => {
 .cm-body { padding: 0 24px 24px; display: flex; flex-direction: column; }
 .cm-input, .cm-textarea { width: 100%; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px 16px; color: var(--color-text-primary); outline: none; transition: border-color 0.2s; }
 .cm-input:focus, .cm-textarea:focus { border-color: var(--color-accent); }
-.cm-input { margin-bottom: 16px; font-size: 15px; }
+.cm-input { font-size: 15px; }
 .cm-textarea { font-size: 14px; resize: none; }
+.cm-field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; }
+.cm-field > label { color: var(--color-text-secondary); font-size: 13px; font-weight: 650; }
 .cm-footer { padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 12px; background: var(--color-surface-hover); border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }
 .cm-btn-cancel { background: transparent; border: 1px solid var(--color-border); border-radius: 8px; padding: 8px 16px; color: var(--color-text-primary); font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
 .cm-btn-cancel:hover { background: var(--color-surface-hover); }
@@ -1626,9 +1650,7 @@ onUnmounted(() => {
 
 /* Polished cycles experience */
 .plane-cycles-wrapper {
-  background:
-    radial-gradient(circle at 14% 0%, color-mix(in srgb, var(--color-accent) 11%, transparent), transparent 34%),
-    var(--color-bg) !important;
+  background: var(--color-bg) !important;
 }
 
 .cycles-view-header,
@@ -1825,7 +1847,6 @@ onUnmounted(() => {
   background:
     linear-gradient(rgba(203, 213, 225, 0.08) 1px, transparent 1px),
     linear-gradient(90deg, rgba(203, 213, 225, 0.08) 1px, transparent 1px),
-    radial-gradient(circle at 48% 54%, rgba(59, 130, 246, 0.16), transparent 40%),
     rgba(15, 23, 42, 0.64) !important;
   border-color: rgba(148, 163, 184, 0.18) !important;
 }
@@ -1901,7 +1922,6 @@ onUnmounted(() => {
   background:
     linear-gradient(rgba(71, 85, 105, 0.10) 1px, transparent 1px),
     linear-gradient(90deg, rgba(71, 85, 105, 0.09) 1px, transparent 1px),
-    radial-gradient(circle at 48% 54%, rgba(37, 99, 235, 0.10), transparent 40%),
     #f8fafc !important;
   border-color: rgba(148, 163, 184, 0.28) !important;
 }
@@ -1912,7 +1932,7 @@ onUnmounted(() => {
 
 .cycles-body {
   min-height: 0 !important;
-  overflow: auto !important;
+  overflow: visible !important;
   max-width: 100% !important;
   padding: 8px 4px 18px !important;
 }

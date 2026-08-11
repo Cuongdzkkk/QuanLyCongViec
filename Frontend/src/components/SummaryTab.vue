@@ -405,9 +405,7 @@ function endOfDay(value) {
   min-height: 0;
   overflow: auto;
   padding: 18px 24px 42px;
-  background:
-    radial-gradient(circle at 14% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 30%),
-    var(--color-bg);
+  background: var(--color-bg);
   color: var(--color-text-primary);
 }
 
@@ -916,8 +914,6 @@ function endOfDay(value) {
 
 .summary-tab {
   background:
-    radial-gradient(circle at 18% 0%, color-mix(in srgb, #38bdf8 16%, transparent), transparent 30%),
-    radial-gradient(circle at 84% 10%, color-mix(in srgb, #22c55e 10%, transparent), transparent 28%),
     linear-gradient(180deg, color-mix(in srgb, var(--color-bg) 84%, #f8fafc), var(--color-bg)) !important;
 }
 
@@ -993,7 +989,6 @@ function endOfDay(value) {
 
 .metric-icon {
   background:
-    radial-gradient(circle at 35% 25%, rgba(255,255,255,0.65), transparent 32%),
     color-mix(in srgb, var(--metric-tone, var(--color-accent)) 14%, var(--color-surface-hover)) !important;
   color: var(--metric-tone, var(--color-accent)) !important;
   box-shadow: 0 10px 24px color-mix(in srgb, var(--metric-tone, var(--color-accent)) 18%, transparent);

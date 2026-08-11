@@ -640,6 +640,30 @@ Object.assign(dictionary.vi, {
   'projects.favoriteFailed': 'Không thể cập nhật dự án yêu thích'
 })
 
+Object.assign(dictionary.en, {
+  'rewards.actualHoursRule': 'Actual-hours rule',
+  'rewards.multiAssignee': 'Multiple assignees',
+  'rewards.carryOver': 'Carry-over',
+  'Base effort x Efficiency x Quality x Contribution share': 'Base effort x Efficiency x Quality x Contribution share',
+  'Base points = Difficulty x Standard duration. Final points = Share + Bonus - Penalty': 'Base points = Difficulty x Standard duration. Final points = Share + Bonus - Penalty',
+  'Task mau se xuat hien sau khi co du lieu that.': 'A sample task will appear when real data is available.',
+  'Actual hours luon uu tien lay tu time log. Assignment actual hours va task actual hours duoc roll-up tu time log.': 'Actual hours prioritize time logs. Assignment and task actual hours are rolled up from time logs.',
+  'Estimate cua task khong bi nhan doi; effort duoc chia theo assignee estimate truoc, roi moi fallback sang contribution weight.': 'Task estimates are not duplicated; effort is split by assignee estimates first, then falls back to contribution weight.',
+  'Task qua cycle van giu estimate/actual; bonus va penalty duoc xet tai thoi diem hoan thanh.': 'Tasks carried across cycles retain estimate and actual hours; bonuses and penalties are evaluated on completion.'
+})
+
+Object.assign(dictionary.vi, {
+  'rewards.actualHoursRule': 'Quy tắc giờ thực tế',
+  'rewards.multiAssignee': 'Nhiều người thực hiện',
+  'rewards.carryOver': 'Chuyển tiếp',
+  'Base effort x Efficiency x Quality x Contribution share': 'Nỗ lực cơ bản x Hiệu suất x Chất lượng x Tỷ lệ đóng góp',
+  'Base points = Difficulty x Standard duration. Final points = Share + Bonus - Penalty': 'Điểm cơ bản = Độ khó x Thời lượng chuẩn. Điểm cuối cùng = Điểm chia sẻ + Thưởng - Phạt',
+  'Task mau se xuat hien sau khi co du lieu that.': 'Công việc mẫu sẽ xuất hiện khi có dữ liệu thực tế.',
+  'Actual hours luon uu tien lay tu time log. Assignment actual hours va task actual hours duoc roll-up tu time log.': 'Giờ thực tế luôn ưu tiên dữ liệu từ nhật ký thời gian. Giờ thực tế của phân công và công việc được tổng hợp từ nhật ký thời gian.',
+  'Estimate cua task khong bi nhan doi; effort duoc chia theo assignee estimate truoc, roi moi fallback sang contribution weight.': 'Ước tính của công việc không bị nhân đôi; khối lượng được chia theo ước tính của từng người trước, sau đó mới dùng tỷ trọng đóng góp.',
+  'Task qua cycle van giu estimate/actual; bonus va penalty duoc xet tai thoi diem hoan thanh.': 'Công việc chuyển chu kỳ vẫn giữ giờ ước tính và thực tế; thưởng và phạt được xét tại thời điểm hoàn thành.'
+})
+
 export const useI18nStore = defineStore('i18n', {
   state: () => ({
     locale: localStorage.getItem('app_language') || localStorage.getItem('sprinta_locale') || localStorage.getItem('admin_locale') || 'vi'

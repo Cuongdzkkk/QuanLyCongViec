@@ -3,22 +3,24 @@
     v-model="dialogVisible"
     title="Customize your sidebar"
     width="560px"
-    class="customize-sidebar-dialog"
-    :show-close="true"
+    class="customize-sidebar-dialog sa-data-dialog"
+    :show-close="false"
     :before-close="handleClose"
   >
+    <template #header>
+      <DataModalHeader
+        icon="bi bi-layout-sidebar"
+        title="Customize your sidebar"
+        description="Choose the navigation items that stay visible in your sidebar"
+        @close="handleClose"
+      />
+    </template>
     <div class="customize-sidebar-content">
-      <p class="desc-text">
-        Selected items will always be visible in the sidebar. You can still access unselected items from the <strong>More</strong> menu in the sidebar.
-      </p>
-      <p class="desc-text mt-2">
-        The changes you make here only affect you and not anyone else on your site.
-      </p>
-
-      <div class="section-container mt-6">
-        <h3 class="section-title">SprintA navigation</h3>
-        <p class="section-desc">The following navigation items are available in SprintA.</p>
-
+      <DataModalSection
+        icon="bi bi-compass"
+        title="SprintA navigation"
+        description="Selected items stay visible; hidden items remain available from the More menu"
+      >
         <div class="nav-list">
           <!-- Disabled / Fixed item -->
           <div class="nav-item fixed-item">
@@ -37,12 +39,13 @@
             <div class="more-actions"><i class="fa-solid fa-ellipsis"></i></div>
           </div>
         </div>
-      </div>
+      </DataModalSection>
 
-      <div class="section-container mt-6">
-        <h3 class="section-title">App shortcuts</h3>
-        <p class="section-desc">The following apps are available for your organization.</p>
-
+      <DataModalSection
+        icon="bi bi-app-indicator"
+        title="App shortcuts"
+        description="These changes only affect your own sidebar"
+      >
         <div class="nav-list">
           <div class="nav-item" v-for="item in appItems" :key="item.id">
             <div class="drag-handle"><i class="fa-solid fa-grip-vertical"></i></div>
@@ -52,13 +55,19 @@
             <div class="more-actions"><i class="fa-solid fa-ellipsis"></i></div>
           </div>
         </div>
-      </div>
+      </DataModalSection>
     </div>
     
     <template #footer>
       <div class="dialog-footer-actions">
-        <el-button @click="handleClose" class="btn-cancel">Cancel</el-button>
-        <el-button type="primary" @click="saveChanges" class="btn-save">Save changes</el-button>
+        <el-button @click="handleClose" class="btn-cancel">
+          <i class="bi bi-x-lg"></i>
+          Cancel
+        </el-button>
+        <el-button type="primary" @click="saveChanges" class="btn-save">
+          <i class="bi bi-check-lg"></i>
+          Save changes
+        </el-button>
       </div>
     </template>
   </el-dialog>
@@ -66,6 +75,8 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 
 const props = defineProps({
   visible: Boolean

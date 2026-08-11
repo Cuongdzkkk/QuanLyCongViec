@@ -293,8 +293,6 @@ const handleResetPassword = async () => {
   min-height: 100vh;
   color: var(--auth-text);
   background:
-    radial-gradient(circle at 15% 10%, rgba(34, 211, 238, 0.18), transparent 30%),
-    radial-gradient(circle at 86% 16%, rgba(16, 185, 129, 0.14), transparent 28%),
     linear-gradient(180deg, #ffffff 0%, var(--auth-bg) 100%);
 }
 
@@ -307,8 +305,6 @@ const handleResetPassword = async () => {
   --auth-border: rgba(148, 181, 222, 0.2);
   --auth-shadow: 0 30px 80px rgba(0, 0, 0, 0.38);
   background:
-    radial-gradient(circle at 15% 10%, rgba(34, 211, 238, 0.17), transparent 30%),
-    radial-gradient(circle at 86% 16%, rgba(16, 185, 129, 0.14), transparent 28%),
     linear-gradient(180deg, #07101e 0%, var(--auth-bg) 100%);
 }
 
@@ -474,7 +470,6 @@ const handleResetPassword = async () => {
   border-radius: 24px;
   color: #ffffff;
   background:
-    radial-gradient(circle, rgba(255, 255, 255, 0.28), transparent 38%),
     conic-gradient(from 90deg, #00c2ff, #3662ff, #10b981, #00c2ff);
 }
 
@@ -526,7 +521,6 @@ const handleResetPassword = async () => {
   border-radius: 18px;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--auth-surface-strong) 86%, transparent), color-mix(in srgb, #10b981 10%, transparent)),
-    radial-gradient(circle at 92% 12%, rgba(20, 184, 166, 0.22), transparent 40%);
 }
 
 .entry-icon {

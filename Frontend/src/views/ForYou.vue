@@ -15,6 +15,8 @@ import { useSiteStore } from '@/store/useSiteStore'
 import { useStarredStore } from '@/store/useStarredStore'
 import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { translateDemoText } from '@/utils/demoContentLocale'
+import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import { DEFAULT_PROJECT_BACKGROUND, DEFAULT_PROJECT_ICON } from '@/config/projectAppearance'
 
 const route = useRoute()
 const router = useRouter()
@@ -100,8 +102,8 @@ const fetchSpaces = async () => {
       name: p.name,
       key: p.key || p.name.substring(0, 4).toUpperCase(),
       description: p.description || t('forYou.softwareSpace'),
-      cover: p.cover || '#3b82f6',
-      icon: p.icon || '📦',
+      cover: p.cover || DEFAULT_PROJECT_BACKGROUND,
+      icon: p.icon || DEFAULT_PROJECT_ICON,
       taskCount: p.taskCount ?? p.TotalTasks ?? p.totalTasks ?? p.activeMemberCount ?? p.ActiveMemberCount ?? 0,
       networkType: p.networkType || 'Public',
       createdAt: p.createdAt || null,
@@ -241,49 +243,28 @@ const paginatedTasks = computed(() => {
   return filteredTasksList.value
 })
 
+// Accordion state
+const expandedGroups = ref({})
+
+const toggleGroup = (label) => {
+  expandedGroups.value[label] = expandedGroups.value[label] === false ? true : false
+}
+
+const isGroupExpanded = (label) => {
+  return expandedGroups.value[label] !== false
+}
+
 // Group Tasks
 const groupedTasks = computed(() => {
-  // Group by Project for Assigned and Starred
-  if (activeTab.value === 'assigned' || activeTab.value === 'starred') {
-    const projectGroups = {}
-    paginatedTasks.value.forEach(task => {
-      const pName = demoText(task.projectName) || t('forYou.otherProjects')
-      if (!projectGroups[pName]) projectGroups[pName] = []
-      projectGroups[pName].push(task)
-    })
-    return Object.entries(projectGroups).map(([label, items]) => ({ label, items }))
-  }
-
-  // Group by Date for Worked, Viewed, Recommended
-  const groups = {
-    [t('forYou.today')]: [],
-    [t('forYou.yesterday')]: [],
-    [t('forYou.thisWeek')]: [],
-    [t('forYou.lastMonth')]: [],
-    [t('forYou.older')]: []
-  }
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-  const lastWeek = new Date(today)
-  lastWeek.setDate(lastWeek.getDate() - 7)
-  const lastMonth = new Date(today)
-  lastMonth.setMonth(lastMonth.getMonth() - 1)
-
+  const projectGroups = {}
   paginatedTasks.value.forEach(task => {
-    const d = new Date(task.updatedAt || task.createdAt || Date.now())
-    if (d >= today) groups[t('forYou.today')].push(task)
-    else if (d >= yesterday) groups[t('forYou.yesterday')].push(task)
-    else if (d >= lastWeek) groups[t('forYou.thisWeek')].push(task)
-    else if (d >= lastMonth) groups[t('forYou.lastMonth')].push(task)
-    else groups[t('forYou.older')].push(task)
+    const pName = demoText(task.projectName) || t('forYou.otherProjects')
+    if (!projectGroups[pName]) projectGroups[pName] = []
+    projectGroups[pName].push(task)
   })
-
-  // Remove empty groups
-  return Object.entries(groups).filter(([_, items]) => items.length > 0).map(([label, items]) => ({ label, items }))
+  return Object.entries(projectGroups).map(([label, items]) => ({ label, items }))
 })
+
 
 // Task Details Dialog
 const openTaskDetail = async (task) => {
@@ -438,9 +419,14 @@ onBeforeUnmount(() => {
       <div class="main-content-column">
         
         <!-- Recommended Spaces Section -->
-        <section class="mb-10 mt-2">
-          <div class="section-header flex-between mb-4">
-            <h2 class="section-title">{{ t('forYou.recommendedSpaces') }}</h2>
+        <section class="mb-12 mt-4 sprinta-section-panel sprinta-section-panel-blue">
+          <div class="section-header flex-between mb-6 items-center">
+            <h2 class="section-title">
+              <div class="icon-glass">
+                <i class="bi bi-stars"></i>
+              </div>
+              {{ t('forYou.recommendedSpaces') }}
+            </h2>
             <a href="/spaces" class="view-all-link">{{ t('forYou.viewAllSpaces') }}</a>
           </div>
 
@@ -468,9 +454,7 @@ onBeforeUnmount(() => {
               class="space-card"
               @click="router.push(`/space/${space.id}`)"
             >
-              <div class="sc-icon-wrapper" :style="{ backgroundColor: space.cover }">
-                <span class="sc-emoji">{{ space.icon || '📦' }}</span>
-              </div>
+              <ProjectAvatar class="recommended-project-avatar" :icon="space.icon" :background="space.cover" size="sm" />
               <div class="sc-info">
                 <h3 class="sc-name" :title="demoText(space.name)">{{ demoText(space.name) }}</h3>
                 <p class="sc-desc">{{ demoText(space.description) }} - {{ space.displayTaskCount }} {{ t('common.tasks') }}</p>
@@ -492,9 +476,14 @@ onBeforeUnmount(() => {
         </section>
 
         <!-- For You Section -->
-        <section>
-          <div class="foryou-header-row mb-6">
-            <h2 class="section-title text-2xl font-bold">{{ t('forYou.forYou') }}</h2>
+        <section class="mb-12 sprinta-section-panel sprinta-section-panel-purple">
+          <div class="foryou-header-row mb-4 items-center">
+            <h2 class="section-title">
+              <div class="icon-glass purple">
+                <i class="bi bi-grid-fill"></i>
+              </div>
+              {{ t('forYou.forYou') }}
+            </h2>
             
             <div class="jira-tabs">
               <button 
@@ -544,7 +533,7 @@ onBeforeUnmount(() => {
           </div>
           
           <!-- Premium Empty State for Tasks -->
-          <div v-else-if="filteredTasksList.length === 0" class="empty-state">
+          <div v-else-if="filteredTasksList.length === 0" class="foryou-empty-state">
             <div class="empty-state-illustration">
               <svg class="mx-auto h-16 w-16 text-blue-500/20 dark:text-blue-400/10 mb-4 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -557,13 +546,22 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- Task Groups -->
-          <div v-else class="task-groups-container">
-            <div v-for="group in groupedTasks" :key="group.label" class="task-group mb-6">
-              <div class="group-header mb-3">
-                <h4 class="group-label">{{ group.label }}</h4>
+          <div v-else class="task-groups-container fixed-height-scroll">
+            <div v-for="group in groupedTasks" :key="group.label" class="task-group mb-4">
+              <div class="project-group-header mb-3" @click="toggleGroup(group.label)">
+                <div class="pgh-left">
+                  <div class="pgh-icon"><i class="bi bi-list-task"></i></div>
+                  <h4 class="pgh-title">{{ group.label }}</h4>
+                  <span class="pgh-badge" :title="`${group.items.length} công việc`">{{ group.items.length }}</span>
+                </div>
+                <div class="pgh-right">
+                  <div class="expand-icon-wrapper">
+                    <i class="fa-solid" :class="isGroupExpanded(group.label) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                  </div>
+                </div>
               </div>
 
-              <div class="task-list">
+              <div class="task-list" v-show="isGroupExpanded(group.label)">
                 <div 
                   v-for="task in group.items" 
                   :key="task.id" 
@@ -633,47 +631,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.jira-dashboard {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 24px 32px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", Ubuntu, "Droid Sans", "Helvetica Neue", sans-serif;
-  color: var(--color-text-primary, #172b4d);
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
 
-@media (min-width: 1200px) {
-  .jira-dashboard {
-    flex-direction: row;
-    align-items: flex-start;
-  }
-}
 
-.main-content-column {
-  flex: 1;
-  min-width: 0;
-}
 
-.section-title {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0;
-  color: var(--color-text-primary, #172b4d);
-}
-
-.view-all-link {
-  font-size: 14px;
-  color: var(--color-accent, #0c66e4);
-  text-decoration: none;
-  font-weight: 500;
-  transition: color 0.15s ease;
-}
-.view-all-link:hover {
-  color: var(--color-accent-hover, #0052cc);
-  text-decoration: underline;
-}
 
 /* Spaces Row */
 .spaces-row {
@@ -694,6 +654,10 @@ onBeforeUnmount(() => {
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   position: relative;
   overflow: hidden;
+}
+
+.recommended-project-avatar {
+  margin-right: 11px;
 }
 
 .space-card:hover {
@@ -725,9 +689,9 @@ onBeforeUnmount(() => {
 }
 
 .sc-name {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
-  margin: 0 0 2px 0;
+  margin: 0 0 4px 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -735,8 +699,10 @@ onBeforeUnmount(() => {
 }
 
 .sc-desc {
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 400;
   color: var(--color-text-muted, #6b778c);
+  opacity: 0.85;
   margin: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -756,9 +722,8 @@ onBeforeUnmount(() => {
   height: 40px;
   padding: 0;
   border-radius: 6px;
-  opacity: 1;
+  opacity: 0;
   transition: all 0.2s ease;
-  flex-shrink: 0;
   position: absolute;
   right: 10px;
   top: 50%;
@@ -770,7 +735,7 @@ onBeforeUnmount(() => {
 }
 .sc-star-btn.starred {
   opacity: 1;
-  color: #f5cd47;
+  color: #facc15;
 }
 .sc-star-btn:hover {
   color: var(--color-text-primary, #172b4d);
@@ -816,57 +781,44 @@ onBeforeUnmount(() => {
 .foryou-header-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   flex-wrap: wrap;
   gap: 16px;
-  border-bottom: 2px solid var(--color-border, #dfe1e6);
-  padding-bottom: 0px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 16px;
   margin-top: 16px;
 }
 
 .jira-tabs {
   display: flex;
-  gap: 4px;
+  gap: 8px;
 }
 
 .j-tab {
   background: transparent;
   border: none;
-  padding: 10px 16px;
+  padding: 8px 16px;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
-  color: var(--color-text-secondary, #42526e);
+  color: #64748b;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 6px;
-  position: relative;
+  gap: 8px;
   outline: none;
 }
 
-.j-tab::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: transparent;
-  transition: background-color 0.2s ease;
-}
-
 .j-tab:hover {
-  color: var(--color-text-primary, #172b4d);
+  color: #334155;
+  background-color: #f8fafc;
 }
 
 .j-tab.active {
-  color: var(--color-accent, #0c66e4);
+  background-color: #e2e8f0;
+  color: #0f172a;
   font-weight: 600;
-}
-
-.j-tab.active::after {
-  background-color: var(--color-accent, #0c66e4);
 }
 
 .tab-badge {
@@ -915,14 +867,19 @@ onBeforeUnmount(() => {
   width: 100%;
   box-sizing: border-box !important;
   border: 1px solid rgba(9, 30, 66, 0.08) !important;
-  border-radius: 20px !important;
+  border-radius: 8px !important;
   padding: 8px 16px 8px 36px !important;
   font-size: 14px !important;
-  height: 40px !important;
+  font-family: inherit !important;
+  height: 38px !important;
   background-color: var(--color-surface, #ffffff) !important;
-  color: var(--color-text-primary, #172b4d) !important;
+  color: var(--color-text-primary, #0f172a) !important;
   transition: all 0.3s ease;
   outline: none;
+}
+.search-input input::placeholder {
+  color: #64748b !important;
+  opacity: 1;
 }
 .search-input input:focus {
   border-color: var(--color-accent, #4c9aff) !important;
@@ -933,10 +890,11 @@ onBeforeUnmount(() => {
 .jira-select {
   box-sizing: border-box !important;
   border: 1px solid rgba(9, 30, 66, 0.08) !important;
-  border-radius: 20px !important;
+  border-radius: 8px !important;
   padding: 0 16px !important;
   font-size: 14px !important;
-  height: 40px !important;
+  font-family: inherit !important;
+  height: 38px !important;
   background-color: var(--color-surface, #ffffff) !important;
   color: var(--color-text-primary, #172b4d) !important;
   outline: none;
@@ -976,16 +934,14 @@ onBeforeUnmount(() => {
   color: var(--color-text-muted, #6b778c);
 }
 
-.empty-state {
+.foryou-empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 48px 16px;
   text-align: center;
-  border: 1px dashed var(--color-border, #dfe1e6);
-  border-radius: 16px;
-  background: rgba(9, 30, 66, 0.02);
+  height: 760px;
 }
 
 .empty-state-illustration svg {
@@ -1030,15 +986,15 @@ onBeforeUnmount(() => {
 }
 
 .jtr-left {
-  margin-right: 14px;
+  margin-right: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .task-type-icon {
-  font-size: 16px;
-  border-radius: 3px;
+  font-size: 18px;
+  border-radius: 4px;
 }
 
 .jtr-center {
@@ -1047,21 +1003,29 @@ onBeforeUnmount(() => {
 }
 
 .jtr-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 500;
-  color: var(--color-text-primary, #172b4d);
-  margin-bottom: 2px;
+  color: var(--color-text-primary, #0f172a);
+  margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .jtr-subtitle {
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 400;
   color: var(--color-text-muted, #6b778c);
+  opacity: 0.85;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.time-text {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-muted, #6b778c);
 }
 
 .jtr-actions {
@@ -1099,7 +1063,8 @@ onBeforeUnmount(() => {
 }
 
 .jtr-right {
-  min-width: 100px;
+  min-width: 120px;
+  padding-right: 16px;
   text-align: right;
   flex-shrink: 0;
 }
@@ -1330,8 +1295,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column !important;
   background:
-    radial-gradient(circle at 18% 0%, rgba(14, 165, 233, 0.12), transparent 30%),
-    radial-gradient(circle at 86% 6%, rgba(34, 197, 94, 0.08), transparent 26%),
     linear-gradient(180deg, #f8fbff 0%, #eef5fb 54%, #f8fafc 100%);
 }
 
@@ -1346,32 +1309,9 @@ onBeforeUnmount(() => {
   margin: 0 !important;
 }
 
-.main-content-column > section:first-child {
-  position: relative;
-  overflow: hidden;
-  padding: 26px;
-  border: 1px solid rgba(125, 211, 252, 0.34);
-  border-radius: 22px;
-  background:
-    linear-gradient(135deg, rgba(240, 249, 255, 0.94), rgba(255, 255, 255, 0.88)),
-    #ffffff;
-  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.07);
-}
 
-.main-content-column > section:first-child::after {
-  content: "";
-  position: absolute;
-  right: 24px;
-  top: 20px;
-  width: 86px;
-  height: 86px;
-  border-radius: 24px;
-  background: linear-gradient(135deg, #bae6fd, #dcfce7);
-  opacity: 0.62;
-  transform: rotate(10deg);
-  z-index: 0;
-  pointer-events: none;
-}
+
+
 
 .main-content-column > section:first-child > * {
   position: relative;
@@ -1473,6 +1413,24 @@ onBeforeUnmount(() => {
   gap: 16px;
   border-bottom: 0;
   padding: 0;
+  margin-bottom: 16px !important;
+}
+
+.task-toolbar {
+  margin-bottom: 32px !important;
+}
+
+.fixed-height-scroll {
+  height: 760px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+.fixed-height-scroll::-webkit-scrollbar { width: 6px; }
+.fixed-height-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.4); border-radius: 10px; }
+.fixed-height-scroll::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.6); }
+
+.section-header {
+  margin-bottom: 32px !important;
 }
 
 .jira-tabs {
@@ -1578,14 +1536,94 @@ onBeforeUnmount(() => {
   height: 42px !important;
 }
 
-.group-label {
+.project-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 60px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  padding: 12px 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94)), #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.project-group-header:hover {
+  background: #ffffff;
+  border-color: rgba(14, 165, 233, 0.36);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
+}
+
+.pgh-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pgh-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #0ea5e9, #38bdf8);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
+}
+
+.pgh-title {
+  color: #0f172a;
+  font-weight: 800;
+  font-size: 15px;
+  margin: 0;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.pgh-badge {
+  background: #f1f5f9;
+  color: #64748b;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid #e2e8f0;
+}
+
+.expand-icon-wrapper {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.project-group-header:hover .expand-icon-wrapper {
+  background: #e0f2fe;
   color: #0284c7;
-  font-weight: 900;
-  letter-spacing: 0.08em;
+  border-color: #bae6fd;
+}
+
+.task-group {
+  margin-bottom: 16px;
 }
 
 .task-list {
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 8px;
 }
 
 .jira-task-row {
@@ -1646,12 +1684,9 @@ onBeforeUnmount(() => {
 
 [data-theme='dark'] .jira-dashboard {
   background:
-    radial-gradient(circle at 14% 0%, rgba(14, 165, 233, 0.13), transparent 32%),
-    radial-gradient(circle at 88% 4%, rgba(34, 197, 94, 0.07), transparent 26%),
     linear-gradient(180deg, #08111f, #0f172a 52%, #111827);
 }
 
-[data-theme='dark'] .main-content-column > section:first-child,
 [data-theme='dark'] .task-toolbar,
 [data-theme='dark'] .jira-tabs {
   border-color: rgba(148, 163, 184, 0.2);
@@ -1659,6 +1694,39 @@ onBeforeUnmount(() => {
     linear-gradient(135deg, rgba(14, 165, 233, 0.10), transparent 48%),
     rgba(15, 23, 42, 0.84);
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.22);
+}
+
+[data-theme='dark'] .project-group-header {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.88), rgba(15, 23, 42, 0.94)), #0f172a;
+  border-color: rgba(148, 163, 184, 0.18);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme='dark'] .pgh-title {
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .pgh-badge {
+  background: #1e293b;
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .expand-icon-wrapper {
+  background: #1e293b;
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .project-group-header:hover {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.94)), #111827;
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+[data-theme='dark'] .project-group-header:hover .expand-icon-wrapper {
+  background: rgba(14, 165, 233, 0.2);
+  color: #38bdf8;
+  border-color: rgba(14, 165, 233, 0.4);
 }
 
 [data-theme='dark'] .section-title,
@@ -1924,16 +1992,10 @@ onBeforeUnmount(() => {
   to { transform: translateX(130%) rotate(12deg); }
 }
 
-@keyframes sprinta-ambient-drift {
-  0% { transform: translate3d(-1.5%, -1%, 0) scale(1); opacity: 0.70; }
-  50% { transform: translate3d(1.5%, 1%, 0) scale(1.015); opacity: 0.95; }
-  100% { transform: translate3d(0.5%, -0.5%, 0) scale(1.01); opacity: 0.78; }
-}
+
 
 .jira-dashboard {
   background:
-    radial-gradient(circle at 22% 4%, rgba(56, 189, 248, 0.18), transparent 28%),
-    radial-gradient(circle at 78% 10%, rgba(34, 197, 94, 0.12), transparent 26%),
     linear-gradient(180deg, #f8fcff 0%, #eef6fb 48%, #f8fafc 100%) !important;
 }
 
@@ -1945,34 +2007,9 @@ onBeforeUnmount(() => {
   animation-delay: 90ms;
 }
 
-.main-content-column > section:first-child {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid rgba(56, 189, 248, 0.22) !important;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(240, 249, 255, 0.82)),
-    var(--color-surface) !important;
-  box-shadow:
-    0 28px 80px rgba(14, 165, 233, 0.12),
-    0 1px 0 rgba(255, 255, 255, 0.92) inset !important;
-}
 
-.main-content-column > section:first-child::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.22), transparent 24%),
-    radial-gradient(circle at 74% 8%, rgba(45, 212, 191, 0.16), transparent 22%),
-    linear-gradient(120deg, rgba(255,255,255,0.20), transparent 38%, rgba(14,165,233,0.08));
-  opacity: 0.84;
-  pointer-events: none;
-  animation: sprinta-ambient-drift 8s ease-in-out infinite alternate;
-}
 
-.main-content-column > section:first-child:hover::before {
-  opacity: 0.96;
-}
+
 
 .main-content-column > section:first-child > * {
   position: relative;
@@ -2024,13 +2061,13 @@ onBeforeUnmount(() => {
 
 .space-card:hover {
   transform: translateY(-3px) scale(1.01);
-  border-color: rgba(14, 165, 233, 0.36) !important;
-  box-shadow: 0 24px 58px rgba(14, 165, 233, 0.16) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
 }
 
 .sc-icon-wrapper {
   box-shadow:
-    0 10px 24px rgba(14, 165, 233, 0.14),
+    0 4px 12px rgba(0, 0, 0, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.74) !important;
 }
 
@@ -2040,12 +2077,7 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(14px);
 }
 
-[data-theme='light'] .main-content-column > section:first-child {
-  color: #0f172a !important;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(239, 248, 255, 0.80)),
-    #ffffff !important;
-}
+
 
 [data-theme='light'] .section-title,
 [data-theme='light'] .task-title,
@@ -2114,8 +2146,6 @@ onBeforeUnmount(() => {
 
 [data-theme='dark'] .jira-dashboard {
   background:
-    radial-gradient(circle at 18% 0%, rgba(56, 189, 248, 0.18), transparent 30%),
-    radial-gradient(circle at 84% 8%, rgba(34, 197, 94, 0.10), transparent 28%),
     linear-gradient(180deg, #06111f, #0f172a 52%, #101827) !important;
 }
 
@@ -2129,8 +2159,6 @@ onBeforeUnmount(() => {
 
 [data-theme='dark'] .main-content-column > section:first-child::before {
   background:
-    radial-gradient(circle at 16% 18%, rgba(56, 189, 248, 0.22), transparent 26%),
-    radial-gradient(circle at 76% 10%, rgba(34, 197, 94, 0.13), transparent 24%),
     linear-gradient(120deg, rgba(148,163,184,0.08), transparent 44%, rgba(14,165,233,0.10));
 }
 
@@ -2162,6 +2190,19 @@ onBeforeUnmount(() => {
   .jira-task-row,
   .view-all-link {
     transition: none !important;
+  }
+}
+
+/* Use the same compact outer gutter on every side of the workspace page. */
+.jira-dashboard {
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 18px !important;
+}
+
+@media (max-width: 768px) {
+  .jira-dashboard {
+    padding: 12px !important;
   }
 }
 </style>

@@ -647,12 +647,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useGoalStore } from '@/store/useGoalStore'
 import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { usePeopleStore } from '@/store/usePeopleStore'
 import axiosClient from '@/api/axiosClient'
+import { signalRService } from '@/api/signalrService'
 import { useTeamStore } from '@/store/useTeamStore'
 import { useStarredStore } from '@/store/useStarredStore'
 import RichTextEditor from '@/components/common/RichTextEditor.vue'
@@ -783,7 +784,12 @@ const goalHistory = computed(() => {
   }]
 })
 
+const handleRealtimeGoalChange = event => goalStore.applyRealtimeEntityEvent(event)
+
 onMounted(async () => {
+  const workspaceId = await goalStore.ensureWorkspaceId()
+  signalRService.on('EntityChanged', handleRealtimeGoalChange)
+  await signalRService.startWorkspaceConnection(workspaceId)
   if (projectStore.projects.length === 0) await projectStore.fetchProjects();
   if (goalStore.goals.length === 0) await goalStore.fetchGoals();
   if (teamStore.allTeams.length === 0) await teamStore.fetchAllTeams();
@@ -801,6 +807,10 @@ onMounted(async () => {
       }
     }
   }
+})
+
+onUnmounted(() => {
+  signalRService.off('EntityChanged', handleRealtimeGoalChange)
 })
 
 const isShareModalOpen = ref(false)

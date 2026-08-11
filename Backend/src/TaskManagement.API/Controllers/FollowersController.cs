@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using TaskManagement.Application.DTOs.Common;
 using TaskManagement.Application.Interfaces;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 
 namespace TaskManagement.API.Controllers
 {
@@ -14,15 +17,17 @@ namespace TaskManagement.API.Controllers
     public class FollowersController : ControllerBase
     {
         private readonly IFollowerService _followerService;
+        private readonly IHubContext<KanbanHub>? _hub;
 
         public sealed class AddFollowersRequest
         {
             public List<Guid> UserIds { get; set; } = new();
         }
 
-        public FollowersController(IFollowerService followerService)
+        public FollowersController(IFollowerService followerService, IHubContext<KanbanHub>? hub = null)
         {
             _followerService = followerService;
+            _hub = hub;
         }
 
         [HttpGet]
@@ -45,6 +50,11 @@ namespace TaskManagement.API.Controllers
         {
             var actorUserId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
             var result = await _followerService.AddFollowersAsync(actorUserId, entityType, entityId, request.UserIds);
+            if (_hub != null)
+            {
+                foreach (var userId in request.UserIds.Distinct())
+                    await _hub.PublishUserEntityChangedAsync(userId, "Follower", "updated", entityId, new { entityType, entityId });
+            }
             return Ok(ApiResponse<object>.Success(result));
         }
 
@@ -53,6 +63,8 @@ namespace TaskManagement.API.Controllers
         {
             var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
             var result = await _followerService.ToggleFollowAsync(userId, entityType, entityId);
+            if (_hub != null)
+                await _hub.PublishUserEntityChangedAsync(userId, "Follower", "updated", entityId, new { workspaceId, entityType, entityId, result });
             return Ok(ApiResponse<object>.Success(result));
         }
     }

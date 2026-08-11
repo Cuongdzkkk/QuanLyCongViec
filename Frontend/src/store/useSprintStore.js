@@ -134,6 +134,58 @@ export const useSprintStore = defineStore('sprint', {
           if (listAbortController === controller) listAbortController = null
         }
       }
+      return this.sprints
+    },
+
+    refreshActiveSprint() {
+      this.activeSprint = this.sprints.find(item => (item.state || '').toLowerCase() === 'active') || null
+    },
+
+    upsertSprint(sprint) {
+      if (!sprint?.id) return null
+      const index = this.sprints.findIndex(item => item.id === sprint.id)
+      if (index >= 0) this.sprints[index] = { ...this.sprints[index], ...sprint }
+      else this.sprints.push(sprint)
+      this.refreshActiveSprint()
+      return this.sprints.find(item => item.id === sprint.id)
+    },
+
+    removeSprint(sprintId) {
+      this.sprints = this.sprints.filter(item => item.id !== sprintId)
+      this.refreshActiveSprint()
+    },
+
+    applyRealtimeEntityEvent(event) {
+      if (`${event?.entityType || ''}`.toLowerCase() !== 'sprint') return null
+      const action = `${event.action || ''}`.toLowerCase()
+      if (action === 'deleted' || action === 'removed') {
+        this.removeSprint(event.entityId)
+        return null
+      }
+      return this.upsertSprint(event.data)
+    },
+
+    async createSprint(projectId, payload) {
+      const tempId = `temp-${globalThis.crypto?.randomUUID?.() || Date.now()}`
+      this.upsertSprint({
+        ...payload,
+        id: tempId,
+        projectId,
+        state: 'Upcoming',
+        status: false,
+        taskCount: 0,
+        completedTaskCount: 0,
+        progressPercent: 0,
+        isOptimistic: true
+      })
+      try {
+        const response = await axiosClient.post(`/projects/${projectId}/sprints`, payload)
+        this.removeSprint(tempId)
+        return this.upsertSprint(response.data?.data)
+      } catch (error) {
+        this.removeSprint(tempId)
+        throw error
+      }
     },
 
     async fetchCurrentSprint(projectId, options = {}) {

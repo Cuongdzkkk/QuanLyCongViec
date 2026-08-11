@@ -117,7 +117,7 @@
         >
           <!-- Left: User Avatar & Icon -->
           <div class="item-avatar-col">
-            <el-avatar :size="42" :src="act.userAvatar" class="avatar-glow">{{ act.userName.charAt(0) }}</el-avatar>
+            <el-avatar :size="42" :src="act.userAvatar">{{ act.userName.charAt(0) }}</el-avatar>
             <div class="activity-type-badge-elevated" :class="act.type">
               <i :class="getTypeIcon(act.type)"></i>
             </div>
@@ -412,10 +412,7 @@ const submitActivityPost = () => {
   align-items: center;
 }
 
-.avatar-glow {
-  border: 2px solid rgba(56, 189, 248, 0.25);
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.1);
-}
+
 
 .activity-type-badge-elevated {
   position: absolute;

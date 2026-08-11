@@ -26,7 +26,16 @@ app.mount('#app')
 
 // Register PWA Service Worker
 import { registerSW } from 'virtual:pwa-register'
-registerSW({
+const registerPwa = import.meta.env.PROD
+  ? registerSW
+  : () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations()
+          .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+          .catch(() => {})
+      }
+    }
+registerPwa({
   immediate: true,
   onNeedRefresh() {
     console.info('SprintA có phiên bản mới, vui lòng tải lại trang.')

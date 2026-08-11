@@ -62,7 +62,7 @@
             <tr v-for="proj in filteredProjects" :key="proj.id" @click="goToProject(proj.id)">
               <td>
                 <div class="project-title-cell">
-                  <span class="project-emoji">😎</span>
+                  <ProjectAvatar :icon="proj.icon" :background="proj.cover" size="sm" />
                   <span class="project-title">{{ proj.title }}</span>
                 </div>
               </td>
@@ -106,7 +106,7 @@
         <div class="project-card-list" v-else-if="filteredProjects.length > 0">
           <article class="project-row-card" v-for="proj in filteredProjects" :key="proj.id" @click="goToProject(proj.id)">
             <div class="project-row-main">
-              <div class="project-row-icon">{{ proj.icon || '😎' }}</div>
+              <ProjectAvatar :icon="proj.icon" :background="proj.cover" size="md" />
               <div class="project-row-text">
                 <h3>{{ proj.title }}</h3>
                 <p>{{ proj.owner || proj.ownerName || labels.noOwner }}</p>
@@ -151,24 +151,21 @@
     </div>
 
     <!-- Create Project Modal (Jira Style) -->
-    <div class="modal-overlay" v-if="isCreateModalOpen" @click.self="isCreateModalOpen = false">
+    <Teleport to="body">
+    <div class="modal-overlay sa-data-modal-overlay sa-modal--lg" v-if="isCreateModalOpen" @click.self="isCreateModalOpen = false">
       <div class="jira-dialog">
         <div class="jira-dialog-header">
-          <button class="icon-btn-header" @click="isCreateModalOpen = false"><i class="fa-solid fa-arrow-left"></i></button>
-          <div class="dialog-title">
-            <span class="dialog-icon"><i class="fa-solid fa-rocket"></i></span>
-            <h2>{{ labels.project }}</h2>
-          </div>
+          <DataModalHeader icon="bi bi-rocket-takeoff" :title="labels.project" :description="labels.requiredNote" @close="isCreateModalOpen = false" />
         </div>
         
         <div class="jira-dialog-body">
-          <p class="required-note">{{ labels.requiredNote }} <span class="required">*</span></p>
-          
+          <DataModalSection icon="bi bi-card-text" :title="labels.name">
           <div class="form-group mt-16">
             <label>{{ labels.name }} <span class="required">*</span></label>
             <input type="text" v-model="newProject.title" class="jira-input" />
           </div>
-          
+          </DataModalSection>
+          <DataModalSection icon="bi bi-palette2" :title="labels.chooseEmoji">
           <div class="form-group mt-16">
             <label>{{ labels.chooseEmoji }}</label>
             <div class="emoji-picker-control">
@@ -176,11 +173,13 @@
               <button class="refresh-emoji-btn" @click="cycleEmoji"><i class="fa-solid fa-arrows-rotate"></i></button>
             </div>
           </div>
-          
+          </DataModalSection>
+          <DataModalSection icon="bi bi-shield-lock" :title="labels.privacy">
           <div class="form-group mt-16">
             <label>{{ labels.linkScale }}</label>
             <input type="text" :placeholder="labels.searchScale" class="jira-input" />
           </div>
+          </DataModalSection>
           
           <div class="form-group mt-16 privacy-group">
             <div class="privacy-info">
@@ -194,11 +193,12 @@
         </div>
         
         <div class="jira-dialog-footer">
-          <button class="cancel-btn" @click="isCreateModalOpen = false">{{ labels.cancel }}</button>
-          <button class="primary-btn" :disabled="!newProject.title" @click="submitCreateProject">{{ labels.create }}</button>
+          <button class="cancel-btn" @click="isCreateModalOpen = false"><i class="bi bi-x-lg"></i>{{ labels.cancel }}</button>
+          <button class="primary-btn" :disabled="!newProject.title" @click="submitCreateProject"><i class="fa-solid fa-plus"></i>{{ labels.create }}</button>
         </div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 
@@ -214,6 +214,9 @@ import { useSiteStore } from '@/store/useSiteStore'
 import { isValidEntityId } from '@/utils/contextIds'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import DropdownFilter from '@/components/common/DropdownFilter.vue'
+import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 
 const router = useRouter()
 const projectStore = useHomeProjectStore()
@@ -426,6 +429,7 @@ const pageTitle = computed(() => {
 
 onMounted(async () => {
   await siteStore.fetchSites()
+  await projectStore.initializeRealtime()
   await projectStore.fetchProjects()
   await starredStore.fetchStarredItems({ page: 1, pageSize: 100 })
   await followerStore.fetchFollowedItems()

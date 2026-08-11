@@ -222,7 +222,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['save-profile', 'upload-avatar'])
+const emit = defineEmits(['save-profile', 'upload-avatar', 'remove-avatar'])
 
 const form = ref({
   fullName: '',
@@ -297,8 +297,7 @@ const onAvatarFileChange = (event) => {
 }
 
 const removeAvatar = () => {
-  // TODO: Implement actual avatar removal API
-  ElMessage.warning(t('Avatar removal pending backend API implementation.', 'Tính năng gỡ ảnh đại diện đang chờ tích hợp API backend.'))
+  emit('remove-avatar')
 }
 
 const onSubmit = () => {

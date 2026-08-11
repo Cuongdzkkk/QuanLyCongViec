@@ -28,13 +28,26 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
-    <div style="background-color: var(--color-bg); height: 100vh; overflow-y: auto;">
+  <div class="modules-route-shell">
+    <div class="modules-route-content">
       <ModulesTab v-if="isReady && projectId && projectId !== 'default'" :projectId="projectId" />
       <div v-else-if="isReady" class="text-muted text-center pt-10">No project available to load Modules.</div>
     </div>
   </div>
 </template>
 
+<style scoped>
+.modules-route-shell,
+.modules-route-content {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.modules-route-content {
+  overflow: hidden;
+  background: var(--color-bg);
+}
+</style>
 
 

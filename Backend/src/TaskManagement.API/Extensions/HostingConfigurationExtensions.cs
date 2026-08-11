@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using TaskManagement.Infrastructure.Data;
@@ -22,7 +23,7 @@ public static class HostingConfigurationExtensions
         if (environment.IsEnvironment("Testing") && string.Equals(provider, "InMemory", StringComparison.OrdinalIgnoreCase))
             return AddInMemory(services, configuration["Database:InMemoryName"] ?? "SprintA-Testing");
 
-        if (environment.IsDevelopment() && allowDevelopmentInMemory && string.IsNullOrWhiteSpace(connectionString))
+        if (environment.IsDevelopment() && allowDevelopmentInMemory && (string.IsNullOrWhiteSpace(connectionString) || !CanReachSqlServer(connectionString)))
             return AddInMemory(services, configuration["Database:InMemoryName"] ?? "SprintA-Development");
 
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -78,6 +79,28 @@ public static class HostingConfigurationExtensions
                 warnings.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning);
                 warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning);
             }));
+
+    private static bool CanReachSqlServer(string connectionString)
+    {
+        try
+        {
+            var builder = new SqlConnectionStringBuilder(connectionString)
+            {
+                ConnectTimeout = 2
+            };
+            using var connection = new SqlConnection(builder.ConnectionString);
+            connection.Open();
+            return true;
+        }
+        catch (SqlException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
 
     private static void RequireSecret(IConfiguration configuration, string key, IHostEnvironment environment, int minimumLength)
     {

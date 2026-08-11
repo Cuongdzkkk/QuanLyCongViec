@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 using TaskManagement.Application.DTOs.Common;
 using TaskManagement.Application.DTOs.Department;
 using TaskManagement.Application.Interfaces;
@@ -14,11 +17,28 @@ namespace TaskManagement.API.Controllers
     {
         private readonly IDepartmentService _departmentService;
         private readonly TaskManagement.Infrastructure.Data.ApplicationDbContext _context;
+        private readonly IHubContext<KanbanHub> _hub;
 
-        public DepartmentsController(IDepartmentService departmentService, TaskManagement.Infrastructure.Data.ApplicationDbContext context)
+        public DepartmentsController(IDepartmentService departmentService, TaskManagement.Infrastructure.Data.ApplicationDbContext context, IHubContext<KanbanHub> hub)
         {
             _departmentService = departmentService;
             _context = context;
+            _hub = hub;
+        }
+
+        private async Task PublishDepartmentAsync(Guid id, string action = "upsert", object? data = null)
+        {
+            var payload = data ?? await _departmentService.GetByIdAsync(id);
+            await _hub.PublishAuthenticatedEntityChangedAsync("department", action, id, payload);
+        }
+
+        private Task PublishDepartmentDetailAsync(Guid id, string changeType, object? data = null)
+        {
+            return _hub.PublishAuthenticatedEntityChangedAsync(
+                "department-detail",
+                changeType,
+                id,
+                new { departmentId = id, data });
         }
 
         private async Task AddSiteAuditAsync(Guid entityId, string action, string? oldValue = null, string? newValue = null)
@@ -231,6 +251,7 @@ namespace TaskManagement.API.Controllers
                     await _context.SaveChangesAsync();
                 }
 
+                await PublishDepartmentAsync(result.Id, data: result);
                 return CreatedAtAction(nameof(GetById), new { id = result.Id },
                     ApiResponse<DepartmentResponseDto>.Created(result));
             }
@@ -248,6 +269,7 @@ namespace TaskManagement.API.Controllers
                 var before = await _departmentService.GetByIdAsync(id);
                 var result = await _departmentService.UpdateAsync(id, dto);
                 await AddSiteAuditAsync(id, "Update", before?.Name, result.Name);
+                await PublishDepartmentAsync(id, data: result);
                 return Ok(ApiResponse<DepartmentResponseDto>.Success(result, "Cập nhật thành công."));
             }
             catch (ArgumentException ex)
@@ -266,6 +288,7 @@ namespace TaskManagement.API.Controllers
             {
                 await _departmentService.ArchiveAsync(id);
                 await AddSiteAuditAsync(id, "Archive");
+                await PublishDepartmentAsync(id);
                 return Ok(ApiResponse<object>.Success(null!, "Phòng ban đã được vô hiệu hóa."));
             }
             catch (ArgumentException ex)
@@ -284,6 +307,7 @@ namespace TaskManagement.API.Controllers
             {
                 await _departmentService.RestoreAsync(id);
                 await AddSiteAuditAsync(id, "Restore");
+                await PublishDepartmentAsync(id);
                 return Ok(ApiResponse<object>.Success(null!, "Phòng ban đã được khôi phục."));
             }
             catch (ArgumentException ex)
@@ -302,6 +326,7 @@ namespace TaskManagement.API.Controllers
             {
                 await _departmentService.SoftDeleteAsync(id);
                 await AddSiteAuditAsync(id, "Delete");
+                await PublishDepartmentAsync(id, "deleted");
                 return Ok(ApiResponse<object>.Success(null!, "Phòng ban đã được xóa."));
             }
             catch (ArgumentException ex)
@@ -330,6 +355,7 @@ namespace TaskManagement.API.Controllers
                     });
                     await _context.SaveChangesAsync();
                 }
+                await PublishDepartmentDetailAsync(id, "members-changed", new { userIds });
                 return Ok(ApiResponse<object>.Success(null!, "Thêm thành viên thành công."));
             }
             catch (ArgumentException ex)
@@ -345,6 +371,7 @@ namespace TaskManagement.API.Controllers
             {
                 await _departmentService.RemoveMemberAsync(id, userId);
                 await AddSiteAuditAsync(id, "RemoveMember", userId.ToString());
+                await PublishDepartmentDetailAsync(id, "members-changed", new { userId });
                 return Ok(ApiResponse<object>.Success(null!, "Xóa thành viên thành công."));
             }
             catch (ArgumentException ex)
@@ -381,6 +408,8 @@ namespace TaskManagement.API.Controllers
                 }
 
                 await _departmentService.UpdateHierarchyAsync(id, parentId);
+                await PublishDepartmentAsync(id);
+                await PublishDepartmentDetailAsync(id, "hierarchy-changed", new { parentId });
                 return Ok(ApiResponse<object>.Success(null!, "Cập nhật sơ đồ phân cấp thành công."));
             }
             catch (ArgumentException ex)
@@ -415,6 +444,8 @@ namespace TaskManagement.API.Controllers
                 });
             }
             await _context.SaveChangesAsync();
+            await PublishDepartmentAsync(id);
+            await PublishDepartmentDetailAsync(id, "manager-changed", new { userId });
             return Ok(ApiResponse<object>.Success(new { department.Id, department.ManagerId }));
         }
 
@@ -460,6 +491,7 @@ namespace TaskManagement.API.Controllers
                 });
             }
             await _context.SaveChangesAsync();
+            await PublishDepartmentDetailAsync(id, "goals-changed", new { goalId });
             return Ok(ApiResponse<object>.Success(new { goal.Id, goal.DepartmentId }));
         }
 
@@ -497,6 +529,7 @@ namespace TaskManagement.API.Controllers
                 });
             }
             await _context.SaveChangesAsync();
+            await PublishDepartmentDetailAsync(id, "goals-changed", new { goalId });
             return NoContent();
         }
 
@@ -527,6 +560,7 @@ namespace TaskManagement.API.Controllers
             }
 
             await AddSiteAuditAsync(id, "LinkProject", null, projectId.ToString());
+            await PublishDepartmentDetailAsync(id, "projects-changed", new { projectId });
 
             return Ok(ApiResponse<object>.Success(new { departmentId = id, projectId, roleName }));
         }
@@ -544,6 +578,7 @@ namespace TaskManagement.API.Controllers
             }
 
             await AddSiteAuditAsync(id, "UnlinkProject", projectId.ToString());
+            await PublishDepartmentDetailAsync(id, "projects-changed", new { projectId });
 
             return NoContent();
         }

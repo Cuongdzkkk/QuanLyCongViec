@@ -1,5 +1,30 @@
 import { defineStore } from 'pinia'
 import axiosClient from '@/api/axiosClient'
+import { signalRService } from '@/api/signalrService'
+
+let stickyRealtimeRegistered = false
+let activeStickyStore = null
+
+const handleStickyRealtime = event => {
+  if (`${event?.entityType || ''}`.toLowerCase() !== 'stickynote' || !event?.entityId) return
+  const action = `${event.action || ''}`.toLowerCase()
+  const id = `${event.entityId}`
+  if (action === 'deleted') {
+    const existed = activeStickyStore?.notes.some(note => `${note.id}` === id)
+    activeStickyStore.notes = activeStickyStore.notes.filter(note => `${note.id}` !== id)
+    activeStickyStore.floatingNotes = activeStickyStore.floatingNotes.filter(note => `${note.id}` !== id)
+    if (existed) activeStickyStore.total = Math.max(0, activeStickyStore.total - 1)
+    return
+  }
+  if (!event.data) return
+  const index = activeStickyStore?.notes.findIndex(note => `${note.id}` === id) ?? -1
+  if (index >= 0) activeStickyStore.replaceNote(event.data)
+  else if (action === 'created') {
+    activeStickyStore.notes.unshift(event.data)
+    activeStickyStore.total += 1
+    if (event.data.isFloating) activeStickyStore.upsertFloatingNote(event.data)
+  }
+}
 
 const unwrap = response => response?.data?.data ?? response?.data ?? response
 export const MAX_FLOATING_STICKIES = 5
@@ -43,7 +68,14 @@ export const useStickyStore = defineStore('stickies', {
   },
 
   actions: {
+    registerRealtime() {
+      activeStickyStore = this
+      if (stickyRealtimeRegistered) return
+      signalRService.on('EntityChanged', handleStickyRealtime)
+      stickyRealtimeRegistered = true
+    },
     async fetchNotes({ reset = true } = {}) {
+      this.registerRealtime()
       if (reset) {
         this.page = 1
         this.loading = true
@@ -81,6 +113,7 @@ export const useStickyStore = defineStore('stickies', {
     },
 
     async fetchFloatingNotes() {
+      this.registerRealtime()
       this.floatingLoading = true
       this.floatingError = ''
       try {
@@ -99,8 +132,12 @@ export const useStickyStore = defineStore('stickies', {
     async createNote(note) {
       const response = await axiosClient.post('/stickies', toPayload(note))
       const created = unwrap(response)
-      this.notes.unshift(created)
-      this.total += 1
+      const index = this.notes.findIndex(item => item.id === created.id)
+      if (index >= 0) this.notes[index] = created
+      else {
+        this.notes.unshift(created)
+        this.total += 1
+      }
       return created
     },
 

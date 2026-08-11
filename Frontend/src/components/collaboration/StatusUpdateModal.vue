@@ -2,28 +2,44 @@
   <el-dialog
     v-model="visible"
     title="Cập nhật trạng thái của bạn"
-    width="460px"
-    class="status-update-dialog"
+    width="500px"
+    class="status-update-dialog sa-data-dialog sa-modal--form"
     :before-close="handleClose"
-    align-center
+    :show-close="false"
     append-to-body
   >
+    <template #header>
+      <DataModalHeader
+        icon="bi bi-person-badge"
+        title="Cập nhật trạng thái"
+        description="Hiển thị trạng thái của bạn cho đồng nghiệp"
+        @close="handleClose"
+      />
+    </template>
+
     <div class="status-content">
       <!-- Current Status Preview -->
-      <div v-if="currentStatusText || currentStatusEmoji" class="current-status-box">
-        <span class="field-label mb-1.5 opacity-80">Trạng thái hiện tại:</span>
+      <DataModalSection v-if="currentStatusText || currentStatusEmoji" icon="bi bi-person-check" title="Trạng thái hiện tại">
+      <section class="current-status-box">
         <div class="current-status-preview">
-          <span class="preview-emoji">{{ currentStatusEmoji || '💬' }}</span>
-          <span class="preview-text font-medium">{{ currentStatusText || 'Chưa cập nhật chi tiết' }}</span>
-          <span class="delete-btn ml-auto" @click="clearStatus">
-            Xóa trạng thái
+          <span class="status-icon-shell" aria-hidden="true">
+            <i class="bi" :class="getStatusIcon(currentStatusEmoji)"></i>
           </span>
+          <span class="preview-copy">
+            <span class="preview-text">{{ currentStatusText || 'Chưa cập nhật chi tiết' }}</span>
+            <span class="active-status-badge">Đang hoạt động</span>
+          </span>
+          <button type="button" class="delete-btn" @click="clearStatus">
+            <i class="bi bi-trash" aria-hidden="true"></i>
+            <span>Xóa trạng thái</span>
+          </button>
         </div>
-      </div>
+      </section>
+      </DataModalSection>
 
       <!-- Emoji Presets Grid -->
-      <div class="emoji-presets mb-3">
-        <span class="field-label mb-2">Chọn trạng thái nhanh</span>
+      <DataModalSection icon="bi bi-grid" title="Chọn trạng thái nhanh">
+      <section class="emoji-presets">
         <div class="presets-grid">
           <button
             v-for="preset in presets"
@@ -33,31 +49,34 @@
             :class="{ active: selectedEmoji === preset.emoji }"
             @click="selectPreset(preset)"
           >
-            <span class="preset-emoji">{{ preset.emoji }}</span>
+            <i class="bi preset-icon" :class="getStatusIcon(preset.emoji)" aria-hidden="true"></i>
             <span class="preset-text">{{ preset.text }}</span>
           </button>
         </div>
-      </div>
+      </section>
+      </DataModalSection>
 
       <!-- Custom Status Form -->
-      <div class="custom-status-form mb-3" style="margin-top: 12px !important; padding-top: 12px !important; border-top: 1px solid rgba(56, 189, 248, 0.1);">
-        <span class="field-label mb-2">Trạng thái tùy chỉnh</span>
+      <DataModalSection icon="bi bi-pencil-square" title="Trạng thái tùy chỉnh">
+      <section class="custom-status-form">
         <div class="custom-input-wrapper">
-          <div class="emoji-selector-trigger" @click="toggleEmojiPicker">
-            {{ selectedEmoji || '💬' }}
-          </div>
+          <button type="button" class="emoji-selector-trigger" aria-label="Đổi biểu tượng trạng thái" @click="toggleEmojiPicker">
+            <i class="bi" :class="getStatusIcon(selectedEmoji)" aria-hidden="true"></i>
+          </button>
           <input
             v-model="selectedText"
             type="text"
-            placeholder="Bạn đang làm gì thế?"
+            placeholder="Nhập trạng thái bạn muốn chia sẻ..."
             maxlength="100"
           />
         </div>
-      </div>
+      </section>
+      </DataModalSection>
 
       <!-- Expiration Selector -->
-      <div class="expiration-section mb-2" style="margin-top: 12px !important; padding-top: 12px !important; border-top: 1px solid rgba(56, 189, 248, 0.1);">
-        <span class="field-label mb-2">Xóa trạng thái sau</span>
+      <DataModalSection icon="bi bi-clock" title="Thời hạn trạng thái">
+      <section class="expiration-section">
+        <DataModalField label="Xóa trạng thái sau">
         <el-select v-model="expiration" class="w-full custom-select">
           <el-option label="Không xóa" value="never" />
           <el-option label="30 phút" value="30m" />
@@ -65,13 +84,21 @@
           <el-option label="Hôm nay" value="today" />
           <el-option label="Tuần này" value="week" />
         </el-select>
-      </div>
+        </DataModalField>
+      </section>
+      </DataModalSection>
     </div>
 
     <template #footer>
-      <div class="dialog-footer flex justify-end gap-2">
-        <el-button class="btn-cancel" @click="handleClose">Hủy</el-button>
-        <el-button class="btn-save" type="primary" @click="saveStatus">Lưu trạng thái</el-button>
+      <div class="dialog-footer">
+        <el-button class="btn-cancel" @click="handleClose">
+          <i class="bi bi-x-lg" aria-hidden="true"></i>
+          Hủy
+        </el-button>
+        <button type="button" class="status-save-button" @click="saveStatus">
+          <i class="bi bi-check2" aria-hidden="true"></i>
+          Lưu trạng thái
+        </button>
       </div>
     </template>
   </el-dialog>
@@ -80,6 +107,9 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 
 const props = defineProps({
   modelValue: {
@@ -114,6 +144,21 @@ const presets = [
   { emoji: '🚀', text: 'Đang triển khai' },
   { emoji: '💬', text: 'Đang họp' }
 ]
+
+const statusIconMap = {
+  '💻': 'bi-laptop',
+  '☕': 'bi-cup-hot',
+  '🤒': 'bi-heart-pulse',
+  '🏠': 'bi-house-door',
+  '🚀': 'bi-rocket-takeoff',
+  '💬': 'bi-camera-video',
+  '🎉': 'bi-stars',
+  '✈️': 'bi-airplane',
+  '🔍': 'bi-search',
+  '💡': 'bi-lightbulb'
+}
+
+const getStatusIcon = (emoji) => statusIconMap[emoji] || 'bi-pencil-square'
 
 watch(() => props.modelValue, (newVal) => {
   visible.value = newVal
@@ -404,6 +449,482 @@ const handleClose = () => {
   background: linear-gradient(135deg, #38bdf8, #0ea5e9) !important;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4) !important;
+}
+
+/* Enterprise status dialog */
+:deep(.status-update-dialog) {
+  --status-primary: var(--color-accent, #0ea5e9);
+  width: min(500px, calc(100vw - 24px)) !important;
+  border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent) !important;
+  border-radius: 14px !important;
+  background: var(--color-surface) !important;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.16) !important;
+}
+
+:deep(.status-update-dialog .el-dialog__header) {
+  padding: 20px 22px 18px !important;
+  border-bottom: 1px solid var(--color-border);
+  margin: 0 !important;
+}
+
+.status-dialog-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.heading-icon,
+.status-icon-shell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border: 1px solid color-mix(in srgb, var(--status-primary) 22%, var(--color-border));
+  border-radius: 11px;
+  color: var(--status-primary);
+  background: color-mix(in srgb, var(--status-primary) 8%, var(--color-surface));
+}
+
+.heading-copy {
+  min-width: 0;
+}
+
+.heading-copy h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.heading-copy p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.dialog-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: #64748b;
+  background: transparent;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+
+.dialog-close-btn:hover {
+  color: var(--status-primary);
+  border-color: var(--color-border);
+  background: var(--color-surface-hover);
+}
+
+:deep(.status-update-dialog .el-dialog__body) {
+  max-height: min(68vh, 650px);
+  padding: 22px !important;
+}
+
+.status-content {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.status-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 !important;
+}
+
+.divided-section {
+  padding-top: 20px !important;
+  border-top: 1px solid var(--color-border) !important;
+}
+
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 !important;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.field-label .bi,
+.preset-icon,
+.emoji-selector-trigger .bi,
+.dialog-close-btn .bi,
+.dialog-footer .bi,
+.heading-icon .bi,
+.status-icon-shell .bi,
+.delete-btn .bi {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.current-status-box {
+  margin: 0 !important;
+  padding: 16px !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  background: #f8fafc !important;
+  box-shadow: none;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.current-status-box:hover {
+  border-color: color-mix(in srgb, var(--status-primary) 30%, #e2e8f0) !important;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+}
+
+.current-status-box .field-label {
+  margin-bottom: 12px !important;
+}
+
+.current-status-preview {
+  gap: 12px;
+}
+
+.status-icon-shell {
+  width: 38px;
+  height: 38px;
+  color: #64748b;
+  border-color: #e2e8f0;
+  background: #ffffff;
+}
+
+.preview-copy {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.preview-text {
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.active-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  color: #047857;
+  background: #ecfdf5;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  margin-left: auto !important;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  color: #64748b;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+.delete-btn:hover {
+  color: #dc2626;
+  background: #fef2f2;
+  text-decoration: none;
+  opacity: 1;
+}
+
+.presets-grid {
+  gap: 12px;
+}
+
+.preset-btn {
+  height: 44px;
+  padding: 0 16px;
+  gap: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  color: #334155;
+  background: var(--color-surface);
+  font-size: 14px;
+  font-weight: 500;
+  transition: transform 150ms ease, border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.preset-icon {
+  color: #64748b;
+  transition: color 150ms ease;
+}
+
+.preset-btn:hover {
+  transform: translateY(-1px);
+  border-color: var(--status-primary);
+  color: #0f172a;
+  background: #f8fafc;
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.05);
+}
+
+.preset-btn:hover .preset-icon,
+.preset-btn.active .preset-icon {
+  color: var(--status-primary);
+}
+
+.preset-btn.active {
+  transform: scale(1.01);
+  border: 1px solid var(--status-primary);
+  color: #0f172a;
+  background: #eff6ff;
+  font-weight: 600;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--status-primary) 16%, transparent);
+}
+
+.custom-input-wrapper {
+  height: 44px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: var(--color-input-bg, var(--color-surface));
+}
+
+.custom-input-wrapper:focus-within {
+  border-color: var(--status-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-primary) 13%, transparent);
+}
+
+.emoji-selector-trigger {
+  width: 44px;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid #e2e8f0;
+  color: #64748b;
+  background: #f8fafc;
+}
+
+.emoji-selector-trigger:hover {
+  color: var(--status-primary);
+  background: #f1f5f9;
+}
+
+.custom-input-wrapper input {
+  padding: 0 14px;
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.custom-input-wrapper input::placeholder {
+  color: #94a3b8;
+}
+
+.custom-select {
+  margin-top: 0 !important;
+}
+
+:deep(.custom-select .el-select__wrapper) {
+  height: 44px !important;
+  min-height: 44px !important;
+  padding: 0 14px !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  background: var(--color-input-bg, var(--color-surface)) !important;
+}
+
+:deep(.custom-select .el-select__wrapper:hover),
+:deep(.custom-select .el-select__wrapper.is-focus) {
+  border-color: var(--status-primary) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-primary) 13%, transparent) !important;
+}
+
+:deep(.status-update-dialog .el-dialog__footer) {
+  padding: 16px 22px !important;
+  border-top: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface-hover) 48%, var(--color-surface));
+}
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.status-save-button {
+  min-width: 148px;
+  height: 40px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #0284c7;
+  border-radius: 10px;
+  outline: none;
+  background: #0ea5e9;
+  color: #ffffff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 5px 14px rgb(14 165 233 / 0.25);
+  transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.status-save-button:hover {
+  transform: translateY(-1px);
+  background: #0284c7;
+  box-shadow: 0 8px 18px rgb(14 165 233 / 0.32);
+}
+
+.status-save-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgb(14 165 233 / 0.22), 0 5px 14px rgb(14 165 233 / 0.25);
+}
+
+.status-save-button .bi {
+  font-size: 18px;
+  line-height: 1;
+}
+
+:deep(.btn-cancel),
+:deep(.btn-save) {
+  justify-content: center;
+  gap: 8px;
+  height: 40px !important;
+  min-width: 104px;
+  padding: 0 16px !important;
+  border-radius: 10px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+  transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease, border-color 150ms ease !important;
+}
+
+:deep(.btn-cancel) {
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+  background: var(--color-surface) !important;
+}
+
+:deep(.btn-cancel:hover) {
+  transform: translateY(-1px);
+  border-color: var(--status-primary) !important;
+  color: var(--status-primary) !important;
+  background: #f8fafc !important;
+}
+
+:deep(.btn-save) {
+  border: 1px solid color-mix(in srgb, var(--status-primary) 82%, #0369a1) !important;
+  background: linear-gradient(135deg, var(--status-primary), color-mix(in srgb, var(--status-primary) 78%, #0369a1)) !important;
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--status-primary) 24%, transparent) !important;
+}
+
+:deep(.btn-save:hover) {
+  transform: translateY(-1px);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--status-primary) 88%, #ffffff), var(--status-primary)) !important;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--status-primary) 30%, transparent) !important;
+}
+
+[data-theme='dark'] .current-status-box {
+  border-color: var(--color-border) !important;
+  background: color-mix(in srgb, var(--color-surface-hover) 54%, var(--color-surface)) !important;
+}
+
+[data-theme='dark'] .status-icon-shell,
+[data-theme='dark'] .preset-btn,
+[data-theme='dark'] .emoji-selector-trigger {
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-hover);
+}
+
+[data-theme='dark'] .preview-text,
+[data-theme='dark'] .preset-btn,
+[data-theme='dark'] .preset-btn:hover,
+[data-theme='dark'] .preset-btn.active {
+  color: var(--color-text-primary);
+}
+
+[data-theme='dark'] .preset-btn:hover,
+[data-theme='dark'] .preset-btn.active {
+  background: color-mix(in srgb, var(--status-primary) 11%, var(--color-surface));
+}
+
+/* The shared popup contract is the source of truth. These final selectors
+ * neutralize legacy scoped declarations kept above for the status content. */
+:deep(.status-update-dialog .el-dialog__header) {
+  min-height: 92px !important;
+  padding: 16px 24px !important;
+}
+
+:deep(.status-update-dialog .el-dialog__body) {
+  padding: 0 24px 24px !important;
+}
+
+.status-content {
+  gap: 0 !important;
+}
+
+@media (max-width: 540px) {
+  :deep(.status-update-dialog .el-dialog__header),
+  :deep(.status-update-dialog .el-dialog__body),
+  :deep(.status-update-dialog .el-dialog__footer) {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .heading-copy h2 {
+    font-size: 19px;
+  }
+
+  .presets-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .current-status-preview {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .delete-btn {
+    margin-left: 50px !important;
+  }
+
+  .dialog-footer {
+    width: 100%;
+  }
+
+  :deep(.btn-cancel),
+  :deep(.btn-save),
+  .status-save-button {
+    flex: 1;
+    min-width: 0;
+  }
 }
 </style>
 

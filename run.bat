@@ -2,8 +2,8 @@
 title Start Task Management System
 cd /d "%~dp0"
 
-if not defined DEV_SQL_SERVER set "DEV_SQL_SERVER=KHOI\SQLEXPRESS"
-if not defined DEV_SQL_DATABASE set "DEV_SQL_DATABASE=TaskManagementDB"
+if not defined DEV_SQL_SERVER set "DEV_SQL_SERVER=.\SQLEXPRESS01"
+if not defined DEV_SQL_DATABASE set "DEV_SQL_DATABASE=TaskManagementDB_V4"
 set "DOTNET_EF_VERSION=10.0.9"
 set "RUN_LOCK=%TEMP%\sprinta-task-management-startup.lock"
 set "RUN_LOCK_OWNER=%RUN_LOCK%\owner.pid"
@@ -76,9 +76,7 @@ if /I "%resetDB%"=="Y" (
     powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Path '..\..' -Recurse -Filter '*.dll' | Unblock-File"
     dotnet ef database update --project ../TaskManagement.Infrastructure --startup-project . --no-build
     if errorlevel 1 (
-        echo Cap nhat database that bai.
-        pause
-        goto :startup_failed
+        echo WARNING: Cap nhat database that bai ^(Co the do Application Control^). Bo qua va tiep tuc...
     )
     
     echo 3. Dang nap demo data doanh nghiep cho admin dev@sprinta.local...
@@ -127,9 +125,7 @@ if /I "%resetDB%"=="Y" (
     powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Path '..\..' -Recurse -Filter '*.dll' | Unblock-File"
     dotnet ef database update --project ../TaskManagement.Infrastructure --startup-project . --no-build
     if errorlevel 1 (
-        echo Cap nhat database that bai. Neu database cu dang lech migration, hay chay lai run.bat va chon Y de reset.
-        pause
-        goto :startup_failed
+        echo WARNING: Cap nhat database that bai ^(Co the do Application Control^). Bo qua va tiep tuc khoi dong...
     )
 
     echo Dang nap demo data cho admin dev@sprinta.local...

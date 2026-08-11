@@ -381,8 +381,6 @@ onUnmounted(() => {
   max-width: 1180px;
   padding: 34px clamp(20px, 4vw, 48px) 56px;
   background:
-    radial-gradient(circle at 14% 0%, rgba(56, 189, 248, 0.12), transparent 32%),
-    radial-gradient(circle at 92% 8%, rgba(34, 197, 94, 0.08), transparent 26%),
     linear-gradient(180deg, #f8fbff, #eef5fb 54%, #f8fafc);
 }
 
@@ -554,8 +552,6 @@ onUnmounted(() => {
 
 [data-theme='dark'] .admin-page {
   background:
-    radial-gradient(circle at 14% 0%, rgba(56, 189, 248, 0.13), transparent 32%),
-    radial-gradient(circle at 92% 8%, rgba(34, 197, 94, 0.07), transparent 26%),
     linear-gradient(180deg, #07111f, #0f172a 54%, #101827);
 }
 

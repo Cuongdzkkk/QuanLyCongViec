@@ -5,7 +5,7 @@
       <header class="spaces-header" style="margin-bottom: 16px;">
         <div class="sh-left">
           <i class="fa-solid fa-box-archive"></i>
-          <h1>{{ t('Archived spaces') }}</h1>
+          <h1>Archived spaces</h1>
         </div>
       </header>
 
@@ -15,14 +15,14 @@
           <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; color: var(--color-text-muted); font-size: 13px;"></i>
           <input
             type="text"
-            :placeholder="t('Search archived spaces')"
+            placeholder="Search archived spaces"
             v-model="searchQuery"
             style="background: transparent; border: 1px solid var(--color-border); color: var(--color-text-primary); padding: 8px 12px 8px 32px; font-size: 13.5px; outline: none; width: 220px; border-radius: 4px;"
           />
         </div>
         <div class="filter-dropdown">
           <select style="background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-primary); padding: 8px 16px 8px 12px; font-size: 13.5px; outline: none; border-radius: 4px; cursor: pointer; min-width: 140px;">
-            <option value="">{{ t('Filter by app') }}</option>
+            <option value="">Filter by app</option>
             <option value="SprintA">SprintA</option>
           </select>
         </div>
@@ -36,11 +36,11 @@
           <table class="jira-table spaces-table" style="width: 100%; border-collapse: collapse; text-align: left;">
             <thead>
               <tr style="border-bottom: 2px solid var(--color-border); color: var(--color-text-muted); font-size: 12px; background: var(--color-bg);">
-                <th style="padding: 12px 16px; font-weight: 600;">{{ t('NAME') }}</th>
-                <th style="padding: 12px 16px; font-weight: 600;">{{ t('KEY') }}</th>
-                <th style="padding: 12px 16px; font-weight: 600;">{{ t('TYPE') }}</th>
-                <th style="padding: 12px 16px; font-weight: 600;">{{ t('LEAD') }}</th>
-                <th style="padding: 12px 16px; font-weight: 600; width: 150px; text-align: right;">{{ t('ARCHIVED ON') }}</th>
+                <th style="padding: 12px 16px; font-weight: 600;">Name</th>
+                <th style="padding: 12px 16px; font-weight: 600;">Key</th>
+                <th style="padding: 12px 16px; font-weight: 600;">Type</th>
+                <th style="padding: 12px 16px; font-weight: 600;">Lead</th>
+                <th style="padding: 12px 16px; font-weight: 600; width: 150px; text-align: right;">Archived on</th>
               </tr>
             </thead>
             <tbody>
@@ -50,17 +50,15 @@
                   <div class="empty-icon-wrap" style="width: 80px; height: 80px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
                     <i class="fa-solid fa-box-archive empty-icon" style="margin-bottom: 0; font-size: 36px; color: var(--color-text-muted);"></i>
                   </div>
-                  <h3 class="empty-title" style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: var(--color-text-primary);">{{ t('We couldn\'t find any spaces that match your search.') }}</h3>
-                  <p style="margin: 0; font-size: 14px; color: var(--color-text-muted);">{{ t('Archived projects are kept here for historical reference and can be restored anytime.') }}</p>
+                  <h3 class="empty-title" style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: var(--color-text-primary);">We couldn't find any spaces that match your search.</h3>
+                  <p style="margin: 0; font-size: 14px; color: var(--color-text-muted);">Archived projects are kept here for historical reference and can be restored anytime.</p>
                 </td>
               </tr>
               <!-- Data rows -->
               <tr v-else v-for="space in filteredSpaces" :key="space.id" style="border-bottom: 1px solid var(--color-border); transition: background 0.2s;" class="table-row-hover">
                 <td style="padding: 12px 16px;">
                   <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; background: #27272a;">
-                      {{ space.icon || '📦' }}
-                    </div>
+                    <ProjectAvatar :icon="space.icon" :background="space.cover" size="xs" />
                     <span style="font-weight: 500; color: var(--color-text-primary);">{{ space.name }}</span>
                   </div>
                 </td>
@@ -82,7 +80,7 @@
                       {{ new Date(space.originalRow?.updatedAt || Date.now()).toLocaleDateString() }}
                     </span>
                     <button class="plane-btn-secondary outline-btn action-btn-text" type="button" @click="handleRestore(space)">
-                      <i class="fa-solid fa-rotate-left" style="margin-right: 4px;"></i> {{ t('Restore') }}
+                      <i class="fa-solid fa-rotate-left" style="margin-right: 4px;"></i> Restore
                     </button>
                   </div>
                 </td>
@@ -102,9 +100,7 @@ import axiosClient from '@/api/axiosClient'
 import AdminLayout from '@/components/layout/AdminLayout.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { openNamedAppWindow, PROJECT_ADMIN_WINDOW_NAME } from '@/utils/windowTabs'
-import { useI18n } from '@/composables/useI18n'
-
-const { t } = useI18n()
+import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 
 const router = useRouter()
 const handleSwitchSettings = (path) => {
@@ -125,7 +121,8 @@ const fetchArchivedProjects = async () => {
       name: p.name,
       key: p.key || p.identifier,
       leadName: p.leadName || 'Admin',
-      icon: p.icon,
+      icon: p.icon || p.Icon,
+      cover: p.cover || p.Cover,
       networkType: p.networkType || 'Public',
       originalRow: p
     }))

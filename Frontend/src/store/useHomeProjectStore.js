@@ -5,6 +5,9 @@ import { ElMessage } from 'element-plus'
 import { ensureWorkspaceIdFromState, resolveWorkspaceIdFromState } from '@/utils/contextIds'
 import { useStarredStore } from '@/store/useStarredStore'
 import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
+import { signalRService } from '@/api/signalrService'
+
+let projectRealtimeHandler = null
 
 export const useHomeProjectStore = defineStore('homeProject', {
   state: () => ({
@@ -24,6 +27,53 @@ export const useHomeProjectStore = defineStore('homeProject', {
     isSuccess: false
   }),
   actions: {
+    async initializeRealtime(projectId = null) {
+      if (!projectRealtimeHandler) {
+        projectRealtimeHandler = event => this.applyRealtimeEntityEvent(event)
+        signalRService.on('EntityChanged', projectRealtimeHandler)
+      }
+      const workspaceId = await this.ensureWorkspaceId()
+      if (workspaceId) await signalRService.startWorkspaceConnection(workspaceId)
+      if (projectId) await signalRService.startConnection(projectId)
+    },
+    upsertProject(project) {
+      if (!project?.id) return
+      const mapped = this.mapProjectFromApi(project)
+      const index = this.projects.findIndex(item => `${item.id}` === `${mapped.id}`)
+      if (index >= 0) this.projects[index] = { ...this.projects[index], ...mapped }
+      else this.projects.unshift(mapped)
+      if (`${this.currentProject?.id}` === `${mapped.id}`) this.currentProject = { ...this.currentProject, ...mapped }
+      if (`${this.project?.id}` === `${mapped.id}`) this.project = { ...this.project, ...mapped }
+      this.isEmpty = this.projects.length === 0
+    },
+    applyRealtimeEntityEvent(event) {
+      if (event?.entityType === 'project-tab') {
+        const projectId = this.currentProject?.id || this.project?.id
+        if (!projectId || `${event.projectId}` !== `${projectId}`) return
+        const tab = event.data?.tab
+        const item = event.data?.item
+        if (!['lessons', 'risks', 'decisions', 'updates'].includes(tab) || !item?.id) return
+        const target = tab === 'updates' ? this.updates : (this.project?.[tab] || this[tab])
+        if (!Array.isArray(target) || target.some(existing => `${existing.id}` === `${item.id}`)) return
+        target.unshift(item)
+        if (tab !== 'updates') {
+          this[tab] = target
+          if (this.project) this.project[tab] = target
+          if (this.currentProject) this.currentProject[tab] = target
+        }
+        return
+      }
+      if (event?.entityType !== 'project') return
+      const workspaceId = this.getWorkspaceId()
+      if (event.workspaceId && workspaceId && `${event.workspaceId}` !== `${workspaceId}`) return
+      if (event.action === 'deleted') {
+        this.projects = this.projects.filter(project => `${project.id}` !== `${event.entityId}`)
+        if (`${this.currentProject?.id}` === `${event.entityId}`) this.currentProject = null
+        if (`${this.project?.id}` === `${event.entityId}`) this.project = null
+      } else if (event.data) {
+        this.upsertProject(event.data)
+      }
+    },
     getWorkspaceId() {
       const siteStore = useSiteStore()
       return resolveWorkspaceIdFromState({ siteStore, project: this.currentProject })
@@ -92,6 +142,8 @@ export const useHomeProjectStore = defineStore('homeProject', {
         workspaceId: data.workspaceId || data.WorkspaceId || null,
         title: data.title || data.name || data.Name || '',
         name: data.name || data.title || data.Name || '',
+        icon: data.icon || data.Icon || null,
+        cover: data.cover || data.Cover || null,
         owner: ownerName,
         ownerName,
         ownerId: data.leadUserId || data.creatorId || data.ownerId,
@@ -305,9 +357,7 @@ export const useHomeProjectStore = defineStore('homeProject', {
       try {
         const response = await axiosClient.post('/projects', projectData)
         const newProject = this.mapProjectFromApi(response.data?.data || response.data)
-        if (this.projects) {
-          this.projects.unshift(newProject)
-        }
+        this.upsertProject(newProject)
         return newProject
       } catch (err) {
         console.error('Failed to create project', err)

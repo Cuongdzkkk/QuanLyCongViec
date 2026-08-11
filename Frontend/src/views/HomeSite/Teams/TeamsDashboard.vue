@@ -272,6 +272,7 @@ const filteredTeams = computed(() => {
 })
 
 onMounted(() => {
+  teamStore.initializeRealtime()
   teamStore.fetchAllTeams()
   peopleStore.fetchPeople()
   window.addEventListener('global-create-click', openCreateTeamModal)

@@ -197,6 +197,7 @@ import { useFollowerStore } from '@/store/useFollowerStore'
 import { usePeopleStore } from '@/store/usePeopleStore'
 import { useI18nStore } from '@/store/useI18nStore'
 import axiosClient from '@/api/axiosClient'
+import { signalRService } from '@/api/signalrService'
 
 import AppPageLayout from '@/components/common/Foundation/AppPageLayout.vue'
 import AppPageHeader from '@/components/common/Foundation/AppPageHeader.vue'
@@ -369,8 +370,13 @@ const newGoal = ref({
   status: 'Đang chờ cập nhật'
 })
 
+const handleRealtimeGoalChange = event => goalStore.applyRealtimeEntityEvent(event)
+
 onMounted(async () => {
   await goalStore.fetchGoals()
+  const workspaceId = await goalStore.ensureWorkspaceId()
+  signalRService.on('EntityChanged', handleRealtimeGoalChange)
+  await signalRService.startWorkspaceConnection(workspaceId)
   await starredStore.fetchStarredItems({ page: 1, pageSize: 100 })
   await followerStore.fetchFollowedItems()
   await peopleStore.fetchPeople()
@@ -378,6 +384,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  signalRService.off('EntityChanged', handleRealtimeGoalChange)
   window.removeEventListener('global-create-click', openCreateModal)
 })
 

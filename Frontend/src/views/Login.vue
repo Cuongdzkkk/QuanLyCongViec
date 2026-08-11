@@ -524,8 +524,6 @@ const handleGitHubLogin = () => {
   flex-direction: column;
   color: var(--auth-text);
   background:
-    radial-gradient(circle at 14% 8%, rgba(34, 211, 238, 0.18), transparent 30%),
-    radial-gradient(circle at 90% 12%, rgba(99, 102, 241, 0.16), transparent 28%),
     linear-gradient(180deg, #ffffff 0%, var(--auth-bg) 100%);
 }
 
@@ -538,8 +536,6 @@ const handleGitHubLogin = () => {
   --auth-border: rgba(148, 181, 222, 0.2);
   --auth-shadow: 0 30px 80px rgba(0, 0, 0, 0.38);
   background:
-    radial-gradient(circle at 14% 8%, rgba(34, 211, 238, 0.17), transparent 30%),
-    radial-gradient(circle at 88% 10%, rgba(139, 92, 246, 0.18), transparent 28%),
     linear-gradient(180deg, #07101e 0%, var(--auth-bg) 100%);
 }
 
@@ -658,7 +654,6 @@ const handleGitHubLogin = () => {
   right: -90px;
   top: -80px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(45, 212, 191, 0.28), transparent 68%);
 }
 
 .eyebrow {

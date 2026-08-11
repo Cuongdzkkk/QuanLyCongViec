@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Application.DTOs.Auth;
 using TaskManagement.Application.Interfaces;
@@ -12,6 +13,8 @@ using System.Linq;
 using System.Text.Json;
 using TaskManagement.Domain.Entities;
 using TaskManagement.API.Security;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 
 namespace TaskManagement.API.Controllers
 {
@@ -30,12 +33,18 @@ namespace TaskManagement.API.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IOtpService _otpService;
         private readonly IEmailService _emailService;
+        private readonly IHubContext<KanbanHub> _hub;
 
-        public UsersController(ApplicationDbContext context, IOtpService otpService, IEmailService emailService)
+        public UsersController(
+            ApplicationDbContext context,
+            IOtpService otpService,
+            IEmailService emailService,
+            IHubContext<KanbanHub> hub)
         {
             _context = context;
             _otpService = otpService;
             _emailService = emailService;
+            _hub = hub;
         }
 
         [HttpGet("me")]
@@ -477,8 +486,27 @@ namespace TaskManagement.API.Controllers
             }
 
             await _context.SaveChangesAsync();
+            await PublishUserChangedAsync(user);
 
             return Ok(new { statusCode = 200, message = "Cập nhật thông tin hồ sơ thành công." });
+        }
+
+        private Task PublishUserChangedAsync(User user)
+        {
+            return _hub.PublishAuthenticatedEntityChangedAsync(
+                "User",
+                "updated",
+                user.Id,
+                new
+                {
+                    user.Id,
+                    user.FullName,
+                    user.JobTitle,
+                    user.Bio,
+                    user.Location,
+                    user.Timezone,
+                    user.AvatarUrl
+                });
         }
 
         public class ChangePasswordRequest
@@ -771,6 +799,7 @@ namespace TaskManagement.API.Controllers
             user.AvatarUrl = $"/uploads/avatars/{uniqueName}";
             user.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+            await PublishUserChangedAsync(user);
 
             return Ok(new { statusCode = 200, message = "Cập nhật ảnh đại diện thành công.", data = new { avatarUrl = user.AvatarUrl } });
         }
@@ -778,6 +807,56 @@ namespace TaskManagement.API.Controllers
         /// <summary>
         /// PUT /api/users/cover — Upload cover/banner image
         /// </summary>
+        [HttpDelete("avatar")]
+        public async Task<IActionResult> RemoveAvatar([FromServices] IWebHostEnvironment env)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
+                return Unauthorized();
+
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound();
+
+            var previousAvatarUrl = user.AvatarUrl;
+            user.AvatarUrl = null;
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            await PublishUserChangedAsync(user);
+
+            if (!string.IsNullOrWhiteSpace(previousAvatarUrl)
+                && previousAvatarUrl.StartsWith("/uploads/avatars/", StringComparison.OrdinalIgnoreCase))
+            {
+                var fileName = Path.GetFileName(previousAvatarUrl);
+                if (!string.IsNullOrWhiteSpace(fileName))
+                {
+                    var uploadsDir = Path.Combine(env.ContentRootPath, "uploads", "avatars");
+                    var filePath = UploadSecurity.ResolveUnderRoot(uploadsDir, fileName);
+                    if (System.IO.File.Exists(filePath))
+                    {
+                        try
+                        {
+                            System.IO.File.Delete(filePath);
+                        }
+                        catch (IOException)
+                        {
+                            // The database is authoritative; orphan cleanup can be retried later.
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            // Do not fail the profile update when storage cleanup is unavailable.
+                        }
+                    }
+                }
+            }
+
+            return Ok(new
+            {
+                statusCode = 200,
+                message = "Đã gỡ ảnh đại diện thành công.",
+                data = new { avatarUrl = (string?)null }
+            });
+        }
+
         [HttpPut("cover")]
         public async Task<IActionResult> UploadCover([FromForm] IFormFile file, [FromServices] IWebHostEnvironment env)
         {

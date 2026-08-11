@@ -42,8 +42,13 @@
       </section>
 
       <section class="projects-panel">
-        <div class="section-head">
-          <h2>{{ t('common.projects') }}</h2>
+        <div class="section-head items-center">
+          <h2>
+            <div class="icon-glass">
+              <i class="bi bi-briefcase"></i>
+            </div>
+            {{ t('common.projects') }}
+          </h2>
           <span>{{ t('common.shown', { count: filteredProjects.length }) }}</span>
         </div>
 
@@ -70,8 +75,8 @@
               <i :class="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
             </button>
 
-            <div class="project-cover" :style="projectCoverStyle(project)" :aria-label="project.coverAltText || project.name">
-              <span class="project-icon">{{ project.icon || project.name?.charAt(0)?.toUpperCase() || 'P' }}</span>
+            <div class="project-cover" :style="{ background: projectBackground(project) }">
+              <ProjectAvatar :icon="project.icon" :background="project.cover" size="lg" />
             </div>
 
             <div class="project-body">
@@ -95,8 +100,13 @@
       </section>
 
       <section v-if="favoriteProjects.length" class="projects-panel">
-        <div class="section-head">
-          <h2>{{ t('dashboard.favorites') }}</h2>
+        <div class="section-head items-center">
+          <h2>
+            <div class="icon-glass purple">
+              <i class="bi bi-star-fill"></i>
+            </div>
+            {{ t('dashboard.favorites') }}
+          </h2>
           <span>{{ t('dashboard.starredCount', { count: favoriteProjects.length }) }}</span>
         </div>
 
@@ -113,8 +123,8 @@
               <i :class="starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
             </button>
 
-            <div class="project-cover" :style="projectCoverStyle(project)" :aria-label="project.coverAltText || project.name">
-              <span class="project-icon">{{ project.icon || project.name?.charAt(0)?.toUpperCase() || 'P' }}</span>
+            <div class="project-cover" :style="{ background: projectBackground(project) }">
+              <ProjectAvatar :icon="project.icon" :background="project.cover" size="lg" />
             </div>
 
             <div class="project-body">
@@ -136,7 +146,16 @@
         </div>
       </section>
 
-      <el-dialog v-model="taskModalVisible" :title="t('dashboard.dialogTitle')" width="560px" append-to-body>
+      <el-dialog v-model="taskModalVisible" width="560px" append-to-body class="sa-data-dialog sa-modal--form" :show-close="false">
+        <template #header>
+          <DataModalHeader
+            icon="bi bi-list-check"
+            :title="t('dashboard.dialogTitle')"
+            :description="t('dashboard.descriptionPlaceholder')"
+            :close-label="t('common.close')"
+            @close="taskModalVisible = false"
+          />
+        </template>
         <div class="task-form">
           <label>
             {{ t('common.project') }}
@@ -169,7 +188,7 @@
 
         <template #footer>
           <div class="dialog-actions">
-            <button class="secondary-btn" type="button" @click="taskModalVisible = false">{{ t('common.cancel') }}</button>
+            <button class="cancel-btn" type="button" @click="taskModalVisible = false"><i class="bi bi-x-lg"></i>{{ t('common.cancel') }}</button>
             <button class="primary-btn" type="button" :disabled="submittingTask" @click="submitTask">
               {{ submittingTask ? t('common.creating') : t('dashboard.newWorkItem') }}
             </button>
@@ -192,6 +211,9 @@ import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { useI18n } from '@/composables/useI18n'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import DailyFocusWidget from '@/components/DailyFocusWidget.vue'
+import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import { getProjectBackgroundStyle } from '@/config/projectAppearance'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -244,15 +266,7 @@ const fallbackCover = (project) => {
   return gradients[index]
 }
 
-const projectCoverStyle = (project) => {
-  if (project?.cover) {
-    return {
-      backgroundImage: `linear-gradient(180deg, rgba(15, 23, 42, 0.05), rgba(15, 23, 42, 0.45)), url("${project.cover}")`
-    }
-  }
-
-  return { background: fallbackCover(project) }
-}
+const projectBackground = (project) => getProjectBackgroundStyle(project?.cover)
 
 const openProject = (projectId) => {
   router.push(`/space/${projectId}`)
@@ -335,7 +349,6 @@ watch(language, updateTime)
 
 .dashboard-header,
 .hero-panel,
-.dashboard-focus-widget,
 .search-panel,
 .projects-panel {
   max-width: 1180px;
@@ -362,10 +375,54 @@ watch(language, updateTime)
   font-weight: 700;
 }
 
-.dashboard-title,
-.hero-copy h2,
-.section-head h2 {
+.nexus-feature-header h1 {
+  font-size: 28px;
+  font-weight: 600;
   margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.hero-copy h2 {
+  font-size: 28px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+
+.section-head h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  letter-spacing: -0.01em;
+}
+
+.icon-glass {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  font-size: 20px;
+  background: linear-gradient(135deg, rgba(12, 102, 228, 0.12), rgba(12, 102, 228, 0.04));
+  color: var(--color-accent, #0c66e4);
+  border: 1px solid rgba(12, 102, 228, 0.15);
+  box-shadow: 0 4px 12px rgba(12, 102, 228, 0.08);
+  transition: all 0.3s ease;
+}
+.icon-glass:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(12, 102, 228, 0.12);
+}
+
+.icon-glass.purple {
+  background: linear-gradient(135deg, rgba(143, 73, 222, 0.12), rgba(143, 73, 222, 0.04));
+  color: #8f49de;
+  border-color: rgba(143, 73, 222, 0.15);
+  box-shadow: 0 4px 12px rgba(143, 73, 222, 0.08);
 }
 
 .dashboard-subtitle,
@@ -509,8 +566,6 @@ watch(language, updateTime)
   display: flex;
   align-items: flex-end;
   padding: 16px;
-  background-position: center;
-  background-size: cover;
 }
 
 .project-icon {
@@ -537,9 +592,21 @@ watch(language, updateTime)
   margin-bottom: 10px;
 }
 
+.project-heading h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
 .project-heading span {
   color: var(--color-text-muted);
   font-size: 12px;
+}
+
+.project-body p {
+  font-size: 13px;
+  font-weight: 400;
+  opacity: 0.85;
 }
 
 .project-meta {
@@ -622,22 +689,14 @@ watch(language, updateTime)
   }
 }
 
-@keyframes dashboard-ambient {
-  0% { transform: translate3d(-1%, -1%, 0) scale(1); opacity: 0.62; }
-  50% { transform: translate3d(1.5%, 1%, 0) scale(1.02); opacity: 0.88; }
-  100% { transform: translate3d(0.5%, -0.5%, 0) scale(1.01); opacity: 0.70; }
-}
+
 
 .plane-dashboard {
-  background:
-    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent 30%),
-    radial-gradient(circle at 82% 8%, color-mix(in srgb, var(--color-success) 10%, transparent), transparent 26%),
-    var(--color-bg) !important;
+  background: var(--color-bg) !important;
 }
 
 .nexus-feature-header,
 .hero-panel,
-.dashboard-focus-widget,
 .search-panel,
 .projects-panel {
   animation: dashboard-rise-in 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
@@ -651,19 +710,10 @@ watch(language, updateTime)
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--color-surface) 92%, transparent), color-mix(in srgb, var(--color-surface-hover) 72%, transparent)),
     var(--color-surface) !important;
-  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.10) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
 }
 
-.hero-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 14% 28%, color-mix(in srgb, var(--color-accent) 18%, transparent), transparent 24%),
-    radial-gradient(circle at 78% 18%, color-mix(in srgb, var(--color-success) 12%, transparent), transparent 22%);
-  pointer-events: none;
-  animation: dashboard-ambient 8s ease-in-out infinite alternate;
-}
+
 
 .hero-panel > * {
   position: relative;
@@ -685,7 +735,7 @@ watch(language, updateTime)
 
 .project-card:hover {
   border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border)) !important;
-  box-shadow: 0 24px 58px rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
 }
 
 [data-theme='light'] .hero-copy h2,
@@ -705,7 +755,6 @@ watch(language, updateTime)
 @media (prefers-reduced-motion: reduce) {
   .nexus-feature-header,
   .hero-panel,
-  .hero-panel::before,
   .search-panel,
   .projects-panel {
     animation: none !important;

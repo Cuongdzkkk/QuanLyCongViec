@@ -360,9 +360,7 @@ const rangeEnd = computed(() => Math.min(page.value * PAGE_SIZE, filteredRows.va
   min-height: 0;
   overflow: auto;
   padding: 18px 24px 42px;
-  background:
-    radial-gradient(circle at 14% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 30%),
-    var(--color-bg);
+  background: var(--color-bg);
   color: var(--color-text-primary);
 }
 .reports-head { margin-bottom: 16px; }

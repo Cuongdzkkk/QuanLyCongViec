@@ -305,8 +305,6 @@ const handleRegister = async () => {
   min-height: 100vh;
   color: var(--auth-text);
   background:
-    radial-gradient(circle at 16% 10%, rgba(34, 211, 238, 0.18), transparent 30%),
-    radial-gradient(circle at 88% 14%, rgba(251, 191, 36, 0.16), transparent 28%),
     linear-gradient(180deg, #ffffff 0%, var(--auth-bg) 100%);
 }
 
@@ -319,8 +317,6 @@ const handleRegister = async () => {
   --auth-border: rgba(148, 181, 222, 0.2);
   --auth-shadow: 0 30px 80px rgba(0, 0, 0, 0.38);
   background:
-    radial-gradient(circle at 16% 10%, rgba(34, 211, 238, 0.17), transparent 30%),
-    radial-gradient(circle at 88% 14%, rgba(251, 191, 36, 0.13), transparent 28%),
     linear-gradient(180deg, #07101e 0%, var(--auth-bg) 100%);
 }
 
@@ -560,7 +556,6 @@ const handleRegister = async () => {
   border-radius: 18px;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--auth-surface-strong) 86%, transparent), color-mix(in srgb, #7c3aed 10%, transparent)),
-    radial-gradient(circle at 92% 12%, rgba(99, 102, 241, 0.2), transparent 40%);
 }
 
 .entry-icon {

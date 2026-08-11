@@ -1,64 +1,54 @@
 <template>
   <el-dialog
     v-model="visibleComp"
-    class="standard-dialog no-header-dialog"
+    class="standard-dialog no-header-dialog sa-data-dialog"
     :show-close="false"
     :before-close="handleClose"
     append-to-body
     width="760px"
     top="6vh"
   >
+    <template #header>
+      <DataModalHeader icon="bi bi-folder-plus" title="Create project" description="Set project identity, visibility and ownership" close-label="Close" @close="handleClose" />
+    </template>
     <div class="modal-content-inner">
-      <button class="floating-close-btn" @click="handleClose">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
+      <div class="plane-cover-header" :style="{ background: selectedCover.value }">
+        <button class="change-cover-btn" @click="showCoverPicker = !showCoverPicker">
+          <i class="bi bi-palette2"></i>
+          Choose cover
+        </button>
 
-      <div
-        class="plane-cover-header"
-        :class="{ 'has-cover-preview': coverPreviewUrl }"
-        :style="coverPreviewStyle"
-        :role="coverPreviewUrl ? 'img' : undefined"
-        :aria-label="coverPreviewUrl ? (form.coverAltText || `${form.name || 'Project'} cover preview`) : undefined"
-      >
-        <div v-if="!coverPreviewUrl" class="cover-empty-state">
-          <i class="fa-regular fa-image"></i>
-          <span>No cover selected</span>
-        </div>
-
-        <div class="cover-actions">
-          <label class="change-cover-btn">
-            <input
-              ref="coverInput"
-              class="cover-file-input"
-              type="file"
-              accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-              @change="handleCoverFileChange"
-            />
-            <span>{{ coverFile ? 'Replace cover' : 'Choose cover' }}</span>
-          </label>
-          <button v-if="coverFile" class="remove-cover-btn" type="button" @click="removeCoverFile">
-            Remove
-          </button>
+        <div v-if="showCoverPicker" class="cover-popover">
+          <div class="popover-heading">
+            <div>
+              <strong>Project background</strong>
+              <span>Choose a lightweight CSS cover.</span>
+            </div>
+            <button type="button" @click="showCoverPicker = false"><i class="bi bi-x-lg"></i></button>
+          </div>
+          <ProjectBackgroundPicker v-model="form.cover" />
         </div>
       </div>
 
       <div class="plane-modal-body">
-        <button class="floating-emoji-selector" type="button" aria-label="Choose project icon" @click="showIconPicker = !showIconPicker">
-          <span>{{ form.icon }}</span>
+        <DataModalSection icon="bi bi-palette2" title="Project appearance">
+        <button class="floating-emoji-selector" type="button" @click="showIconPicker = !showIconPicker">
+          <ProjectAvatar :icon="form.icon" :background="form.cover" size="lg" />
         </button>
 
         <div v-if="showIconPicker" class="icon-popover">
-          <button
-            v-for="icon in iconOptions"
-            :key="icon"
-            class="icon-choice"
-            :class="{ active: icon === form.icon }"
-            @click="selectIcon(icon)"
-          >
-            {{ icon }}
-          </button>
+          <div class="popover-heading">
+            <div>
+              <strong>Project avatar</strong>
+              <span>Choose a Bootstrap icon.</span>
+            </div>
+            <button type="button" @click="showIconPicker = false"><i class="bi bi-x-lg"></i></button>
+          </div>
+          <ProjectAvatarPicker v-model="form.icon" />
         </div>
+        </DataModalSection>
 
+        <DataModalSection icon="bi bi-card-text" title="Project information">
         <div class="form-container">
           <div class="form-row">
             <div class="form-group flex-1">
@@ -81,20 +71,11 @@
               placeholder="What is this project for?"
             ></textarea>
           </div>
+        </div>
+        </DataModalSection>
 
-          <div class="form-group">
-            <label class="field-label">Cover alt text</label>
-            <input
-              v-model="form.coverAltText"
-              type="text"
-              class="compact-input-field"
-              :disabled="!coverFile"
-              :placeholder="coverFile ? 'Describe the project cover' : 'Choose a cover image first'"
-              maxlength="300"
-            />
-            <p v-if="coverFile" class="cover-file-meta">{{ coverFile.name }} · {{ formatFileSize(coverFile.size) }}</p>
-          </div>
-
+        <DataModalSection icon="bi bi-shield-check" title="Access and ownership">
+        <div class="form-container">
           <div class="settings-grid">
             <div class="form-group">
               <label class="field-label">Visibility</label>
@@ -127,13 +108,14 @@
             </div>
           </div>
         </div>
+        </DataModalSection>
       </div>
 
       <div class="dialog-footer-standard">
         <div class="footer-spacer"></div>
         <div class="footer-actions">
-          <button class="btn-secondary-sm" @click="handleClose">Cancel</button>
-          <button class="btn-primary-sm" type="button" :disabled="loading" @click="handleSubmit">
+          <button class="btn-secondary-sm cancel-btn" @click="handleClose"><i class="bi bi-x-lg"></i>Cancel</button>
+          <button class="btn-primary-sm" :disabled="loading" @click="handleSubmit">
             <i v-if="loading" class="fa-solid fa-spinner fa-spin"></i>
             <span>Create project</span>
           </button>
@@ -144,10 +126,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import axiosClient from '@/api/axiosClient'
 import { ElMessage } from 'element-plus'
-import { useProjectStore } from '@/store/useProjectStore'
+import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import ProjectAvatarPicker from '@/components/project/ProjectAvatarPicker.vue'
+import ProjectBackgroundPicker from '@/components/project/ProjectBackgroundPicker.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import {
+  DEFAULT_PROJECT_BACKGROUND,
+  DEFAULT_PROJECT_ICON,
+  getProjectBackground
+} from '@/config/projectAppearance'
 
 const props = defineProps({
   visible: Boolean
@@ -155,19 +146,24 @@ const props = defineProps({
 
 const emit = defineEmits(['update:visible', 'created'])
 
+const coverOptions = [
+  { name: 'Coral', value: 'linear-gradient(135deg, #ffb199 0%, #ff5f6d 100%)' },
+  { name: 'Ocean', value: 'linear-gradient(135deg, #2563eb 0%, #06b6d4 100%)' },
+  { name: 'Forest', value: 'linear-gradient(135deg, #047857 0%, #84cc16 100%)' },
+  { name: 'Sunset', value: 'linear-gradient(135deg, #f97316 0%, #db2777 100%)' },
+  { name: 'Graphite', value: 'linear-gradient(135deg, #3f3f46 0%, #18181b 100%)' },
+  { name: 'Violet', value: 'linear-gradient(135deg, #7c3aed 0%, #ec4899 100%)' }
+]
+
 const iconOptions = ['😀', '🚀', '⚡', '💡', '🔥', '🎯', '📦', '🧩', '🛠️', '📌', '🌱', '🏁']
-const allowedCoverTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
-const allowedCoverExtensions = new Set(['png', 'jpg', 'jpeg', 'webp'])
-const maxCoverSizeBytes = 5 * 1024 * 1024
-const projectStore = useProjectStore()
 
 const defaultForm = () => ({
   name: '',
   key: '',
   description: '',
   startDate: new Date(),
-  coverAltText: '',
-  icon: '😀',
+  cover: DEFAULT_PROJECT_BACKGROUND,
+  icon: DEFAULT_PROJECT_ICON,
   networkType: 'Public',
   leadUserId: ''
 })
@@ -190,14 +186,12 @@ const form = ref(defaultForm())
 const submitted = ref(false)
 const loading = ref(false)
 const workspaceMembers = ref([])
+const showCoverPicker = ref(false)
 const showIconPicker = ref(false)
-const coverInput = ref(null)
-const coverFile = ref(null)
-const coverPreviewUrl = ref('')
 
-const coverPreviewStyle = computed(() => coverPreviewUrl.value
-  ? { backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.32)), url("${coverPreviewUrl.value}")` }
-  : {})
+const selectedCover = computed(() => {
+  return getProjectBackground(form.value.cover)
+})
 
 watch(() => form.value.name, (newVal) => {
   if (!form.value.key && newVal) {
@@ -209,39 +203,9 @@ watch(() => props.visible, (isVisible) => {
   if (isVisible) fetchWorkspaceMembers()
 })
 
-const clearCoverPreview = () => {
-  if (coverPreviewUrl.value) URL.revokeObjectURL(coverPreviewUrl.value)
-  coverPreviewUrl.value = ''
-}
-
-const removeCoverFile = () => {
-  clearCoverPreview()
-  coverFile.value = null
-  form.value.coverAltText = ''
-  if (coverInput.value) coverInput.value.value = ''
-}
-
-const formatFileSize = (size) => `${(size / 1024 / 1024).toFixed(2)} MB`
-
-const handleCoverFileChange = (event) => {
-  const file = event.target.files?.[0]
-  if (!file) return
-
-  const extension = file.name.split('.').pop()?.toLowerCase() || ''
-  if (!allowedCoverTypes.has(file.type.toLowerCase()) || !allowedCoverExtensions.has(extension)) {
-    ElMessage.error('Project cover must be PNG, JPG, JPEG, or WEBP.')
-    event.target.value = ''
-    return
-  }
-  if (file.size > maxCoverSizeBytes) {
-    ElMessage.error('Project cover must be 5MB or smaller.')
-    event.target.value = ''
-    return
-  }
-
-  clearCoverPreview()
-  coverFile.value = file
-  coverPreviewUrl.value = URL.createObjectURL(file)
+const selectCover = (cover) => {
+  form.value.cover = cover
+  showCoverPicker.value = false
 }
 
 const selectIcon = (icon) => {
@@ -268,20 +232,12 @@ const fetchWorkspaceMembers = async () => {
 }
 
 const handleClose = () => {
-  if (loading.value) return
-  resetModal()
-}
-
-const resetModal = () => {
   visibleComp.value = false
   submitted.value = false
   form.value = defaultForm()
-  removeCoverFile()
-  showIconPicker.value = false
 }
 
 const handleSubmit = async () => {
-  if (loading.value) return
   submitted.value = true
   if (!form.value.name) return
   loading.value = true
@@ -292,45 +248,20 @@ const handleSubmit = async () => {
       description: form.value.description,
       startDate: formatLocalIsoDate(form.value.startDate),
       networkType: form.value.networkType,
+      cover: form.value.cover,
       icon: form.value.icon,
       leadUserId: form.value.leadUserId || null
     }
     const response = await axiosClient.post('/projects', payload)
-    const createdProject = response.data?.data || response.data
-    const projectId = createdProject?.id || createdProject?.Id
-    if (!projectId) throw new Error('Project was created without an ID in the response.')
-
-    if (coverFile.value) {
-      const coverFormData = new FormData()
-      coverFormData.append('file', coverFile.value)
-      coverFormData.append('coverAltText', form.value.coverAltText.trim())
-      coverFormData.append('icon', form.value.icon)
-
-      try {
-        await axiosClient.post(`/projects/${projectId}/cover`, coverFormData)
-      } catch (coverError) {
-        await projectStore.fetchAllProjects(true).catch(() => {})
-        emit('created', createdProject)
-        const uploadMessage = coverError.response?.data?.message || 'The cover upload failed.'
-        ElMessage.warning(`Project "${form.value.name}" was created, but its cover was not saved. ${uploadMessage} Do not create the project again; add the cover from Project settings.`)
-        resetModal()
-        return
-      }
-    }
-
-    await projectStore.fetchAllProjects(true)
-    const refreshedProject = projectStore.allProjects.find((project) => project.id === projectId) || createdProject
     ElMessage.success(`Created project "${form.value.name}"`)
-    emit('created', refreshedProject)
-    resetModal()
+    emit('created', response.data?.data || response.data)
+    handleClose()
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Could not create project')
   } finally {
     loading.value = false
   }
 }
-
-onBeforeUnmount(clearCoverPreview)
 </script>
 
 <style scoped>
@@ -338,6 +269,8 @@ onBeforeUnmount(clearCoverPreview)
   position: relative;
   background: var(--color-surface);
   border-radius: 12px;
+  max-height: calc(100vh - 96px);
+  overflow: auto;
 }
 
 .floating-close-btn {
@@ -352,33 +285,29 @@ onBeforeUnmount(clearCoverPreview)
 
 .plane-cover-header {
   height: 180px; width: 100%; position: relative;
-  display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--color-surface) 84%, var(--color-bg));
-  background-position: center; background-size: cover;
-  border-bottom: 1px solid var(--color-border);
 }
-
-.cover-empty-state {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  color: var(--color-text-muted); font-size: 12px; font-weight: 600;
-}
-.cover-empty-state i { font-size: 28px; }
-
-.cover-actions { position: absolute; bottom: 16px; right: 24px; z-index: 4; display: flex; gap: 8px; }
 
 .change-cover-btn {
-  position: relative; overflow: hidden; display: inline-flex; align-items: center;
+  position: absolute; bottom: 16px; right: 24px;
   background: rgba(0,0,0,0.4); color: #fff;
   border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;
   padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
 }
-.cover-file-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 
-.remove-cover-btn {
-  background: rgba(15,23,42,0.72); color: #fff;
-  border: 1px solid rgba(255,255,255,0.28); border-radius: 6px;
-  padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+.cover-popover {
+  position: absolute; top: 56px; right: 24px;
+  width: min(620px, calc(100vw - 80px)); padding: 16px; background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: 10px;
+  box-shadow: var(--shadow-xl); display: block; z-index: 20;
+  max-height: min(520px, calc(100vh - 180px)); overflow-y: auto;
 }
+
+.cover-swatch {
+  height: 50px; border-radius: 6px; border: 2px solid transparent;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+.cover-swatch.active { border-color: var(--color-accent); }
 
 .plane-modal-body { padding: 0 32px 32px; position: relative; }
 
@@ -386,16 +315,39 @@ onBeforeUnmount(clearCoverPreview)
   width: 64px; height: 64px; border-radius: 12px;
   background: var(--color-surface); border: 4px solid var(--color-surface);
   box-shadow: var(--shadow-md); display: flex; align-items: center; justify-content: center;
-  font-size: 32px; margin-top: -32px; margin-bottom: 24px; cursor: pointer; transition: all 0.2s;
+  padding: 0; margin-top: -32px; margin-bottom: 24px; cursor: pointer; transition: all 0.2s;
 }
 .floating-emoji-selector:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
 
 .icon-popover {
   position: absolute; top: 40px; left: 32px;
-  width: 280px; padding: 12px; background: var(--color-surface);
+  width: min(560px, calc(100vw - 80px)); padding: 16px; background: var(--color-surface);
   border: 1px solid var(--color-border); border-radius: 10px;
-  box-shadow: var(--shadow-xl); display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; z-index: 20;
+  box-shadow: var(--shadow-xl); display: block; z-index: 20;
+  max-height: min(520px, calc(100vh - 180px)); overflow-y: auto;
 }
+
+.popover-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.popover-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.popover-heading strong { color: var(--color-text-primary); font-size: 14px; }
+.popover-heading span { color: var(--color-text-muted); font-size: 11px; }
+.popover-heading button {
+  display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--color-text-muted); cursor: pointer;
+}
+.popover-heading button:hover { background: var(--color-surface-hover); color: var(--color-text-primary); }
 
 .icon-choice {
   width: 36px; height: 36px; border-radius: 6px; border: 1px solid var(--color-border);
@@ -423,15 +375,6 @@ onBeforeUnmount(clearCoverPreview)
   outline: none; transition: all 0.2s; resize: none;
 }
 .compact-textarea-field:focus { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 15%, transparent); }
-
-.compact-input-field {
-  height: 38px; background: var(--color-bg); border: 1px solid var(--color-border);
-  border-radius: 8px; padding: 0 12px; font-size: 14px; color: var(--color-text-primary);
-  outline: none; transition: border-color 0.2s, box-shadow 0.2s;
-}
-.compact-input-field:focus { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 15%, transparent); }
-.compact-input-field:disabled { cursor: not-allowed; opacity: 0.65; }
-.cover-file-meta { margin: 0; font-size: 11px; color: var(--color-text-muted); overflow-wrap: anywhere; }
 
 .settings-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; }
 
@@ -475,6 +418,8 @@ onBeforeUnmount(clearCoverPreview)
 
 <style>
 .no-header-dialog.el-dialog {
+  max-width: 92vw;
+  margin-top: 48px;
   background: transparent !important;
   box-shadow: none !important;
   border: none !important;

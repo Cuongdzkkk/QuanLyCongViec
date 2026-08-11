@@ -100,6 +100,7 @@ const searchQuery = ref('')
 const viewMode = ref('grid')
 
 onMounted(() => {
+  teamStore.initializeRealtime()
   teamStore.fetchAllTeams()
 })
 

@@ -72,10 +72,21 @@
     <!-- Add Email Dialog -->
     <el-dialog
       v-model="showAddDialog"
-      :title="t('Add email address', 'Thêm địa chỉ email')"
       width="450px"
       destroy-on-close
+      append-to-body
+      class="sa-data-dialog sa-modal--form"
+      :show-close="false"
     >
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-envelope-plus"
+          :title="t('Add email address', 'Thêm địa chỉ email')"
+          :description="t('Add and verify another email address for your account.', 'Thêm và xác thực một địa chỉ email khác cho tài khoản.')"
+          :close-label="t('Close', 'Đóng')"
+          @close="showAddDialog = false"
+        />
+      </template>
       <div class="add-email-form">
         <label class="field-label">{{ t('New email address', 'Địa chỉ email mới') }}</label>
         <el-input
@@ -90,7 +101,7 @@
       </div>
       <template #footer>
         <div class="dialog-actions">
-          <el-button @click="showAddDialog = false">{{ t('Cancel', 'Hủy') }}</el-button>
+          <el-button class="cancel-btn" @click="showAddDialog = false"><i class="bi bi-x-lg"></i>{{ t('Cancel', 'Hủy') }}</el-button>
           <el-button type="primary" :disabled="!isValidEmail" @click="handleAddEmail">
             {{ t('Add', 'Thêm') }}
           </el-button>
@@ -105,6 +116,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useLocale } from '@/composables/useLocale'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const { t } = useLocale()
 

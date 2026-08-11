@@ -2,31 +2,31 @@
   <el-dialog
     v-model="dialogVisible"
     width="480px"
-    class="standard-dialog"
+    class="standard-dialog sa-data-dialog"
     :show-close="false"
     append-to-body>
     
-    <template #header="{ close }">
-      <div class="dialog-header-standard">
-        <h2 class="dialog-title">Add people</h2>
-        <div class="header-actions">
-          <button class="icon-btn-ghost" title="More options"><i class="fa-solid fa-ellipsis"></i></button>
-          <button class="icon-btn-ghost" @click="close" title="Close"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-      </div>
+    <template #header>
+      <DataModalHeader
+        icon="bi bi-person-plus"
+        title="Add people"
+        description="Invite people and choose their role in this workspace"
+        close-label="Close"
+        @close="closeDialog"
+      />
     </template>
 
     <div class="dialog-body">
-      <div class="form-group">
-        <label class="field-label">Names or emails <span class="required">*</span></label>
-        <el-input 
-          v-model="emailInput" 
-          placeholder="e.g., Maria, maria@company.com" 
-          class="compact-input" />
-      </div>
+      <DataModalSection icon="bi bi-person-lines-fill" title="People">
+        <DataModalField label="Names or emails" required>
+          <el-input 
+            v-model="emailInput" 
+            placeholder="e.g., Maria, maria@company.com" 
+            class="compact-input" />
+        </DataModalField>
+      </DataModalSection>
 
-      <div class="form-group">
-        <label class="field-label">or add from</label>
+      <DataModalSection icon="bi bi-cloud-plus" title="Import from">
         <div class="integration-grid">
           <button class="integration-card">
             <i class="fa-brands fa-google text-google"></i>
@@ -41,16 +41,17 @@
             <span>Microsoft</span>
           </button>
         </div>
-      </div>
+      </DataModalSection>
 
-      <div class="form-group">
-        <label class="field-label">Role <span class="required">*</span></label>
-        <el-select v-model="selectedRole" class="full-width-select">
-          <el-option label="Member" value="Member" />
-          <el-option label="Admin" value="Admin" />
-          <el-option label="Guest" value="Guest" />
-        </el-select>
-      </div>
+      <DataModalSection icon="bi bi-person-badge" title="Access">
+        <DataModalField label="Role" required>
+          <el-select v-model="selectedRole" class="full-width-select">
+            <el-option label="Member" value="Member" />
+            <el-option label="Admin" value="Admin" />
+            <el-option label="Guest" value="Guest" />
+          </el-select>
+        </DataModalField>
+      </DataModalSection>
 
       <p class="helper-text-muted">
         This site is protected by reCAPTCHA and the Google 
@@ -65,7 +66,7 @@
           <i class="fa-solid fa-link"></i> Copy link
         </button>
         <div class="footer-actions">
-          <button class="btn-secondary-sm" @click="closeDialog">Cancel</button>
+          <button class="cancel-btn" @click="closeDialog"><i class="bi bi-x-lg"></i> Cancel</button>
           <button class="btn-primary-sm" @click="submitAdd" :disabled="!emailInput.trim()">Add</button>
         </div>
       </div>
@@ -76,6 +77,9 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false }

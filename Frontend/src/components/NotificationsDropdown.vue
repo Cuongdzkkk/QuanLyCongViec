@@ -75,6 +75,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
+import { signalRService } from '@/api/signalrService'
 import * as signalR from '@microsoft/signalr'
 import { isExpectedNetworkError } from '@/utils/errorTelemetry'
 import { getStoredAccessToken } from '@/utils/authSession'
@@ -247,6 +248,13 @@ const initSignalR = () => {
   })
 }
 
+let notificationRefreshTimer = null
+const handleNotificationEntityChanged = (event) => {
+  if (event?.entityType !== 'Notification') return
+  if (notificationRefreshTimer) clearTimeout(notificationRefreshTimer)
+  notificationRefreshTimer = setTimeout(fetchNotifications, 50)
+}
+
 watch(onlyUnread, () => {
   fetchNotifications()
 })
@@ -291,6 +299,8 @@ onMounted(() => {
   void collaborationRealtime.start().catch(() => {
     // REST remains authoritative and refreshes whenever the dropdown opens.
   })
+  signalRService.on('EntityChanged', handleNotificationEntityChanged)
+  signalRService.startAuthenticatedConnection()
 })
 
 onUnmounted(() => {
@@ -304,6 +314,8 @@ onUnmounted(() => {
   notificationRequestId += 1
   if (connection.value) connection.value.stop()
   void collaborationRealtime.stop()
+  signalRService.off('EntityChanged', handleNotificationEntityChanged)
+  if (notificationRefreshTimer) clearTimeout(notificationRefreshTimer)
 })
 </script>
 

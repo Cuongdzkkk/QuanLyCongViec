@@ -114,10 +114,26 @@
     </div>
 
     <!-- Icon Picker Simple -->
-    <el-dialog v-model="showIconPicker" title="Pick an Icon" width="400px" custom-class="glass-dialog">
-       <div class="emoji-grid">
-         <span v-for="e in emojiList" :key="e" @click="form.icon = e; showIconPicker = false" class="emoji-opt">{{ e }}</span>
-       </div>
+    <el-dialog
+      v-model="showIconPicker"
+      width="400px"
+      custom-class="glass-dialog"
+      class="sa-data-dialog sa-modal--sm"
+      :show-close="false"
+    >
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-emoji-smile"
+          title="Pick an Icon"
+          description="Choose a project icon for easier scanning"
+          @close="showIconPicker = false"
+        />
+      </template>
+      <DataModalSection icon="bi bi-grid-3x3-gap" title="Icon options">
+        <div class="emoji-grid">
+          <span v-for="e in emojiList" :key="e" @click="form.icon = e; showIconPicker = false" class="emoji-opt">{{ e }}</span>
+        </div>
+      </DataModalSection>
     </el-dialog>
 
   </div>
@@ -129,6 +145,8 @@ import { useRoute, useRouter } from 'vue-router'
 
 import axiosClient from '@/api/axiosClient'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 
 const route = useRoute()
 const router = useRouter()

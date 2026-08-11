@@ -19,6 +19,7 @@
             :isSaving="isSaving"
             @save-profile="saveProfile"
             @upload-avatar="uploadAvatar"
+            @remove-avatar="removeAvatar"
           />
 
           <!-- Email Addresses -->
@@ -180,6 +181,21 @@ const uploadAvatar = async (event) => {
     ElMessage.error(error.response?.data?.message || t('Could not upload profile photo. Please try a different image.', 'Không thể tải lên ảnh đại diện. Vui lòng thử lại bằng ảnh khác.'))
   } finally {
     event.target.value = ''
+  }
+}
+
+const removeAvatar = async () => {
+  try {
+    isSaving.value = true
+    await axiosClient.delete('/users/avatar')
+    profileData.value.avatarUrl = ''
+    window.dispatchEvent(new CustomEvent('user-avatar-updated', { detail: { avatarUrl: '' } }))
+    ElMessage.success(t('Profile photo removed.', 'Đã gỡ ảnh đại diện thành công.'))
+  } catch (error) {
+    console.error('Avatar removal failed:', error)
+    ElMessage.error(error.response?.data?.message || t('Could not remove profile photo.', 'Không thể gỡ ảnh đại diện.'))
+  } finally {
+    isSaving.value = false
   }
 }
 

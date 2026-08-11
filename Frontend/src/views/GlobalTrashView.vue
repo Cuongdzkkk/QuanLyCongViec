@@ -59,9 +59,7 @@
               <tr v-else v-for="space in filteredSpaces" :key="space.id" style="border-bottom: 1px solid var(--color-border); transition: background 0.2s;" class="table-row-hover">
                 <td style="padding: 12px 16px;">
                   <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; background: #27272a;">
-                      {{ space.icon || '🗑️' }}
-                    </div>
+                    <ProjectAvatar :icon="space.icon" :background="space.cover" size="xs" />
                     <span style="font-weight: 500; color: var(--color-text-primary);">{{ space.name }}</span>
                   </div>
                 </td>
@@ -107,6 +105,7 @@ import AdminLayout from '@/components/layout/AdminLayout.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useProjectStore } from '@/store/useProjectStore'
 import { openNamedAppWindow, PROJECT_ADMIN_WINDOW_NAME } from '@/utils/windowTabs'
+import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 
 const router = useRouter()
 const handleSwitchSettings = (path) => {
@@ -129,7 +128,8 @@ const fetchTrashSpaces = async () => {
       name: p.name,
       key: p.key || p.identifier,
       leadName: p.leadName || 'Admin',
-      icon: p.icon,
+      icon: p.icon || p.Icon,
+      cover: p.cover || p.Cover,
       networkType: p.networkType || 'Public',
       originalRow: p
     }))

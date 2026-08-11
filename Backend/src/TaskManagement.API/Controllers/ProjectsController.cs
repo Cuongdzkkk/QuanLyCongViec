@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using TaskManagement.API.Filters;
@@ -12,6 +13,8 @@ using TaskManagement.Application.Common;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.API.Hubs;
+using TaskManagement.API.Realtime;
 
 namespace TaskManagement.API.Controllers
 {
@@ -23,15 +26,25 @@ namespace TaskManagement.API.Controllers
         private readonly IProjectService _projectService;
         private readonly ApplicationDbContext _context;
         private readonly IDataProtector _integrationSecretProtector;
+        private readonly IHubContext<KanbanHub>? _hub;
 
         public ProjectsController(
             IProjectService projectService,
             ApplicationDbContext context,
-            IDataProtectionProvider dataProtectionProvider)
+            IDataProtectionProvider dataProtectionProvider,
+            IHubContext<KanbanHub>? hub = null)
         {
             _projectService = projectService;
             _context = context;
             _integrationSecretProtector = dataProtectionProvider.CreateProtector("SprintA.ProjectIntegrationSecrets.v1");
+            _hub = hub;
+        }
+
+        private async Task PublishProjectAsync(ProjectResponseDto project, string action = "upsert")
+        {
+            if (_hub == null) return;
+            await _hub.PublishWorkspaceEntityChangedAsync(project.WorkspaceId, "project", action, project.Id, project);
+            await _hub.PublishEntityChangedAsync(project.Id, "project", action, project.Id, project);
         }
 
         public sealed class ProjectIntegrationSetting
@@ -824,6 +837,7 @@ namespace TaskManagement.API.Controllers
                     return Unauthorized(ApiResponse<object>.Error("Unauthorized.", 401));
 
                 var result = await _projectService.CreateAsync(creatorId, dto);
+                await PublishProjectAsync(result);
                 return CreatedAtAction(nameof(GetById), new { id = result.Id },
                     ApiResponse<ProjectResponseDto>.Created(result));
             }
@@ -928,6 +942,7 @@ namespace TaskManagement.API.Controllers
             try
             {
                 var result = await _projectService.UpdateAsync(projectId, dto);
+                await PublishProjectAsync(result);
                 return Ok(ApiResponse<ProjectResponseDto>.Success(result, "Cập nhật thành công."));
             }
             catch (ArgumentException ex)
@@ -947,6 +962,8 @@ namespace TaskManagement.API.Controllers
             try
             {
                 await _projectService.ArchiveAsync(projectId);
+                var project = await _projectService.GetByIdAsync(projectId);
+                if (project != null) await PublishProjectAsync(project);
                 return Ok(ApiResponse<object>.Success(null!, "Dự án đã được vô hiệu hóa."));
             }
             catch (ArgumentException ex)
@@ -962,6 +979,8 @@ namespace TaskManagement.API.Controllers
             try
             {
                 await _projectService.RestoreAsync(projectId);
+                var project = await _projectService.GetByIdAsync(projectId);
+                if (project != null) await PublishProjectAsync(project);
                 return Ok(ApiResponse<object>.Success(null!, "Dự án đã được khôi phục."));
             }
             catch (ArgumentException ex)
@@ -1021,6 +1040,8 @@ namespace TaskManagement.API.Controllers
             try
             {
                 await _projectService.RestoreDeletedAsync(projectId);
+                var project = await _projectService.GetByIdAsync(projectId);
+                if (project != null) await PublishProjectAsync(project);
                 return Ok(ApiResponse<object>.Success(null!, "Dự án đã được khôi phục."));
             }
             catch (ArgumentException ex)
@@ -1035,7 +1056,9 @@ namespace TaskManagement.API.Controllers
         {
             try
             {
+                var project = await _projectService.GetByIdAsync(projectId);
                 await _projectService.PermanentDeleteAsync(projectId);
+                if (project != null) await PublishProjectAsync(project, "deleted");
                 return Ok(ApiResponse<object>.Success(null!, "Dự án đã được xóa vĩnh viễn."));
             }
             catch (ArgumentException ex)
@@ -1053,7 +1076,9 @@ namespace TaskManagement.API.Controllers
         {
             try
             {
+                var project = await _projectService.GetByIdAsync(projectId);
                 await _projectService.SoftDeleteAsync(projectId);
+                if (project != null) await PublishProjectAsync(project, "deleted");
                 return Ok(ApiResponse<object>.Success(null!, "Dự án đã được xóa."));
             }
             catch (ArgumentException ex)
@@ -1176,6 +1201,8 @@ namespace TaskManagement.API.Controllers
         {
             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
             var item = await _projectService.AddLessonAsync(id, dto, userId);
+            if (_hub != null)
+                await _hub.PublishEntityChangedAsync(id, "project-tab", "created", item.Id, new { tab = "lessons", item });
             return StatusCode(201, ApiResponse<object>.Created(item));
         }
 
@@ -1191,6 +1218,8 @@ namespace TaskManagement.API.Controllers
         {
             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
             var item = await _projectService.AddRiskAsync(id, dto, userId);
+            if (_hub != null)
+                await _hub.PublishEntityChangedAsync(id, "project-tab", "created", item.Id, new { tab = "risks", item });
             return StatusCode(201, ApiResponse<object>.Created(item));
         }
 
@@ -1206,6 +1235,8 @@ namespace TaskManagement.API.Controllers
         {
             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
             var item = await _projectService.AddDecisionAsync(id, dto, userId);
+            if (_hub != null)
+                await _hub.PublishEntityChangedAsync(id, "project-tab", "created", item.Id, new { tab = "decisions", item });
             return StatusCode(201, ApiResponse<object>.Created(item));
         }
 
@@ -1221,6 +1252,8 @@ namespace TaskManagement.API.Controllers
         {
             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
             var item = await _projectService.AddUpdateAsync(id, dto, userId);
+            if (_hub != null)
+                await _hub.PublishEntityChangedAsync(id, "project-tab", "created", item.Id, new { tab = "updates", item });
             return StatusCode(201, ApiResponse<object>.Created(item));
         }
 

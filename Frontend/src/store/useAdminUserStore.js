@@ -158,12 +158,17 @@ export const useAdminUserStore = defineStore('adminUsers', () => {
 
   const fetchRoles = async (search = '') => {
     try {
-      const res = await adminUserApi.getRoles({ search });
-      roles.value = (res.data?.data?.roles || []).map(role => ({
+      const [rolesRes, catalogRes] = await Promise.all([
+        adminUserApi.getRoles({ search }),
+        adminUserApi.getPermissionCatalog().catch(() => null)
+      ]);
+      roles.value = (rolesRes.data?.data?.roles || []).map(role => ({
         ...role,
         permissionIds: (role.permissions || []).map(permission => permission.id)
       }));
-      permissions.value = res.data?.data?.permissions || [];
+      permissions.value = catalogRes?.data?.data?.permissions?.length
+        ? catalogRes.data.data.permissions
+        : rolesRes.data?.data?.permissions || [];
       return roles.value;
     } catch (error) {
       console.error('Failed to load roles:', error);

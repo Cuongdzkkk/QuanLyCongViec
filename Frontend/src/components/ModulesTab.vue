@@ -465,24 +465,11 @@ onUnmounted(() => {
       >
 
         <template #filters>
-          <el-dropdown trigger="click" @command="(value) => { sortBy = value.field; sortDirection = value.direction }">
-            <button class="nexus-btn-outlined" type="button">
-              <i class="fa-solid fa-arrow-up-z-a"></i> {{ t('modules.sort', 'Sort') }}
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item :command="{ field: 'updatedAt', direction: 'desc' }">{{ t('modules.recentlyUpdated', 'Recently updated') }}</el-dropdown-item>
-                <el-dropdown-item :command="{ field: 'name', direction: 'asc' }">{{ t('modules.nameAZ', 'Name A-Z') }}</el-dropdown-item>
-                <el-dropdown-item :command="{ field: 'name', direction: 'desc' }">{{ t('modules.nameZA', 'Name Z-A') }}</el-dropdown-item>
-                <el-dropdown-item :command="{ field: 'status', direction: 'asc' }">Status</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-
           <el-dropdown trigger="click" @command="(value) => statusFilter = value">
-            <button class="nexus-btn-outlined" type="button">
+            <button class="timeline-filter-trigger" type="button" :class="{ active: statusFilter !== 'all' }">
               <i class="fa-solid fa-filter"></i>
-              {{ statusFilter === 'all' ? t('modules.allStatuses', 'All statuses') : getStatusLabel(statusFilter) }}
+              <span>{{ t('Filters') }}</span>
+              <span v-if="statusFilter !== 'all'" class="filter-count">1</span>
             </button>
             <template #dropdown>
               <el-dropdown-menu>
@@ -494,16 +481,26 @@ onUnmounted(() => {
             </template>
           </el-dropdown>
 
-          <div class="view-toggles flex items-center gap-1 bg-[#16181d] p-1 rounded-md" style="height: 36px">
-            <button class="nexus-btn-icon !h-7 !w-7 !border-none" :class="{ 'bg-[#27272a] text-white': viewMode === 'list' }" @click="viewMode = 'list'">
-              <i class="fa-solid fa-bars"></i>
+          <el-dropdown trigger="click" @command="(value) => { sortBy = value.field; sortDirection = value.direction }">
+            <button class="timeline-filter-trigger" type="button">
+              <span>{{ t('Display') }}</span>
             </button>
-            <button class="nexus-btn-icon !h-7 !w-7 !border-none" :class="{ 'bg-[#27272a] text-white': viewMode === 'grid' }" @click="viewMode = 'grid'">
-              <i class="fa-solid fa-border-all"></i>
-            </button>
-            <button class="nexus-btn-icon !h-7 !w-7 !border-none" :class="{ 'bg-[#27272a] text-white': viewMode === 'status' }" @click="viewMode = 'status'">
-              <i class="fa-solid fa-table-list"></i>
-            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item :command="{ field: 'updatedAt', direction: 'desc' }">{{ t('modules.recentlyUpdated', 'Recently updated') }}</el-dropdown-item>
+                <el-dropdown-item :command="{ field: 'name', direction: 'asc' }">{{ t('modules.nameAZ', 'Name A-Z') }}</el-dropdown-item>
+                <el-dropdown-item :command="{ field: 'name', direction: 'desc' }">{{ t('modules.nameZA', 'Name Z-A') }}</el-dropdown-item>
+                <el-dropdown-item :command="{ field: 'status', direction: 'asc' }">Status</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </template>
+
+        <template #left>
+          <div class="view-toggles">
+            <button class="toggle-btn" :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'" :title="t('modules.listView', 'List view')"><i class="fa-solid fa-bars"></i></button>
+            <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" :title="t('modules.gridView', 'Grid view')"><i class="fa-solid fa-border-all"></i></button>
+            <button class="toggle-btn" :class="{ active: viewMode === 'status' }" @click="viewMode = 'status'" :title="t('modules.statusView', 'Status view')"><i class="fa-solid fa-table-list"></i></button>
           </div>
         </template>
       </ProjectPageToolbar>
@@ -599,7 +596,7 @@ onUnmounted(() => {
       <!-- Grid View Mode -->
       <div v-else-if="viewMode === 'grid'" class="module-grid">
         <article class="grid-card" v-for="module in filteredModules" :key="module.id" @click="openModuleTaskView(module)">
-          <div class="grid-card-glow"></div>
+
           
           <div class="grid-card-header">
             <div class="grid-card-title-wrap">
@@ -1022,21 +1019,7 @@ onUnmounted(() => {
   box-shadow: var(--shadow-lg);
 }
 
-.grid-card-glow {
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(56, 189, 248, 0.03) 0%, transparent 70%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  pointer-events: none;
-}
 
-.grid-card:hover .grid-card-glow {
-  opacity: 1;
-}
 
 .grid-card-header {
   display: flex;

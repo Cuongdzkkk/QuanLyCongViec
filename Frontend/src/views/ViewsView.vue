@@ -4,12 +4,25 @@ import ViewsTab from '@/components/ViewsTab.vue'
 </script>
 
 <template>
-  <div>
-    <div style="background-color: var(--color-bg); height: 100vh; overflow-y: auto;">
+  <div class="views-route-shell">
+    <div class="views-route-content">
       <ViewsTab />
     </div>
   </div>
 </template>
 
+<style scoped>
+.views-route-shell,
+.views-route-content {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.views-route-content {
+  overflow: hidden;
+  background: var(--color-bg);
+}
+</style>
 
 

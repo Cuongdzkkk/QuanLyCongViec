@@ -1,95 +1,74 @@
 <template>
   <el-dialog
     v-model="visibleComp"
-    width="740px"
-    class="standard-dialog"
+    width="940px"
+    class="standard-dialog sa-data-dialog sa-modal--lg"
     :show-close="false"
     append-to-body
   >
-    <template #header="{ close }">
-      <div class="dialog-header-standard">
-        <h2 class="dialog-title">{{ t('createProject.title') }}</h2>
-        <div class="header-actions">
-          <button class="icon-btn-ghost" @click="close" :title="t('createProject.close')"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-      </div>
+    <template #header>
+      <DataModalHeader
+        icon="bi bi-briefcase"
+        title="Tạo dự án"
+        description="Thiết lập thông tin, phạm vi truy cập và diện mạo dự án"
+        @close="handleClose"
+      />
     </template>
 
     <div class="modal-layout">
       <div class="form-column">
-        <div class="form-group">
-          <label class="field-label">{{ t('createProject.nameLabel') }}</label>
-          <input v-model="form.name" type="text" :placeholder="t('createProject.namePlaceholder')" class="compact-input-field" />
-        </div>
+        <DataModalSection icon="bi bi-card-text" title="Thông tin dự án">
+          <DataModalField label="Tên dự án">
+            <input v-model="form.name" type="text" placeholder="Kế hoạch Sprint A" class="compact-input-field" />
+          </DataModalField>
 
-        <div class="form-group">
-          <label class="field-label">{{ t('createProject.keyLabel') }}</label>
-          <input v-model="form.key" type="text" maxlength="8" :placeholder="t('createProject.keyPlaceholder')" class="compact-input-field" />
-        </div>
+          <DataModalField label="Mã dự án">
+            <input v-model="form.key" type="text" maxlength="8" placeholder="SPR" class="compact-input-field" />
+          </DataModalField>
 
-        <div class="form-group">
-          <label class="field-label">{{ t('createProject.descriptionLabel') }}</label>
-          <textarea v-model="form.description" rows="3" :placeholder="t('createProject.descriptionPlaceholder')" class="compact-textarea-field"></textarea>
-        </div>
+          <DataModalField label="Mô tả">
+            <textarea v-model="form.description" rows="3" placeholder="Dự án này dùng để quản lý việc gì?" class="compact-textarea-field"></textarea>
+          </DataModalField>
+        </DataModalSection>
 
-        <div class="split-grid">
-          <div class="form-group">
-            <label class="field-label">{{ t('createProject.startDateLabel') }}</label>
+        <DataModalSection icon="bi bi-sliders" title="Phạm vi và thời gian">
+          <div class="split-grid">
+          <DataModalField label="Ngày bắt đầu">
             <input v-model="form.startDate" type="date" class="compact-input-field" />
-          </div>
+          </DataModalField>
 
-          <div class="form-group">
-            <label class="field-label">{{ t('createProject.networkTypeLabel') }}</label>
+          <DataModalField label="Quyền xem">
             <el-select v-model="form.networkType" class="full-width-select">
-              <el-option :label="t('createProject.networkPublic')" value="Public" />
-              <el-option :label="t('createProject.networkPrivate')" value="Private" />
+              <el-option label="Công khai" value="Public" />
+              <el-option label="Riêng tư" value="Private" />
             </el-select>
+          </DataModalField>
           </div>
-        </div>
+        </DataModalSection>
 
-        <div class="form-group">
-          <label class="field-label">{{ t('createProject.iconLabel') }}</label>
-          <input v-model="form.icon" type="text" maxlength="2" placeholder="🚀" class="compact-input-field" style="width: 60px; text-align: center;" />
-        </div>
+        <DataModalSection icon="bi bi-palette2" title="Diện mạo">
+          <DataModalField label="Project avatar">
+            <ProjectAvatarPicker v-model="form.icon" />
+          </DataModalField>
+        </DataModalSection>
       </div>
 
       <div class="cover-column">
-        <div class="cover-preview" :class="{ 'has-cover': Boolean(coverPreviewUrl) }" :style="coverPreviewStyle">
-          <div class="cover-overlay">
-            <span class="preview-badge">{{ form.icon || 'P' }}</span>
-            <strong class="preview-name">{{ form.name || t('createProject.previewFallback') }}</strong>
+        <DataModalSection icon="bi bi-eye" title="Xem trước">
+          <div class="cover-preview" :style="{ background: previewBackground }">
+            <div class="cover-overlay">
+              <ProjectAvatar :icon="form.icon" :background="form.cover" size="lg" />
+              <strong class="preview-name">{{ form.name || 'Xem trước dự án' }}</strong>
+            </div>
           </div>
-        </div>
 
-        <div class="gallery-header">
-          <h4 class="section-title">{{ t('createProject.coverTitle') }}</h4>
-          <p class="helper-text-muted">{{ t('createProject.coverHelper') }}</p>
-        </div>
+          <ProjectBackgroundPicker v-model="form.cover" />
 
-        <div class="cover-actions">
-          <input
-            ref="coverInputRef"
-            type="file"
-            class="sr-only"
-            accept="image/png,image/jpeg,image/webp"
-            @change="handleCoverSelected"
-          />
-          <button type="button" class="btn-secondary-sm" @click="openCoverPicker">
-            <i class="fa-regular fa-image"></i>
-            Chọn ảnh
-          </button>
-          <button v-if="coverFile" type="button" class="btn-ghost-sm" @click="clearCover">
-            Xóa ảnh
-          </button>
-        </div>
-
-        <div class="form-group">
-          <label class="field-label">Mô tả ảnh bìa</label>
-          <input v-model="form.coverAltText" type="text" maxlength="180" placeholder="Ảnh bìa cho dự án" class="compact-input-field" />
-        </div>
-
-        <p v-if="coverFile" class="selected-file">{{ coverFile.name }}</p>
-        <p v-if="coverError" class="field-error">{{ coverError }}</p>
+          <div class="gallery-header">
+            <h4 class="section-title">Ảnh bìa dự án</h4>
+            <p class="helper-text-muted">SprintA sẽ không tự dùng ảnh mẫu. Bạn có thể cập nhật ảnh bìa thật trong phần cài đặt dự án.</p>
+          </div>
+        </DataModalSection>
       </div>
     </div>
 
@@ -97,10 +76,11 @@
       <div class="dialog-footer-standard">
         <div class="footer-spacer"></div>
         <div class="footer-actions">
-          <button class="btn-secondary-sm" @click="handleClose">{{ t('createProject.cancel') }}</button>
+          <button class="cancel-btn" @click="handleClose"><i class="bi bi-x-lg"></i> Hủy</button>
           <button class="btn-primary-sm" :disabled="submitting" @click="handleSubmit">
             <i v-if="submitting" class="fa-solid fa-spinner fa-spin"></i>
-            {{ submitting ? t('createProject.submitting') : t('createProject.submit') }}
+            <i v-else class="fa-solid fa-plus"></i>
+            {{ submitting ? 'Đang tạo...' : 'Tạo dự án' }}
           </button>
         </div>
       </div>
@@ -109,14 +89,20 @@
 </template>
 
 <script setup>
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
-import { useProjectStore } from '@/store/useProjectStore'
-import { useI18n } from '@/composables/useI18n'
-
-const { t } = useI18n()
-
+import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import ProjectAvatarPicker from '@/components/project/ProjectAvatarPicker.vue'
+import ProjectBackgroundPicker from '@/components/project/ProjectBackgroundPicker.vue'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import DataModalField from '@/components/common/Foundation/DataModalField.vue'
+import {
+  DEFAULT_PROJECT_BACKGROUND,
+  DEFAULT_PROJECT_ICON,
+  getProjectBackgroundStyle
+} from '@/config/projectAppearance'
 
 const props = defineProps({
   visible: Boolean
@@ -130,14 +116,6 @@ const visibleComp = computed({
 })
 
 const submitting = ref(false)
-const coverInputRef = ref(null)
-const coverFile = ref(null)
-const coverPreviewUrl = ref('')
-const coverError = ref('')
-const projectStore = useProjectStore()
-
-const allowedCoverTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
-const maxCoverSize = 5 * 1024 * 1024
 
 const formatDateOnly = (value) => {
   const date = value instanceof Date ? value : new Date(value)
@@ -154,67 +132,15 @@ const createInitialForm = () => ({
   description: '',
   startDate: formatDateOnly(new Date()),
   networkType: 'Public',
-  coverAltText: '',
-  icon: '🚀'
+  cover: DEFAULT_PROJECT_BACKGROUND,
+  icon: DEFAULT_PROJECT_ICON
 })
 
 const form = ref(createInitialForm())
+const previewBackground = computed(() => getProjectBackgroundStyle(form.value.cover))
 
 const resetForm = () => {
-  revokeCoverPreview()
-  coverFile.value = null
-  coverError.value = ''
-  if (coverInputRef.value) coverInputRef.value.value = ''
   form.value = createInitialForm()
-}
-
-const revokeCoverPreview = () => {
-  if (coverPreviewUrl.value) {
-    URL.revokeObjectURL(coverPreviewUrl.value)
-    coverPreviewUrl.value = ''
-  }
-}
-
-const coverPreviewStyle = computed(() => {
-  if (!coverPreviewUrl.value) return {}
-  return { backgroundImage: `url("${coverPreviewUrl.value}")` }
-})
-
-const openCoverPicker = () => {
-  coverInputRef.value?.click()
-}
-
-const clearCover = () => {
-  revokeCoverPreview()
-  coverFile.value = null
-  coverError.value = ''
-  if (coverInputRef.value) coverInputRef.value.value = ''
-}
-
-const handleCoverSelected = (event) => {
-  const [file] = event.target.files || []
-  coverError.value = ''
-
-  if (!file) return
-  if (!allowedCoverTypes.has(file.type)) {
-    coverError.value = 'Ảnh bìa chỉ hỗ trợ PNG, JPG, JPEG hoặc WEBP.'
-    event.target.value = ''
-    return
-  }
-  if (file.size > maxCoverSize) {
-    coverError.value = 'Ảnh bìa phải nhỏ hơn hoặc bằng 5MB.'
-    event.target.value = ''
-    return
-  }
-
-  revokeCoverPreview()
-  coverFile.value = file
-  coverPreviewUrl.value = URL.createObjectURL(file)
-  if (!form.value.coverAltText.trim()) {
-    form.value.coverAltText = form.value.name.trim()
-      ? `Ảnh bìa dự án ${form.value.name.trim()}`
-      : 'Ảnh bìa dự án'
-  }
 }
 
 const handleClose = () => {
@@ -224,7 +150,7 @@ const handleClose = () => {
 
 const handleSubmit = async () => {
   if (!form.value.name.trim()) {
-    ElMessage.warning(t('createProject.nameRequired'))
+    ElMessage.warning('Vui lòng nhập tên dự án')
     return
   }
 
@@ -236,49 +162,19 @@ const handleSubmit = async () => {
       description: form.value.description.trim() || null,
       startDate: form.value.startDate,
       networkType: form.value.networkType,
+      cover: form.value.cover || null,
       icon: form.value.icon || null
     })
 
-    const createdProject = response.data?.data || response.data
-    let emittedProject = createdProject
-    const projectId = createdProject?.id || createdProject?.Id
-
-    if (coverFile.value && projectId) {
-      try {
-        const payload = new FormData()
-        payload.append('file', coverFile.value)
-        payload.append('coverAltText', form.value.coverAltText.trim() || `Ảnh bìa dự án ${form.value.name.trim()}`)
-        if (form.value.icon?.trim()) payload.append('icon', form.value.icon.trim())
-
-        const coverResponse = await axiosClient.post(`/projects/${projectId}/cover`, payload)
-        const coverData = coverResponse.data?.data || coverResponse.data
-        emittedProject = {
-          ...createdProject,
-          cover: coverData?.coverUrl || coverData?.CoverUrl || createdProject?.cover,
-          coverAltText: coverData?.coverAltText || coverData?.CoverAltText || form.value.coverAltText,
-          icon: coverData?.icon || form.value.icon || createdProject?.icon
-        }
-      } catch (coverErrorResponse) {
-        await projectStore.fetchAllProjects(true)
-        emit('created', createdProject)
-        ElMessage.error(coverErrorResponse.response?.data?.message || 'Dự án đã tạo nhưng chưa upload được ảnh bìa')
-        handleClose()
-        return
-      }
-    }
-
-    await projectStore.fetchAllProjects(true)
-    emit('created', emittedProject)
-    ElMessage.success(t('createProject.createSuccess'))
+    emit('created', response.data?.data || response.data)
+    ElMessage.success('Đã tạo dự án')
     handleClose()
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || t('createProject.createFailed'))
+    ElMessage.error(error.response?.data?.message || 'Không thể tạo dự án')
   } finally {
     submitting.value = false
   }
 }
-
-onUnmounted(revokeCoverPreview)
 </script>
 
 <style scoped>
@@ -287,6 +183,8 @@ onUnmounted(revokeCoverPreview)
   grid-template-columns: 1.1fr 0.9fr;
   gap: 32px;
   padding: 0 24px 24px;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
 }
 
 .form-column { display: flex; flex-direction: column; gap: 20px; }
@@ -340,50 +238,6 @@ onUnmounted(revokeCoverPreview)
 .section-title { font-size: 14px; font-weight: 700; color: var(--color-text-primary); margin-bottom: 4px; }
 .helper-text-muted { font-size: 12px; color: var(--color-text-muted); }
 
-.cover-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.btn-ghost-sm {
-  background: transparent;
-  color: var(--color-text-secondary);
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.btn-ghost-sm:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
-}
-
-.selected-file,
-.field-error {
-  margin: -6px 0 0;
-  font-size: 12px;
-}
-
-.selected-file { color: var(--color-text-muted); }
-.field-error { color: var(--color-danger); }
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
 .cover-grid {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
 }
@@ -436,6 +290,8 @@ onUnmounted(revokeCoverPreview)
 
 <style>
 .standard-dialog.el-dialog {
+  max-width: 92vw;
+  margin-top: 48px;
   background: var(--color-surface) !important;
   border-radius: 12px !important;
   box-shadow: var(--shadow-xl) !important;

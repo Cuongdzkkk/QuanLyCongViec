@@ -8,35 +8,22 @@
     :close-on-click-modal="false"
     :close-on-press-escape="false"
     :show-close="false"
-    class="permission-editor-dialog"
+    class="permission-editor-dialog sa-data-dialog sa-modal--workspace"
     destroy-on-close
   >
     <template #header>
-      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-        <div>
-          <h2 style="margin: 0; font-size: 20px; display: flex; align-items: center; gap: 8px;">
-            <el-icon><Monitor /></el-icon> Permission Editor Workspace
-          </h2>
-          <div style="margin-top: 8px; color: var(--el-text-color-secondary); font-size: 14px; display: flex; gap: 16px;">
-            <span>Role: <strong style="color: var(--el-text-color-primary);">{{ role?.name || 'Unknown' }}</strong></span>
-            <el-tag v-if="role?.isProtected" type="warning" size="small" effect="dark">System Role (Read Only)</el-tag>
-          </div>
-        </div>
-        <el-space>
-          <el-button @click="onCancel" :disabled="saving">Cancel</el-button>
-          <el-button type="primary" @click="onSave" :loading="saving" :disabled="role?.isProtected">Save Changes</el-button>
-        </el-space>
-      </div>
+      <DataModalHeader icon="bi bi-shield-lock" title="Permission editor" :description="`Configure permissions for ${role?.name || 'this role'}`" close-label="Close" @close="onCancel" />
     </template>
 
-    <div style="display: flex; flex-direction: column; height: 75vh; overflow: hidden; background: var(--el-bg-color);">
+    <div class="permission-editor-body" style="display: flex; flex-direction: column; height: 75vh; overflow: hidden; background: var(--el-bg-color);">
       
       <!-- TOOLBAR -->
+      <DataModalSection icon="bi bi-funnel" title="Filter permissions">
       <div style="padding: 16px; border-bottom: 1px solid var(--el-border-color-light); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; background: var(--el-fill-color-light);">
         <el-space :size="16" wrap>
           <el-input
             v-model="filters.search"
-            placeholder="Search action, module, desc..."
+            placeholder="Search by function or module..."
             prefix-icon="Search"
             clearable
             style="width: 260px;"
@@ -47,7 +34,7 @@
             <el-option label="Disabled Only" value="disabled" />
           </el-select>
           <el-select v-model="filters.modules" placeholder="Modules" clearable multiple collapse-tags collapse-tags-tooltip style="width: 200px;">
-            <el-option v-for="m in availableModules" :key="m" :label="formatModuleName(m)" :value="m" />
+            <el-option v-for="m in availableModules" :key="m" :label="getPermissionModuleLabel(m)" :value="m" />
           </el-select>
           <el-select v-model="filters.risk" placeholder="Risk Level" clearable style="width: 140px;">
             <el-option label="Critical Risk" :value="4" />
@@ -66,22 +53,21 @@
               <el-icon style="vertical-align: middle; margin-right: 4px;"><Grid /></el-icon> Matrix DataGrid
             </el-radio-button>
           </el-radio-group>
-          <el-button size="small" @click="bulkEnableFiltered" type="primary" plain :disabled="role?.isProtected">Enable Filtered</el-button>
-          <el-button size="small" @click="bulkDisableFiltered" type="danger" plain :disabled="role?.isProtected">Disable Filtered</el-button>
+          <el-tag type="info" effect="plain">{{ availableModules.length }} modules - {{ allPermissions.length }} functions</el-tag>
+          <el-button size="small" @click="bulkEnableFiltered" type="primary" plain :disabled="role?.isProtected">Enable matching</el-button>
+          <el-button size="small" @click="bulkDisableFiltered" type="danger" plain :disabled="role?.isProtected">Disable matching</el-button>
         </el-space>
       </div>
+      </DataModalSection>
 
       <!-- MAIN CONTENT -->
-      <el-scrollbar style="flex: 1;" class="workspace-scrollbar">
+      <DataModalSection icon="bi bi-grid-3x3-gap" title="Available functions">
+      <el-scrollbar style="flex: 1;" class="workspace-scrollbar permission-editor-scroll">
         <div style="padding: 24px;">
           
           <template v-if="hasResults">
             <!-- TREE VIEW -->
             <div v-if="viewMode === 'tree'" style="max-width: 1200px; margin: 0 auto;">
-              <div style="margin-bottom: 16px; text-align: right;">
-                 <el-button size="small" @click="activeModules = Object.keys(filteredGroupedPermissions)">Expand All</el-button>
-                 <el-button size="small" @click="activeModules = []">Collapse All</el-button>
-              </div>
               <el-collapse v-model="activeModules">
                 <el-collapse-item 
                   v-for="(perms, moduleName) in filteredGroupedPermissions" 
@@ -100,9 +86,9 @@
                           @change="val => toggleModule(moduleName, val)"
                           @click.stop
                         />
-                        <span style="font-weight: 600; font-size: 16px;">{{ formatModuleName(moduleName) }}</span>
+                        <span style="font-weight: 600; font-size: 16px;">{{ getPermissionModuleLabel(moduleName) }}</span>
                       </div>
-                      <el-text type="info">{{ getSelectedCount(moduleName) }} / {{ perms.length }} Selected</el-text>
+                      <el-text type="info">{{ perms.length }} functions - {{ getSelectedCount(moduleName) }} selected</el-text>
                     </div>
                   </template>
                   
@@ -112,9 +98,9 @@
                         <el-tooltip placement="top" effect="dark">
                           <template #content>
                             <div style="max-width: 250px;">
-                              <strong>{{ formatActionName(perm.code) }}</strong><br>
+                              <strong>{{ getPermissionActionLabel(perm) }}</strong><br>
                               <span style="color:#aaa; font-size:12px;">{{ perm.code }}</span><br>
-                              <div v-if="perm.description" style="margin-top:4px;">{{ perm.description }}</div>
+                              <div style="margin-top:4px;">{{ getPermissionDescription(perm) }}</div>
                             </div>
                           </template>
                           <el-checkbox
@@ -123,8 +109,8 @@
                             @change="val => togglePermission(perm.id, val)"
                           >
                             <div style="display: flex; flex-direction: column;">
-                              <span>{{ formatActionName(perm.code) }}</span>
-                              <span style="font-size: 11px; color: var(--el-text-color-secondary);">{{ perm.code }}</span>
+                              <span>{{ getPermissionActionLabel(perm) }}</span>
+                              <span style="font-size: 11px; color: var(--el-text-color-secondary);">{{ getPermissionDescription(perm) }}</span>
                             </div>
                           </el-checkbox>
                         </el-tooltip>
@@ -145,10 +131,10 @@
                 border
                 height="calc(75vh - 120px)"
               >
-                <el-table-column label="Module" width="220" fixed>
+                <el-table-column label="Module" width="220" fixed align="center">
                   <template #default="{ row }">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                      <strong>{{ formatModuleName(row.moduleName) }}</strong>
+                    <div class="matrix-module-cell">
+                      <strong>{{ getPermissionModuleLabel(row.moduleName) }}</strong>
                       <el-checkbox
                         :model-value="getModuleCheckState(row.moduleName)"
                         :indeterminate="isModuleIndeterminate(row.moduleName)"
@@ -159,13 +145,13 @@
                   </template>
                 </el-table-column>
                 
-                <el-table-column label="Action" min-width="250">
+                <el-table-column label="Function" min-width="250">
                   <template #default="{ row }">
                     <div style="display: flex; justify-content: space-between;">
                       <el-text>
-                        <strong>{{ formatActionName(row.perm.code) }}</strong>
+                        <strong>{{ getPermissionActionLabel(row.perm) }}</strong>
                         <br>
-                        <span style="font-size: 11px; color: #888;">{{ row.perm.code }}</span>
+                        <span style="font-size: 11px; color: #888;">{{ getPermissionDescription(row.perm) }}</span>
                       </el-text>
                       <el-tag v-if="row.perm.riskLevel >= 3" type="danger" size="small">Risk</el-tag>
                     </div>
@@ -188,7 +174,14 @@
           <el-empty v-else description="No permissions match your filters." />
         </div>
       </el-scrollbar>
+      </DataModalSection>
     </div>
+    <template #footer>
+      <div class="dialog-footer">
+        <el-button class="cancel-btn" @click="onCancel" :disabled="saving"><i class="bi bi-x-lg"></i>Cancel</el-button>
+        <el-button type="primary" @click="onSave" :loading="saving" :disabled="role?.isProtected"><i class="bi bi-check-lg"></i>Save changes</el-button>
+      </div>
+    </template>
   </el-dialog>
 </template>
 
@@ -196,6 +189,13 @@
 import { ref, computed, watch, reactive } from 'vue'
 import { Search, Grid, DataBoard, Monitor } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import {
+  getPermissionActionLabel,
+  getPermissionDescription,
+  getPermissionModuleLabel
+} from '@/utils/permissionPresentation'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -227,10 +227,12 @@ watch(() => props.visible, (newVal) => {
 const groupedPermissions = computed(() => {
   const groups = {}
   props.allPermissions.forEach(p => {
-    if (p.riskLevel === undefined) p.riskLevel = inferRiskLevel(p.code)
-    const mod = p.module || 'general'
+    const permission = p.riskLevel === undefined
+      ? { ...p, riskLevel: inferRiskLevel(p.code) }
+      : p
+    const mod = permission.module || 'general'
     if (!groups[mod]) groups[mod] = []
-    groups[mod].push(p)
+    groups[mod].push(permission)
   })
   return groups
 })
@@ -248,7 +250,12 @@ const filteredGroupedPermissions = computed(() => {
     if (filters.status === 'enabled') matched = matched.filter(p => currentSelectedIds.value.includes(p.id))
     else if (filters.status === 'disabled') matched = matched.filter(p => !currentSelectedIds.value.includes(p.id))
     if (filters.risk) matched = matched.filter(p => p.riskLevel === filters.risk)
-    if (q) matched = matched.filter(p => p.code.toLowerCase().includes(q) || mod.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)))
+    if (q) matched = matched.filter(p =>
+      p.code.toLowerCase().includes(q) ||
+      getPermissionModuleLabel(mod).toLowerCase().includes(q) ||
+      getPermissionActionLabel(p).toLowerCase().includes(q) ||
+      getPermissionDescription(p).toLowerCase().includes(q)
+    )
 
     if (matched.length > 0) filtered[mod] = matched
   }
@@ -258,9 +265,7 @@ const filteredGroupedPermissions = computed(() => {
 const hasResults = computed(() => Object.keys(filteredGroupedPermissions.value).length > 0)
 
 watch(filteredGroupedPermissions, (newVal) => {
-  if (Object.keys(newVal).length < 5) {
-    activeModules.value = Object.keys(newVal)
-  }
+  activeModules.value = Object.keys(newVal)
 }, { immediate: true })
 
 const hasChanges = computed(() => {
@@ -332,17 +337,6 @@ function bulkDisableFiltered() {
   currentSelectedIds.value = currentSelectedIds.value.filter(id => !ids.has(id))
 }
 
-function formatModuleName(name) {
-  if (!name) return 'General'
-  return name.split('.').map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(' - ')
-}
-
-function formatActionName(code) {
-  const parts = code.split('.')
-  const actionStr = parts[parts.length - 1]
-  return actionStr.split('_').map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(' ')
-}
-
 function inferRiskLevel(code) {
   const lower = code.toLowerCase()
   if (lower.includes('delete') || lower.includes('admin')) return 3
@@ -358,15 +352,25 @@ const matrixTableData = computed(() => {
     if (perms.length === 0) return
     const sorted = [...perms].sort((a, b) => a.code.localeCompare(b.code))
     sorted.forEach((p, index) => {
-      data.push({ moduleName, perm: p, rowspan: index === 0 ? sorted.length : 0, isFirst: index === 0 })
+      data.push({
+        moduleName,
+        perm: p,
+        rowspan: index === 0 ? sorted.length : 0,
+        isFirst: index === 0
+      })
     })
   })
   return data
 })
 
 const matrixSpanMethod = ({ row, columnIndex }) => {
-  if (columnIndex === 0) return { rowspan: row.rowspan, colspan: 1 }
+  if (columnIndex === 0) {
+    return row.isFirst
+      ? { rowspan: row.rowspan, colspan: 1 }
+      : { rowspan: 0, colspan: 0 }
+  }
 }
+
 </script>
 
 <style scoped>
@@ -387,6 +391,37 @@ const matrixSpanMethod = ({ row, columnIndex }) => {
 .permission-item {
   display: flex;
   align-items: flex-start;
+}
+.permission-editor-body {
+  min-width: 0;
+  min-height: 0;
+}
+.permission-editor-body :deep(.sa-modal-section) {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.permission-editor-body :deep(.sa-modal-section:first-child) {
+  flex: 0 0 auto;
+}
+.permission-editor-body :deep(.sa-modal-section:last-child) {
+  flex: 1 1 auto;
+  margin-top: 0 !important;
+}
+.permission-editor-body :deep(.sa-modal-section:last-child .sa-modal-section__content) {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.permission-editor-scroll {
+  min-height: 0;
+}
+.matrix-module-cell {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 .workspace-module-panel {
   border: 1px solid var(--el-border-color-light);

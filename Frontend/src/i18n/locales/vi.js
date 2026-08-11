@@ -640,6 +640,7 @@ export default {
     loadMore: 'Tải thêm module',
     editModule: 'Sửa module',
     createModule: 'Tạo module',
+    name: 'Tên module',
     moduleNamePlaceholder: 'Tên module',
     lead: 'Trưởng nhóm',
     noLead: 'Không có trưởng nhóm',
@@ -677,6 +678,9 @@ export default {
     }
   },
   reports: {
+    suggestedForToday: 'Gợi ý hôm nay',
+    continueWorking: 'Tiếp tục thực hiện',
+    teamWorkload: 'Khối lượng công việc nhóm',
     analyticsReport: 'Báo cáo phân tích',
     analyticsAndInsights: 'Phân tích và thông tin chi tiết cho dự án này',
     refresh: 'Làm mới',
@@ -1401,6 +1405,7 @@ export default {
   'Search stickies...': 'Tìm kiếm ghi chú nhanh...',
   'Add sticky': 'Thêm ghi chú nhanh',
   'Stickies are quick notes and to-dos you take down on the fly.': 'Ghi chú nhanh là các ghi chú và công việc bạn tạo nhanh khi cần.',
+  'Capture your thoughts and ideas effortlessly by creating stickies that you can access anytime and from anywhere.': 'Ghi lại những suy nghĩ và ý tưởng một cách dễ dàng bằng cách tạo ghi chú nhanh mà bạn có thể truy cập mọi lúc mọi nơi.',
   'Click to type here...': 'Nhấn để gõ...',
   'Discussion Channel': 'Kênh Thảo Luận',
   'Group Chat': 'Chat nhóm',

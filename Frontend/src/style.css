@@ -216,7 +216,7 @@
 }
 
 body {
-  font-family: 'Be Vietnam Pro', system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   line-height: 1.6;
   background-color: var(--color-bg);
   color: var(--color-text-primary);
@@ -1081,6 +1081,1040 @@ body {
   font-size: 14px;
 }
 
+/*
+ * SprintA modal contract
+ * Keep this block after legacy component rules. It intentionally normalizes
+ * both Element Plus dialogs and the hand-written overlays still used by
+ * project, work item, module, cycle, goal, team and administration screens.
+ */
+:root {
+  --sa-modal-width-sm: 560px;
+  --sa-modal-width-md: 680px;
+  --sa-modal-width-form: 720px;
+  --sa-modal-width-lg: 880px;
+  --sa-modal-width-workspace: 1120px;
+  --sa-modal-control-height: 44px;
+  --sa-modal-button-height: 44px;
+  --sa-modal-control-radius: 11px;
+  --sa-modal-radius: 16px;
+  --sa-modal-width: var(--sa-modal-width-form);
+  --sa-modal-top-offset: 48px;
+  --sa-modal-max-height: calc(100dvh - 96px);
+  --sa-modal-font-size: 14px;
+  --sa-modal-label-size: 13px;
+  --sa-modal-overlay-z: 120000;
+  --sa-modal-content-z: 120010;
+  --sa-modal-popover-z: 120100;
+  --sa-modal-feedback-z: 120300;
+  --z-modal: var(--sa-modal-content-z);
+  --z-popover: var(--sa-modal-popover-z);
+  --sprinta-z-overlay: var(--sa-modal-overlay-z);
+  --sprinta-z-modal: var(--sa-modal-content-z);
+  --el-overlay-z-index: var(--sa-modal-overlay-z);
+  --el-dialog-z-index: var(--sa-modal-content-z);
+}
+
+/* Feedback must remain visible while a data modal is open. */
+body .el-message,
+body .el-notification {
+  z-index: var(--sa-modal-feedback-z) !important;
+}
+
+/* Compact mutation confirmations/prompts use the same visual language. */
+body .el-message-box {
+  width: min(520px, calc(100vw - 32px)) !important;
+  padding: 0 !important;
+  overflow: hidden;
+  border: 1px solid var(--color-border) !important;
+  border-radius: var(--sa-modal-radius) !important;
+  background: var(--color-surface) !important;
+  color: var(--color-text-primary) !important;
+  box-shadow: 0 24px 72px rgb(2 8 23 / 0.3) !important;
+  font-size: var(--sa-modal-font-size) !important;
+}
+
+body .el-message-box__header {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 14px 20px !important;
+  border-bottom: 1px solid var(--color-border);
+}
+
+body .el-message-box__title {
+  color: var(--color-text-primary) !important;
+  font-size: 20px !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+}
+
+body .el-message-box__headerbtn {
+  width: 36px !important;
+  height: 36px !important;
+  top: 16px !important;
+  right: 16px !important;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 86%, #b91c1c) !important;
+  border-radius: 10px !important;
+  color: #fff !important;
+  background: var(--color-danger) !important;
+}
+
+body .el-message-box__headerbtn :is(.el-message-box__close, i, svg) {
+  color: #fff !important;
+}
+
+body .el-message-box__content {
+  padding: 20px !important;
+  color: var(--color-text-secondary) !important;
+  font-size: var(--sa-modal-font-size) !important;
+  line-height: 1.55 !important;
+}
+
+body .el-message-box__input .el-input__wrapper {
+  min-height: var(--sa-modal-control-height) !important;
+  padding: 0 12px !important;
+  border: 1px solid var(--color-input-border) !important;
+  border-radius: var(--sa-modal-control-radius) !important;
+  background: var(--color-input-bg) !important;
+  box-shadow: none !important;
+}
+
+body .el-message-box__btns {
+  min-height: 68px;
+  padding: 12px 20px !important;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface) !important;
+}
+
+body .el-message-box__btns .el-button {
+  min-width: 88px;
+  min-height: var(--sa-modal-button-height) !important;
+  height: var(--sa-modal-button-height) !important;
+  padding: 0 18px !important;
+  border-radius: var(--sa-modal-control-radius) !important;
+  font-size: var(--sa-modal-font-size) !important;
+  font-weight: 600 !important;
+}
+
+body .el-message-box__btns .el-button:not(.el-button--primary) {
+  border-color: var(--color-danger) !important;
+  background: var(--color-danger) !important;
+  color: #fff !important;
+}
+
+body .el-overlay:has(.sa-data-dialog),
+body .el-overlay-dialog:has(.sa-data-dialog),
+body .sa-data-modal-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: var(--sa-modal-overlay-z) !important;
+}
+
+body .give-kudos-overlay {
+  z-index: var(--sa-modal-content-z) !important;
+}
+
+body:has(> .sa-data-modal-overlay) {
+  overflow: hidden;
+}
+
+body .sa-data-modal-overlay {
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  padding: var(--sa-modal-top-offset) 16px 16px !important;
+  overflow: auto;
+  background: color-mix(in srgb, var(--color-text-primary) 18%, transparent) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  animation: sa-modal-fade-in 160ms ease-out both;
+}
+
+body .el-dialog.sa-data-dialog,
+body .sa-data-modal-overlay > :is(
+  .modal,
+  .modal-content,
+  .modal-container,
+  .modal-card,
+  .dialog,
+  .dialog-content,
+  .modal-dialog,
+  .share-dialog,
+  .jira-modal,
+  .jira-dialog,
+  .popup,
+  .view-modal,
+  .export-modal,
+  .create-module-modal,
+  .create-cycle-modal,
+  .create-view-modal,
+  .create-centered-modal,
+  .task-modal,
+  .contingency-modal,
+  .contingency-plan-modal,
+  .contingency-task-modal,
+  .draft-modal
+) {
+  box-sizing: border-box;
+  display: flex !important;
+  flex-direction: column !important;
+  width: min(var(--sa-modal-instance-width, var(--sa-modal-width)), calc(100vw - 32px)) !important;
+  z-index: var(--sa-modal-content-z) !important;
+  max-width: calc(100vw - 32px) !important;
+  max-height: var(--sa-modal-max-height) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: var(--sa-modal-radius) !important;
+  background: var(--color-surface) !important;
+  color: var(--color-text-primary) !important;
+  box-shadow: 0 24px 72px rgb(2 8 23 / 0.3) !important;
+  animation: sa-modal-enter 180ms cubic-bezier(.2, .8, .2, 1) both;
+  overflow: hidden !important;
+}
+
+body .el-dialog.sa-data-dialog {
+  width: min(var(--sa-modal-instance-width, var(--sa-modal-width)), calc(100vw - 32px)) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  margin: clamp(16px, 6vh, var(--sa-modal-top-offset)) auto 16px !important;
+  overflow: hidden !important;
+}
+
+/* Hand-written data modals do not all expose a dedicated body wrapper.
+ * Let the card itself scroll as a safe fallback so no action can be clipped. */
+body .sa-data-modal-overlay > :is(
+  .modal,
+  .modal-content,
+  .modal-container,
+  .modal-card,
+  .dialog,
+  .dialog-content,
+  .modal-dialog,
+  .share-dialog,
+  .jira-modal,
+  .jira-dialog,
+  .popup,
+  .view-modal,
+  .export-modal,
+  .create-module-modal,
+  .create-cycle-modal,
+  .create-view-modal,
+  .create-centered-modal,
+  .task-modal,
+  .contingency-modal,
+  .contingency-plan-modal,
+  .contingency-task-modal,
+  .draft-modal
+) {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) {
+  font-size: var(--sa-modal-font-size) !important;
+  line-height: 1.5;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(label, .field-label, .form-label, .field-block, .cm-label) {
+  font-size: var(--sa-modal-label-size) !important;
+  font-weight: 500 !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(input:not([type='checkbox']):not([type='radio']):not(.el-input__inner):not(.el-select__input), select) {
+  box-sizing: border-box !important;
+  width: 100%;
+  min-height: var(--sa-modal-control-height) !important;
+  height: var(--sa-modal-control-height) !important;
+  padding: 0 12px !important;
+  border: 1px solid var(--color-input-border) !important;
+  border-radius: var(--sa-modal-control-radius) !important;
+  background: var(--color-input-bg) !important;
+  color: var(--color-text-primary) !important;
+  font: inherit !important;
+  font-size: var(--sa-modal-font-size) !important;
+  line-height: 1.4 !important;
+  box-shadow: none !important;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) textarea {
+  box-sizing: border-box !important;
+  width: 100%;
+  min-height: 96px !important;
+  padding: 10px 12px !important;
+  border: 1px solid var(--color-input-border) !important;
+  border-radius: var(--sa-modal-control-radius) !important;
+  background: var(--color-input-bg) !important;
+  color: var(--color-text-primary) !important;
+  font: inherit !important;
+  font-size: var(--sa-modal-font-size) !important;
+  line-height: 1.5 !important;
+  box-shadow: none !important;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  resize: vertical;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  input:is([type='checkbox'], [type='radio']) {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(.helper-text, .helper-text-muted, .form-help, .field-help) {
+  color: var(--color-text-muted) !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(.error-message, .validation-error, .el-form-item__error) {
+  color: var(--color-danger) !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+}
+
+body .el-dialog.sa-data-dialog :is(.el-input__wrapper, .el-select__wrapper, .el-date-editor.el-input__wrapper),
+body .sa-data-modal-overlay
+  :is(.el-input__wrapper, .el-select__wrapper, .el-date-editor.el-input__wrapper) {
+  box-sizing: border-box !important;
+  min-height: var(--sa-modal-control-height) !important;
+  height: var(--sa-modal-control-height) !important;
+  padding: 0 12px !important;
+  border: 1px solid var(--color-input-border) !important;
+  border-radius: var(--sa-modal-control-radius) !important;
+  background: var(--color-input-bg) !important;
+  box-shadow: none !important;
+  font-size: var(--sa-modal-font-size) !important;
+}
+
+/* Element Plus already draws the control border on its wrapper. The native
+ * input inside must stay transparent to avoid the nested-input appearance. */
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(.el-input__inner, .el-select__input, .el-range-input) {
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body .el-dialog.sa-data-dialog .el-textarea__inner {
+  min-height: 120px !important;
+  padding: 12px 14px !important;
+  border: 1px solid var(--color-input-border) !important;
+  border-radius: var(--sa-modal-control-radius) !important;
+  background: var(--color-input-bg) !important;
+  color: var(--color-text-primary) !important;
+  font-size: var(--sa-modal-font-size) !important;
+  line-height: 1.55 !important;
+  box-shadow: none !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(
+    input:not([type='checkbox']):not([type='radio']):not(.el-input__inner):not(.el-select__input),
+    select,
+    textarea,
+    .el-input__wrapper,
+    .el-select__wrapper
+  ):focus,
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(.el-input__wrapper, .el-select__wrapper):focus-within {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent) !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(
+    button,
+    .el-button,
+    .btn,
+    .btn-primary,
+    .btn-secondary,
+    .primary-btn,
+    .secondary-btn,
+    .create-btn,
+    .save-btn,
+    .cm-btn-create,
+    .cm-btn-cancel
+  ) {
+  box-sizing: border-box !important;
+  min-height: var(--sa-modal-button-height) !important;
+  height: var(--sa-modal-button-height) !important;
+  padding: 0 18px !important;
+  border-radius: var(--sa-modal-control-radius) !important;
+  font-size: var(--sa-modal-font-size) !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease,
+    background-color 150ms ease, color 150ms ease, opacity 150ms ease !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(
+    .btn-cancel,
+    .cancel-btn,
+    .discard-btn,
+    .btn-discard,
+    .cm-btn-cancel,
+    .btn-cancel-custom,
+    [class*='cancel'],
+    [class*='discard']
+  ) {
+  border: 1px solid var(--color-danger) !important;
+  background: var(--color-danger) !important;
+  color: #fff !important;
+}
+
+body .el-dialog.sa-data-dialog .el-dialog__footer .el-button--default {
+  border: 1px solid var(--color-danger) !important;
+  background: var(--color-danger) !important;
+  color: #fff !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(
+    .el-button--primary,
+    .btn-primary,
+    .primary-btn,
+    .primary-action,
+    .btn-primary-custom,
+    .btn-save,
+    .save-btn,
+    .submit-btn,
+    .create-btn,
+    .cm-btn-create,
+    [class*='create-button'],
+    [class*='save-button']
+  ):not(:disabled) {
+  border-color: var(--color-accent) !important;
+  background: var(--color-accent) !important;
+  color: #fff !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(
+    .danger-btn,
+    .danger-outline-btn,
+    .delete-btn,
+    .remove-btn,
+    .el-button--danger,
+    [class*='delete'],
+    [class*='danger']
+  ) {
+  border-color: var(--color-danger) !important;
+  background: var(--color-danger) !important;
+  color: #fff !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgb(15 23 42 / 0.12);
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  button:not(:disabled):active {
+  transform: translateY(0);
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+body .el-dialog.sa-data-dialog .el-dialog__header,
+body .sa-data-modal-overlay
+  :is(
+    .modal-header,
+    .cm-header,
+    .dialog-header,
+    .dialog-header-standard,
+    .jira-dialog-header,
+    .jira-modal-header,
+    .share-header,
+    .appearance-header,
+    .contingency-plan-header,
+    .contingency-task-header
+  ) {
+  flex: 0 0 auto !important;
+  min-height: 92px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 16px 24px !important;
+  border-bottom: 1px solid var(--color-border) !important;
+  background: var(--color-surface) !important;
+}
+
+body .el-dialog.sa-data-dialog .el-dialog__body,
+body .sa-data-modal-overlay
+  :is(
+    .modal-body,
+    .cm-body,
+    .dialog-body,
+    .jira-dialog-body,
+    .jira-modal-body,
+    .share-body,
+    .appearance-body,
+    .dm-body,
+    .contingency-plan-body,
+    .contingency-task-body
+  ) {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+
+body .sa-data-modal-overlay :is(.jira-modal-body, .dm-body) {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+body .el-dialog.sa-data-dialog .el-dialog__body {
+  padding: 0 24px 24px !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) .sa-modal-section {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) .sa-modal-section:first-child {
+  padding-top: 20px !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) .sa-modal-section + .sa-modal-section {
+  margin-top: 16px !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) .sa-modal-section__description {
+  margin: 0 0 10px !important;
+  color: var(--color-text-muted) !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) .sa-modal-section__content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) .sa-modal-form-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) .sa-modal-field {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 7px !important;
+  min-width: 0;
+  margin: 0 !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) .sa-modal-field > label {
+  margin: 0 !important;
+  color: var(--color-text-secondary) !important;
+  font-size: var(--sa-modal-label-size) !important;
+  font-weight: 550 !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) .sa-modal-field__required {
+  margin-left: 3px;
+  color: var(--color-danger);
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(.sa-modal-field__helper, .sa-modal-field__error) {
+  margin: 0 !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) .sa-modal-field__helper {
+  color: var(--color-text-muted) !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) .sa-modal-field__error {
+  color: var(--color-danger) !important;
+}
+
+body .el-dialog.sa-data-dialog .el-dialog__title,
+body .sa-data-modal-overlay
+  :is(.modal-title, .cm-title, .dialog-title, .jira-modal-title, .appearance-header h2) {
+  margin: 0 !important;
+  color: var(--color-text-primary) !important;
+  font-size: 24px !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+body .sa-data-modal-overlay > :is(.draft-modal, .export-modal) > :is(.modal-title, h2:first-child) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  margin: 0 !important;
+  padding: 14px 22px !important;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(
+    .el-dialog__headerbtn,
+    .dialog-close-btn,
+    .close-btn,
+    .floating-close-btn,
+    .contingency-plan-close,
+    .contingency-task-close,
+    button[title='Close'],
+    button[title='Đóng'],
+    button[aria-label='Close'],
+    button[aria-label='Đóng']
+  ) {
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 86%, #b91c1c) !important;
+  border-radius: 10px !important;
+  color: #fff !important;
+  background: var(--color-danger) !important;
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--color-danger) 24%, transparent) !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(
+    .el-dialog__headerbtn,
+    .dialog-close-btn,
+    .close-btn,
+    .floating-close-btn,
+    .contingency-plan-close,
+    .contingency-task-close,
+    button[title='Close'],
+    button[title='Đóng'],
+    button[aria-label='Close'],
+    button[aria-label='Đóng']
+  )
+  :is(.el-dialog__close, i, svg) {
+  color: #fff !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(
+    .el-dialog__headerbtn,
+    .dialog-close-btn,
+    .close-btn,
+    .floating-close-btn,
+    .contingency-plan-close,
+    .contingency-task-close,
+    button[title='Close'],
+    button[title='Đóng'],
+    button[aria-label='Close'],
+    button[aria-label='Đóng']
+  ):hover {
+  border-color: #b91c1c !important;
+  color: #fff !important;
+  background: #dc2626 !important;
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--color-danger) 32%, transparent) !important;
+}
+
+body .el-dialog.sa-data-dialog .el-dialog__footer,
+body .sa-data-modal-overlay
+  :is(
+    .modal-footer,
+    .cm-footer,
+    .cm-footer-row,
+    .dialog-footer,
+    .dialog-footer-standard,
+    .jira-dialog-footer,
+    .jira-modal-footer,
+    .dialog-actions,
+    .modal-actions,
+    .dm-footer,
+    .appearance-footer,
+    .contingency-plan-footer,
+    .contingency-task-footer
+  ) {
+  flex: 0 0 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 12px !important;
+  min-height: 72px !important;
+  padding: 14px 24px !important;
+  border-top: 1px solid var(--color-border) !important;
+  background: var(--color-surface) !important;
+}
+
+body .sa-data-modal-overlay
+  :is(
+    .modal-footer,
+    .cm-footer,
+    .cm-footer-row,
+    .dialog-footer,
+    .dialog-footer-standard,
+    .jira-dialog-footer,
+    .jira-modal-footer,
+    .dialog-actions,
+    .modal-actions,
+    .dm-footer,
+    .appearance-footer,
+    .contingency-plan-footer,
+    .contingency-task-footer
+  ) {
+  position: sticky !important;
+  bottom: 0;
+  z-index: 3;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(
+    .el-dialog__footer,
+    .modal-footer,
+    .cm-footer,
+    .cm-footer-row,
+    .dialog-footer,
+    .dialog-footer-standard,
+    .jira-dialog-footer,
+    .jira-modal-footer,
+    .dialog-actions,
+    .modal-actions,
+    .dm-footer,
+    .appearance-footer,
+    .contingency-plan-footer,
+    .contingency-task-footer
+  )
+  button {
+  min-width: 88px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(
+    .el-dialog__footer,
+    .modal-footer,
+    .cm-footer,
+    .cm-footer-row,
+    .dialog-footer,
+    .dialog-footer-standard,
+    .jira-dialog-footer,
+    .jira-modal-footer,
+    .dialog-actions,
+    .modal-actions,
+    .dm-footer,
+    .appearance-footer,
+    .contingency-plan-footer,
+    .contingency-task-footer
+  )
+  button > i {
+  display: none !important;
+}
+
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(
+    .el-dialog__footer,
+    .modal-footer,
+    .cm-footer,
+    .cm-footer-row,
+    .dialog-footer,
+    .dialog-footer-standard,
+    .jira-dialog-footer,
+    .jira-modal-footer,
+    .dialog-actions,
+    .modal-actions,
+    .dm-footer,
+    .appearance-footer,
+    .contingency-plan-footer,
+    .contingency-task-footer
+  )
+  button,
+body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+  :is(
+    .el-dialog__footer,
+    .modal-footer,
+    .cm-footer,
+    .cm-footer-row,
+    .dialog-footer,
+    .dialog-footer-standard,
+    .jira-dialog-footer,
+    .jira-modal-footer,
+    .dialog-actions,
+    .modal-actions,
+    .dm-footer,
+    .appearance-footer,
+    .contingency-plan-footer,
+    .contingency-task-footer
+  )
+  button:hover {
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+body .sa-data-modal-overlay .sa-split-date-range.el-date-editor.el-input__wrapper {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) !important;
+  flex: 0 1 360px !important;
+  width: min(100%, 360px) !important;
+  min-width: min(100%, 320px) !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  gap: 8px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body .sa-data-modal-overlay .sa-split-date-range :is(.el-range__icon, .el-range__close-icon) {
+  display: none !important;
+}
+
+body .sa-data-modal-overlay .sa-split-date-range .el-range-input {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 34px !important;
+  padding: 0 12px !important;
+  border: 1px solid var(--color-input-border) !important;
+  border-radius: 999px !important;
+  background: var(--color-input-bg) !important;
+  color: var(--color-text-primary) !important;
+  text-align: center !important;
+}
+
+body .sa-data-modal-overlay .sa-split-date-range .el-range-separator {
+  width: auto !important;
+  padding: 0 !important;
+  color: var(--color-text-muted) !important;
+}
+
+body :is(.sa-modal--sm, .sa-data-modal-overlay.sa-modal--sm) {
+  --sa-modal-instance-width: var(--sa-modal-width-sm);
+}
+
+body :is(.sa-modal--md, .sa-data-modal-overlay.sa-modal--md) {
+  --sa-modal-instance-width: var(--sa-modal-width-md);
+}
+
+body :is(.sa-modal--form, .sa-data-modal-overlay.sa-modal--form) {
+  --sa-modal-instance-width: var(--sa-modal-width-form);
+}
+
+body :is(.sa-modal--lg, .sa-data-modal-overlay.sa-modal--lg) {
+  --sa-modal-instance-width: var(--sa-modal-width-lg);
+}
+
+body :is(.sa-modal--workspace, .sa-data-modal-overlay.sa-modal--workspace) {
+  --sa-modal-instance-width: var(--sa-modal-width-workspace);
+}
+
+body .el-dialog.sa-data-dialog.is-fullscreen {
+  width: 100vw !important;
+  max-width: none !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+body .sa-data-modal-overlay.sa-modal--blur {
+  background: color-mix(in srgb, var(--color-text-primary) 26%, transparent) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body .sa-data-modal-overlay.sa-modal--clear {
+  background: transparent !important;
+}
+
+/* Direct Chat friend form previously hard-coded a dark palette. Keep its
+ * structure while binding every visible surface to the active theme. */
+body .el-dialog.add-friend-dialog.sa-data-dialog,
+body .el-dialog.add-friend-dialog.sa-data-dialog .el-dialog__header,
+body .el-dialog.add-friend-dialog.sa-data-dialog .el-dialog__body {
+  background: var(--color-surface) !important;
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border) !important;
+}
+
+body .el-dialog.add-friend-dialog.sa-data-dialog :is(.dialog-header span, .info-link) {
+  color: var(--color-text-primary) !important;
+}
+
+body .el-dialog.add-friend-dialog.sa-data-dialog :is(.info-label, .field-label) {
+  color: var(--color-text-secondary) !important;
+}
+
+body .el-dialog.add-friend-dialog.sa-data-dialog :is(.my-invite-card, .request-item) {
+  background: var(--color-surface-hover) !important;
+  border-color: var(--color-border) !important;
+}
+
+body .el-dialog.add-friend-dialog.sa-data-dialog .custom-friend-input {
+  height: var(--sa-modal-control-height) !important;
+  border: 1px solid var(--color-input-border) !important;
+  border-radius: var(--sa-modal-control-radius) !important;
+  background: var(--color-input-bg) !important;
+  color: var(--color-text-primary) !important;
+  font-size: var(--sa-modal-font-size) !important;
+}
+
+body .el-dialog.add-friend-dialog.sa-data-dialog .field-label {
+  font-size: var(--sa-modal-label-size) !important;
+  font-weight: 500 !important;
+  line-height: 20px !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+body .el-dialog.add-friend-dialog.sa-data-dialog .btn-save {
+  height: var(--sa-modal-button-height) !important;
+  border-radius: var(--sa-modal-control-radius) !important;
+  background: var(--color-accent) !important;
+  color: var(--color-text-inverse) !important;
+  box-shadow: none !important;
+}
+
+body .el-dialog.add-friend-dialog.sa-data-dialog .sa-modal-section.friend-requests-divider {
+  margin-top: 16px !important;
+  padding-top: 16px !important;
+  border-top: 1px solid var(--color-border) !important;
+}
+
+body .el-dialog.add-friend-dialog.sa-data-dialog .request-item:hover {
+  border-color: var(--color-border-hover) !important;
+  background: var(--color-surface-hover) !important;
+}
+
+body .el-dialog.add-friend-dialog.sa-data-dialog .btn-action-accept {
+  border-color: var(--color-accent) !important;
+  background: var(--color-accent) !important;
+  color: var(--color-text-inverse) !important;
+  box-shadow: none !important;
+}
+
+body .el-dialog.add-friend-dialog.sa-data-dialog .btn-action-decline {
+  border-color: var(--color-border) !important;
+  background: var(--color-surface-hover) !important;
+  color: var(--color-text-secondary) !important;
+  box-shadow: none !important;
+}
+
+body .el-dialog.add-friend-dialog.sa-data-dialog :is(.info-code, .copy-btn-link) {
+  color: var(--color-accent) !important;
+}
+
+body .el-dialog.add-friend-dialog.sa-data-dialog .info-code {
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)) !important;
+}
+
+.el-select__popper,
+.el-picker__popper,
+.el-popper {
+  z-index: var(--sa-modal-popover-z) !important;
+}
+
+@keyframes sa-modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sa-modal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+  body .sa-data-modal-overlay {
+    align-items: flex-start !important;
+    padding: 16px !important;
+  }
+
+  body .el-dialog.sa-data-dialog,
+  body .sa-data-modal-overlay > :is(
+    .modal,
+    .modal-content,
+    .modal-container,
+    .modal-card,
+    .dialog,
+    .dialog-content,
+    .modal-dialog,
+    .share-dialog,
+    .jira-modal,
+    .jira-dialog,
+    .popup,
+    .view-modal,
+    .export-modal,
+    .create-module-modal,
+    .create-cycle-modal,
+    .create-view-modal,
+    .create-centered-modal,
+    .task-modal,
+    .contingency-modal,
+    .contingency-plan-modal,
+    .contingency-task-modal,
+    .draft-modal
+  ) {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: calc(100dvh - 32px) !important;
+    border-radius: var(--sa-modal-radius) !important;
+  }
+}
+
+@media (max-width: 800px) {
+  body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
+    :is(.form-grid, .cm-grid, .split-grid, .modal-layout) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay) .sa-modal-form-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
 .content-area {
   font-size: 13px;
 }
@@ -1181,8 +2215,6 @@ textarea {
 /* Site selection welcome screen */
 .start-page-wrapper {
   background:
-    radial-gradient(circle at 18% 10%, color-mix(in srgb, var(--home-accent) 16%, transparent), transparent 30%),
-    radial-gradient(circle at 78% 24%, color-mix(in srgb, var(--home-warning) 10%, transparent), transparent 24%),
     linear-gradient(180deg, var(--home-bg), var(--home-bg-2)) !important;
   color: var(--home-text) !important;
 }
@@ -1244,9 +2276,6 @@ textarea {
   content: "";
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(circle at 7% 12%, color-mix(in srgb, var(--home-accent) 16%, transparent), transparent 28%),
-    radial-gradient(circle at 94% 84%, color-mix(in srgb, var(--home-accent-2) 12%, transparent), transparent 30%);
   pointer-events: none;
 }
 
@@ -1388,8 +2417,6 @@ textarea {
 .goals-wrapper,
 .projects-wrapper {
   background:
-    radial-gradient(circle at 15% 0%, color-mix(in srgb, var(--home-accent) 14%, transparent), transparent 30%),
-    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--home-accent-2) 10%, transparent), transparent 28%),
     linear-gradient(180deg, var(--home-bg), var(--home-bg-2) 54%, var(--home-bg)) !important;
   color: var(--home-text) !important;
 }
@@ -1474,7 +2501,6 @@ textarea {
   color: var(--home-accent) !important;
 }
 
-.page-header,
 .module-header,
 .header-main {
   padding: 22px clamp(18px, 2.4vw, 34px) 0 !important;
@@ -1710,9 +2736,7 @@ a:focus-visible {
 .empty-state-grid,
 .empty-table-state,
 .loading-state {
-  background:
-    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--home-accent) 12%, transparent), transparent 38%),
-    var(--home-panel) !important;
+  background: var(--home-panel) !important;
   border: 1px dashed var(--home-border-strong) !important;
   border-radius: 18px !important;
   color: var(--home-muted) !important;
@@ -1804,9 +2828,7 @@ a:focus-visible {
 .recent-page,
 .starred-page,
 .status-page {
-  background:
-    radial-gradient(circle at 82% 0%, color-mix(in srgb, var(--home-accent-2) 9%, transparent), transparent 28%),
-    var(--home-bg) !important;
+  background: var(--home-bg) !important;
   color: var(--home-text) !important;
 }
 
@@ -1838,7 +2860,6 @@ a:focus-visible {
 }
 
 .module-header,
-.page-header,
 .tabs-nav {
   background: transparent !important;
   border-color: var(--home-border) !important;
@@ -2101,20 +3122,16 @@ select.secondary-btn {
   }
 }
 
-/* Compact workspace pages: Integration, Check-in, Chat, Priority, Rewards, Feed */
-.checkin-container.admin-page,
+/* Compact workspace pages: Integration, Chat, Priority, Feed */
 .feed-container.admin-page,
 .df-page,
-.rewards-page,
 .chat-container {
   width: min(1240px, calc(100% - 36px)) !important;
   margin-inline: auto !important;
 }
 
-.checkin-container.admin-page,
 .feed-container.admin-page,
-.df-page,
-.rewards-page {
+.df-page {
   padding: 18px 0 26px !important;
 }
 
@@ -2122,11 +3139,9 @@ select.secondary-btn {
   --compact-panel-radius: 14px;
 }
 
-.page-header,
 .nexus-feature-header,
 .df-header,
-.feed-container .page-header,
-.checkin-container .page-header {
+.feed-container .page-header {
   margin-bottom: 14px !important;
 }
 
@@ -2183,8 +3198,41 @@ select.secondary-btn {
   .feed-container.admin-page {
     width: min(980px, calc(100% - 36px)) !important;
   }
+}
 
-  .checkin-container.admin-page {
-    width: min(1060px, calc(100% - 36px)) !important;
-  }
+/* Teleported work-item dropdowns: keep option text aligned with its semantic color. */
+body .el-dropdown-menu.plane-dropdown .el-dropdown-menu__item.color-option,
+body .el-dropdown-menu.plane-dropdown .el-dropdown-menu__item.color-option > span,
+body .el-dropdown-menu.plane-dropdown .el-dropdown-menu__item.color-option > i {
+  color: var(--option-color) !important;
+}
+
+body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.status-option,
+body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.status-option > i {
+  color: var(--option-color) !important;
+}
+
+body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-urgent,
+body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-urgent > i {
+  color: #ef4444 !important;
+}
+
+body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-high,
+body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-high > i {
+  color: #f97316 !important;
+}
+
+body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-medium,
+body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-medium > i {
+  color: #3b82f6 !important;
+}
+
+body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-low,
+body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-low > i {
+  color: #10b981 !important;
+}
+
+body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-none,
+body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-none > i {
+  color: #64748b !important;
 }

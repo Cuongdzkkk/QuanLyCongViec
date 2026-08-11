@@ -4,6 +4,7 @@ import axiosClient from '@/api/axiosClient'
 import { ElMessage } from 'element-plus'
 import { parseCSVText, processRawRows, buildTaskPayload } from '@/utils/taskImportParser'
 import { downloadResponseFile } from '@/utils/downloadFile'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const props = defineProps({ projectId: { type: String, required: true }, projectMembers: { type: Array, default: () => [] }, projectStatuses: { type: Array, default: () => [] } })
 const emit = defineEmits(['imported'])
@@ -48,7 +49,10 @@ async function exportTasks() {
       <el-button plain @click="open">⇧ Nhập CSV</el-button>
       <el-button plain :loading="exporting" @click="exportTasks">⇩ Xuất CSV</el-button>
     </el-button-group>
-    <el-dialog v-model="dialogOpen" title="Nhập công việc" width="min(920px, calc(100vw - 32px))" append-to-body destroy-on-close class="task-import-dialog">
+    <el-dialog v-model="dialogOpen" width="min(920px, calc(100vw - 32px))" append-to-body destroy-on-close class="task-import-dialog sa-data-dialog sa-modal--lg" :show-close="false">
+      <template #header>
+        <DataModalHeader icon="bi bi-filetype-csv" title="Nhập công việc" description="Kiểm tra file CSV trước khi tạo công việc hàng loạt" @close="dialogOpen = false" />
+      </template>
       <div class="import-toolbar"><span>Ngày dùng định dạng DD/MM/YYYY. Hệ thống sẽ chuẩn hóa sang ISO trước khi gửi.</span><el-button size="small" @click="downloadTemplate">Tải template</el-button></div>
       <label class="upload-zone"><input ref="input" type="file" accept=".csv,text/csv" @change="readFile" /> <span>Chọn CSV UTF-8 để xem trước</span></label>
       <el-alert v-if="fileError" type="error" :title="fileError" show-icon :closable="false" />

@@ -1,11 +1,22 @@
 <template>
   <el-dialog
     :model-value="visible"
-    :title="editingRole ? 'Edit role' : 'Create role'"
     width="500px"
     @update:model-value="$emit('update:visible', $event)"
     :before-close="handleClose"
+    append-to-body
+    class="sa-data-dialog sa-modal--form"
+    :show-close="false"
   >
+    <template #header>
+      <DataModalHeader
+        icon="bi bi-person-gear"
+        :title="editingRole ? 'Edit role' : 'Create role'"
+        description="Configure the role identity before assigning permissions"
+        close-label="Close"
+        @close="handleClose"
+      />
+    </template>
     <div class="role-form">
       <div class="form-group">
         <label>Role name <span class="required">*</span></label>
@@ -22,7 +33,7 @@
     </div>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose">Cancel</el-button>
+        <el-button class="cancel-btn" @click="handleClose"><i class="bi bi-x-lg"></i> Cancel</el-button>
         <el-button type="primary" @click="handleSave" :loading="saving">
           {{ editingRole ? 'Save changes' : 'Create role' }}
         </el-button>
@@ -34,6 +45,7 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const props = defineProps({
   visible: Boolean,
