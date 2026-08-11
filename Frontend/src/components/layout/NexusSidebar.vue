@@ -13,9 +13,9 @@
           <el-popover
             v-model:visible="recentVisible"
             placement="right-start"
-            :width="320"
+            :width="360"
             trigger="click"
-            popper-class="sidebar-quick-popover"
+            popper-class="sidebar-quick-popover recent-quick-popover"
             popper-style="padding: 0;"
             :teleported="true"
             @show="onRecentShow"
