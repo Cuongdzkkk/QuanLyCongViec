@@ -145,7 +145,6 @@ namespace TaskManagement.Infrastructure.Services
                     p.Id,
                     p.Name,
                     p.Identifier,
-                    p.Description,
                     p.WorkspaceId
                 })
                 .ToListAsync();
@@ -305,8 +304,17 @@ namespace TaskManagement.Infrastructure.Services
 
             if (effectiveProjectId.HasValue)
             {
-                var project = accessibleProjectDirectory
-                    .FirstOrDefault(p => p.Id == effectiveProjectId.Value);
+                var project = await accessibleProjectsForAggregationQuery
+                    .Where(p => p.Id == effectiveProjectId.Value)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.Name,
+                        p.Identifier,
+                        p.Description,
+                        p.WorkspaceId
+                    })
+                    .FirstOrDefaultAsync();
 
                 if (project != null)
                 {
@@ -449,28 +457,26 @@ namespace TaskManagement.Infrastructure.Services
             AiContextPageDto page)
         {
             if (!string.IsNullOrWhiteSpace(selectedText) ||
-                request.ProjectId is { } projectId && projectId != Guid.Empty ||
-                request.WorkspaceId is { } workspaceId && workspaceId != Guid.Empty)
+                request.ProjectId is { } projectId && projectId != Guid.Empty)
             {
                 return true;
             }
 
-            var contextualRoute = route.StartsWith("/dashboard", StringComparison.OrdinalIgnoreCase) ||
-                                  route.Contains("/projects", StringComparison.OrdinalIgnoreCase) ||
-                                  route.Contains("/project/", StringComparison.OrdinalIgnoreCase);
-            var contextualPage = !string.IsNullOrWhiteSpace(page.PageType) ||
-                                 !string.IsNullOrWhiteSpace(page.CurrentView);
-            if (contextualRoute || contextualPage)
+            var contextualSurface = !string.IsNullOrWhiteSpace(route) ||
+                                    !string.IsNullOrWhiteSpace(page.PageType) ||
+                                    !string.IsNullOrWhiteSpace(page.CurrentView);
+            if (!contextualSurface)
             {
-                return true;
+                return false;
             }
 
             var normalized = message.ToLowerInvariant();
             return new[]
             {
-                "task", "project", "workspace", "sprint", "due", "hạn", "quá hạn", "overdue",
-                "priority", "ưu tiên", "assign", "gán", "tạo", "create", "sửa", "đổi", "status",
-                "trạng thái", "workload", "tiến độ"
+                "dashboard", "rủi ro", "risk", "ưu tiên", "priority", "công việc", "task", "project",
+                "workspace", "sprint", "due", "hạn", "quá hạn", "overdue", "workload", "tiến độ",
+                "tóm tắt", "tình hình", "hiện tại", "hôm nay", "today", "trang này", "cần chú ý",
+                "what needs attention", "summarize this page", "summarize dashboard"
             }.Any(normalized.Contains);
         }
 

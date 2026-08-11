@@ -68,9 +68,38 @@ public sealed class AiContextTokenOptimizationTests
         handler.RequestBody.Should().Contain("\"max_completion_tokens\":800");
     }
 
+    [Fact]
+    public async Task ProductionShapedDashboardMetadata_DoesNotForceGenericMessageIntoContext()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Route = "/dashboard",
+            WorkspaceId = Guid.NewGuid(),
+            PageContext = new AiContextPageDto
+            {
+                PageType = "dashboard",
+                CurrentView = "Dashboard",
+                VisibleTaskIds = [Guid.NewGuid(), Guid.NewGuid()],
+                VisibleStatuses = ["Todo", "Done"]
+            },
+            Message = "Viết cho tôi một lời chúc sinh nhật ngắn."
+        });
+
+        handler.CallCount.Should().Be(1);
+        handler.RequestBody.Should().NotContain("Route: /dashboard");
+        handler.RequestBody.Should().NotContain("Visible task ids");
+        handler.RequestBody.Should().NotContain("Accessible project");
+        handler.RequestBody.Should().NotContain("Task count in context");
+    }
+
     [Theory]
     [InlineData("Tóm tắt dashboard hiện tại")]
     [InlineData("Rủi ro nào cần xử lý trước?")]
+    [InlineData("Gợi ý ưu tiên hôm nay")]
     public async Task DashboardSurface_PreservesSprintAContext(string message)
     {
         await using var context = CreateContextWithUser(out var userId);
@@ -155,6 +184,66 @@ public sealed class AiContextTokenOptimizationTests
         handler.RequestBody.Should().NotContain("Accessible project catalog");
         handler.RequestBody.Split("- id=", StringSplitOptions.None).Length.Should().BeLessThanOrEqualTo(21);
         handler.RequestBody.Should().Contain("Task count in context: 20");
+    }
+
+    [Fact]
+    public async Task ExplicitProjectId_PreservesContextForGenericLookingMessage()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var projectId = Guid.NewGuid();
+        var workspaceId = Guid.NewGuid();
+        context.Projects.Add(new Project
+        {
+            Id = projectId,
+            Name = "PROJECT EXPLICIT",
+            Identifier = "EXP",
+            WorkspaceId = workspaceId,
+            CreatorId = userId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            Status = true
+        });
+        context.ProjectMembers.Add(new ProjectMember
+        {
+            ProjectId = projectId,
+            UserId = userId,
+            Status = true,
+            JoinedAt = DateTime.UtcNow
+        });
+        context.WorkspaceMembers.Add(new WorkspaceMember
+        {
+            WorkspaceId = workspaceId,
+            UserId = userId,
+            IsActive = true,
+            JoinedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            ProjectId = projectId,
+            Message = "Viết lời chúc sinh nhật"
+        });
+
+        handler.RequestBody.Should().Contain("Project: PROJECT EXPLICIT");
+    }
+
+    [Fact]
+    public async Task SelectedText_PreservesContextForGenericLookingMessage()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            SelectedText = "Selected SprintA task context",
+            Message = "Dịch câu này sang tiếng Anh"
+        });
+
+        handler.RequestBody.Should().Contain("Selected text (untrusted): Selected SprintA task context");
     }
 
     [Fact]
