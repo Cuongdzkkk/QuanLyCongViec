@@ -12,7 +12,12 @@
       <DataModalHeader icon="bi bi-folder-plus" title="Create project" description="Set project identity, visibility and ownership" close-label="Close" @close="handleClose" />
     </template>
     <div class="modal-content-inner">
-      <div class="plane-cover-header" :style="{ background: selectedCover.value }">
+      <div
+        class="plane-cover-header"
+        :style="coverPreviewStyle"
+        :role="coverPreviewUrl ? 'img' : undefined"
+        :aria-label="coverPreviewUrl ? (form.coverAltText || `Project cover for ${form.name || 'new project'}`) : undefined"
+      >
         <button class="change-cover-btn" @click="showCoverPicker = !showCoverPicker">
           <i class="bi bi-palette2"></i>
           Choose cover
@@ -27,6 +32,34 @@
             <button type="button" @click="showCoverPicker = false"><i class="bi bi-x-lg"></i></button>
           </div>
           <ProjectBackgroundPicker v-model="form.cover" />
+          <div class="custom-cover-block">
+            <strong>Custom cover image</strong>
+            <span>PNG, JPG, JPEG or WEBP, maximum 5 MB.</span>
+            <input
+              ref="coverInputRef"
+              class="cover-file-input"
+              type="file"
+              accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+              @change="handleCoverSelected"
+            />
+            <div class="custom-cover-actions">
+              <button type="button" class="btn-secondary-sm" @click="openCustomCoverPicker">
+                <i class="fa-regular fa-image"></i>
+                {{ coverFile ? 'Replace image' : 'Upload image' }}
+              </button>
+              <button v-if="coverFile" type="button" class="btn-ghost-sm" @click="clearCustomCover">Remove image</button>
+            </div>
+            <input
+              v-model="form.coverAltText"
+              class="compact-input-field"
+              type="text"
+              maxlength="180"
+              :disabled="!coverFile"
+              :placeholder="coverFile ? 'Describe the cover image' : 'Upload a custom image first'"
+            />
+            <small v-if="coverFile" class="selected-cover-file">{{ coverFile.name }} · {{ formatFileSize(coverFile.size) }}</small>
+            <small v-if="coverError" class="cover-error">{{ coverError }}</small>
+          </div>
         </div>
       </div>
 
@@ -126,7 +159,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, onBeforeUnmount, watch } from 'vue'
 import axiosClient from '@/api/axiosClient'
 import { ElMessage } from 'element-plus'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
@@ -134,6 +167,7 @@ import ProjectAvatarPicker from '@/components/project/ProjectAvatarPicker.vue'
 import ProjectBackgroundPicker from '@/components/project/ProjectBackgroundPicker.vue'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import { useProjectStore } from '@/store/useProjectStore'
 import {
   DEFAULT_PROJECT_BACKGROUND,
   DEFAULT_PROJECT_ICON,
@@ -145,6 +179,10 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:visible', 'created'])
+const projectStore = useProjectStore()
+const allowedCoverTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
+const allowedCoverExtensions = new Set(['png', 'jpg', 'jpeg', 'webp'])
+const maxCoverSize = 5 * 1024 * 1024
 
 const coverOptions = [
   { name: 'Coral', value: 'linear-gradient(135deg, #ffb199 0%, #ff5f6d 100%)' },
@@ -163,6 +201,7 @@ const defaultForm = () => ({
   description: '',
   startDate: new Date(),
   cover: DEFAULT_PROJECT_BACKGROUND,
+  coverAltText: '',
   icon: DEFAULT_PROJECT_ICON,
   networkType: 'Public',
   leadUserId: ''
@@ -188,10 +227,22 @@ const loading = ref(false)
 const workspaceMembers = ref([])
 const showCoverPicker = ref(false)
 const showIconPicker = ref(false)
+const coverInputRef = ref(null)
+const coverFile = ref(null)
+const coverPreviewUrl = ref('')
+const coverError = ref('')
 
 const selectedCover = computed(() => {
   return getProjectBackground(form.value.cover)
 })
+
+const coverPreviewStyle = computed(() => coverPreviewUrl.value
+  ? {
+      backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.32)), url("${coverPreviewUrl.value}")`,
+      backgroundPosition: 'center',
+      backgroundSize: 'cover'
+    }
+  : { background: selectedCover.value.value })
 
 watch(() => form.value.name, (newVal) => {
   if (!form.value.key && newVal) {
@@ -206,6 +257,49 @@ watch(() => props.visible, (isVisible) => {
 const selectCover = (cover) => {
   form.value.cover = cover
   showCoverPicker.value = false
+}
+
+const revokeCoverPreview = () => {
+  if (coverPreviewUrl.value) URL.revokeObjectURL(coverPreviewUrl.value)
+  coverPreviewUrl.value = ''
+}
+
+const clearCustomCover = () => {
+  revokeCoverPreview()
+  coverFile.value = null
+  coverError.value = ''
+  form.value.coverAltText = ''
+  if (coverInputRef.value) coverInputRef.value.value = ''
+}
+
+const openCustomCoverPicker = () => coverInputRef.value?.click()
+const formatFileSize = (size) => `${(size / 1024 / 1024).toFixed(2)} MB`
+
+const handleCoverSelected = (event) => {
+  const file = event.target.files?.[0]
+  coverError.value = ''
+  if (!file) return
+
+  const extension = file.name.split('.').pop()?.toLowerCase() || ''
+  if (!allowedCoverTypes.has(file.type.toLowerCase()) || !allowedCoverExtensions.has(extension)) {
+    coverError.value = 'Project cover must be PNG, JPG, JPEG, or WEBP.'
+    event.target.value = ''
+    return
+  }
+  if (file.size > maxCoverSize) {
+    coverError.value = 'Project cover must be 5 MB or smaller.'
+    event.target.value = ''
+    return
+  }
+
+  revokeCoverPreview()
+  coverFile.value = file
+  coverPreviewUrl.value = URL.createObjectURL(file)
+  if (!form.value.coverAltText.trim()) {
+    form.value.coverAltText = form.value.name.trim()
+      ? `Project cover for ${form.value.name.trim()}`
+      : 'Project cover'
+  }
 }
 
 const selectIcon = (icon) => {
@@ -234,7 +328,10 @@ const fetchWorkspaceMembers = async () => {
 const handleClose = () => {
   visibleComp.value = false
   submitted.value = false
+  clearCustomCover()
   form.value = defaultForm()
+  showCoverPicker.value = false
+  showIconPicker.value = false
 }
 
 const handleSubmit = async () => {
@@ -253,8 +350,37 @@ const handleSubmit = async () => {
       leadUserId: form.value.leadUserId || null
     }
     const response = await axiosClient.post('/projects', payload)
+    const createdProject = response.data?.data || response.data
+    const projectId = createdProject?.id || createdProject?.Id
+
+    if (coverFile.value && projectId) {
+      const coverPayload = new FormData()
+      coverPayload.append('file', coverFile.value)
+      coverPayload.append('coverAltText', form.value.coverAltText.trim() || `Project cover for ${form.value.name.trim()}`)
+      if (form.value.icon) coverPayload.append('icon', form.value.icon)
+
+      try {
+        await axiosClient.post(`/projects/${projectId}/cover`, coverPayload)
+      } catch (uploadError) {
+        await projectStore.fetchAllProjects(true).catch(() => {})
+        emit('created', createdProject)
+        const message = uploadError.response?.data?.message || 'The cover upload failed.'
+        ElMessage.warning(`Project "${form.value.name}" was created, but its cover was not saved. ${message} Do not create the project again; add the cover from Project settings.`)
+        handleClose()
+        return
+      }
+    } else if (coverFile.value) {
+      await projectStore.fetchAllProjects(true).catch(() => {})
+      emit('created', createdProject)
+      ElMessage.warning(`Project "${form.value.name}" was created, but the response did not include an ID for cover upload. Do not create the project again.`)
+      handleClose()
+      return
+    }
+
+    await projectStore.fetchAllProjects(true)
+    const refreshedProject = projectStore.allProjects?.find((project) => (project.id || project.Id) === projectId) || createdProject
     ElMessage.success(`Created project "${form.value.name}"`)
-    emit('created', response.data?.data || response.data)
+    emit('created', refreshedProject)
     handleClose()
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Could not create project')
@@ -262,6 +388,8 @@ const handleSubmit = async () => {
     loading.value = false
   }
 }
+
+onBeforeUnmount(revokeCoverPreview)
 </script>
 
 <style scoped>
@@ -301,6 +429,16 @@ const handleSubmit = async () => {
   box-shadow: var(--shadow-xl); display: block; z-index: 20;
   max-height: min(520px, calc(100vh - 180px)); overflow-y: auto;
 }
+
+.custom-cover-block { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--color-border); }
+.custom-cover-block > strong { color: var(--color-text-primary); font-size: 13px; }
+.custom-cover-block > span { color: var(--color-text-muted); font-size: 11px; }
+.custom-cover-block .cover-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.custom-cover-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.btn-ghost-sm { border: 0; background: transparent; color: var(--color-text-secondary); padding: 8px 10px; cursor: pointer; }
+.compact-input-field { width: 100%; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-bg); color: var(--color-text-primary); padding: 9px 10px; }
+.selected-cover-file { color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.cover-error { color: var(--color-danger, #dc2626); }
 
 .cover-swatch {
   height: 50px; border-radius: 6px; border: 2px solid transparent;

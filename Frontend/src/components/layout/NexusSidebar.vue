@@ -1,12 +1,18 @@
 <template>
   <aside class="plane-sidebar" :class="{ 'collapsed': !isVisible }">
     <div class="sidebar-scrollable">
-      <!-- Removed New work item button -->
+      <div class="sidebar-top-action">
+        <button class="new-work-btn" type="button" @click="triggerCreateTask">
+          <i class="fa-solid fa-pen-to-square"></i>
+          <span>{{ t('New work item') }}</span>
+        </button>
+      </div>
+
       <ul class="nav-menu">
         <li class="nav-item">
-          <router-link to="/your-work" class="nav-link" :class="{ active: $route.path === '/your-work' || ($route.path === '/dashboard' && !$route.query.tab) }">
+          <router-link to="/dashboard" class="nav-link" :class="{ active: $route.path === '/dashboard' && !$route.query.tab }" exact>
             <i class="fa-solid fa-house"></i>
-            <span>{{ t('Your work') }}</span>
+            <span>{{ t('For you') }}</span>
           </router-link>
         </li>
         <li class="nav-item">
@@ -50,6 +56,18 @@
             </template>
             <StarredDropdown ref="starredDropdownRef" @close="closeStarredPopover" />
           </el-popover>
+        </li>
+        <li class="nav-item">
+          <router-link to="/your-work" class="nav-link" :class="{ active: $route.path === '/your-work' }">
+            <i class="fa-regular fa-user"></i>
+            <span>{{ t('Your work') }}</span>
+          </router-link>
+        </li>
+        <li class="nav-item">
+          <router-link to="/priority" class="nav-link" :class="{ active: $route.path === '/priority' }">
+            <i class="fa-solid fa-fire" style="color: #f97316;"></i>
+            <span>{{ t('Daily Focus') }}</span>
+          </router-link>
         </li>
         <li class="nav-item">
           <router-link to="/chat" class="nav-link" :class="{ active: $route.path === '/chat' }">
@@ -373,8 +391,8 @@ const openProject = async projectId => {
   if (pendingProjectId.value) return
 
   if (isProjectContext.value && `${currentProjectId.value}` === `${projectId}`) {
-    if (route.path !== `/space/${projectId}/work-items`) {
-      await router.push(`/space/${projectId}/work-items`)
+    if (route.path !== `/space/${projectId}/dashboard`) {
+      await router.push(`/space/${projectId}/dashboard`)
       return
     }
     projectStore.toggleProject(projectId)

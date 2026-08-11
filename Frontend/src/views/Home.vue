@@ -112,7 +112,7 @@ const copy = computed(() => isVi.value ? {
   nav: ['Tính năng', 'AI', 'Quy trình', 'Bảng giá', 'Video'],
   badge: 'SPRINTA',
   title: 'Quản lý công việc rõ ràng, chạy sprint gọn hơn.',
-  intro: 'SprintA gom task, cycle, mục tiêu, tài liệu, báo cáo và Trợ lý SprintA AI vào một workspace thống nhất để đội nhóm luôn thấy rõ việc cần làm, người phụ trách và rủi ro.',
+  intro: 'SprintA gom task, cycle, mục tiêu, tài liệu, báo cáo và SprintA AI vào một workspace thống nhất để đội nhóm luôn thấy rõ việc cần làm, người phụ trách và rủi ro.',
   start: 'Bắt đầu miễn phí',
   demo: 'Xem demo',
   proof: ['Không cần thẻ thanh toán', 'Demo data có sẵn', 'Cài như PWA'],
@@ -471,7 +471,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="float-card float-card-b">
                 <span class="mini-icon"><Bot :size="16" /></span>
-                <div><b>{{ isVi ? 'Trợ lý SprintA AI' : 'SprintA AI' }}</b><small>{{ isVi ? 'Gợi ý có xác nhận' : 'Confirmed suggestions' }}</small></div>
+                <div><b>SprintA AI</b><small>{{ isVi ? 'Gợi ý có xác nhận' : 'Confirmed suggestions' }}</small></div>
               </div>
               <div class="float-card float-card-c">
                 <BarChart3 :size="17" />

@@ -30,7 +30,7 @@ export default [
         children: [
           {
             path: '',
-            redirect: to => `/space/${to.params.id}/work-items`
+            redirect: to => `/space/${to.params.id}/dashboard`
           },
           {
             path: 'work-items',
@@ -74,7 +74,13 @@ export default [
           },
           {
             path: 'dashboard',
-            redirect: to => `/space/${to.params.id}/work-items`
+            name: 'SpaceDashboard',
+            component: () => import('../views/SpaceDashboard.vue')
+          },
+          {
+            path: 'timeline',
+            name: 'SpaceTimeline',
+            component: () => import('../views/SpaceTimeline.vue')
           },
           {
             path: 'members',
