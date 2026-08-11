@@ -170,8 +170,8 @@
 
           <div v-if="selectedText" class="ai-selected-text" role="status">
             <i class="fa-solid fa-quote-left"></i>
-            <span>Dang dung doan da chon</span>
-            <button type="button" title="Xoa doan da chon" @click="clearSelectedText">
+            <span>Đang dùng đoạn đã chọn</span>
+            <button type="button" title="Xóa đoạn đã chọn" @click="clearSelectedText">
               <i class="fa-solid fa-xmark"></i>
             </button>
           </div>

@@ -391,8 +391,8 @@ const openProject = async projectId => {
   if (pendingProjectId.value) return
 
   if (isProjectContext.value && `${currentProjectId.value}` === `${projectId}`) {
-    if (route.path !== `/space/${projectId}/work-items`) {
-      await router.push(`/space/${projectId}/work-items`)
+    if (route.path !== `/space/${projectId}/dashboard`) {
+      await router.push(`/space/${projectId}/dashboard`)
       return
     }
     projectStore.toggleProject(projectId)
