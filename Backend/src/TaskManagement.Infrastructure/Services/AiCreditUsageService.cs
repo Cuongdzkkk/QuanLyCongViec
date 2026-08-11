@@ -21,24 +21,76 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
         DateTime to,
         CancellationToken cancellationToken = default)
     {
+        var now = DateTime.UtcNow;
+        var subscription = await _context.AiSubscriptions
+            .SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken);
+
+        if (subscription is { Status: "Active" } &&
+            !string.Equals(subscription.PlanCode, "free", StringComparison.OrdinalIgnoreCase) &&
+            subscription.CurrentPeriodEnd <= now)
+        {
+            if (subscription.AutoRenew)
+            {
+                while (subscription.CurrentPeriodEnd <= now)
+                {
+                    subscription.CurrentPeriodStart = subscription.CurrentPeriodEnd;
+                    subscription.CurrentPeriodEnd = subscription.CurrentPeriodEnd.AddMonths(1);
+                }
+            }
+            else
+            {
+                subscription.Status = "Expired";
+            }
+
+            subscription.UpdatedAt = now;
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        var usePaidSubscription = subscription is { Status: "Active" } &&
+            !string.Equals(subscription.PlanCode, "free", StringComparison.OrdinalIgnoreCase) &&
+            subscription.CurrentPeriodStart <= now &&
+            subscription.CurrentPeriodEnd > now;
+
+        var planCode = usePaidSubscription ? subscription!.PlanCode : "free";
+        var periodStart = usePaidSubscription
+            ? subscription!.CurrentPeriodStart
+            : new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var periodEnd = usePaidSubscription ? subscription!.CurrentPeriodEnd : periodStart.AddMonths(1);
+
         var plan = await _context.AiPricingPlans
             .AsNoTracking()
-            .Where(item => item.Code == "free")
+            .Where(item => item.Code == planCode && (usePaidSubscription || item.IsPublished))
             .Select(item => new { item.Code, item.IncludedAiCredits })
             .SingleOrDefaultAsync(cancellationToken);
 
         var totalTokens = await _context.AITokenUsages
             .AsNoTracking()
-            .Where(item => item.UserId == userId && item.CreatedAt >= from && item.CreatedAt <= to)
+            .Where(item => item.UserId == userId && item.CreatedAt >= periodStart && item.CreatedAt < periodEnd)
             .SumAsync(item => (long?)item.TokensUsed, cancellationToken) ?? 0;
 
         var ledgerCredits = await _context.AiUsageLedgerEntries
             .AsNoTracking()
-            .Where(item => item.UserId == userId && item.OccurredAt >= from && item.OccurredAt <= to)
+            .Where(item => item.UserId == userId && item.OccurredAt >= periodStart && item.OccurredAt < periodEnd)
             .SumAsync(item => (int?)item.CreditsConsumed, cancellationToken) ?? 0;
 
+        var adjustments = await _context.AiCreditAdjustments
+            .AsNoTracking()
+            .Where(item => item.UserId == userId &&
+                           item.EffectivePeriodStart <= periodStart &&
+                           item.EffectivePeriodEnd >= periodEnd)
+            .GroupBy(item => item.AdjustmentType)
+            .Select(group => new { Type = group.Key, Amount = group.Sum(item => item.Amount) })
+            .ToListAsync(cancellationToken);
+
         var tokenDerivedCredits = EstimateCredits(totalTokens);
-        var usedCredits = Math.Max(ledgerCredits, tokenDerivedCredits);
+        var recordedCredits = Math.Max(ledgerCredits, tokenDerivedCredits);
+        var resetCredits = adjustments
+            .Where(item => item.Type == "UsageReset")
+            .Sum(item => item.Amount);
+        var adjustmentCredits = adjustments
+            .Where(item => item.Type == "Credit")
+            .Sum(item => item.Amount);
+        var usedCredits = Math.Max(0, recordedCredits - resetCredits);
         var usageSource = ledgerCredits > 0 && tokenDerivedCredits > 0
             ? "reconciled-ledger-and-token-usage"
             : ledgerCredits > 0
@@ -47,21 +99,25 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
 
         return new AiCreditUsageDto
         {
-            PlanCode = plan?.Code ?? string.Empty,
-            EntitlementSource = plan == null ? "not-configured" : "ai-pricing-plans:free",
+            PlanCode = plan?.Code ?? planCode,
+            EntitlementSource = plan == null
+                ? "not-configured"
+                : usePaidSubscription ? "ai-subscription" : "ai-pricing-plans:free",
             UsageSource = usageSource,
             IncludedCredits = plan?.IncludedAiCredits ?? 0,
             UsedCredits = usedCredits,
+            AdjustmentCredits = adjustmentCredits,
             HasConfiguredEntitlement = plan != null,
-            TotalTokens = totalTokens
+            TotalTokens = totalTokens,
+            CurrentPeriodStart = periodStart,
+            CurrentPeriodEnd = periodEnd,
+            SubscriptionStatus = subscription?.Status ?? "Active"
         };
     }
 
     public async Task EnsureWithinQuotaAsync(Guid userId, CancellationToken cancellationToken = default)
     {
-        var now = DateTime.UtcNow;
-        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var usage = await GetUsageAsync(userId, monthStart, now, cancellationToken);
+        var usage = await GetUsageAsync(userId, DateTime.MinValue, DateTime.MaxValue, cancellationToken);
 
         // Missing entitlement configuration is not treated as a zero-credit purchase decision.
         if (usage.HasConfiguredEntitlement && usage.IsQuotaExceeded)

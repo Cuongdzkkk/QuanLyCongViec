@@ -49,6 +49,9 @@ namespace TaskManagement.Domain.Entities
         public UserWallet? Wallet { get; set; }
         public ICollection<AITokenUsage> AITokenUsages { get; set; } = new List<AITokenUsage>();
         public ICollection<AiUsageLedger> AiUsageLedgerEntries { get; set; } = new List<AiUsageLedger>();
+        public AiSubscription? AiSubscription { get; set; }
+        public ICollection<AiCreditAdjustment> AiCreditAdjustments { get; set; } = new List<AiCreditAdjustment>();
+        public ICollection<PaymentOrder> PaymentOrders { get; set; } = new List<PaymentOrder>();
         public ICollection<NotificationPreference> NotificationPreferences { get; set; } = new List<NotificationPreference>();
         public ICollection<AIFeedback> AIFeedbacks { get; set; } = new List<AIFeedback>();
         public ICollection<AITrainingDataset> AITrainingDatasets { get; set; } = new List<AITrainingDataset>();

@@ -58,6 +58,18 @@
           </router-link>
         </li>
 
+        <li class="menu-heading">{{ t('BILLING', 'BILLING') }}</li>
+        <li>
+          <router-link to="/admin/billing" class="menu-item" :class="{ active: $route.path === '/admin/billing' }">
+            {{ t('Billing & AI Credits', 'Billing & AI Credits') }}
+          </router-link>
+        </li>
+        <li>
+          <router-link to="/admin/billing/payments" class="menu-item" :class="{ active: $route.path === '/admin/billing/payments' }">
+            {{ t('Payments', 'Payments') }}
+          </router-link>
+        </li>
+
         <li class="menu-heading">{{ t('SECURITY', 'SECURITY') }}</li>
         <li>
           <router-link to="/admin/security/2fa" class="menu-item" :class="{ active: $route.path === '/admin/security/2fa' }">
@@ -211,7 +223,7 @@ onUnmounted(() => {
 
 const activeCategory = computed(() => {
   const path = route.path
-  if (path.startsWith('/admin/system') || path.startsWith('/admin/instance') || path.startsWith('/admin/security') || path.startsWith('/admin/audit-log')) {
+  if (path.startsWith('/admin/system') || path.startsWith('/admin/instance') || path.startsWith('/admin/security') || path.startsWith('/admin/audit-log') || path.startsWith('/admin/billing')) {
     return 'System'
   }
   if (path.startsWith('/admin/users') || path.startsWith('/admin/roles')) {

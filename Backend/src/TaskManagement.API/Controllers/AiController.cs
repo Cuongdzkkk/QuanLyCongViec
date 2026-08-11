@@ -125,8 +125,12 @@ namespace TaskManagement.API.Controllers
                 usageSource = creditUsage.UsageSource,
                 entitlementConfigured = creditUsage.HasConfiguredEntitlement,
                 includedCredits = creditUsage.IncludedCredits,
+                adjustmentCredits = creditUsage.AdjustmentCredits,
                 usedCredits = creditUsage.UsedCredits,
                 remainingCredits = creditUsage.RemainingCredits,
+                currentPeriodStart = creditUsage.CurrentPeriodStart,
+                currentPeriodEnd = creditUsage.CurrentPeriodEnd,
+                subscriptionStatus = creditUsage.SubscriptionStatus,
                 isQuotaExceeded = creditUsage.IsQuotaExceeded,
                 // Compatibility aliases for clients that consumed the pre-P1 response.
                 creditsConsumed = creditUsage.UsedCredits,
