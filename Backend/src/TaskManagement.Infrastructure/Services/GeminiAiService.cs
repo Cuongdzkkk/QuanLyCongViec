@@ -609,7 +609,7 @@ namespace TaskManagement.Infrastructure.Services
                 var result = await GenerateTextAsync(userId, "breakdown-task", prompt, forceJson: true);
                 return DeserializeSubtasks(result.Text);
             }
-            catch (Exception ex) when (CanUseBreakdownFallback(ex))
+            catch (Exception ex) when (ex is not AiProviderException && CanUseBreakdownFallback(ex))
             {
                 return BuildBreakdownFallback(request);
             }
@@ -732,7 +732,7 @@ namespace TaskManagement.Infrastructure.Services
                 var result = await GenerateTextAsync(userId, "suggest-estimate", prompt, forceJson: true);
                 return DeserializeEstimateSuggestion(result.Text);
             }
-            catch (Exception ex) when (CanUseEstimateFallback(ex))
+            catch (Exception ex) when (ex is not AiProviderException && CanUseEstimateFallback(ex))
             {
                 return BuildEstimateFallback(request);
             }
@@ -979,7 +979,7 @@ namespace TaskManagement.Infrastructure.Services
                 var result = await GenerateTextAsync(userId, "repo-analysis", prompt, forceJson: true);
                 return DeserializeRepositoryAnalysis(result.Text, snapshot.Repository);
             }
-            catch (Exception ex) when (CanUseRepositoryFallback(ex))
+            catch (Exception ex) when (ex is not AiProviderException && CanUseRepositoryFallback(ex))
             {
                 return BuildRepositoryFallbackAnalysis(snapshot);
             }
@@ -1449,7 +1449,7 @@ namespace TaskManagement.Infrastructure.Services
         {
             var message = ex.Message?.ToLowerInvariant() ?? string.Empty;
 
-            return ex is InvalidOperationException
+            return ex is not AiProviderException && (ex is InvalidOperationException
                 || ex is HttpRequestException
                 || ex is TaskCanceledException
                 || message.Contains("gemini")
@@ -1457,7 +1457,7 @@ namespace TaskManagement.Infrastructure.Services
                 || message.Contains("temporarily unavailable")
                 || message.Contains("timeout")
                 || message.Contains("quota")
-                || message.Contains("ai khong tra ve");
+                || message.Contains("ai khong tra ve"));
         }
 
         private static List<AiSubTaskDto> BuildBreakdownFallback(AiBreakdownRequestDto request)
@@ -1646,7 +1646,7 @@ namespace TaskManagement.Infrastructure.Services
         private static bool CanUseEstimateFallback(Exception ex)
         {
             var message = ex.Message?.ToLowerInvariant() ?? string.Empty;
-            return ex is InvalidOperationException
+            return ex is not AiProviderException && (ex is InvalidOperationException
                 || ex is HttpRequestException
                 || ex is TaskCanceledException
                 || message.Contains("gemini")
@@ -1655,7 +1655,7 @@ namespace TaskManagement.Infrastructure.Services
                 || message.Contains("timeout")
                 || message.Contains("quota")
                 || message.Contains("estimate suggestion hop le")
-                || message.Contains("ai khong tra ve");
+                || message.Contains("ai khong tra ve"));
         }
 
         private static AiEstimateSuggestionDto BuildEstimateFallback(AiEstimateSuggestionRequestDto request)
@@ -1776,7 +1776,7 @@ namespace TaskManagement.Infrastructure.Services
         {
             var message = ex.Message?.ToLowerInvariant() ?? string.Empty;
 
-            return ex is InvalidOperationException
+            return ex is not AiProviderException && (ex is InvalidOperationException
                 || ex is HttpRequestException
                 || ex is TaskCanceledException
                 || message.Contains("gemini")
@@ -1784,7 +1784,7 @@ namespace TaskManagement.Infrastructure.Services
                 || message.Contains("temporarily unavailable")
                 || message.Contains("timeout")
                 || message.Contains("quota")
-                || message.Contains("ai khong tra ve");
+                || message.Contains("ai khong tra ve"));
         }
 
         private static AiRepositoryAnalysisDto BuildRepositoryFallbackAnalysis(GitHubRepositorySnapshot snapshot)
