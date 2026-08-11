@@ -39,6 +39,20 @@
       <img class="ai-pet-image" :src="petAsset" alt="" aria-hidden="true" draggable="false" />
     </button>
 
+    <div class="global-utility-rail" aria-label="Công cụ nhanh">
+      <button
+        type="button"
+        :class="{ active: notesVisible }"
+        title="Mở ghi chú nhanh"
+        aria-controls="global-stickies-drawer"
+        :aria-expanded="notesVisible"
+        @click="toggleNotes"
+      >
+        <i class="fa-solid fa-note-sticky"></i>
+        <span>Notes</span>
+      </button>
+    </div>
+
     <div
       v-if="selectedText && selectionPopover.visible && !aiVisible"
       class="ai-selection-popover"
@@ -72,11 +86,63 @@
             </button>
           </div>
           <p class="ai-hero-copy">{{ aiCopy.hero }}</p>
+
+          <div
+            v-if="aiUsage"
+            class="ai-credit-card"
+            :class="{ 'is-low': aiCreditsLow, 'is-empty': aiCreditsExhausted }"
+          >
+            <div class="ai-credit-head">
+              <div>
+                <span class="ai-credit-label">AI CREDITS</span>
+                <strong>{{ aiPlanLabel }}</strong>
+              </div>
+
+              <strong>{{ aiRemainingCredits }} / {{ aiIncludedCredits }}</strong>
+            </div>
+
+            <div class="ai-credit-progress" aria-hidden="true">
+              <span :style="{ width: `${aiCreditPercent}%` }"></span>
+            </div>
+
+            <p v-if="aiCreditsExhausted" class="ai-credit-message">
+              Bạn đã sử dụng hết AI Credits trong tháng này.
+            </p>
+
+            <p v-else-if="aiCreditsLow" class="ai-credit-message">
+              AI Credits sắp hết. Bạn còn {{ aiRemainingCredits }} credits.
+            </p>
+
+            <p v-else class="ai-credit-message">
+              Còn {{ aiRemainingCredits }} AI Credits trong tháng này.
+            </p>
+          </div>
+
           <button class="ai-pin-toggle" type="button" @click="togglePetPinned">
             <i :class="petPinned ? 'fa-solid fa-thumbtack' : 'fa-solid fa-location-dot'"></i>
             {{ petPinned ? 'Đã ghim vị trí' : 'Thả cho pet di chuyển' }}
           </button>
+          <div class="ai-conversation-toolbar">
+            <button type="button" title="Cuộc trò chuyện mới" @click="startNewConversation"><i class="fa-solid fa-plus"></i></button>
+            <button type="button" title="Lịch sử trò chuyện" @click="toggleConversationHistory"><i class="fa-solid fa-clock-rotate-left"></i></button>
+            <span>{{ currentConversationTitle }}</span>
+          </div>
         </div>
+
+        <section v-if="conversationHistoryVisible" class="ai-history-panel" aria-label="Lịch sử trò chuyện">
+          <div class="ai-history-head">
+            <strong>Lịch sử trò chuyện</strong>
+            <button type="button" title="Đóng lịch sử" @click="conversationHistoryVisible = false"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <input v-model="conversationSearch" type="search" placeholder="Tìm cuộc trò chuyện" />
+          <p v-if="conversationLoading">Đang tải...</p>
+          <button v-for="conversation in filteredConversations" :key="conversation.id" type="button" class="ai-history-item" :class="{ active: conversation.id === currentConversationId }" @click="openConversation(conversation.id)">
+            <span><strong>{{ conversation.title }}</strong><small>{{ formatConversationDate(conversation.updatedAt) }}</small></span>
+            <i class="fa-solid fa-pen" title="Đổi tên" @click.stop="renameConversation(conversation)"></i>
+            <i class="fa-solid fa-trash" title="Xóa" @click.stop="deleteConversation(conversation)"></i>
+          </button>
+          <button v-if="conversationHasMore" class="ai-history-more" type="button" @click="loadConversations(false)">Tải thêm</button>
+        </section>
 
         <div ref="aiContentRef" class="ai-content">
           <div class="quick-actions">
@@ -126,7 +192,31 @@
                 <span class="message-author">{{ message.role === 'bot' ? aiCopy.botName : aiCopy.you }}</span>
                 <div class="message-bubble">
                   <i v-if="message.loading" class="fa-solid fa-spinner fa-spin mr-2"></i>
+                  <div v-if="message.attachments?.length" class="message-attachments" role="list" aria-label="Attachment trong tin nhắn">
+                    <article v-for="attachment in message.attachments" :key="attachment.id" class="message-attachment-card" role="listitem">
+                      <button v-if="attachment.kind === 'image'" class="message-attachment-image" type="button" @click="openAttachmentPreview(attachment)">
+                        <img v-if="attachment.previewUrl" :src="attachment.previewUrl" :alt="attachment.name" />
+                        <i v-else class="fa-regular fa-image" aria-hidden="true"></i>
+                      </button>
+                      <div v-else class="ai-attachment-file-icon" aria-hidden="true"><i :class="attachment.icon"></i></div>
+                      <div class="ai-attachment-meta">
+                        <strong>{{ attachment.name }}</strong>
+                        <span>{{ attachment.typeLabel }} · {{ formatAttachmentBytes(attachment.size) }}</span>
+                        <small><i class="fa-solid fa-circle-check"></i> Đã xử lý</small>
+                      </div>
+                      <button class="message-attachment-open" type="button" :title="`Mở ${attachment.name}`" @click="openAttachmentPreview(attachment)">
+                        <i class="fa-solid fa-up-right-from-square"></i>
+                      </button>
+                    </article>
+                  </div>
                   <div class="markdown-body" v-html="renderMarkdown(message.content)"></div>
+                  <div v-if="message.citations?.length" class="ai-citations" aria-label="Nguồn trích dẫn">
+                    <strong>Nguồn</strong>
+                    <button v-for="citation in message.citations" :key="`${citation.sourceId}-${citation.attachmentId}`" type="button" @click="openCitation(citation)">
+                      <span>[{{ citation.sourceId }}] {{ citation.fileName }} · {{ citation.locator }}</span>
+                      <small>{{ citation.excerpt }}</small>
+                    </button>
+                  </div>
                   <div v-if="message.role === 'bot' && !message.loading" class="message-tools" aria-label="Thao tác với câu trả lời">
                     <button type="button" title="Sao chép câu trả lời" @click="copyAiMessage(message.content)">
                       <i class="fa-regular fa-copy"></i>
@@ -163,15 +253,34 @@
                           <dd>{{ detail.value }}</dd>
                         </template>
                       </dl>
+                      <div v-if="action.duplicateCandidate" class="ai-duplicate-warning" role="alert">
+                        <strong>Đã có công việc tương tự trong dự án</strong>
+                        <p>#{{ action.duplicateCandidate.sequenceId || action.duplicateCandidate.id }} · {{ action.duplicateCandidate.title }} · {{ action.duplicateCandidate.statusName }}</p>
+                        <div class="ai-duplicate-actions">
+                          <button type="button" @click="openDuplicateTask(action, false)">Mở công việc hiện có</button>
+                          <button type="button" @click="openDuplicateTask(action, true)">Cập nhật công việc hiện có</button>
+                          <button type="button" class="is-danger" @click="confirmDuplicateCreation(action)">Vẫn tạo công việc mới</button>
+                        </div>
+                      </div>
                       <p v-if="action.error" class="ai-action-error" role="alert">{{ action.error }}</p>
                       <p v-if="action.result?.message" class="ai-action-result" role="status">{{ action.result.message }}</p>
-                      <div class="ai-action-controls">
-                        <button v-if="!isReadOnlyAction(action.type)" type="button" class="ai-action-cancel" :disabled="action.loading || action.uiStatus === 'success'" @click="cancelAiAction(action)">Hủy</button>
-                        <button type="button" class="ai-action-confirm" :disabled="action.loading || action.uiStatus === 'success'" @click="executeAiAction(action)">
+                      <div v-if="!action.duplicateCandidate" class="ai-action-controls">
+                        <button v-if="action.uiStatus === 'cancelled'" type="button" class="ai-action-confirm" @click="retryAiAction(action)">
+                          <i class="fa-solid fa-rotate-right"></i>
+                          Thực hiện lại
+                        </button>
+                        <button v-else-if="action.uiStatus === 'error'" type="button" class="ai-action-confirm" :disabled="action.loading" @click="executeAiAction(action)">
+                          <i class="fa-solid fa-rotate-right"></i>
+                          Thử lại
+                        </button>
+                        <template v-else>
+                          <button v-if="!isReadOnlyAction(action.type) && action.uiStatus !== 'success'" type="button" class="ai-action-cancel" :disabled="action.loading" @click="cancelAiAction(action)">Hủy</button>
+                          <button type="button" class="ai-action-confirm" :disabled="action.loading || action.uiStatus === 'success'" @click="executeAiAction(action)">
                           <i v-if="action.loading" class="fa-solid fa-spinner fa-spin"></i>
                           <i v-else-if="action.uiStatus === 'success'" class="fa-solid fa-check"></i>
                           {{ action.uiStatus === 'success' ? 'Đã thực hiện' : (isReadOnlyAction(action.type) ? 'Xem kết quả' : 'Xác nhận') }}
-                        </button>
+                          </button>
+                        </template>
                       </div>
                     </article>
                   </div>
@@ -275,27 +384,171 @@
           </div>
         </div>
 
-        <div class="ai-input-area">
+        <div
+          class="ai-input-area"
+          :class="{ 'is-dragging-files': composerDragActive }"
+          @dragenter.prevent="composerDragActive = true"
+          @dragover.prevent="composerDragActive = true"
+          @dragleave.prevent="handleComposerDragLeave"
+          @drop.prevent="handleComposerDrop"
+        >
+          <input
+            ref="aiAttachmentInputRef"
+            class="ai-attachment-input"
+            type="file"
+            multiple
+            :accept="composerAttachmentAccept"
+            @change="handleAttachmentInput"
+          />
+
+          <div v-if="pendingAttachments.length" class="ai-attachment-tray" role="list" aria-label="Tệp đang chờ tải lên">
+            <article
+              v-for="attachment in pendingAttachments"
+              :key="attachment.id"
+              class="ai-attachment-card"
+              :class="`is-${attachment.kind}`"
+              role="listitem"
+            >
+              <button
+                v-if="attachment.kind === 'image'"
+                class="ai-attachment-thumbnail"
+                type="button"
+                :title="`Mở ${attachment.name}`"
+                @click="openAttachmentPreview(attachment)"
+              >
+                <img :src="attachment.previewUrl" :alt="attachment.name" />
+              </button>
+              <div v-else class="ai-attachment-file-icon" aria-hidden="true">
+                <i :class="attachment.icon"></i>
+              </div>
+
+              <div class="ai-attachment-meta">
+                <strong>{{ attachment.kind === 'image' ? attachment.displayName : attachment.name }}</strong>
+                <span>
+                  {{ attachment.typeLabel }} · {{ formatAttachmentBytes(attachment.size) }}
+                  <template v-if="attachment.width && attachment.height"> · {{ attachment.width }}×{{ attachment.height }}</template>
+                </span>
+                <small :class="`is-${attachment.status || 'pending'}`"><i :class="attachmentStatusIcon(attachment.status)"></i> {{ attachmentStatusLabel(attachment.status) }}</small>
+              </div>
+
+              <div class="ai-attachment-actions">
+                <button type="button" :title="`Mở ${attachment.name}`" @click="openAttachmentPreview(attachment)">
+                  <i class="fa-solid fa-up-right-from-square"></i>
+                </button>
+                <button type="button" :title="`Gỡ ${attachment.name}`" @click="removePendingAttachment(attachment.id)">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            </article>
+          </div>
+
+          <section v-if="voiceState !== 'idle'" class="ai-voice-panel" aria-label="Nhập bằng giọng nói">
+            <div class="ai-voice-head">
+              <div>
+                <strong>{{ voiceStatusTitle }}</strong>
+                <span v-if="voiceState === 'recording'" class="ai-voice-timer">{{ voiceElapsedLabel }}</span>
+              </div>
+              <label class="ai-voice-language">
+                <span>Ngôn ngữ giọng nói: {{ voiceLanguageLabel }}</span>
+                <select v-model="voiceLanguage" :disabled="voiceState === 'transcribing'" aria-label="Ngôn ngữ giọng nói">
+                  <option value="auto">Tự động (VI/EN)</option>
+                  <option value="vi">Tiếng Việt</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+            </div>
+
+            <p v-if="voiceState === 'requesting'" class="ai-voice-note" role="status">
+              Trình duyệt đang yêu cầu quyền sử dụng microphone.
+            </p>
+            <p v-else-if="voiceState === 'recording'" class="ai-voice-note" role="status">
+              Audio chỉ được giữ tạm để phiên âm và sẽ không được lưu vĩnh viễn.
+            </p>
+            <p v-else-if="voiceState === 'transcribing'" class="ai-voice-note" role="status">
+              <i class="fa-solid fa-spinner fa-spin"></i> Đang chuyển giọng nói thành văn bản...
+            </p>
+            <p v-else-if="voiceState === 'error'" class="ai-voice-error" role="alert">{{ voiceError }}</p>
+
+            <label v-if="voiceState === 'review'" class="ai-voice-transcript">
+              <span>Transcript</span>
+              <textarea v-model="voiceTranscript" rows="4" aria-label="Chỉnh sửa transcript"></textarea>
+            </label>
+
+            <div class="ai-voice-actions">
+              <button type="button" class="ai-voice-secondary" @click="cancelVoiceInput">Hủy</button>
+              <button v-if="voiceState === 'recording'" type="button" class="ai-voice-primary" @click="stopVoiceRecording">
+                <i class="fa-solid fa-stop"></i> Dừng
+              </button>
+              <button v-if="voiceState === 'error'" type="button" class="ai-voice-primary" @click="startVoiceRecording">
+                <i class="fa-solid fa-rotate-right"></i> Thử lại
+              </button>
+              <button v-if="voiceState === 'review'" type="button" class="ai-voice-secondary" @click="recordVoiceAgain">
+                <i class="fa-solid fa-microphone-lines"></i> Thu lại
+              </button>
+              <button v-if="voiceState === 'review'" type="button" class="ai-voice-primary" :disabled="!voiceTranscript.trim()" @click="useVoiceTranscript">
+                Dùng nội dung này
+              </button>
+            </div>
+          </section>
+
           <div class="ai-input-wrapper">
+            <el-dropdown trigger="click" placement="top-start" @command="handleAttachmentCommand">
+              <button class="ai-composer-icon-btn" type="button" title="Thêm ảnh hoặc tài liệu" aria-label="Thêm ảnh hoặc tài liệu">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="browse">
+                    <i class="fa-regular fa-folder-open"></i> Chọn ảnh hoặc tài liệu
+                  </el-dropdown-item>
+                  <el-dropdown-item command="paste">
+                    <i class="fa-regular fa-clipboard"></i> Dán ảnh từ clipboard
+                  </el-dropdown-item>
+                  <el-dropdown-item command="screenshot" :disabled="capturingScreenshot">
+                    <i class="fa-solid fa-display"></i> Chụp màn hình
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <textarea
               v-model="aiInput"
               rows="1"
               :aria-label="aiCopy.placeholder"
               :placeholder="aiCopy.placeholder"
+              @paste="handleComposerPaste"
               @keydown.enter.exact.prevent="sendAiMessage"
             ></textarea>
-            <button class="send-btn" type="button" :disabled="aiSending || !aiInput.trim()" @click="sendAiMessage">
+            <button
+              class="ai-composer-icon-btn"
+              :class="{ active: voiceState !== 'idle' }"
+              type="button"
+              title="Nhập bằng giọng nói"
+              aria-label="Nhập bằng giọng nói"
+              :disabled="voiceState === 'requesting' || voiceState === 'recording' || voiceState === 'transcribing'"
+              @click="startVoiceRecording"
+            >
+              <i class="fa-solid fa-microphone"></i>
+            </button>
+            <button class="send-btn" type="button" :disabled="aiSending || aiCreditsExhausted || (!aiInput.trim() && !pendingAttachments.length)" title="Gửi tin nhắn" aria-label="Gửi tin nhắn" @click="sendAiMessage">
               <i v-if="!aiSending" class="fa-solid fa-paper-plane"></i>
               <i v-else class="fa-solid fa-spinner fa-spin"></i>
             </button>
           </div>
           <div class="ai-input-foot">
-            <span>{{ aiCopy.enterHint }}</span>
-            <button type="button" @click="chatHistory = defaultChatHistory()">{{ aiCopy.reset }}</button>
+            <span>{{ pendingAttachments.length ? 'Attachment sẽ được tải lên kho riêng tư khi gửi.' : aiCopy.enterHint }}</span>
+            <button type="button" @click="startNewConversation">{{ aiCopy.reset }}</button>
           </div>
         </div>
       </aside>
     </transition>
+
+    <FloatingStickiesLayer @floated="closeNotes" />
+
+    <GlobalStickiesDrawer
+      :visible="notesVisible"
+      :context="stickyContext"
+      @close="closeNotes"
+    />
 
     <CreateSpaceModal v-model:visible="createSpaceVisible" @created="handleSpaceCreated" />
     <CreateProjectModal v-model:visible="createVisible" @created="handleProjectCreated" />
@@ -311,7 +564,7 @@
 
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, defineProps, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import DOMPurify from 'dompurify'
 import { useRoute, useRouter } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
@@ -319,6 +572,8 @@ import CreateProjectModal from '../CreateProjectModal.vue'
 import CreateSpaceModal from '../CreateSpaceModal.vue'
 import AppTopBar from './AppTopBar.vue'
 import NexusSidebar from './NexusSidebar.vue'
+import GlobalStickiesDrawer from '@/components/stickies/GlobalStickiesDrawer.vue'
+import FloatingStickiesLayer from '@/components/stickies/FloatingStickiesLayer.vue'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
@@ -345,12 +600,69 @@ const sprintStore = useSprintStore()
 const sidebarVisible = ref(window.innerWidth > 1024)
 const aiPetStore = useAiPetStore()
 const aiVisible = computed({ get: () => aiPetStore.isPanelOpen, set: value => aiPetStore.setPanelOpen(value) })
+const notesVisible = ref(false)
 const createVisible = ref(false)
 const createSpaceVisible = ref(false)
 const isMobile = ref(window.innerWidth <= 1024)
 const aiInput = ref('')
 const aiSending = ref(false)
+const aiUsage = ref(null)
 const aiContentRef = ref(null)
+
+const aiIncludedCredits = computed(() =>
+  Math.max(0, Number(aiUsage.value?.includedCredits || 0))
+)
+
+const aiUsedCredits = computed(() =>
+  Math.max(0, Number(aiUsage.value?.usedCredits || 0))
+)
+
+const aiRemainingCredits = computed(() =>
+  Math.max(
+    0,
+    Number(
+      aiUsage.value?.remainingCredits
+      ?? aiUsage.value?.remainingIncludedCredits
+      ?? (aiIncludedCredits.value - aiUsedCredits.value)
+    )
+  )
+)
+
+const aiCreditPercent = computed(() => {
+  if (aiIncludedCredits.value <= 0) return 0
+
+  return Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round((aiRemainingCredits.value / aiIncludedCredits.value) * 100)
+    )
+  )
+})
+
+const aiCreditsExhausted = computed(() =>
+  Boolean(
+    aiUsage.value
+    && aiIncludedCredits.value > 0
+    && aiRemainingCredits.value <= 0
+  )
+)
+
+const aiCreditsLow = computed(() =>
+  Boolean(
+    aiUsage.value
+    && !aiCreditsExhausted.value
+    && aiIncludedCredits.value > 0
+    && aiCreditPercent.value <= 20
+  )
+)
+
+const aiPlanLabel = computed(() => {
+  const plan = String(aiUsage.value?.planCode || 'free').trim()
+  return plan
+    ? plan.charAt(0).toUpperCase() + plan.slice(1)
+    : 'Free'
+})
 const selectedText = ref('')
 const selectionPopover = ref({ visible: false, left: 0, top: 0 })
 const petPinned = computed({ get: () => aiPetStore.isPinned, set: value => aiPetStore.setPinned(value) })
@@ -358,7 +670,513 @@ const petPosition = computed({ get: () => aiPetStore.position, set: value => aiP
 const petDragging = ref(false)
 const petMoved = ref(false)
 const petDragOffset = ref({ x: 0, y: 0 })
+const aiAttachmentInputRef = ref(null)
+const pendingAttachments = ref([])
+const composerDragActive = ref(false)
+const capturingScreenshot = ref(false)
+const voiceState = ref('idle')
+const voiceLanguage = ref('auto')
+const voiceTranscript = ref('')
+const voiceError = ref('')
+const voiceElapsedSeconds = ref(0)
 let wanderTimer = null
+let voiceMediaRecorder = null
+let voiceMediaStream = null
+let voiceChunks = []
+let voiceTimer = null
+let voiceStartedAt = 0
+let voiceRequestId = 0
+let voiceDiscardRecording = false
+let voiceAbortController = null
+
+const MAX_COMPOSER_ATTACHMENTS = 6
+const IMAGE_MAX_BYTES = 5 * 1024 * 1024
+const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024
+const VOICE_MAX_SECONDS = 60
+const VOICE_MAX_BYTES = 3 * 1024 * 1024
+const composerAttachmentAccept = [
+  '.png', '.jpg', '.jpeg', '.webp', '.pdf', '.docx', '.txt', '.md', '.csv',
+  '.xlsx', '.pptx', '.json', '.js', '.ts', '.vue', '.html', '.css', '.scss',
+  '.cs', '.java', '.py', '.go', '.sql', '.xml', '.yaml', '.yml', '.sh', '.ps1'
+].join(',')
+
+const imageAttachmentRules = {
+  '.png': { label: 'PNG', mimeTypes: ['image/png'] },
+  '.jpg': { label: 'JPG', mimeTypes: ['image/jpeg'] },
+  '.jpeg': { label: 'JPEG', mimeTypes: ['image/jpeg'] },
+  '.webp': { label: 'WEBP', mimeTypes: ['image/webp'] }
+}
+
+const documentAttachmentRules = {
+  '.pdf': { label: 'PDF', mimeTypes: ['application/pdf'] },
+  '.docx': { label: 'DOCX', mimeTypes: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'] },
+  '.txt': { label: 'TXT', mimeTypes: ['text/plain'] },
+  '.md': { label: 'Markdown', mimeTypes: ['text/markdown', 'text/plain'] },
+  '.csv': { label: 'CSV', mimeTypes: ['text/csv', 'application/csv', 'application/vnd.ms-excel'] },
+  '.xlsx': { label: 'XLSX', mimeTypes: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] },
+  '.pptx': { label: 'PPTX', mimeTypes: ['application/vnd.openxmlformats-officedocument.presentationml.presentation'] },
+  '.json': { label: 'JSON', mimeTypes: ['application/json', 'text/json', 'text/plain'] }
+}
+
+const sourceCodeExtensions = new Set([
+  '.js', '.ts', '.vue', '.html', '.css', '.scss', '.cs', '.java', '.py', '.go',
+  '.sql', '.xml', '.yaml', '.yml', '.sh', '.ps1'
+])
+
+const attachmentExtension = (name = '') => {
+  const dotIndex = name.lastIndexOf('.')
+  return dotIndex >= 0 ? name.slice(dotIndex).toLowerCase() : ''
+}
+
+const isSourceCodeMime = (mimeType = '') =>
+  !mimeType || mimeType.startsWith('text/') || [
+    'application/javascript', 'application/json', 'application/xml', 'application/x-sh'
+  ].includes(mimeType)
+
+const attachmentRule = (file) => {
+  const extension = attachmentExtension(file.name)
+  if (imageAttachmentRules[extension]) return { ...imageAttachmentRules[extension], extension, kind: 'image', maxBytes: IMAGE_MAX_BYTES }
+  if (documentAttachmentRules[extension]) return { ...documentAttachmentRules[extension], extension, kind: 'document', maxBytes: DOCUMENT_MAX_BYTES }
+  if (sourceCodeExtensions.has(extension)) {
+    return { extension, kind: 'document', label: `Source ${extension.slice(1).toUpperCase()}`, maxBytes: DOCUMENT_MAX_BYTES, sourceCode: true }
+  }
+  return null
+}
+
+const attachmentMimeMatches = (file, rule) => {
+  const mimeType = (file.type || '').toLowerCase()
+  if (!mimeType) return true
+  if (rule.sourceCode) return isSourceCodeMime(mimeType)
+  return rule.mimeTypes.some(allowed => allowed.toLowerCase() === mimeType)
+}
+
+const formatAttachmentBytes = (bytes) => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB']
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / (1024 ** unitIndex)
+  return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`
+}
+
+const attachmentStatusLabel = (status) => ({
+  uploading: 'Đang tải lên',
+  processing: 'Đang xử lý',
+  error: 'Tải lên thất bại',
+  ready: 'Đã xử lý'
+}[String(status || 'pending').toLowerCase()] || 'Chờ tải lên')
+
+const attachmentStatusIcon = (status) => ({
+  uploading: 'fa-solid fa-arrow-up-from-bracket fa-bounce',
+  processing: 'fa-solid fa-spinner fa-spin',
+  error: 'fa-solid fa-circle-exclamation',
+  ready: 'fa-solid fa-circle-check'
+}[String(status || 'pending').toLowerCase()] || 'fa-regular fa-clock')
+
+const imageDimensions = (objectUrl) => new Promise((resolve, reject) => {
+  const image = new Image()
+  image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
+  image.onerror = () => reject(new Error('Không thể đọc nội dung ảnh.'))
+  image.src = objectUrl
+})
+
+const attachmentIcon = (extension) => {
+  if (extension === '.pdf') return 'fa-regular fa-file-pdf'
+  if (extension === '.docx') return 'fa-regular fa-file-word'
+  if (extension === '.xlsx' || extension === '.csv') return 'fa-regular fa-file-excel'
+  if (extension === '.pptx') return 'fa-regular fa-file-powerpoint'
+  if (extension === '.json' || sourceCodeExtensions.has(extension)) return 'fa-regular fa-file-code'
+  return 'fa-regular fa-file-lines'
+}
+
+const addPendingFiles = async (files, source = 'picker') => {
+  for (const file of Array.from(files || [])) {
+    if (pendingAttachments.value.length >= MAX_COMPOSER_ATTACHMENTS) {
+      ElMessage.error(`Chỉ được chọn tối đa ${MAX_COMPOSER_ATTACHMENTS} tệp trong một lượt.`)
+      break
+    }
+
+    const rule = attachmentRule(file)
+    if (!rule) {
+      ElMessage.error(`Không hỗ trợ định dạng của tệp “${file.name || 'không tên'}”.`)
+      continue
+    }
+    if (!file.size) {
+      ElMessage.error(`Tệp “${file.name}” không có dữ liệu.`)
+      continue
+    }
+    if (file.size > rule.maxBytes) {
+      ElMessage.error(`${rule.kind === 'image' ? 'Ảnh' : 'Tài liệu'} “${file.name}” vượt quá giới hạn ${formatAttachmentBytes(rule.maxBytes)}.`)
+      continue
+    }
+    if (!attachmentMimeMatches(file, rule)) {
+      ElMessage.error(`Loại nội dung “${file.type || 'không xác định'}” không khớp với ${rule.extension}.`)
+      continue
+    }
+
+    const duplicate = pendingAttachments.value.some(item =>
+      item.name === file.name && item.size === file.size && item.file.lastModified === file.lastModified
+    )
+    if (duplicate) {
+      ElMessage.info(`Tệp “${file.name}” đã có trong danh sách.`)
+      continue
+    }
+
+    const previewUrl = URL.createObjectURL(file)
+    let dimensions = {}
+    if (rule.kind === 'image') {
+      try {
+        dimensions = await imageDimensions(previewUrl)
+      } catch (error) {
+        URL.revokeObjectURL(previewUrl)
+        ElMessage.error(error.message)
+        continue
+      }
+    }
+
+    pendingAttachments.value.push({
+      id: crypto.randomUUID(),
+      file,
+      name: file.name,
+      displayName: source === 'paste' ? 'Ảnh đã dán' : source === 'screenshot' ? 'Ảnh chụp màn hình' : file.name,
+      size: file.size,
+      kind: rule.kind,
+      typeLabel: rule.label,
+      icon: attachmentIcon(rule.extension),
+      previewUrl,
+      status: 'pending',
+      ...dimensions
+    })
+  }
+}
+
+const removePendingAttachment = (id) => {
+  const attachment = pendingAttachments.value.find(item => item.id === id)
+  if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
+  pendingAttachments.value = pendingAttachments.value.filter(item => item.id !== id)
+}
+
+const clearPendingAttachments = () => {
+  pendingAttachments.value.forEach(item => item.previewUrl && URL.revokeObjectURL(item.previewUrl))
+  pendingAttachments.value = []
+}
+
+const openAttachmentPreview = async (attachment) => {
+  if (!attachment) return
+  try {
+    if (!attachment.previewUrl && attachment.contentUrl) {
+      const response = await axiosClient.get(attachment.contentUrl, { responseType: 'blob' })
+      attachment.previewUrl = URL.createObjectURL(response.data)
+    }
+    if (!attachment.previewUrl) return
+    const link = document.createElement('a')
+    link.href = attachment.previewUrl
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.click()
+  } catch {
+    ElMessage.error(`Không thể mở “${attachment.name}”.`)
+  }
+}
+
+const handleAttachmentInput = async (event) => {
+  await addPendingFiles(event.target.files, 'picker')
+  event.target.value = ''
+}
+
+const handleComposerPaste = async (event) => {
+  const imageFiles = Array.from(event.clipboardData?.files || []).filter(file => file.type.startsWith('image/'))
+  if (!imageFiles.length) return
+  event.preventDefault()
+  await addPendingFiles(imageFiles, 'paste')
+}
+
+const readClipboardImage = async () => {
+  if (!navigator.clipboard?.read) {
+    ElMessage.info('Trình duyệt này chưa hỗ trợ đọc ảnh clipboard. Hãy dùng Ctrl+V trong ô nhập.')
+    return
+  }
+  try {
+    const clipboardItems = await navigator.clipboard.read()
+    for (const item of clipboardItems) {
+      const imageType = item.types.find(type => type.startsWith('image/'))
+      if (!imageType) continue
+      const blob = await item.getType(imageType)
+      const extension = imageType === 'image/jpeg' ? 'jpg' : imageType.split('/')[1]
+      const file = new File([blob], `anh-da-dan-${Date.now()}.${extension}`, { type: imageType, lastModified: Date.now() })
+      await addPendingFiles([file], 'paste')
+      return
+    }
+    ElMessage.info('Clipboard không có ảnh được hỗ trợ.')
+  } catch (error) {
+    if (error?.name !== 'NotAllowedError') ElMessage.error('Không thể đọc ảnh từ clipboard.')
+  }
+}
+
+const captureScreenAttachment = async () => {
+  if (!navigator.mediaDevices?.getDisplayMedia || capturingScreenshot.value) {
+    ElMessage.info('Trình duyệt này chưa hỗ trợ chụp màn hình.')
+    return
+  }
+
+  capturingScreenshot.value = true
+  let stream
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+    const video = document.createElement('video')
+    video.srcObject = stream
+    video.muted = true
+    await new Promise((resolve, reject) => {
+      video.onloadedmetadata = resolve
+      video.onerror = reject
+      video.play().catch(reject)
+    })
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d')?.drawImage(video, 0, 0)
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) throw new Error('Không thể tạo ảnh chụp màn hình.')
+    const file = new File([blob], `anh-chup-man-hinh-${Date.now()}.png`, { type: 'image/png', lastModified: Date.now() })
+    await addPendingFiles([file], 'screenshot')
+  } catch (error) {
+    if (error?.name !== 'NotAllowedError') ElMessage.error(error.message || 'Không thể chụp màn hình.')
+  } finally {
+    stream?.getTracks().forEach(track => track.stop())
+    capturingScreenshot.value = false
+  }
+}
+
+const handleAttachmentCommand = (command) => {
+  if (command === 'browse') aiAttachmentInputRef.value?.click()
+  if (command === 'paste') readClipboardImage()
+  if (command === 'screenshot') captureScreenAttachment()
+}
+
+const handleComposerDrop = async (event) => {
+  composerDragActive.value = false
+  await addPendingFiles(event.dataTransfer?.files, 'drop')
+}
+
+const handleComposerDragLeave = (event) => {
+  if (!event.currentTarget.contains(event.relatedTarget)) composerDragActive.value = false
+}
+
+const voiceLanguageLabel = computed(() => ({
+  auto: 'Tự động (VI/EN)',
+  vi: 'Tiếng Việt',
+  en: 'English'
+}[voiceLanguage.value] || 'Tự động (VI/EN)'))
+
+const voiceStatusTitle = computed(() => ({
+  requesting: 'Đang xin quyền microphone',
+  recording: 'Đang ghi âm',
+  transcribing: 'Đang nhận dạng giọng nói',
+  review: 'Kiểm tra transcript',
+  error: 'Không thể nhận dạng giọng nói'
+}[voiceState.value] || 'Nhập bằng giọng nói'))
+
+const voiceElapsedLabel = computed(() => {
+  const seconds = Math.min(VOICE_MAX_SECONDS, voiceElapsedSeconds.value)
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+})
+
+const stopVoiceTracks = () => {
+  voiceMediaStream?.getTracks().forEach(track => track.stop())
+  voiceMediaStream = null
+}
+
+const clearVoiceTimer = () => {
+  if (voiceTimer) window.clearInterval(voiceTimer)
+  voiceTimer = null
+}
+
+const releaseVoiceAudio = () => {
+  voiceChunks = []
+  voiceStartedAt = 0
+  voiceElapsedSeconds.value = 0
+}
+
+const cancelVoiceInput = () => {
+  voiceRequestId += 1
+  voiceDiscardRecording = true
+  voiceAbortController?.abort()
+  voiceAbortController = null
+  clearVoiceTimer()
+  stopVoiceTracks()
+  if (voiceMediaRecorder?.state && voiceMediaRecorder.state !== 'inactive') voiceMediaRecorder.stop()
+  voiceMediaRecorder = null
+  releaseVoiceAudio()
+  voiceTranscript.value = ''
+  voiceError.value = ''
+  voiceState.value = 'idle'
+}
+
+const writeWaveString = (view, offset, value) => {
+  for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index))
+}
+
+const encodeWave = (audioBuffer, targetSampleRate = 16000) => {
+  const outputLength = Math.max(1, Math.round(audioBuffer.duration * targetSampleRate))
+  const samples = new Float32Array(outputLength)
+  const channels = Array.from({ length: audioBuffer.numberOfChannels }, (_, index) => audioBuffer.getChannelData(index))
+  const sourceStep = audioBuffer.sampleRate / targetSampleRate
+
+  for (let outputIndex = 0; outputIndex < outputLength; outputIndex += 1) {
+    const sourcePosition = outputIndex * sourceStep
+    const sourceIndex = Math.floor(sourcePosition)
+    const nextIndex = Math.min(sourceIndex + 1, audioBuffer.length - 1)
+    const fraction = sourcePosition - sourceIndex
+    let mixed = 0
+    channels.forEach(channel => {
+      mixed += channel[sourceIndex] + (channel[nextIndex] - channel[sourceIndex]) * fraction
+    })
+    samples[outputIndex] = mixed / channels.length
+  }
+
+  const waveBuffer = new ArrayBuffer(44 + samples.length * 2)
+  const view = new DataView(waveBuffer)
+  writeWaveString(view, 0, 'RIFF')
+  view.setUint32(4, 36 + samples.length * 2, true)
+  writeWaveString(view, 8, 'WAVE')
+  writeWaveString(view, 12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, targetSampleRate, true)
+  view.setUint32(28, targetSampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  writeWaveString(view, 36, 'data')
+  view.setUint32(40, samples.length * 2, true)
+  samples.forEach((sample, index) => {
+    const normalized = Math.max(-1, Math.min(1, sample))
+    view.setInt16(44 + index * 2, normalized < 0 ? normalized * 0x8000 : normalized * 0x7fff, true)
+  })
+  return new Blob([waveBuffer], { type: 'audio/wav' })
+}
+
+const convertRecordingToWave = async (recording) => {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext
+  if (!AudioContextClass) throw new Error('Trình duyệt không hỗ trợ xử lý audio để phiên âm.')
+  const audioContext = new AudioContextClass()
+  try {
+    const source = await recording.arrayBuffer()
+    const decoded = await audioContext.decodeAudioData(source.slice(0))
+    return encodeWave(decoded)
+  } finally {
+    await audioContext.close()
+  }
+}
+
+const transcribeVoiceRecording = async (recording) => {
+  try {
+    const wave = await convertRecordingToWave(recording)
+    if (wave.size > VOICE_MAX_BYTES) throw new Error('Bản ghi âm vượt quá giới hạn 60 giây.')
+    if (voiceState.value !== 'transcribing') return
+
+    const form = new FormData()
+    form.append('audio', wave, 'voice-recording.wav')
+    form.append('languageMode', voiceLanguage.value)
+    voiceAbortController = new AbortController()
+    const response = await axiosClient.post('/ai/transcribe-audio', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      signal: voiceAbortController.signal
+    })
+    if (voiceState.value !== 'transcribing') return
+    const transcript = String(apiPayload(response)?.transcript || '').trim()
+    if (!transcript) throw new Error('Không nhận diện được giọng nói Việt hoặc Anh. Hãy thu lại.')
+    voiceTranscript.value = transcript
+    voiceState.value = 'review'
+  } catch (error) {
+    if (error?.code === 'ERR_CANCELED' || voiceState.value === 'idle') return
+    voiceError.value = error.response?.data?.message || error.message || 'Không thể nhận dạng giọng nói. Hãy thử lại.'
+    voiceState.value = 'error'
+  } finally {
+    voiceAbortController = null
+    releaseVoiceAudio()
+  }
+}
+
+const stopVoiceRecording = () => {
+  if (voiceState.value !== 'recording' || !voiceMediaRecorder || voiceMediaRecorder.state === 'inactive') return
+  voiceState.value = 'transcribing'
+  clearVoiceTimer()
+  stopVoiceTracks()
+  voiceMediaRecorder.stop()
+}
+
+const startVoiceRecording = async () => {
+  if (['requesting', 'recording', 'transcribing'].includes(voiceState.value)) return
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    voiceError.value = 'Trình duyệt này không hỗ trợ ghi âm microphone.'
+    voiceState.value = 'error'
+    return
+  }
+
+  voiceRequestId += 1
+  const requestId = voiceRequestId
+  voiceTranscript.value = ''
+  voiceError.value = ''
+  voiceDiscardRecording = false
+  voiceState.value = 'requesting'
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    if (requestId !== voiceRequestId || voiceState.value !== 'requesting') {
+      stream.getTracks().forEach(track => track.stop())
+      return
+    }
+
+    const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
+      .find(type => MediaRecorder.isTypeSupported(type))
+    voiceMediaStream = stream
+    voiceMediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+    voiceChunks = []
+    voiceMediaRecorder.addEventListener('dataavailable', event => {
+      if (!voiceDiscardRecording && event.data.size > 0) voiceChunks.push(event.data)
+    })
+    voiceMediaRecorder.addEventListener('stop', () => {
+      const recorderMimeType = voiceMediaRecorder?.mimeType || mimeType || 'audio/webm'
+      const recording = new Blob(voiceChunks, { type: recorderMimeType })
+      voiceMediaRecorder = null
+      if (voiceDiscardRecording || voiceState.value !== 'transcribing') {
+        releaseVoiceAudio()
+        return
+      }
+      void transcribeVoiceRecording(recording)
+    }, { once: true })
+    voiceMediaRecorder.start(250)
+    voiceStartedAt = Date.now()
+    voiceElapsedSeconds.value = 0
+    voiceState.value = 'recording'
+    voiceTimer = window.setInterval(() => {
+      voiceElapsedSeconds.value = Math.floor((Date.now() - voiceStartedAt) / 1000)
+      if (voiceElapsedSeconds.value >= VOICE_MAX_SECONDS) stopVoiceRecording()
+    }, 250)
+  } catch (error) {
+    stopVoiceTracks()
+    voiceError.value = error?.name === 'NotAllowedError'
+      ? 'Quyền microphone đã bị từ chối. Hãy cho phép quyền trong trình duyệt rồi bấm Thử lại.'
+      : error?.name === 'NotFoundError'
+        ? 'Không tìm thấy microphone khả dụng trên thiết bị.'
+        : 'Không thể mở microphone. Hãy kiểm tra thiết bị và thử lại.'
+    voiceState.value = 'error'
+  }
+}
+
+const recordVoiceAgain = async () => {
+  cancelVoiceInput()
+  await nextTick()
+  await startVoiceRecording()
+}
+
+const useVoiceTranscript = async () => {
+  const transcript = voiceTranscript.value.trim()
+  if (!transcript) return
+  cancelVoiceInput()
+  aiInput.value = transcript
+  await nextTick()
+  document.querySelector('.ai-input-wrapper textarea')?.focus()
+}
 
 function loadPetPosition() {
   try {
@@ -855,7 +1673,7 @@ const openFromPet = (event) => {
 
 const handleGlobalKeydown = (event) => {
   const isEscape = event.key === 'Escape' || event.key === 'Esc' || event.code === 'Escape' || event.keyCode === 27
-  if (!isEscape || !aiPetStore.isPanelOpen) return
+  if (!isEscape || (!aiPetStore.isPanelOpen && !notesVisible.value)) return
   // Element Plus owns Escape while a real modal overlay is open. The AI panel
   // is not an overlay, so only close it when no modal is currently active.
   const hasActiveElementPlusOverlay = [...document.querySelectorAll('.el-overlay')].some((overlay) => {
@@ -866,6 +1684,13 @@ const handleGlobalKeydown = (event) => {
   event.preventDefault()
   event.stopPropagation()
   aiPetStore.setPanelOpen(false)
+  notesVisible.value = false
+  stopPetWandering()
+}
+
+const closeUtilitiesForIntegrationDetail = () => {
+  aiPetStore.setPanelOpen(false)
+  notesVisible.value = false
   stopPetWandering()
 }
 
@@ -876,6 +1701,7 @@ onMounted(() => {
   document.addEventListener('mouseup', captureSelectedText)
   document.addEventListener('keyup', captureSelectedText)
   window.addEventListener('keydown', handleGlobalKeydown)
+  window.addEventListener('integration-detail-opened', closeUtilitiesForIntegrationDetail)
   window.addEventListener('pointermove', movePet)
   window.addEventListener('pointerup', endPetDrag)
   nextTick(() => window.setTimeout(normalizePetPosition, 120))
@@ -889,9 +1715,13 @@ onUnmounted(() => {
   document.removeEventListener('mouseup', captureSelectedText)
   document.removeEventListener('keyup', captureSelectedText)
   window.removeEventListener('keydown', handleGlobalKeydown)
+  window.removeEventListener('integration-detail-opened', closeUtilitiesForIntegrationDetail)
   window.removeEventListener('pointermove', movePet)
   window.removeEventListener('pointerup', endPetDrag)
   stopPetWandering()
+  cancelVoiceInput()
+  clearPendingAttachments()
+  releaseMessageAttachmentUrls()
 })
 
 watch(() => route.fullPath, () => {
@@ -910,7 +1740,10 @@ const scrollAiToBottom = async () => {
 }
 
 const toggleAI = async () => {
-  aiVisible.value = !aiVisible.value
+  const willOpen = !aiVisible.value
+  notesVisible.value = false
+  aiVisible.value = willOpen
+  if (willOpen) window.dispatchEvent(new CustomEvent('global-utility-drawer-opened'))
   if (aiVisible.value) stopPetWandering()
   else startPetWandering()
   if (aiVisible.value) {
@@ -1072,6 +1905,15 @@ const cancelAiAction = async (action) => {
   }
   action.uiStatus = 'cancelled'
   action.error = ''
+  await persistConversation()
+}
+
+const retryAiAction = async (action) => {
+  if (!action || action.loading || action.uiStatus !== 'cancelled') return
+  action.uiStatus = 'pending'
+  action.error = ''
+  action.result = null
+  await persistConversation()
 }
 
 const refreshAfterAiAction = async (action, result) => {
@@ -1102,8 +1944,86 @@ const navigateToAiEntity = async ({ entityId, entityType, projectId }) => {
   if (entityType === 'report') return router.push(`/space/${projectId || currentProjectId.value}/reports`)
 }
 
+const normalizeTaskTitle = (title = '') => `${title}`.trim().replace(/\s+/g, ' ').toLocaleUpperCase('vi-VN')
+
+const taskTitlesAreSimilar = (existingTitle, requestedTitle) => {
+  const existingTokens = normalizeTaskTitle(existingTitle).split(' ').filter(Boolean)
+  const requestedTokens = normalizeTaskTitle(requestedTitle).split(' ').filter(Boolean)
+  if (existingTokens.join(' ') === requestedTokens.join(' ')) return true
+  if (existingTokens.length < 3 || requestedTokens.length < 3) return false
+  const existingSet = new Set(existingTokens)
+  const requestedSet = new Set(requestedTokens)
+  const intersection = [...existingSet].filter(token => requestedSet.has(token)).length
+  const union = new Set([...existingSet, ...requestedSet]).size
+  return union > 0 && intersection / union >= 0.8
+}
+
+const findDuplicateTask = async (action) => {
+  if (action.type !== 'create_task' || actionPayload(action).allowDuplicate) return null
+  const title = actionPayload(action).title || actionPayload(action).name
+  if (!title || !currentProjectId.value) return null
+  const tasks = await ensureProjectTasks()
+  const match = tasks.find(task => taskTitlesAreSimilar(task.title || task.Title, title))
+  if (!match) return null
+  return {
+    id: match.id || match.Id,
+    sequenceId: match.sequenceId || match.SequenceId,
+    title: match.title || match.Title,
+    statusName: match.statusName || match.StatusName || match.taskStatus?.name || match.TaskStatus?.Name || 'Không rõ trạng thái'
+  }
+}
+
+const toggleNotes = () => {
+  const willOpen = !notesVisible.value
+  notesVisible.value = willOpen
+  if (willOpen) {
+    aiVisible.value = false
+    window.dispatchEvent(new CustomEvent('global-utility-drawer-opened'))
+    stopPetWandering()
+  } else if (!aiVisible.value) {
+    startPetWandering()
+  }
+}
+
+const closeNotes = () => {
+  notesVisible.value = false
+  if (!aiVisible.value) startPetWandering()
+}
+
+const openDuplicateTask = (action, edit) => {
+  const task = action.duplicateCandidate
+  if (!task?.id) return
+  return router.push({
+    path: `/space/${currentProjectId.value}/work-items`,
+    query: { task: task.id, ...(edit ? { edit: '1' } : {}) }
+  })
+}
+
+const confirmDuplicateCreation = async (action) => {
+  try {
+    await ElMessageBox.confirm(
+      'Công việc mới sẽ được tạo dù có tiêu đề trùng hoặc rất gần với công việc hiện có.',
+      'Xác nhận tạo trùng',
+      { confirmButtonText: 'Vẫn tạo', cancelButtonText: 'Quay lại', type: 'warning' }
+    )
+    action.payload = { ...actionPayload(action), allowDuplicate: true }
+    action.duplicateCandidate = null
+    action.uiStatus = 'pending'
+    await executeAiAction(action)
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error('Không thể xác nhận thao tác.')
+  }
+}
+
 const executeAiAction = async (action) => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
+  const duplicate = await findDuplicateTask(action)
+  if (duplicate) {
+    action.duplicateCandidate = duplicate
+    action.uiStatus = 'pending'
+    await persistConversation()
+    return
+  }
   action.loading = true
   action.uiStatus = 'loading'
   action.error = ''
@@ -1136,6 +2056,13 @@ const executeAiAction = async (action) => {
     ElMessage.success(result?.message || 'AI đã thực hiện thay đổi thành công.')
     await navigateToAiEntity(navigation)
   } catch (error) {
+    const duplicateCandidate = error.response?.data?.data?.existingTask
+    if (error.response?.status === 409 && duplicateCandidate) {
+      action.duplicateCandidate = duplicateCandidate
+      action.uiStatus = 'pending'
+      await persistConversation()
+      return
+    }
     action.uiStatus = 'error'
         const status = error.response?.status
     const mapped = { 400: 'Dữ liệu action không hợp lệ.', 401: 'Phiên đăng nhập đã hết hạn.', 403: 'Bạn không có quyền thực hiện action này.', 404: 'Không tìm thấy entity cần thao tác.', 409: 'Action bị trùng hoặc xung đột dữ liệu.', 422: 'Dữ liệu không vượt qua kiểm tra nghiệp vụ.', 429: 'AI đang quá tải. Hãy thử lại sau.', 503: 'Dịch vụ AI tạm thời không khả dụng.' }
@@ -1143,6 +2070,7 @@ const executeAiAction = async (action) => {
     ElMessage.error(action.error)
   } finally {
     action.loading = false
+    await persistConversation()
   }
 }
 
@@ -1166,6 +2094,14 @@ const currentWorkspaceId = computed(() => {
   const project = projectStore.currentProject
   return project?.workspaceId || project?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null
 })
+
+const stickyContext = computed(() => ({
+  workspaceId: currentWorkspaceId.value || null,
+  projectId: route.path.startsWith('/space/') ? currentProjectId.value : null,
+  workTaskId: route.params?.taskId || route.query?.taskId || null,
+  goalId: route.path.startsWith('/goals/') ? route.params?.id || null : route.params?.goalId || null,
+  sourceRoute: route.fullPath.slice(0, 500)
+}))
 
 const clearSelectedText = () => {
   selectedText.value = ''
@@ -1214,6 +2150,8 @@ const askAboutSelection = (action) => {
   aiInput.value = `${action} đoạn văn bản sau:\n\n${selectedText.value}`
   selectionPopover.value.visible = false
   aiVisible.value = true
+  notesVisible.value = false
+  window.dispatchEvent(new CustomEvent('global-utility-drawer-opened'))
 }
 
 // ────────────────────────────────────────────
@@ -1601,31 +2539,120 @@ const confirmSuggestedAction = async (action) => {
   }
 }
 
+const normalizeUploadedAttachment = (payload, localAttachment) => ({
+  id: payload.id,
+  name: payload.fileName,
+  displayName: localAttachment.displayName || payload.fileName,
+  size: payload.fileSize,
+  kind: payload.kind,
+  typeLabel: localAttachment.typeLabel || attachmentExtension(payload.fileName).slice(1).toUpperCase(),
+  icon: localAttachment.icon || attachmentIcon(attachmentExtension(payload.fileName)),
+  previewUrl: localAttachment.previewUrl || '',
+  contentUrl: payload.contentUrl,
+  mimeType: payload.mimeType,
+  status: String(payload.status || 'ready').toLowerCase(),
+  width: payload.width,
+  height: payload.height,
+  chunkCount: payload.chunkCount
+})
+
+const loadAiUsage = async () => {
+  try {
+    const response = await axiosClient.get('/ai/usage-summary')
+    aiUsage.value = apiPayload(response) || null
+  } catch {
+    // Lỗi badge Credits không được làm hỏng AI Drawer.
+    aiUsage.value = null
+  }
+}
+
+onMounted(() => {
+  loadAiUsage()
+})
+
+watch(aiVisible, (visible) => {
+  if (visible) loadAiUsage()
+})
+
+const uploadPendingAttachments = async (conversationId) => {
+  const uploaded = []
+  for (const attachment of pendingAttachments.value) {
+    if (attachment.status === 'ready' && attachment.id && attachment.contentUrl) {
+      uploaded.push(attachment)
+      continue
+    }
+
+    attachment.status = 'uploading'
+    const form = new FormData()
+    form.append('file', attachment.file, attachment.name)
+    form.append('conversationId', conversationId)
+    const workspaceId = currentConversationWorkspaceId.value || currentWorkspaceId.value
+    if (workspaceId) form.append('workspaceId', workspaceId)
+
+    try {
+      const response = await axiosClient.post('/ai/attachments', form, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      attachment.status = 'processing'
+      Object.assign(attachment, normalizeUploadedAttachment(apiPayload(response), attachment))
+      uploaded.push(attachment)
+    } catch (error) {
+      attachment.status = 'error'
+      throw error
+    }
+  }
+  return uploaded
+}
+
 const sendAiMessage = async () => {
   const outgoing = aiInput.value.trim()
-  if (!outgoing || aiSending.value) return
+  const hasAttachments = pendingAttachments.value.length > 0
+
+  if (aiCreditsExhausted.value) {
+    ElMessage.warning('Bạn đã sử dụng hết AI Credits trong tháng này.')
+    return
+  }
+
+  if ((!outgoing && !hasAttachments) || aiSending.value) return
 
   aiSending.value = true
-  aiInput.value = ''
-  chatHistory.value.push({ role: 'user', content: outgoing })
-  chatHistory.value.push({ role: 'bot', content: aiCopy.value.thinking, loading: true })
-  await scrollAiToBottom()
+  let loadingAdded = false
+  let userMessageAdded = false
 
   try {
-    const localResult = null
-    if (localResult) {
+    const titleSeed = outgoing || pendingAttachments.value.map(item => item.name).join(', ')
+    const conversationId = await ensureConversation(titleSeed)
+    const uploadedAttachments = hasAttachments ? await uploadPendingAttachments(conversationId) : []
+
+    if (uploadedAttachments.length) pendingAttachments.value = []
+    aiInput.value = ''
+    chatHistory.value.push({
+      role: 'user',
+      content: outgoing || 'Hãy phân tích các attachment đã đính kèm.',
+      attachments: uploadedAttachments
+    })
+    userMessageAdded = true
+    chatHistory.value.push({ role: 'bot', content: aiCopy.value.thinking, loading: true })
+    loadingAdded = true
+    await scrollAiToBottom()
+
+    if (uploadedAttachments.length) {
+      const response = await axiosClient.post('/ai/attachment-chat', {
+        workspaceId: currentConversationWorkspaceId.value || currentWorkspaceId.value || null,
+        conversationId,
+        attachmentIds: uploadedAttachments.map(item => item.id),
+        message: outgoing
+      })
+      const responseData = apiPayload(response)
       chatHistory.value.pop()
-      if (typeof localResult === 'string') {
-        chatHistory.value.push({ role: 'bot', content: localResult })
-      } else {
-        chatHistory.value.push({
-          role: 'bot',
-          content: localResult.answer,
-          suggestedTasks: localResult.suggestedTasks,
-          suggestedActions: localResult.suggestedActions
-        })
-      }
-      ElMessage.success('SprintA AI đã xử lý yêu cầu.')
+      loadingAdded = false
+      chatHistory.value.push({
+        role: 'bot',
+        content: responseData?.answer || aiCopy.value.emptyResponse,
+        citations: responseData?.citations || []
+      })
+
+      await loadAiUsage()
       return
     }
 
@@ -1645,9 +2672,10 @@ const sendAiMessage = async () => {
         extra: {}
       }
     })
-    const responseData = response.data?.data
+    const responseData = apiPayload(response)
 
     chatHistory.value.pop()
+    loadingAdded = false
     
     chatHistory.value.push({
       role: 'bot',
@@ -1658,6 +2686,7 @@ const sendAiMessage = async () => {
         ...action,
         type: String(action.type || '').toLowerCase(),
         payload: action.payload || {},
+        duplicateCandidate: null,
         uiStatus: 'pending',
         loading: false,
         error: '',
@@ -1665,20 +2694,49 @@ const sendAiMessage = async () => {
       })),
       suggestedActions: responseData?.suggestedActions || []
     })
+
+    await loadAiUsage()
   } catch (error) {
-    chatHistory.value.pop()
+    if (loadingAdded && chatHistory.value.at(-1)?.loading) chatHistory.value.pop()
     const status = error.response?.status
-    const messages = {
-      400: 'Vui long nhap noi dung can hoi.',
-      401: 'Vui long dang nhap lai de su dung AI Copilot.',
-      403: 'Ban khong co quyen hoi AI trong du an nay.',
-      503: 'AI Copilot chua san sang. Vui long thu lai sau.'
+    const errorData = error.response?.data?.data || {}
+    const errorCode = errorData?.code
+    const retryAfterSeconds = Number(errorData?.retryAfterSeconds || 0)
+
+    let message
+
+    if (errorCode === 'AI_CREDITS_EXHAUSTED') {
+      message = 'Bạn đã sử dụng hết AI Credits trong tháng này.'
+      await loadAiUsage()
+    } else if (errorCode === 'AI_RATE_LIMITED') {
+      message = retryAfterSeconds > 0
+        ? `Bạn thao tác AI quá nhanh. Vui lòng thử lại sau ${retryAfterSeconds} giây.`
+        : 'Bạn thao tác AI quá nhanh. Vui lòng thử lại sau.'
+    } else if (errorCode === 'AI_PROVIDER_RATE_LIMITED') {
+      message = 'Dịch vụ AI đang bận. Vui lòng thử lại sau.'
+    } else if (errorCode === 'AI_PROVIDER_UNAVAILABLE') {
+      message = 'Dịch vụ AI tạm thời không khả dụng. Vui lòng thử lại sau.'
+    } else {
+      const messages = {
+        400: error.response?.data?.message || 'Attachment không hợp lệ hoặc không thể xử lý.',
+        401: 'Vui lòng đăng nhập lại để sử dụng SprintA AI.',
+        402: 'Bạn đã sử dụng hết AI Credits trong tháng này.',
+        403: 'Bạn không có quyền truy cập attachment trong workspace này.',
+        413: 'Attachment vượt quá giới hạn dung lượng.',
+        429: 'Dịch vụ AI đang bận. Vui lòng thử lại sau.',
+        503: 'SprintA AI chưa sẵn sàng. Vui lòng thử lại sau.'
+      }
+
+      message =
+        messages[status]
+        || error.response?.data?.message
+        || 'Không thể kết nối SprintA AI. Vui lòng thử lại.'
     }
-    const message = messages[status] || 'Khong the ket noi AI Copilot. Vui long thu lai.'
-    chatHistory.value.push({ role: 'bot', content: message })
+    if (userMessageAdded) chatHistory.value.push({ role: 'bot', content: message })
     ElMessage.error(message)
   } finally {
     aiSending.value = false
+    await persistConversation()
     await scrollAiToBottom()
   }
 }
@@ -1811,6 +2869,38 @@ const handleProjectCreated = (newProject) => {
   filter: brightness(1.04);
 }
 
+.global-utility-rail {
+  position: fixed;
+  z-index: 1510;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+}
+
+.global-utility-rail button {
+  width: 46px;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+
+.global-utility-rail button:hover,
+.global-utility-rail button.active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.global-utility-rail span { font-size: 9px; font-weight: 700; }
+
 .ai-floating-btn.is-dragging { cursor: grabbing; filter: brightness(1.08); }
 .ai-floating-btn.is-dragging .ai-pet-image { animation: none; }
 
@@ -1856,6 +2946,9 @@ const handleProjectCreated = (newProject) => {
 .close-ai:focus-visible,
 .quick-action:focus-visible,
 .send-btn:focus-visible,
+.ai-composer-icon-btn:focus-visible,
+.ai-attachment-actions button:focus-visible,
+.ai-attachment-thumbnail:focus-visible,
 .ai-context-card button:focus-visible,
 .ai-selected-text button:focus-visible,
 .ai-input-foot button:focus-visible {
@@ -1988,6 +3081,26 @@ const handleProjectCreated = (newProject) => {
 .ai-action-details dd { margin: 0; color: var(--color-text-primary); overflow-wrap: anywhere; }
 .ai-action-error { color: #dc2626; }
 .ai-action-result { color: #16803c; }
+
+.ai-duplicate-warning {
+  padding: 10px;
+  border: 1px solid #d97706;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #7c2d12;
+}
+.ai-duplicate-warning p { margin: 4px 0 8px; overflow-wrap: anywhere; }
+.ai-duplicate-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-duplicate-actions button {
+  min-height: 30px;
+  padding: 6px 9px;
+  border: 1px solid #d97706;
+  border-radius: 6px;
+  background: #fff;
+  color: #7c2d12;
+  cursor: pointer;
+}
+.ai-duplicate-actions .is-danger { background: #9a3412; color: #fff; }
 
 .ai-action-controls { justify-content: flex-end; }
 .ai-action-controls button {
@@ -2179,6 +3292,44 @@ const handleProjectCreated = (newProject) => {
   color: var(--color-accent);
 }
 
+.ai-conversation-toolbar {
+  display: grid;
+  grid-template-columns: 32px 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.ai-conversation-toolbar button,
+.ai-history-head button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.ai-conversation-toolbar span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; }
+.ai-history-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  overflow-y: auto;
+  background: var(--color-surface);
+}
+.ai-history-head { display: flex; align-items: center; justify-content: space-between; }
+.ai-history-panel > input { min-height: 38px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-bg); color: var(--color-text-primary); }
+.ai-history-item { display: grid; grid-template-columns: minmax(0, 1fr) 24px 24px; align-items: center; gap: 6px; width: 100%; padding: 9px; border: 1px solid var(--color-border); border-radius: 6px; background: transparent; color: var(--color-text-primary); text-align: left; cursor: pointer; }
+.ai-history-item.active { border-color: var(--sa-primary); background: color-mix(in srgb, var(--sa-primary) 8%, transparent); }
+.ai-history-item span { min-width: 0; }
+.ai-history-item strong, .ai-history-item small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-history-item small { margin-top: 3px; color: var(--color-text-muted); }
+.ai-history-more { min-height: 36px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface-hover); color: var(--color-text-primary); cursor: pointer; }
+
 .ai-selected-text {
   display: flex;
   align-items: center;
@@ -2323,9 +3474,357 @@ const handleProjectCreated = (newProject) => {
 }
 
 .ai-input-area {
+  position: relative;
   padding: 14px 18px 16px;
   border-top: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-surface) 92%, var(--color-surface-hover));
+}
+
+.ai-input-area.is-dragging-files {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -4px;
+  background: color-mix(in srgb, var(--sa-primary-soft) 52%, var(--color-surface));
+}
+
+.ai-attachment-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.ai-attachment-tray {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  margin-bottom: 10px;
+  overflow-y: auto;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.ai-attachment-card {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.ai-attachment-card.is-document {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+}
+
+.ai-attachment-thumbnail {
+  width: 72px;
+  height: 54px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-hover);
+  cursor: pointer;
+}
+
+.ai-attachment-thumbnail img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.ai-attachment-file-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-hover);
+  color: var(--color-accent);
+  font-size: 20px;
+}
+
+.ai-attachment-meta {
+  min-width: 0;
+}
+
+.ai-attachment-meta strong,
+.ai-attachment-meta span,
+.ai-attachment-meta small {
+  display: block;
+}
+
+.ai-attachment-meta strong {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-attachment-meta span {
+  margin-top: 3px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.ai-attachment-meta small {
+  margin-top: 5px;
+  color: #b45309;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ai-attachment-meta small i {
+  margin-right: 4px;
+}
+
+.ai-attachment-meta small.is-ready { color: #16803c; }
+.ai-attachment-meta small.is-error { color: #dc2626; }
+.ai-attachment-meta small.is-uploading,
+.ai-attachment-meta small.is-processing { color: var(--color-accent); }
+
+.message-attachments {
+  display: grid;
+  width: min(100%, 390px);
+  gap: 8px;
+}
+
+.message-attachment-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-hover) 62%, transparent);
+}
+
+.message-attachment-image {
+  width: 72px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-hover);
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.message-attachment-card:has(.message-attachment-image) {
+  grid-template-columns: 72px minmax(0, 1fr) 32px;
+}
+
+.message-attachment-image img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.message-attachment-open {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.message-attachment-open:hover { background: var(--color-surface); color: var(--color-accent); }
+
+.ai-citations {
+  display: grid;
+  width: 100%;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 9px;
+  border-top: 1px solid var(--color-border);
+}
+
+.ai-citations > strong {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.ai-citations button {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ai-citations button:hover { border-color: var(--color-accent); }
+.ai-citations span { font-size: 11px; font-weight: 800; overflow-wrap: anywhere; }
+.ai-citations small { color: var(--color-text-muted); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+
+.ai-attachment-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-attachment-actions button,
+.ai-composer-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.ai-attachment-actions button:hover,
+.ai-composer-icon-btn:hover {
+  border-color: color-mix(in srgb, var(--sa-primary) 42%, var(--color-border));
+  background: var(--sa-primary-soft);
+  color: var(--color-accent);
+}
+
+.ai-composer-icon-btn.active {
+  border-color: var(--color-accent);
+  background: var(--sa-primary-soft);
+  color: var(--color-accent);
+}
+
+.ai-composer-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.ai-voice-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface) 92%, var(--sa-primary-soft));
+}
+
+.ai-voice-head,
+.ai-voice-head > div,
+.ai-voice-actions {
+  display: flex;
+  align-items: center;
+}
+
+.ai-voice-head {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-voice-head > div { gap: 8px; }
+.ai-voice-head strong { color: var(--color-text-primary); font-size: 13px; }
+
+.ai-voice-timer {
+  color: var(--color-danger, #dc2626);
+  font: 700 12px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.ai-voice-language {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.ai-voice-language select {
+  max-width: 180px;
+  height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.ai-voice-note,
+.ai-voice-error {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.ai-voice-error { color: var(--color-danger, #dc2626); }
+
+.ai-voice-transcript {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ai-voice-transcript textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 9px 10px;
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.ai-voice-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-voice-actions button {
+  min-height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ai-voice-secondary { background: transparent; color: var(--color-text-secondary); }
+.ai-voice-primary { border-color: var(--color-accent) !important; background: var(--color-accent); color: #ffffff; }
+.ai-voice-actions button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+@media (max-width: 560px) {
+  .ai-voice-head { align-items: stretch; flex-direction: column; }
+  .ai-voice-language select { width: 100%; max-width: none; }
 }
 
 .ai-input-wrapper {
@@ -2336,6 +3835,10 @@ const handleProjectCreated = (newProject) => {
   background: var(--color-surface);
   padding: 8px 9px 8px 12px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.ai-input-wrapper :deep(.el-dropdown) {
+  flex: 0 0 34px;
 }
 
 .ai-input-wrapper:focus-within {
@@ -2451,6 +3954,15 @@ const handleProjectCreated = (newProject) => {
     height: 58px;
   }
 
+  .global-utility-rail {
+    top: auto;
+    right: 8px;
+    bottom: 82px;
+    transform: none;
+  }
+
+  .global-utility-rail button { width: 42px; min-height: 44px; }
+
   .ai-pet-image {
     width: 58px;
     height: 58px;
@@ -2505,5 +4017,74 @@ const handleProjectCreated = (newProject) => {
   .ai-action-preview-card.is-pending .ai-action-status {
     animation: none;
   }
+}
+</style>
+
+<style scoped>
+.ai-credit-card {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.ai-credit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-credit-head > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-credit-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  opacity: .7;
+}
+
+.ai-credit-head strong {
+  font-size: 12px;
+}
+
+.ai-credit-progress {
+  height: 6px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+}
+
+.ai-credit-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-color);
+  transition: width .25s ease;
+}
+
+.ai-credit-message {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: .8;
+}
+
+.ai-credit-card.is-low {
+  border-color: #d9a441;
+}
+
+.ai-credit-card.is-empty {
+  border-color: #d25b5b;
+}
+
+.ai-credit-card.is-empty .ai-credit-progress > span {
+  width: 0 !important;
 }
 </style>

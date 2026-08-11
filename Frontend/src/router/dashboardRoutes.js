@@ -7,7 +7,7 @@ export default [
       {
         path: 'dashboard',
         name: 'Dashboard',
-        component: () => import('../views/YourWorkView.vue')
+        component: () => import('../views/ForYou.vue')
       },
       {
         path: 'profile',
@@ -51,7 +51,8 @@ export default [
       },
       {
         path: 'priority',
-        redirect: '/your-work'
+        name: 'DailyFocus',
+        component: () => import('../views/DailyFocusView.vue')
       },
       {
         path: 'chat',

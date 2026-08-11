@@ -108,7 +108,7 @@ const copy = computed(() => isVi.value ? {
   nav: ['Tính năng', 'AI', 'Quy trình', 'Bảng giá', 'Video'],
   badge: 'SPRINTA',
   title: 'Quản lý công việc rõ ràng, chạy sprint gọn hơn.',
-  intro: 'SprintA gom task, cycle, mục tiêu, tài liệu, báo cáo và AI Copilot vào một workspace thống nhất để đội nhóm luôn thấy rõ việc cần làm, người phụ trách và rủi ro.',
+  intro: 'SprintA gom task, cycle, mục tiêu, tài liệu, báo cáo và SprintA AI vào một workspace thống nhất để đội nhóm luôn thấy rõ việc cần làm, người phụ trách và rủi ro.',
   start: 'Bắt đầu miễn phí',
   demo: 'Xem demo',
   proof: ['Không cần thẻ thanh toán', 'Demo data có sẵn', 'Cài như PWA'],
@@ -145,7 +145,7 @@ const copy = computed(() => isVi.value ? {
   nav: ['Features', 'AI', 'Workflow', 'Pricing', 'Video'],
   badge: 'SPRINTA',
   title: 'Work with clarity. Run focused sprints without noise.',
-  intro: 'SprintA brings tasks, cycles, goals, documents, reports and AI Copilot into one focused workspace so ownership, risk and progress stay visible.',
+  intro: 'SprintA brings tasks, cycles, goals, documents, reports and SprintA AI into one focused workspace so ownership, risk and progress stay visible.',
   start: 'Start for free',
   demo: 'Watch demo',
   proof: ['No credit card', 'Demo data included', 'Install as PWA'],
@@ -457,7 +457,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="float-card float-card-b">
                 <span class="mini-icon"><Bot :size="16" /></span>
-                <div><b>{{ isVi ? 'AI Copilot' : 'AI Copilot' }}</b><small>{{ isVi ? 'Gợi ý có xác nhận' : 'Confirmed suggestions' }}</small></div>
+                <div><b>SprintA AI</b><small>{{ isVi ? 'Gợi ý có xác nhận' : 'Confirmed suggestions' }}</small></div>
               </div>
               <div class="float-card float-card-c">
                 <BarChart3 :size="17" />

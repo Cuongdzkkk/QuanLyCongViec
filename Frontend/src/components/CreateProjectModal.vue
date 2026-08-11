@@ -55,7 +55,12 @@
 
       <div class="cover-column">
         <DataModalSection icon="bi bi-eye" title="Xem trước">
-          <div class="cover-preview" :style="{ background: previewBackground }">
+          <div
+            class="cover-preview"
+            :style="{ background: previewBackground }"
+            :role="coverPreviewUrl ? 'img' : undefined"
+            :aria-label="coverPreviewUrl ? (form.coverAltText || `Ảnh bìa dự án ${form.name || 'mới'}`) : undefined"
+          >
             <div class="cover-overlay">
               <ProjectAvatar :icon="form.icon" :background="form.cover" size="lg" />
               <strong class="preview-name">{{ form.name || 'Xem trước dự án' }}</strong>
@@ -66,8 +71,36 @@
 
           <div class="gallery-header">
             <h4 class="section-title">Ảnh bìa dự án</h4>
-            <p class="helper-text-muted">SprintA sẽ không tự dùng ảnh mẫu. Bạn có thể cập nhật ảnh bìa thật trong phần cài đặt dự án.</p>
+            <p class="helper-text-muted">Dùng nền SprintA ở trên hoặc tải ảnh bìa PNG, JPG, JPEG, WEBP tối đa 5 MB.</p>
           </div>
+
+          <div class="custom-cover-actions">
+            <input
+              ref="coverInputRef"
+              class="sr-only"
+              type="file"
+              accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+              @change="handleCoverSelected"
+            />
+            <button type="button" class="btn-secondary-sm" @click="openCoverPicker">
+              <i class="fa-regular fa-image"></i>
+              {{ coverFile ? 'Thay ảnh bìa' : 'Tải ảnh bìa' }}
+            </button>
+            <button v-if="coverFile" type="button" class="btn-ghost-sm" @click="clearCover">Xóa ảnh</button>
+          </div>
+
+          <DataModalField label="Mô tả ảnh bìa">
+            <input
+              v-model="form.coverAltText"
+              type="text"
+              maxlength="180"
+              :disabled="!coverFile"
+              :placeholder="coverFile ? 'Mô tả ngắn nội dung ảnh bìa' : 'Chọn ảnh bìa tùy chỉnh trước'"
+              class="compact-input-field"
+            />
+          </DataModalField>
+          <p v-if="coverFile" class="selected-file">{{ coverFile.name }} · {{ formatFileSize(coverFile.size) }}</p>
+          <p v-if="coverError" class="field-error">{{ coverError }}</p>
         </DataModalSection>
       </div>
     </div>
@@ -89,7 +122,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
@@ -98,6 +131,7 @@ import ProjectBackgroundPicker from '@/components/project/ProjectBackgroundPicke
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
+import { useProjectStore } from '@/store/useProjectStore'
 import {
   DEFAULT_PROJECT_BACKGROUND,
   DEFAULT_PROJECT_ICON,
@@ -116,6 +150,14 @@ const visibleComp = computed({
 })
 
 const submitting = ref(false)
+const coverInputRef = ref(null)
+const coverFile = ref(null)
+const coverPreviewUrl = ref('')
+const coverError = ref('')
+const projectStore = useProjectStore()
+const allowedCoverTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
+const allowedCoverExtensions = new Set(['png', 'jpg', 'jpeg', 'webp'])
+const maxCoverSize = 5 * 1024 * 1024
 
 const formatDateOnly = (value) => {
   const date = value instanceof Date ? value : new Date(value)
@@ -133,13 +175,60 @@ const createInitialForm = () => ({
   startDate: formatDateOnly(new Date()),
   networkType: 'Public',
   cover: DEFAULT_PROJECT_BACKGROUND,
+  coverAltText: '',
   icon: DEFAULT_PROJECT_ICON
 })
 
 const form = ref(createInitialForm())
-const previewBackground = computed(() => getProjectBackgroundStyle(form.value.cover))
+const previewBackground = computed(() => coverPreviewUrl.value
+  ? `linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.18) 100%), url("${coverPreviewUrl.value}") center / cover`
+  : getProjectBackgroundStyle(form.value.cover))
+
+const revokeCoverPreview = () => {
+  if (coverPreviewUrl.value) URL.revokeObjectURL(coverPreviewUrl.value)
+  coverPreviewUrl.value = ''
+}
+
+const clearCover = () => {
+  revokeCoverPreview()
+  coverFile.value = null
+  coverError.value = ''
+  form.value.coverAltText = ''
+  if (coverInputRef.value) coverInputRef.value.value = ''
+}
+
+const openCoverPicker = () => coverInputRef.value?.click()
+const formatFileSize = (size) => `${(size / 1024 / 1024).toFixed(2)} MB`
+
+const handleCoverSelected = (event) => {
+  const file = event.target.files?.[0]
+  coverError.value = ''
+  if (!file) return
+
+  const extension = file.name.split('.').pop()?.toLowerCase() || ''
+  if (!allowedCoverTypes.has(file.type.toLowerCase()) || !allowedCoverExtensions.has(extension)) {
+    coverError.value = 'Ảnh bìa chỉ hỗ trợ PNG, JPG, JPEG hoặc WEBP.'
+    event.target.value = ''
+    return
+  }
+  if (file.size > maxCoverSize) {
+    coverError.value = 'Ảnh bìa phải nhỏ hơn hoặc bằng 5 MB.'
+    event.target.value = ''
+    return
+  }
+
+  revokeCoverPreview()
+  coverFile.value = file
+  coverPreviewUrl.value = URL.createObjectURL(file)
+  if (!form.value.coverAltText.trim()) {
+    form.value.coverAltText = form.value.name.trim()
+      ? `Ảnh bìa dự án ${form.value.name.trim()}`
+      : 'Ảnh bìa dự án'
+  }
+}
 
 const resetForm = () => {
+  clearCover()
   form.value = createInitialForm()
 }
 
@@ -166,7 +255,43 @@ const handleSubmit = async () => {
       icon: form.value.icon || null
     })
 
-    emit('created', response.data?.data || response.data)
+    const createdProject = response.data?.data || response.data
+    const projectId = createdProject?.id || createdProject?.Id
+    let emittedProject = createdProject
+
+    if (coverFile.value && projectId) {
+      try {
+        const payload = new FormData()
+        payload.append('file', coverFile.value)
+        payload.append('coverAltText', form.value.coverAltText.trim() || `Ảnh bìa dự án ${form.value.name.trim()}`)
+        if (form.value.icon) payload.append('icon', form.value.icon)
+
+        const coverResponse = await axiosClient.post(`/projects/${projectId}/cover`, payload)
+        const coverData = coverResponse.data?.data || coverResponse.data
+        emittedProject = {
+          ...createdProject,
+          cover: coverData?.coverUrl || coverData?.CoverUrl || createdProject?.cover,
+          coverAltText: coverData?.coverAltText || coverData?.CoverAltText || form.value.coverAltText,
+          icon: coverData?.icon || coverData?.Icon || form.value.icon || createdProject?.icon
+        }
+      } catch (uploadError) {
+        await projectStore.fetchAllProjects(true).catch(() => {})
+        emit('created', createdProject)
+        const message = uploadError.response?.data?.message || 'Không thể tải ảnh bìa.'
+        ElMessage.warning(`Dự án "${form.value.name}" đã được tạo nhưng chưa lưu được ảnh bìa. ${message} Không tạo lại dự án; hãy thêm ảnh trong Cài đặt dự án.`)
+        handleClose()
+        return
+      }
+    } else if (coverFile.value) {
+      await projectStore.fetchAllProjects(true).catch(() => {})
+      emit('created', createdProject)
+      ElMessage.warning('Dự án đã được tạo nhưng phản hồi không có mã dự án để tải ảnh bìa. Không tạo lại dự án.')
+      handleClose()
+      return
+    }
+
+    await projectStore.fetchAllProjects(true)
+    emit('created', emittedProject)
     ElMessage.success('Đã tạo dự án')
     handleClose()
   } catch (error) {
@@ -175,6 +300,8 @@ const handleSubmit = async () => {
     submitting.value = false
   }
 }
+
+onUnmounted(revokeCoverPreview)
 </script>
 
 <style scoped>
@@ -237,6 +364,11 @@ const handleSubmit = async () => {
 .gallery-header { margin-top: 4px; }
 .section-title { font-size: 14px; font-weight: 700; color: var(--color-text-primary); margin-bottom: 4px; }
 .helper-text-muted { font-size: 12px; color: var(--color-text-muted); }
+
+.custom-cover-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.btn-ghost-sm { border: 0; background: transparent; color: var(--color-text-secondary); padding: 8px 10px; cursor: pointer; }
+.selected-file { margin: 8px 0 0; font-size: 12px; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.field-error { margin: 6px 0 0; font-size: 12px; color: var(--color-danger, #dc2626); }
 
 .cover-grid {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
