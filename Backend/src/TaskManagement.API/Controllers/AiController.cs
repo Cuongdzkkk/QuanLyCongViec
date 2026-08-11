@@ -539,7 +539,7 @@ namespace TaskManagement.API.Controllers
             {
                 return StatusCode(StatusCodes.Status429TooManyRequests, ApiResponse<object>.Error("AI tạm thời hết hạn mức, vui lòng thử lại sau"));
             }
-            catch (Exception ex) when (ex is not AiCreditsExhaustedException)
+            catch (Exception ex) when (ex is not AiCreditsExhaustedException && ex is not AiProviderException)
             {
                 return BadRequest(ApiResponse<object>.Error(ex.Message));
             }
@@ -615,7 +615,7 @@ namespace TaskManagement.API.Controllers
                 var response = await _aiService.ProjectAssistantAsync(userId, request);
                 return Ok(ApiResponse<AiProjectAssistantResponseDto>.Success(response));
             }
-            catch (Exception ex) when (ex is not AiCreditsExhaustedException)
+            catch (Exception ex) when (ex is not AiCreditsExhaustedException && ex is not AiProviderException)
             {
                 return BadRequest(ApiResponse<object>.Error(ex.Message));
             }
@@ -1095,7 +1095,7 @@ namespace TaskManagement.API.Controllers
                     message = response
                 }));
             }
-            catch (Exception ex) when (ex is not AiCreditsExhaustedException && (IsTransientAiFailure(ex) || ex is InvalidOperationException))
+            catch (Exception ex) when (ex is not AiCreditsExhaustedException && ex is not AiProviderException && (IsTransientAiFailure(ex) || ex is InvalidOperationException))
             {
                 return Ok(ApiResponse<object>.Success(new
                 {
@@ -1364,7 +1364,7 @@ namespace TaskManagement.API.Controllers
                 {
                     return await action();
                 }
-                catch (Exception ex) when (ex is not AiCreditsExhaustedException && IsTransientAiFailure(ex))
+                catch (Exception ex) when (ex is not AiCreditsExhaustedException && ex is not AiProviderException && IsTransientAiFailure(ex))
                 {
                     lastException = ex;
 

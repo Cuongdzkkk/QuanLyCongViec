@@ -179,6 +179,34 @@ app.Use(async (context, next) =>
             }
         });
     }
+    catch (AiProviderException ex)
+    {
+        if (context.Response.HasStarted)
+        {
+            throw;
+        }
+
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        if (ex.RetryAfterSeconds is { } retryAfterSeconds)
+        {
+            context.Response.Headers["Retry-After"] = retryAfterSeconds.ToString();
+        }
+
+        await context.Response.WriteAsJsonAsync(new
+        {
+            statusCode = StatusCodes.Status503ServiceUnavailable,
+            success = false,
+            message = ex.Message,
+            data = new
+            {
+                code = ex.Kind == AiProviderErrorKind.RateLimited
+                    ? "AI_PROVIDER_RATE_LIMITED"
+                    : "AI_PROVIDER_UNAVAILABLE",
+                retryAfterSeconds = ex.RetryAfterSeconds
+            }
+        });
+    }
 });
 app.UseMiddleware<TaskManagement.API.Middlewares.PerformanceMiddleware>();
 app.UseMiddleware<TaskManagement.API.Middlewares.IpWhitelistMiddleware>();

@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
+using TaskManagement.Application.Common;
 using TaskManagement.Infrastructure.Services;
 
 namespace TaskManagement.Infrastructure.AI;
@@ -29,7 +30,7 @@ public sealed class ZenMuxAiClient
         var apiKey = _configuration["ZenMux:ApiKey"];
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new InvalidOperationException("Chua cau hinh ZenMux API key. Hay cau hinh ZenMux:ApiKey bang bien moi truong hoac secret store.");
+            throw new AiProviderException(AiProviderErrorKind.Unavailable);
         }
 
         var baseUrl = (_configuration["ZenMux:BaseUrl"] ?? "https://zenmux.ai/api/v1").TrimEnd('/');
@@ -56,15 +57,34 @@ public sealed class ZenMuxAiClient
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
         request.Content = JsonContent.Create(payload, options: _jsonOptions);
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage response;
+        try
         {
-            throw new InvalidOperationException(BuildProviderError(response.StatusCode, responseBody));
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new AiProviderException(AiProviderErrorKind.Unavailable, innerException: ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new AiProviderException(AiProviderErrorKind.Unavailable, innerException: ex);
         }
 
-        return ParseResponse(responseBody);
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new AiProviderException(
+                    response.StatusCode == HttpStatusCode.TooManyRequests
+                        ? AiProviderErrorKind.RateLimited
+                        : AiProviderErrorKind.Unavailable,
+                    GetRetryAfterSeconds(response));
+            }
+
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            return ParseResponse(responseBody);
+        }
     }
 
     private ZenMuxChatResult ParseResponse(string responseBody)
@@ -93,58 +113,17 @@ public sealed class ZenMuxAiClient
         return new ZenMuxChatResult(text, totalTokens);
     }
 
-    private static string BuildProviderError(HttpStatusCode statusCode, string responseBody)
+    private static int? GetRetryAfterSeconds(HttpResponseMessage response)
     {
-        return (int)statusCode switch
+        var retryAfter = response.Headers.RetryAfter;
+        if (retryAfter?.Delta is { } delta)
         {
-            401 => "ZenMux API key is invalid, expired, or not authorized.",
-            402 => "ZenMux account has insufficient credits or billing is required.",
-            429 => "ZenMux rate limit reached. Retry later.",
-            408 or 504 => "ZenMux API timed out. Retry later.",
-            >= 500 => "ZenMux API is temporarily unavailable.",
-            _ => $"ZenMux API rejected the request ({(int)statusCode}): {ExtractSafeErrorMessage(responseBody)}"
-        };
-    }
-
-    private static string ExtractSafeErrorMessage(string responseBody)
-    {
-        if (string.IsNullOrWhiteSpace(responseBody)) return "No additional error details.";
-
-        try
-        {
-            using var doc = JsonDocument.Parse(responseBody);
-            var root = doc.RootElement;
-            if (root.TryGetProperty("error", out var error))
-            {
-                if (error.ValueKind == JsonValueKind.Object &&
-                    error.TryGetProperty("message", out var message))
-                {
-                    return Limit(AiSafetyGuard.RedactSecrets(message.GetString()), 240);
-                }
-
-                if (error.ValueKind == JsonValueKind.String)
-                {
-                    return Limit(AiSafetyGuard.RedactSecrets(error.GetString()), 240);
-                }
-            }
-
-            if (root.TryGetProperty("message", out var rootMessage))
-            {
-                return Limit(AiSafetyGuard.RedactSecrets(rootMessage.GetString()), 240);
-            }
-        }
-        catch (JsonException)
-        {
-            return Limit(AiSafetyGuard.RedactSecrets(responseBody), 240);
+            return Math.Max(1, (int)Math.Ceiling(delta.TotalSeconds));
         }
 
-        return "No additional error details.";
-    }
-
-    private static string Limit(string? value, int maxLength)
-    {
-        var text = string.IsNullOrWhiteSpace(value) ? "No additional error details." : value.Trim();
-        return text.Length <= maxLength ? text : text[..maxLength];
+        return retryAfter?.Date is { } date
+            ? Math.Max(1, (int)Math.Ceiling((date - DateTimeOffset.UtcNow).TotalSeconds))
+            : null;
     }
 }
 

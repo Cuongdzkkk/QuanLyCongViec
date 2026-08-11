@@ -4,6 +4,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Moq;
+using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.AI;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
@@ -31,13 +32,30 @@ public sealed class P007AiSafetyTests
     }
 
     [Theory]
-    [InlineData(429, "rate limit")]
-    [InlineData(504, "timed out")]
-    [InlineData(500, "unavailable")]
-    public void ProviderErrors_DoNotExposeRawBody(int status, string expected)
+    [InlineData(429, AiProviderErrorKind.RateLimited)]
+    [InlineData(401, AiProviderErrorKind.Unavailable)]
+    [InlineData(402, AiProviderErrorKind.Unavailable)]
+    [InlineData(500, AiProviderErrorKind.Unavailable)]
+    [InlineData(504, AiProviderErrorKind.Unavailable)]
+    public async Task ProviderErrors_AreTypedAndDoNotExposeRawBody(int status, AiProviderErrorKind expectedKind)
     {
-        AiSafetyGuard.SafeProviderError(status).Should().Contain(expected);
-        AiSafetyGuard.SafeProviderError(status).Should().NotContain("provider-secret");
+        var handler = new FixedResponseHandler(new HttpResponseMessage((HttpStatusCode)status)
+        {
+            Content = new StringContent("provider-secret Bearer abcdefghijk", Encoding.UTF8, "application/json")
+        });
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ZenMux:ApiKey"] = "test-api-key-not-a-secret",
+            ["ZenMux:BaseUrl"] = "https://zenmux.test/api/v1"
+        }).Build();
+
+        var failure = await FluentActions.Invoking(() => new ZenMuxAiClient(new HttpClient(handler), configuration)
+            .GenerateTextAsync("prompt", "system"))
+            .Should().ThrowAsync<AiProviderException>();
+
+        failure.Which.Kind.Should().Be(expectedKind);
+        failure.Which.Message.Should().NotContain("provider-secret");
+        failure.Which.Message.Should().NotContain("abcdefghijk");
     }
 
     [Fact]
@@ -76,9 +94,9 @@ public sealed class P007AiSafetyTests
         var failure = await FluentActions.Invoking(() => service.ChatAsync(userId, new AiChatRequestDto
         {
             Message = "password=hunter2"
-        })).Should().ThrowAsync<InvalidOperationException>();
+        })).Should().ThrowAsync<AiProviderException>();
 
-        failure.Which.Message.Should().Be("ZenMux rate limit reached. Retry later.");
+        failure.Which.Kind.Should().Be(AiProviderErrorKind.RateLimited);
         (await context.AITokenUsages.CountAsync()).Should().Be(0);
         (await context.AiUsageLedgerEntries.CountAsync()).Should().Be(0);
         handler.RequestBody.Should().NotContain("hunter2");
