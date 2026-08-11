@@ -5,7 +5,7 @@ export default [
     name: 'AIPage',
     component: () => import('../views/AIPage.vue'),
     meta: {
-      title: 'AI Assistant'
+      title: 'SprintA AI'
     }
   }
 ]

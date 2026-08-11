@@ -9,8 +9,8 @@ const viToEn = {
   'Internal Operations Automation': 'Internal Operations Automation',
   'Hệ thống đặt lịch book xe trung tâm dạy lái': 'Driving Center Vehicle Booking System',
 
-  'Nâng cấp nền tảng SprintA thành hệ thống quản lý công việc cấp doanh nghiệp với đầy đủ tính năng Kanban, Sprint, Goal, OKR, Wiki, AI Assistant.':
-    'Upgrade SprintA into an enterprise work management platform with Kanban, sprints, goals, OKRs, wiki, reports, and AI assistant capabilities.',
+  'Nâng cấp nền tảng SprintA thành hệ thống quản lý công việc cấp doanh nghiệp với đầy đủ tính năng Kanban, Sprint, Goal, OKR, Wiki, SprintA AI.':
+    'Upgrade SprintA into an enterprise work management platform with Kanban, sprints, goals, OKRs, wiki, reports, and SprintA AI capabilities.',
   'Kết nối Google Calendar, GitHub, Slack, Microsoft Mail và gom thông báo về một inbox chung cho mỗi user.':
     'Connect Google Calendar, GitHub, Slack, and Microsoft Mail, then bring every notification into one inbox for each user.',
   'Phát triển ứng dụng mobile cho quản lý task, sprint và notification bằng Flutter.':

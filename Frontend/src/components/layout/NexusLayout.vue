@@ -1211,7 +1211,7 @@ const profileName = computed(() => storedProfile.value.fullName || storedProfile
 const profileInitials = computed(() => profileName.value.split(/\s+/).filter(Boolean).slice(-2).map(part => part[0]).join('').toUpperCase() || 'B')
 const aiCopyMap = {
   vi: {
-    floatingTitle: 'Mở AI Assistant',
+    floatingTitle: 'Mở SprintA AI',
     closeTitle: 'Đóng AI',
     brand: 'SPRINTA AI',
     title: 'Trợ lý công việc',
@@ -1235,7 +1235,7 @@ const aiCopyMap = {
     ]
   },
   en: {
-    floatingTitle: 'Open AI Assistant',
+    floatingTitle: 'Open SprintA AI',
     closeTitle: 'Close AI',
     brand: 'SPRINTA AI',
     title: 'Work assistant',
@@ -1262,7 +1262,7 @@ const aiCopyMap = {
 
 const aiCopyOverrideMap = {
   vi: {
-    floatingTitle: 'Mở AI Assistant',
+    floatingTitle: 'Mở SprintA AI',
     closeTitle: 'Đóng AI',
     brand: 'SPRINTA AI',
     title: 'Trợ lý công việc',
@@ -1287,7 +1287,7 @@ const aiCopyOverrideMap = {
     ]
   },
   en: {
-    floatingTitle: 'Open AI Assistant',
+    floatingTitle: 'Open SprintA AI',
     closeTitle: 'Close AI',
     brand: 'SPRINTA AI',
     title: 'Work assistant',
@@ -2719,18 +2719,18 @@ const sendAiMessage = async () => {
     } else {
       const messages = {
         400: error.response?.data?.message || 'Attachment không hợp lệ hoặc không thể xử lý.',
-        401: 'Vui lòng đăng nhập lại để sử dụng AI Copilot.',
+        401: 'Vui lòng đăng nhập lại để sử dụng SprintA AI.',
         402: 'Bạn đã sử dụng hết AI Credits trong tháng này.',
         403: 'Bạn không có quyền truy cập attachment trong workspace này.',
         413: 'Attachment vượt quá giới hạn dung lượng.',
         429: 'Dịch vụ AI đang bận. Vui lòng thử lại sau.',
-        503: 'AI Copilot chưa sẵn sàng. Vui lòng thử lại sau.'
+        503: 'SprintA AI chưa sẵn sàng. Vui lòng thử lại sau.'
       }
 
       message =
         messages[status]
         || error.response?.data?.message
-        || 'Không thể kết nối AI Copilot. Vui lòng thử lại.'
+        || 'Không thể kết nối SprintA AI. Vui lòng thử lại.'
     }
     if (userMessageAdded) chatHistory.value.push({ role: 'bot', content: message })
     ElMessage.error(message)

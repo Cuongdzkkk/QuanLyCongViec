@@ -108,7 +108,7 @@ const copy = computed(() => isVi.value ? {
   nav: ['Tính năng', 'AI', 'Quy trình', 'Bảng giá', 'Video'],
   badge: 'SPRINTA',
   title: 'Quản lý công việc rõ ràng, chạy sprint gọn hơn.',
-  intro: 'SprintA gom task, cycle, mục tiêu, tài liệu, báo cáo và AI Copilot vào một workspace thống nhất để đội nhóm luôn thấy rõ việc cần làm, người phụ trách và rủi ro.',
+  intro: 'SprintA gom task, cycle, mục tiêu, tài liệu, báo cáo và SprintA AI vào một workspace thống nhất để đội nhóm luôn thấy rõ việc cần làm, người phụ trách và rủi ro.',
   start: 'Bắt đầu miễn phí',
   demo: 'Xem demo',
   proof: ['Không cần thẻ thanh toán', 'Demo data có sẵn', 'Cài như PWA'],
@@ -124,7 +124,7 @@ const copy = computed(() => isVi.value ? {
   signIn: 'Đăng nhập',
   logout: 'Đăng xuất',
   launch: 'Vào SprintA',
-  aiButton: 'Mở AI Assistant',
+  aiButton: 'Mở SprintA AI',
   faqTitle: 'Những điều cần biết',
   apiFail: 'Không tải được bảng giá.',
   usageFail: 'Không tải được usage hiện tại.',
@@ -145,7 +145,7 @@ const copy = computed(() => isVi.value ? {
   nav: ['Features', 'AI', 'Workflow', 'Pricing', 'Video'],
   badge: 'SPRINTA',
   title: 'Work with clarity. Run focused sprints without noise.',
-  intro: 'SprintA brings tasks, cycles, goals, documents, reports and AI Copilot into one focused workspace so ownership, risk and progress stay visible.',
+  intro: 'SprintA brings tasks, cycles, goals, documents, reports and SprintA AI into one focused workspace so ownership, risk and progress stay visible.',
   start: 'Start for free',
   demo: 'Watch demo',
   proof: ['No credit card', 'Demo data included', 'Install as PWA'],
@@ -161,7 +161,7 @@ const copy = computed(() => isVi.value ? {
   signIn: 'Sign in',
   logout: 'Log out',
   launch: 'Open SprintA',
-  aiButton: 'Open AI Assistant',
+  aiButton: 'Open SprintA AI',
   faqTitle: 'Everything worth knowing',
   apiFail: 'Could not load pricing.',
   usageFail: 'Could not load current usage.',
@@ -457,7 +457,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="float-card float-card-b">
                 <span class="mini-icon"><Bot :size="16" /></span>
-                <div><b>{{ isVi ? 'AI Copilot' : 'AI Copilot' }}</b><small>{{ isVi ? 'Gợi ý có xác nhận' : 'Confirmed suggestions' }}</small></div>
+                <div><b>SprintA AI</b><small>{{ isVi ? 'Gợi ý có xác nhận' : 'Confirmed suggestions' }}</small></div>
               </div>
               <div class="float-card float-card-c">
                 <BarChart3 :size="17" />
@@ -511,7 +511,7 @@ onBeforeUnmount(() => {
         <div class="ai-nebula" aria-hidden="true"></div>
         <div class="shell ai-grid">
           <div class="ai-copy" data-reveal>
-            <div class="eyebrow"><Bot :size="14" /> {{ isVi ? 'AI ASSISTANT' : 'AI ASSISTANT' }}</div>
+            <div class="eyebrow"><Bot :size="14" /> SPRINTA AI</div>
             <div class="headline-wrap ai-headline-wrap">
               <h2 class="editorial-headline ai-title">
                 <span v-for="(line, lineIndex) in editorialHeadlines.ai" :key="lineIndex" class="headline-line">
@@ -557,7 +557,7 @@ onBeforeUnmount(() => {
               <div class="assistant-head">
                 <div class="assistant-brand">
                   <img src="/sprinta-mark-light.png" alt="" />
-                  <div><b>AI Assistant</b><small><i></i>{{ isVi ? 'Sẵn sàng' : 'Ready' }}</small></div>
+                  <div><b>SprintA AI</b><small><i></i>{{ isVi ? 'Sẵn sàng' : 'Ready' }}</small></div>
                 </div>
                 <span class="control-pill"><ShieldCheck :size="14" /> {{ isVi ? 'Chỉ bạn quyết định' : 'You decide' }}</span>
               </div>
@@ -741,7 +741,7 @@ onBeforeUnmount(() => {
           <router-link to="/" class="brand"><img class="brand-logo" src="/sprinta-mark-light.png" alt="" /><span class="brand-word">SprintA</span></router-link>
           <p>{{ isVi ? 'Agile workspace giúp đội nhóm làm việc tập trung, minh bạch và bứt phá.' : 'An agile workspace for focused, transparent, high-performing teams.' }}</p>
         </div>
-        <div class="footer-col"><b>{{ isVi ? 'Sản phẩm' : 'Product' }}</b><a href="#features">{{ copy.nav[0] }}</a><a href="#ai">AI Assistant</a><a href="#pricing">{{ copy.nav[3] }}</a></div>
+        <div class="footer-col"><b>{{ isVi ? 'Sản phẩm' : 'Product' }}</b><a href="#features">{{ copy.nav[0] }}</a><a href="#ai">SprintA AI</a><a href="#pricing">{{ copy.nav[3] }}</a></div>
         <div class="footer-col"><b>{{ isVi ? 'Tài nguyên' : 'Resources' }}</b><a href="#video">{{ copy.nav[4] }}</a><a href="#workflow">{{ copy.nav[2] }}</a><a href="#features">{{ isVi ? 'Tính năng' : 'Features' }}</a></div>
         <div class="footer-col"><b>{{ isVi ? 'Bắt đầu' : 'Get started' }}</b><router-link to="/login">{{ copy.signIn }}</router-link><button type="button" @click="go(authenticated ? '/dashboard' : '/register')">{{ authenticated ? copy.launch : copy.start }}</button></div>
         <div class="footer-bottom"><span>© 2026 SprintA</span><span>{{ isVi ? 'Quản lý công việc rõ ràng hơn.' : 'Make work visible.' }}</span></div>

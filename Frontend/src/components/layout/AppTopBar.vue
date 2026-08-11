@@ -90,7 +90,7 @@
         <i :class="currentTheme === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun'"></i>
       </button>
 
-      <button class="icon-btn ai-topbar-btn hidden-mobile" @click="emit('toggle-ai')" title="AI Assistant">
+      <button class="icon-btn ai-topbar-btn hidden-mobile" @click="emit('toggle-ai')" title="SprintA AI">
         <img src="/ai-sprinta/idle.png" alt="" aria-hidden="true" />
       </button>
 

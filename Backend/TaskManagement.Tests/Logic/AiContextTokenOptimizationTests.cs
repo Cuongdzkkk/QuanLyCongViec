@@ -34,6 +34,100 @@ public sealed class AiContextTokenOptimizationTests
     }
 
     [Fact]
+    public async Task CreditsQuestion_UsesTrustedLocalUsageWithoutProviderOrTokenUsage()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        await SeedCreditUsageAsync(context, userId, includedCredits: 100, usedCredits: 69);
+        var handler = new RecordingResponseHandler(ShouldNotBeCalledResponse());
+        var service = CreateService(context, handler);
+
+        var result = await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Message = "Tôi có bao nhiêu credits?"
+        });
+
+        handler.CallCount.Should().Be(0);
+        (await context.AITokenUsages.CountAsync()).Should().Be(0);
+        result.Answer.Should().Contain("Bạn đang dùng gói Free.");
+        result.Answer.Should().Contain("- Tổng: 100");
+        result.Answer.Should().Contain("- Đã dùng: 69");
+        result.Answer.Should().Contain("- Còn lại: 31");
+    }
+
+    [Fact]
+    public async Task PlanQuestion_UsesTrustedLocalPlanWithoutProvider()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        await SeedCreditUsageAsync(context, userId, includedCredits: 100, usedCredits: 0);
+        var handler = new RecordingResponseHandler(ShouldNotBeCalledResponse());
+        var service = CreateService(context, handler);
+
+        var result = await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Message = "Tôi đang dùng gói gì?"
+        });
+
+        handler.CallCount.Should().Be(0);
+        (await context.AITokenUsages.CountAsync()).Should().Be(0);
+        result.Answer.Should().Contain("Bạn đang dùng gói Free.");
+    }
+
+    [Fact]
+    public async Task ExhaustedCreditsQuestion_BypassesQuotaAndStillReturnsBalance()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        await SeedCreditUsageAsync(context, userId, includedCredits: 100, usedCredits: 100);
+        var handler = new RecordingResponseHandler(ShouldNotBeCalledResponse());
+        var service = CreateService(context, handler);
+
+        var result = await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Message = "AI credits còn bao nhiêu?"
+        });
+
+        handler.CallCount.Should().Be(0);
+        (await context.AITokenUsages.CountAsync()).Should().Be(0);
+        result.Answer.Should().Contain("- Còn lại: 0");
+        result.Answer.Should().Contain("AI Credits tháng này đã hết.");
+    }
+
+    [Theory]
+    [InlineData("Credit card là gì?")]
+    [InlineData("Viết mô tả về credit risk")]
+    public async Task NonAccountCreditQuestion_DoesNotUseAccountFastPath(string message)
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Message = message
+        });
+
+        handler.CallCount.Should().Be(1);
+        (await context.AITokenUsages.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ProjectNamedCreditsSystem_DoesNotUseAccountFastPath()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Route = "/dashboard",
+            PageContext = new AiContextPageDto { PageType = "dashboard", CurrentView = "Dashboard" },
+            Message = "Tóm tắt project Credits System"
+        });
+
+        handler.CallCount.Should().Be(1);
+        handler.RequestBody.Should().Contain("Credits System");
+    }
+
+    [Fact]
     public async Task GreetingWithOverdueTaskIntent_DoesNotUseGreetingFastPath()
     {
         await using var context = CreateContext();
@@ -547,6 +641,40 @@ public sealed class AiContextTokenOptimizationTests
         });
         context.SaveChanges();
         return context;
+    }
+
+    private static async Task SeedCreditUsageAsync(
+        ApplicationDbContext context,
+        Guid userId,
+        int includedCredits,
+        int usedCredits)
+    {
+        var now = DateTime.UtcNow;
+        context.AiPricingPlans.Add(new AiPricingPlan
+        {
+            Id = Guid.NewGuid(),
+            Code = "free",
+            Name = "Free",
+            IncludedAiCredits = includedCredits,
+            PricingStatus = "PendingConfirmation",
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        if (usedCredits > 0)
+        {
+            context.AiUsageLedgerEntries.Add(new AiUsageLedger
+            {
+                Id = Guid.NewGuid(),
+                WorkspaceId = Guid.NewGuid(),
+                UserId = userId,
+                ActionType = "ai-chat",
+                CreditsConsumed = usedCredits,
+                OccurredAt = now
+            });
+        }
+
+        await context.SaveChangesAsync();
     }
 
     private static HttpResponseMessage SuccessResponse() => new(HttpStatusCode.OK)

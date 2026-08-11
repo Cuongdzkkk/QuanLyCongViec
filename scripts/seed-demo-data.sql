@@ -438,7 +438,7 @@ DECLARE @Now5 DATETIME2 = GETUTCDATE();
 IF NOT EXISTS (SELECT 1 FROM Projects WHERE Id = 'C0000001-0001-0001-0001-000000000001')
 INSERT INTO Projects (Id, Name, [Description], Identifier, IssueSequence, StartDate, EndDate, Status, CreatorId, WorkspaceId, CreatedAt, UpdatedAt, IsDeleted, IsArchived, NetworkType, DepartmentId, Why, SuccessCriteria)
 VALUES ('C0000001-0001-0001-0001-000000000001', N'SprintA Enterprise Platform',
-    N'Nâng cấp nền tảng SprintA thành hệ thống quản lý công việc cấp doanh nghiệp với đầy đủ tính năng Kanban, Sprint, Goal, OKR, Wiki, AI Assistant.',
+    N'Nâng cấp nền tảng SprintA thành hệ thống quản lý công việc cấp doanh nghiệp với đầy đủ tính năng Kanban, Sprint, Goal, OKR, Wiki, SprintA AI.',
     'SPRINT', 50, DATEADD(MONTH, -3, @Now5), DATEADD(MONTH, 3, @Now5), 1,
     'D0000001-0001-0001-0001-000000000002', @WsId, @Now5, @Now5, 0, 0, 'Public',
     'B0000001-0001-0001-0001-000000000003',
@@ -1727,7 +1727,7 @@ SELECT item.Id, @PrimaryProjectId, item.TaskTypeId, item.TaskStatusId, item.Titl
        0, 0, item.EstimatedHours, item.ActualHours, item.SortOrder, item.SequenceId, @PrimaryWorkspaceId
 FROM (VALUES
     (CAST('70000001-0001-0001-0001-000000000016' AS UNIQUEIDENTIFIER), CAST('f0000001-0001-0001-0001-000000000001' AS UNIQUEIDENTIFIER), CAST('e0000001-0001-0001-0001-000000000001' AS UNIQUEIDENTIFIER), N'Define Q3 product analytics baseline', N'Collect current activation, retention, and conversion metrics for the Q3 planning baseline.', 3, CAST(3.0 AS FLOAT), CAST('D0000001-0001-0001-0001-000000000012' AS UNIQUEIDENTIFIER), -8, 10, 6, 160000, N'SPRINT-16'),
-    (CAST('70000001-0001-0001-0001-000000000017' AS UNIQUEIDENTIFIER), CAST('f0000001-0001-0001-0001-000000000003' AS UNIQUEIDENTIFIER), CAST('e0000001-0001-0001-0001-000000000001' AS UNIQUEIDENTIFIER), N'Write acceptance criteria for AI Copilot', N'Document acceptance criteria for context, permissions, and failure states.', 2, CAST(5.0 AS FLOAT), CAST('D0000001-0001-0001-0001-000000000005' AS UNIQUEIDENTIFIER), -3, 14, 4, 170000, N'SPRINT-17'),
+    (CAST('70000001-0001-0001-0001-000000000017' AS UNIQUEIDENTIFIER), CAST('f0000001-0001-0001-0001-000000000003' AS UNIQUEIDENTIFIER), CAST('e0000001-0001-0001-0001-000000000001' AS UNIQUEIDENTIFIER), N'Write acceptance criteria for SprintA AI', N'Document acceptance criteria for context, permissions, and failure states.', 2, CAST(5.0 AS FLOAT), CAST('D0000001-0001-0001-0001-000000000005' AS UNIQUEIDENTIFIER), -3, 14, 4, 170000, N'SPRINT-17'),
     (CAST('70000001-0001-0001-0001-000000000018' AS UNIQUEIDENTIFIER), CAST('f0000001-0001-0001-0001-000000000001' AS UNIQUEIDENTIFIER), CAST('e0000001-0001-0001-0001-000000000002' AS UNIQUEIDENTIFIER), N'Review design tokens for mobile navigation', N'Prioritize small-screen navigation and touch target consistency.', 3, CAST(3.0 AS FLOAT), CAST('D0000001-0001-0001-0001-000000000010' AS UNIQUEIDENTIFIER), 1, 12, 0, 180000, N'SPRINT-18'),
     (CAST('70000001-0001-0001-0001-000000000019' AS UNIQUEIDENTIFIER), CAST('f0000001-0001-0001-0001-000000000002' AS UNIQUEIDENTIFIER), CAST('e0000001-0001-0001-0001-000000000002' AS UNIQUEIDENTIFIER), N'Fix duplicate notification delivery', N'Investigate duplicate SignalR notification events reported by pilot users.', 1, CAST(2.0 AS FLOAT), CAST('D0000001-0001-0001-0001-000000000007' AS UNIQUEIDENTIFIER), -2, 8, 2, 190000, N'SPRINT-19'),
     (CAST('70000001-0001-0001-0001-000000000020' AS UNIQUEIDENTIFIER), CAST('f0000001-0001-0001-0001-000000000001' AS UNIQUEIDENTIFIER), CAST('e0000001-0001-0001-0001-000000000002' AS UNIQUEIDENTIFIER), N'Prepare customer onboarding checklist', N'Create a repeatable onboarding checklist for the first five enterprise customers.', 3, CAST(3.0 AS FLOAT), CAST('D0000001-0001-0001-0001-000000000013' AS UNIQUEIDENTIFIER), 3, 10, 0, 200000, N'SPRINT-20'),
@@ -1761,19 +1761,19 @@ DECLARE @WaveAOwnerId UNIQUEIDENTIFIER = 'D0000001-0001-0001-0001-000000000001';
 
 IF NOT EXISTS (SELECT 1 FROM Sprints WHERE Id = '7A000001-0001-0001-0001-000000000001')
     INSERT INTO Sprints (Id, ProjectId, Name, StartDate, EndDate, Status, IsFavorite, CreatedAt)
-    VALUES ('7A000001-0001-0001-0001-000000000001', @WaveAProjectId, N'Chu kỳ demo AI: Hoàn thiện trải nghiệm Copilot',
+    VALUES ('7A000001-0001-0001-0001-000000000001', @WaveAProjectId, N'Chu kỳ demo AI: Hoàn thiện trải nghiệm SprintA AI',
         DATEADD(DAY, -2, @WaveANow), DATEADD(DAY, 12, @WaveANow), 1, 1, @WaveANow);
 
 IF NOT EXISTS (SELECT 1 FROM Modules WHERE Id = '7A000002-0001-0001-0001-000000000001')
     INSERT INTO Modules (Id, Name, Description, ProjectId, StartDate, TargetDate, Status, LeadId, CreatedAt, UpdatedAt)
-    VALUES ('7A000002-0001-0001-0001-000000000001', N'Copilot có thể thao tác',
+    VALUES ('7A000002-0001-0001-0001-000000000001', N'SprintA AI có thể thao tác',
         N'Hoàn thiện luồng xem trước, xác nhận và thực thi action có kiểm soát cho người dùng demo.',
         @WaveAProjectId, DATEADD(DAY, -3, @WaveANow), DATEADD(DAY, 12, @WaveANow), 'InProgress', @WaveAOwnerId, @WaveANow, @WaveANow);
 
 IF NOT EXISTS (SELECT 1 FROM Pages WHERE Id = '7A000003-0001-0001-0001-000000000001')
     INSERT INTO Pages (Id, Title, Content, ProjectId, CreatedById, SortOrder, IsLocked, IsArchived, IsPrivate, IsStarred, CreatedAt, UpdatedAt)
-    VALUES ('7A000003-0001-0001-0001-000000000001', N'Kịch bản demo AI Copilot',
-        N'{"type":"doc","content":[{"type":"heading","attrs":{"level":1},"content":[{"type":"text","text":"Kịch bản demo AI Copilot"}]},{"type":"paragraph","content":[{"type":"text","text":"Tạo chu kỳ, mô-đun, tài liệu, bộ lọc đã lưu và yêu cầu mới. Mọi thay đổi phải được xem trước và xác nhận trước khi thực thi."}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Kiểm tra action chỉ tạo một thực thể khi xác nhận hai lần."}]}]},{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Làm mới trang để xác nhận dữ liệu vẫn được lưu."}]}]}]}]}',
+    VALUES ('7A000003-0001-0001-0001-000000000001', N'Kịch bản demo SprintA AI',
+        N'{"type":"doc","content":[{"type":"heading","attrs":{"level":1},"content":[{"type":"text","text":"Kịch bản demo SprintA AI"}]},{"type":"paragraph","content":[{"type":"text","text":"Tạo chu kỳ, mô-đun, tài liệu, bộ lọc đã lưu và yêu cầu mới. Mọi thay đổi phải được xem trước và xác nhận trước khi thực thi."}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Kiểm tra action chỉ tạo một thực thể khi xác nhận hai lần."}]}]},{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Làm mới trang để xác nhận dữ liệu vẫn được lưu."}]}]}]}]}',
         @WaveAProjectId, @WaveAOwnerId, 90, 0, 0, 0, 1, @WaveANow, @WaveANow);
 
 IF NOT EXISTS (SELECT 1 FROM ProjectViews WHERE Id = '7A000004-0001-0001-0001-000000000001')
@@ -1793,7 +1793,7 @@ IF NOT EXISTS (SELECT 1 FROM WorkTasks WHERE Id = '7A000006-0001-0001-0001-00000
     INSERT INTO WorkTasks (Id, ProjectId, SprintId, TaskTypeId, TaskStatusId, Title, Description, Priority, StoryPoints, PlannedStartDate, PlannedEndDate, ReporterId, AssignedUserId, DueDate, CreatedAt, UpdatedAt, IsDeleted, IsArchived, TotalEstimatedHours, TotalActualHours, SortOrder, SequenceId, WorkspaceId)
     VALUES ('7A000006-0001-0001-0001-000000000001', @WaveAProjectId, '7A000001-0001-0001-0001-000000000001',
         'F0000001-0001-0001-0001-000000000001', 'E0000001-0001-0001-0001-000000000002', N'Xác nhận luồng action Wave A',
-        N'Công việc mẫu để kiểm tra cập nhật trạng thái, ưu tiên, hạn hoàn thành, giao việc và bình luận từ AI Copilot.',
+        N'Công việc mẫu để kiểm tra cập nhật trạng thái, ưu tiên, hạn hoàn thành, giao việc và bình luận từ SprintA AI.',
         2, 3, @WaveANow, DATEADD(DAY, 5, @WaveANow), @WaveAOwnerId, 'D0000001-0001-0001-0001-000000000006', DATEADD(DAY, 5, @WaveANow),
         @WaveANow, @WaveANow, 0, 0, 8, 0, 360000, 'SPRINT-WAVEA-01', 'A0000001-0001-0001-0001-000000000001');
 
@@ -1812,7 +1812,6 @@ PRINT N'========================================================================
 PRINT N'🎉 SPRINTA DEMO DATA SEEDED SUCCESSFULLY FOR NOVATECH SOLUTIONS 🎉';
 PRINT N'============================================================================';
 GO
-
 
 
 
