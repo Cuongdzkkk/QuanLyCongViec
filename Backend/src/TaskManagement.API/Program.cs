@@ -248,9 +248,11 @@ app.MapHub<TaskManagement.API.Hubs.ChatHub>(TaskManagement.API.Hubs.ChatHub.Rout
 
 if (await app.Services.RunDatabaseDeploymentCommandAsync(args, app.Environment, builder.Configuration)) return;
 
-using (var scope = app.Services.CreateScope())
+if (app.Environment.IsDevelopment())
 {
-    var context = scope.ServiceProvider.GetRequiredService<TaskManagement.Infrastructure.Data.ApplicationDbContext>();
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider
+        .GetRequiredService<TaskManagement.Infrastructure.Data.ApplicationDbContext>();
     if (!context.Database.IsRelational())
     {
         await TaskManagement.Infrastructure.Data.DataSeeder.SeedMockDataAsync(context);
