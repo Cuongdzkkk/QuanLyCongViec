@@ -35,6 +35,7 @@ public sealed class P007AiSafetyTests
     [InlineData(429, AiProviderErrorKind.RateLimited)]
     [InlineData(401, AiProviderErrorKind.Unavailable)]
     [InlineData(402, AiProviderErrorKind.Unavailable)]
+    [InlineData(403, AiProviderErrorKind.Unavailable)]
     [InlineData(500, AiProviderErrorKind.Unavailable)]
     [InlineData(504, AiProviderErrorKind.Unavailable)]
     public async Task ProviderErrors_AreTypedAndDoNotExposeRawBody(int status, AiProviderErrorKind expectedKind)
