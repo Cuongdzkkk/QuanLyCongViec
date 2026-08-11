@@ -68,6 +68,31 @@ public sealed class AiContextTokenOptimizationTests
         handler.RequestBody.Should().Contain("\"max_completion_tokens\":800");
     }
 
+    [Theory]
+    [InlineData("Tóm tắt dashboard hiện tại")]
+    [InlineData("Rủi ro nào cần xử lý trước?")]
+    public async Task DashboardSurface_PreservesSprintAContext(string message)
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Route = "/dashboard",
+            Message = message,
+            PageContext = new AiContextPageDto
+            {
+                PageType = "dashboard",
+                CurrentView = "overview"
+            }
+        });
+
+        handler.CallCount.Should().Be(1);
+        handler.RequestBody.Should().Contain("Route: /dashboard");
+        handler.RequestBody.Should().Contain("Page type: dashboard; view: overview");
+    }
+
     [Fact]
     public async Task ProjectContext_IsCompactedToTwentyTasks()
     {
@@ -130,6 +155,68 @@ public sealed class AiContextTokenOptimizationTests
         handler.RequestBody.Should().NotContain("Accessible project catalog");
         handler.RequestBody.Split("- id=", StringSplitOptions.None).Length.Should().BeLessThanOrEqualTo(21);
         handler.RequestBody.Should().Contain("Task count in context: 20");
+    }
+
+    [Fact]
+    public async Task NamedProjectOutsideCompactCatalog_IsResolvedFromPermissionFilteredDirectory()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var workspaceId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        for (var index = 1; index <= 25; index++)
+        {
+            var projectId = Guid.NewGuid();
+            context.Projects.Add(new Project
+            {
+                Id = projectId,
+                Name = $"PROJECT-{index}",
+                Identifier = $"P{index}",
+                WorkspaceId = workspaceId,
+                CreatorId = userId,
+                CreatedAt = now,
+                UpdatedAt = now.AddMinutes(-index),
+                Status = true
+            });
+            context.ProjectMembers.Add(new ProjectMember
+            {
+                ProjectId = projectId,
+                UserId = userId,
+                Status = true,
+                JoinedAt = now
+            });
+        }
+
+        context.Projects.Add(new Project
+        {
+            Id = Guid.NewGuid(),
+            Name = "SECRET-PROJECT",
+            Identifier = "SECRET",
+            WorkspaceId = workspaceId,
+            CreatorId = Guid.NewGuid(),
+            CreatedAt = now,
+            UpdatedAt = now,
+            Status = true
+        });
+        context.WorkspaceMembers.Add(new WorkspaceMember
+        {
+            WorkspaceId = workspaceId,
+            UserId = userId,
+            IsActive = true,
+            JoinedAt = now
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Message = "Tóm tắt PROJECT-25"
+        });
+
+        handler.RequestBody.Should().Contain("Project: PROJECT-25");
+        handler.RequestBody.Should().NotContain("PROJECT-24");
+        handler.RequestBody.Should().NotContain("SECRET-PROJECT");
+        handler.RequestBody.Should().NotContain("Accessible project catalog");
     }
 
     [Fact]

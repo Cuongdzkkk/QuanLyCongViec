@@ -88,7 +88,7 @@ namespace TaskManagement.Infrastructure.Services
             var route = Limit(request.Route, 500);
             var page = request.PageContext ?? new AiContextPageDto();
 
-            if (!HasSprintAContextIntent(message, request, selectedText))
+            if (!HasSprintAContextIntent(message, request, selectedText, route, page))
             {
                 var minimalPrompt = $"User message: {message}";
                 var minimalResult = await GenerateTextAsync(
@@ -138,9 +138,8 @@ namespace TaskManagement.Infrastructure.Services
                 accessibleProjectsQuery = accessibleProjectsQuery.Where(p => p.Id == requestedProjectId);
             }
 
-            var accessibleProjects = await accessibleProjectsQuery
+            var accessibleProjectDirectory = await accessibleProjectsForAggregationQuery
                 .OrderByDescending(p => p.UpdatedAt)
-                .Take(20)
                 .Select(p => new
                 {
                     p.Id,
@@ -150,6 +149,9 @@ namespace TaskManagement.Infrastructure.Services
                     p.WorkspaceId
                 })
                 .ToListAsync();
+            var accessibleProjects = request.ProjectId is { } projectId && projectId != Guid.Empty
+                ? accessibleProjectDirectory.Where(project => project.Id == projectId).Take(1).ToList()
+                : accessibleProjectDirectory.Take(20).ToList();
 
             // GLOBAL OVERDUE FAST PATH
             // Structured read-only questions should not wait for the LLM.
@@ -270,7 +272,7 @@ namespace TaskManagement.Infrastructure.Services
             // resolve a project from its trusted name or identifier in the user's message.
             if (!effectiveProjectId.HasValue)
             {
-                var resolvedProject = accessibleProjects
+                var resolvedProject = accessibleProjectDirectory
                     .Where(p =>
                         !string.IsNullOrWhiteSpace(p.Name) &&
                         message.Contains(p.Name, StringComparison.OrdinalIgnoreCase))
@@ -293,38 +295,18 @@ namespace TaskManagement.Infrastructure.Services
                     prompt.AppendLine(
                         $"Project automatically resolved from user message: {Limit(resolvedProject.Name, 200)} ({resolvedProject.Id})");
                 }
-                else if (accessibleProjects.Count == 1)
+                else if (accessibleProjectDirectory.Count == 1)
                 {
-                    effectiveProjectId = accessibleProjects[0].Id;
+                    effectiveProjectId = accessibleProjectDirectory[0].Id;
                     prompt.AppendLine(
-                        $"Only one accessible project exists; using it as context: {Limit(accessibleProjects[0].Name, 200)} ({accessibleProjects[0].Id})");
+                        $"Only one accessible project exists; using it as context: {Limit(accessibleProjectDirectory[0].Name, 200)} ({accessibleProjectDirectory[0].Id})");
                 }
             }
 
             if (effectiveProjectId.HasValue)
             {
-                var project = accessibleProjects
+                var project = accessibleProjectDirectory
                     .FirstOrDefault(p => p.Id == effectiveProjectId.Value);
-
-                // Explicit ProjectId was already permission-checked by AiController.
-                // This fallback also preserves current project-page behavior.
-                if (project == null && request.ProjectId.HasValue)
-                {
-                    project = await _context.Projects
-                        .AsNoTracking()
-                        .Where(p =>
-                            p.Id == effectiveProjectId.Value &&
-                            !p.IsDeleted)
-                        .Select(p => new
-                        {
-                            p.Id,
-                            p.Name,
-                            p.Identifier,
-                            p.Description,
-                            p.WorkspaceId
-                        })
-                        .FirstOrDefaultAsync();
-                }
 
                 if (project != null)
                 {
@@ -459,10 +441,26 @@ namespace TaskManagement.Infrastructure.Services
             };
         }
 
-        private static bool HasSprintAContextIntent(string message, AiContextChatRequestDto request, string selectedText)
+        private static bool HasSprintAContextIntent(
+            string message,
+            AiContextChatRequestDto request,
+            string selectedText,
+            string route,
+            AiContextPageDto page)
         {
             if (!string.IsNullOrWhiteSpace(selectedText) ||
-                request.ProjectId is { } projectId && projectId != Guid.Empty)
+                request.ProjectId is { } projectId && projectId != Guid.Empty ||
+                request.WorkspaceId is { } workspaceId && workspaceId != Guid.Empty)
+            {
+                return true;
+            }
+
+            var contextualRoute = route.StartsWith("/dashboard", StringComparison.OrdinalIgnoreCase) ||
+                                  route.Contains("/projects", StringComparison.OrdinalIgnoreCase) ||
+                                  route.Contains("/project/", StringComparison.OrdinalIgnoreCase);
+            var contextualPage = !string.IsNullOrWhiteSpace(page.PageType) ||
+                                 !string.IsNullOrWhiteSpace(page.CurrentView);
+            if (contextualRoute || contextualPage)
             {
                 return true;
             }
