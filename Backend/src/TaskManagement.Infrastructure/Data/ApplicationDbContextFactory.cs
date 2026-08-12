@@ -11,7 +11,7 @@ namespace TaskManagement.Infrastructure.Data
             var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
             if (string.IsNullOrWhiteSpace(connectionString))
             {
-                var server = Environment.GetEnvironmentVariable("DEV_SQL_SERVER") ?? ".\\SQLEXPRESS01";
+                var server = Environment.GetEnvironmentVariable("DEV_SQL_SERVER") ?? @"KHOI\SQLEXPRESS";
                 var database = Environment.GetEnvironmentVariable("DEV_SQL_DATABASE") ?? "TaskManagementDB_V4";
                 var connectionBuilder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder
                 {
