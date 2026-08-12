@@ -19,5 +19,9 @@ namespace TaskManagement.Application.Interfaces
             string requesterEmail,
             DateTime? lastChangedAt,
             DateTime eligibleAt);
+
+        Task SendPaymentPendingEmailAsync(string toEmail, string planName, decimal amountVnd, string transferCode, string checkoutUrl);
+        Task SendPaymentPaidEmailAsync(string toEmail, string planName, DateTime? currentPeriodEnd, string checkoutUrl);
+        Task SendPaymentRejectedEmailAsync(string toEmail, string planName, string? reason, string pricingUrl);
     }
 }

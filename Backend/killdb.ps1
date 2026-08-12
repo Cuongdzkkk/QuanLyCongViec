@@ -1,5 +1,5 @@
 param(
-    [string]$Server = $(if ($env:DEV_SQL_SERVER) { $env:DEV_SQL_SERVER } else { "KHOI\SQLEXPRESS" }),
+    [string]$Server = $(if ($env:DEV_SQL_SERVER) { $env:DEV_SQL_SERVER } else { "localhost" }),
     [string]$Database = $(if ($env:DEV_SQL_DATABASE) { $env:DEV_SQL_DATABASE } else { "TaskManagementDB" })
 )
 

@@ -189,7 +189,9 @@ public sealed class P006HostingConfigurationTests
         ["Jwt:Issuer"] = "SprintA-Test",
         ["Jwt:Audience"] = "SprintA-Test-Users",
         ["Features:AIEnabled"] = "false",
-        ["Cors:AllowedOrigins:0"] = "https://example.invalid"
+        ["Cors:AllowedOrigins:0"] = "https://example.invalid",
+        ["Resend:ApiKey"] = "test-resend-key-not-a-real-secret-12345",
+        ["Resend:FromEmail"] = "verified@example.invalid"
     });
 
     private static IConfiguration Configuration(Dictionary<string, string?> values) =>

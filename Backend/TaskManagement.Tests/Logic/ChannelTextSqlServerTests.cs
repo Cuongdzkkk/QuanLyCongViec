@@ -8,9 +8,7 @@ namespace TaskManagement.Tests.Logic;
 
 public sealed class ChannelTextSqlServerTests
 {
-    private const string ConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=SprintACollabText01IntegrationV4;" +
-        "Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+    private static string ConnectionString => SqlServerTestConfiguration.ConnectionString("SprintACollabText01IntegrationV4");
 
     [Fact]
     [Trait("Category", "SqlServerIntegration")]

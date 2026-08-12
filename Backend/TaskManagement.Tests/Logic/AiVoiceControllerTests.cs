@@ -84,6 +84,18 @@ namespace TaskManagement.Tests.Logic
                 Times.Never);
         }
 
+        [Fact]
+        public async Task TranscribeAudio_ProviderConfigurationFailure_Returns503WithoutFakeTranscript()
+        {
+            _aiService
+                .Setup(service => service.TranscribeAudioAsync(
+                    It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("provider configuration is unavailable"));
+            var result = await CreateController().TranscribeAudio(CreateWaveFile(), "auto", CancellationToken.None);
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        }
+
         private AiController CreateController()
         {
             var controller = new AiController(

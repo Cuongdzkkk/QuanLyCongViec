@@ -24,6 +24,10 @@ services:
       Cors__AllowedOrigins__1: "https://www.sprinta.id.vn"
       Frontend__BaseUrl: "${FRONTEND_URL}"
 
+      Resend__ApiKey: "${RESEND_API_KEY}"
+      Resend__FromEmail: "${RESEND_FROM_EMAIL}"
+      Resend__ReplyTo: "${RESEND_REPLY_TO}"
+
       Features__AIEnabled: "true"
       Google__Enabled: "true"
       Google__ClientId: "${GOOGLE_CLIENT_ID}"
@@ -33,6 +37,15 @@ services:
       ZenMux__ApiKey: "${ZENMUX_API_KEY}"
       ZenMux__Model: "deepseek/deepseek-v4-flash"
       ZenMux__TimeoutSeconds: "60"
+      Gemini__ApiKey: "${GEMINI_API_KEY}"
+      Gemini__Model: "gemini-2.5-flash"
+
+      Billing__Payment__Enabled: "${BILLING_PAYMENT_ENABLED:-false}"
+      Billing__Payment__BankId: "${BILLING_PAYMENT_BANK_ID}"
+      Billing__Payment__BankName: "${BILLING_PAYMENT_BANK_NAME}"
+      Billing__Payment__AccountNo: "${BILLING_PAYMENT_ACCOUNT_NO}"
+      Billing__Payment__AccountName: "${BILLING_PAYMENT_ACCOUNT_NAME}"
+      Billing__Payment__Template: "${BILLING_PAYMENT_TEMPLATE:-compact2}"
 
     depends_on:
       - db

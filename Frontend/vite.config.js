@@ -82,7 +82,7 @@ export default defineConfig({
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin-allow-popups'
     },
-    allowedHosts: ['sprinta.io.vn'],
+    allowedHosts: ['sprinta.id.vn'],
     proxy: {
       '/api': {
         target: 'http://localhost:5136',

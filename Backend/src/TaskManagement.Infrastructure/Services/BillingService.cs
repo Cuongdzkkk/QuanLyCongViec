@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using TaskManagement.Application.DTOs.Billing;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
@@ -12,11 +14,22 @@ public sealed class BillingService : IBillingService
 {
     private readonly ApplicationDbContext _context;
     private readonly IAiCreditUsageService _creditUsageService;
+    private readonly IConfiguration _configuration;
+    private readonly IEmailService? _emailService;
+    private readonly ILogger<BillingService> _logger;
 
-    public BillingService(ApplicationDbContext context, IAiCreditUsageService creditUsageService)
+    public BillingService(
+        ApplicationDbContext context,
+        IAiCreditUsageService creditUsageService,
+        IConfiguration? configuration = null,
+        IEmailService? emailService = null,
+        ILogger<BillingService>? logger = null)
     {
         _context = context;
         _creditUsageService = creditUsageService;
+        _configuration = configuration ?? new ConfigurationBuilder().Build();
+        _emailService = emailService;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<BillingService>.Instance;
     }
 
     public async Task<BillingSummaryDto> GetSummaryAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -94,6 +107,15 @@ public sealed class BillingService : IBillingService
         };
         _context.PaymentOrders.Add(order);
         await _context.SaveChangesAsync(cancellationToken);
+        await NotifySafelyAsync(
+            () => _emailService?.SendPaymentPendingEmailAsync(
+                user.Email,
+                plan.Name,
+                order.AmountVnd,
+                order.TransferCode,
+                BuildCheckoutUrl(order.PlanCode)),
+            "payment order pending notification",
+            order.Id);
         return ToOrderDto(order, plan.Name);
     }
 
@@ -281,6 +303,14 @@ public sealed class BillingService : IBillingService
         AddAudit(adminUserId, "PAYMENT_ORDER_APPROVE", order.UserId, new { orderId, order.PlanCode, order.AmountVnd, note });
         await _context.SaveChangesAsync(cancellationToken);
         if (transaction != null) await transaction.CommitAsync(cancellationToken);
+        await NotifySafelyAsync(
+            () => _emailService?.SendPaymentPaidEmailAsync(
+                order.User.Email,
+                plan.Name,
+                subscription.CurrentPeriodEnd,
+                BuildCheckoutUrl(order.PlanCode)),
+            "payment approval notification",
+            order.Id);
         return ToOrderDto(order, plan.Name);
     }
 
@@ -297,6 +327,18 @@ public sealed class BillingService : IBillingService
         order.AdminNote = reason.Trim();
         AddAudit(adminUserId, "PAYMENT_ORDER_REJECT", order.UserId, new { orderId, reason });
         await _context.SaveChangesAsync(cancellationToken);
+        var planName = await _context.AiPricingPlans.AsNoTracking()
+            .Where(item => item.Code == order.PlanCode)
+            .Select(item => item.Name)
+            .SingleOrDefaultAsync(cancellationToken) ?? order.PlanCode;
+        await NotifySafelyAsync(
+            () => _emailService?.SendPaymentRejectedEmailAsync(
+                order.User.Email,
+                planName,
+                order.AdminNote,
+                BuildPricingUrl()),
+            "payment rejection notification",
+            order.Id);
         return await ToOrderDtoAsync(order, cancellationToken);
     }
 
@@ -335,7 +377,7 @@ public sealed class BillingService : IBillingService
         return ToOrderDto(order, planName);
     }
 
-    private static PaymentOrderDto ToOrderDto(PaymentOrder order, string planName) => new()
+    private PaymentOrderDto ToOrderDto(PaymentOrder order, string planName) => new()
     {
         Id = order.Id,
         UserId = order.UserId,
@@ -349,8 +391,54 @@ public sealed class BillingService : IBillingService
         CreatedAt = order.CreatedAt,
         PaidAt = order.PaidAt,
         ApprovedByUserId = order.ApprovedByUserId,
-        AdminNote = order.AdminNote
+        AdminNote = order.AdminNote,
+        PaymentInstructions = BuildPaymentInstructions(order)
     };
+
+    private PaymentInstructionDto BuildPaymentInstructions(PaymentOrder order)
+    {
+        var bankId = _configuration["Billing:Payment:BankId"]?.Trim();
+        var accountNo = _configuration["Billing:Payment:AccountNo"]?.Trim();
+        var accountName = _configuration["Billing:Payment:AccountName"]?.Trim();
+        var template = _configuration["Billing:Payment:Template"]?.Trim();
+        var configured = _configuration.GetValue<bool>("Billing:Payment:Enabled") &&
+            !string.IsNullOrWhiteSpace(bankId) &&
+            !string.IsNullOrWhiteSpace(accountNo) &&
+            !string.IsNullOrWhiteSpace(accountName) &&
+            !string.IsNullOrWhiteSpace(template);
+
+        return new PaymentInstructionDto
+        {
+            Configured = configured,
+            BankId = configured ? bankId : null,
+            BankName = configured ? _configuration["Billing:Payment:BankName"]?.Trim() : null,
+            AccountNo = configured ? accountNo : null,
+            AccountName = configured ? accountName : null,
+            AmountVnd = order.AmountVnd,
+            TransferCode = order.TransferCode,
+            QrUrl = configured
+                ? $"https://img.vietqr.io/image/{Uri.EscapeDataString(bankId!)}-{Uri.EscapeDataString(accountNo!)}-{Uri.EscapeDataString(template!)}.png?amount={Uri.EscapeDataString(order.AmountVnd.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))}&addInfo={Uri.EscapeDataString(order.TransferCode)}&accountName={Uri.EscapeDataString(accountName!)}"
+                : null
+        };
+    }
+
+    private string BuildCheckoutUrl(string planCode) =>
+        $"{(_configuration["Frontend:BaseUrl"] ?? string.Empty).TrimEnd('/')}/billing/checkout/{Uri.EscapeDataString(planCode)}";
+
+    private string BuildPricingUrl() => $"{(_configuration["Frontend:BaseUrl"] ?? string.Empty).TrimEnd('/')}/#pricing";
+
+    private async Task NotifySafelyAsync(Func<Task?> send, string operation, Guid orderId)
+    {
+        try
+        {
+            var task = send();
+            if (task != null) await task;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Billing email notification failed for {Operation}, order {OrderId}; billing state was already committed. Error type: {ErrorType}.", operation, orderId, ex.GetType().Name);
+        }
+    }
 
     private void AddAudit(Guid adminUserId, string action, Guid targetUserId, object details)
     {

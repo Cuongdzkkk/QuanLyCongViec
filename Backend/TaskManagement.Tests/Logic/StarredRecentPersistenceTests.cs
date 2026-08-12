@@ -344,9 +344,7 @@ public sealed class StarredRecentPersistenceTests
     [Trait("Category", "SqlServerIntegration")]
     public async Task SqlServerEnforcesUniqueKeysAndCanonicalTypeConstraints()
     {
-        const string connectionString =
-            "Server=(localdb)\\MSSQLLocalDB;Database=SprintAStarRecent01Integration;" +
-            "Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+        var connectionString = SqlServerTestConfiguration.ConnectionString("SprintAStarRecent01Integration");
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseSqlServer(connectionString)
             .Options;

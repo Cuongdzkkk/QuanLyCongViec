@@ -8,7 +8,8 @@ internal static class SqlServerTestConfiguration
     {
         var builder = new SqlConnectionStringBuilder
         {
-            DataSource = Environment.GetEnvironmentVariable("DEV_SQL_SERVER") ?? @"KHOI\SQLEXPRESS",
+            DataSource = Environment.GetEnvironmentVariable("SPRINTA_TEST_SQL_SERVER")
+                ?? "localhost",
             InitialCatalog = databaseName,
             IntegratedSecurity = true,
             TrustServerCertificate = true,

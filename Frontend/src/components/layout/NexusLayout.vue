@@ -1089,7 +1089,9 @@ const transcribeVoiceRecording = async (recording) => {
     voiceState.value = 'review'
   } catch (error) {
     if (error?.code === 'ERR_CANCELED' || voiceState.value === 'idle') return
-    voiceError.value = error.response?.data?.message || error.message || 'Không thể nhận dạng giọng nói. Hãy thử lại.'
+    voiceError.value = error.response?.status === 503
+      ? 'Dịch vụ nhận dạng giọng nói đang tạm thời bận. Hãy thử lại sau ít phút.'
+      : error.response?.data?.message || error.message || 'Không thể nhận dạng giọng nói. Hãy thử lại.'
     voiceState.value = 'error'
   } finally {
     voiceAbortController = null

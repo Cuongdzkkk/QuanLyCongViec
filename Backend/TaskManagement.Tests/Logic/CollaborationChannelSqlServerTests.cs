@@ -9,9 +9,7 @@ namespace TaskManagement.Tests.Logic;
 
 public sealed class CollaborationChannelSqlServerTests
 {
-    private const string ConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=SprintACollabChannelDiscovery01IntegrationV4;" +
-        "Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+    private static string ConnectionString => SqlServerTestConfiguration.ConnectionString("SprintACollabChannelDiscovery01IntegrationV4");
 
     [Fact]
     [Trait("Category", "SqlServerIntegration")]

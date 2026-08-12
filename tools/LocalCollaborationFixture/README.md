@@ -36,6 +36,6 @@ cleans again in `finally`. Use `--keep` only when a retained local fixture is
 deliberately needed, then run `cleanup` with the same run ID.
 
 The runner refuses environments other than `Development`/`Testing` and refuses
-any target other than `KHOI\SQLEXPRESS`, `TaskManagementDB`, Windows Integrated
+any configured local target, `TaskManagementDB`, Windows Integrated
 Security. Password hashes and JWT signing material are random, process-local,
 and never emitted.

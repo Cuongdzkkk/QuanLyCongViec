@@ -8,9 +8,7 @@ namespace TaskManagement.Tests.Logic;
 
 public sealed class CollaborationReadStateSqlServerTests
 {
-    private const string ConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=SprintACollabReadState01IntegrationV3;" +
-        "Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+    private static string ConnectionString => SqlServerTestConfiguration.ConnectionString("SprintACollabReadState01IntegrationV3");
 
     [Fact]
     [Trait("Category", "SqlServerIntegration")]

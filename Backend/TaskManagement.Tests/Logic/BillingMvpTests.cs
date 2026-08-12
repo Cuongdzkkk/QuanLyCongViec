@@ -1,5 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Infrastructure.Services;
@@ -84,6 +86,106 @@ public sealed class BillingMvpTests
         (await context.AiSubscriptions.SingleAsync()).PlanCode.Should().Be("plus");
         (await context.AiSubscriptions.SingleAsync()).ActivatedAt.Should().Be(activatedAt);
         (await context.SystemAuditLogs.CountAsync(log => log.Action == "PAYMENT_ORDER_APPROVE")).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task PaymentInstructions_UseOrderAmountAndEncodedTransferCode()
+    {
+        await using var context = CreateContext();
+        var user = AddUser(context);
+        AddPlans(context);
+        await context.SaveChangesAsync();
+
+        var configuration = Configuration(new Dictionary<string, string?>
+        {
+            ["Billing:Payment:Enabled"] = "true",
+            ["Billing:Payment:BankId"] = "vietinbank",
+            ["Billing:Payment:BankName"] = "VietinBank",
+            ["Billing:Payment:AccountNo"] = "0123456789",
+            ["Billing:Payment:AccountName"] = "SPRINTA COMPANY",
+            ["Billing:Payment:Template"] = "compact2"
+        });
+        var billing = new BillingService(context, CreditService(context), configuration);
+        var order = await billing.CreateOrderAsync(user.Id, "plus");
+        order.TransferCode = "SA code+&";
+        var stored = await context.PaymentOrders.SingleAsync();
+        stored.TransferCode = order.TransferCode;
+        await context.SaveChangesAsync();
+
+        var response = (await billing.GetOrdersAsync(user.Id, null)).Single();
+        response.PaymentInstructions!.Configured.Should().BeTrue();
+        response.PaymentInstructions.AmountVnd.Should().Be(99_000);
+        response.PaymentInstructions.TransferCode.Should().Be("SA code+&");
+        response.PaymentInstructions.QrUrl.Should().Contain("amount=99000");
+        response.PaymentInstructions.QrUrl.Should().Contain("addInfo=SA%20code%2B%26");
+        response.PaymentInstructions.QrUrl.Should().Contain("accountName=SPRINTA%20COMPANY");
+    }
+
+    [Fact]
+    public async Task MissingPaymentConfiguration_ReturnsSafeFallbackWithoutQrUrl()
+    {
+        await using var context = CreateContext();
+        var user = AddUser(context);
+        AddPlans(context);
+        await context.SaveChangesAsync();
+
+        var order = await new BillingService(context, CreditService(context)).CreateOrderAsync(user.Id, "plus");
+
+        var instructions = order.PaymentInstructions!;
+        instructions.Configured.Should().BeFalse();
+        instructions.QrUrl.Should().BeNull();
+        instructions.AmountVnd.Should().Be(order.AmountVnd);
+        instructions.TransferCode.Should().Be(order.TransferCode);
+    }
+
+    [Fact]
+    public async Task PaymentEmailFailure_DoesNotRollBackCreatedOrder()
+    {
+        await using var context = CreateContext();
+        var user = AddUser(context);
+        AddPlans(context);
+        await context.SaveChangesAsync();
+
+        var billing = new BillingService(context, CreditService(context), Configuration(new Dictionary<string, string?>()), new ThrowingEmailService());
+        var order = await billing.CreateOrderAsync(user.Id, "plus");
+
+        (await context.PaymentOrders.FindAsync(order.Id)).Should().NotBeNull();
+        (await context.PaymentOrders.SingleAsync()).Status.Should().Be("Pending");
+    }
+
+    [Fact]
+    public async Task UserOrderQuery_DoesNotReturnAnotherUsersOrder()
+    {
+        await using var context = CreateContext();
+        var user = AddUser(context);
+        var otherUser = AddUser(context, "other-order@sprinta.local");
+        AddPlans(context);
+        await context.SaveChangesAsync();
+        var billing = BillingService(context);
+        await billing.CreateOrderAsync(user.Id, "plus");
+        await billing.CreateOrderAsync(otherUser.Id, "plus");
+
+        var orders = await billing.GetOrdersAsync(user.Id, null);
+
+        orders.Should().ContainSingle().Which.UserId.Should().Be(user.Id);
+    }
+
+    [Fact]
+    public async Task PaymentApprovalEmailFailure_DoesNotRollBackPaidState()
+    {
+        await using var context = CreateContext();
+        var user = AddUser(context);
+        var admin = AddUser(context, "admin-approval@sprinta.local");
+        AddPlans(context);
+        await context.SaveChangesAsync();
+        var createBilling = BillingService(context);
+        var order = await createBilling.CreateOrderAsync(user.Id, "plus");
+
+        var billing = new BillingService(context, CreditService(context), Configuration(new Dictionary<string, string?>()), new ThrowingEmailService());
+        await billing.ApproveOrderAsync(order.Id, admin.Id, "Đã đối soát");
+
+        (await context.PaymentOrders.SingleAsync()).Status.Should().Be("Paid");
+        (await context.AiSubscriptions.SingleAsync()).PlanCode.Should().Be("plus");
     }
 
     [Theory]
@@ -176,6 +278,9 @@ public sealed class BillingMvpTests
     private static AiCreditUsageService CreditService(ApplicationDbContext context) => new(context);
     private static BillingService BillingService(ApplicationDbContext context) => new(context, CreditService(context));
 
+    private static IConfiguration Configuration(Dictionary<string, string?> values) =>
+        new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+
     private static User AddUser(ApplicationDbContext context, string email = "user@sprinta.local")
     {
         var now = DateTime.UtcNow;
@@ -225,4 +330,14 @@ public sealed class BillingMvpTests
     {
         Id = Guid.NewGuid(), UserId = userId, FeatureCode = "ai-chat", TokensUsed = tokens, CreatedAt = createdAt
     };
+
+    private sealed class ThrowingEmailService : IEmailService
+    {
+        public Task SendOtpEmailAsync(string toEmail, string otpCode) => throw new NotSupportedException();
+        public Task SendInviteEmailAsync(string toEmail, string inviteeName, string inviterName, string organizationName, string? projectName, string acceptUrl, string? personalMessage) => throw new NotSupportedException();
+        public Task SendPasswordChangeRequestEmailAsync(string toEmail, string requesterName, string requesterEmail, DateTime? lastChangedAt, DateTime eligibleAt) => throw new NotSupportedException();
+        public Task SendPaymentPendingEmailAsync(string toEmail, string planName, decimal amountVnd, string transferCode, string checkoutUrl) => throw new InvalidOperationException("simulated Resend failure");
+        public Task SendPaymentPaidEmailAsync(string toEmail, string planName, DateTime? currentPeriodEnd, string checkoutUrl) => throw new NotSupportedException();
+        public Task SendPaymentRejectedEmailAsync(string toEmail, string planName, string? reason, string pricingUrl) => throw new NotSupportedException();
+    }
 }

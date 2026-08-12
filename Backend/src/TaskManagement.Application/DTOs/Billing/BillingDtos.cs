@@ -36,6 +36,19 @@ public sealed class PaymentOrderDto
     public DateTime? PaidAt { get; set; }
     public Guid? ApprovedByUserId { get; set; }
     public string? AdminNote { get; set; }
+    public PaymentInstructionDto? PaymentInstructions { get; set; }
+}
+
+public sealed class PaymentInstructionDto
+{
+    public bool Configured { get; set; }
+    public string? BankId { get; set; }
+    public string? BankName { get; set; }
+    public string? AccountNo { get; set; }
+    public string? AccountName { get; set; }
+    public decimal AmountVnd { get; set; }
+    public string TransferCode { get; set; } = string.Empty;
+    public string? QrUrl { get; set; }
 }
 
 public sealed class CreatePaymentOrderRequest

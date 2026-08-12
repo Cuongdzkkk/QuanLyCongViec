@@ -16,9 +16,7 @@ public sealed class CycleTransitionSqlServerTests
     [Trait("Category", "SqlServerIntegration")]
     public async Task ConcurrentCloseAndStart_KeepOneActiveCycleAndRetainTaskData()
     {
-        const string connectionString =
-            "Server=(localdb)\\MSSQLLocalDB;Database=SprintACycle01Integration;" +
-            "Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+        var connectionString = SqlServerTestConfiguration.ConnectionString("SprintACycle01Integration");
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseSqlServer(connectionString)
             .Options;

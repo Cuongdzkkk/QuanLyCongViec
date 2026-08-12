@@ -1,5 +1,5 @@
 @echo off
-if not defined DEV_SQL_SERVER set "DEV_SQL_SERVER=KHOI\SQLEXPRESS"
+if not defined DEV_SQL_SERVER set "DEV_SQL_SERVER=localhost"
 echo =======================================
 echo KHOI TAO LAI TOAN BO DATABASE (FORCE RESET)
 echo =======================================

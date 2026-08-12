@@ -15,9 +15,7 @@ public sealed class ModuleDetailSqlServerTests
     [Trait("Category", "SqlServerIntegration")]
     public async Task SqlServerPersistsManyToManyRelationAndReturnsScopedTasks()
     {
-        const string connectionString =
-            "Server=(localdb)\\MSSQLLocalDB;Database=SprintAModule01Integration;" +
-            "Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+        var connectionString = SqlServerTestConfiguration.ConnectionString("SprintAModule01Integration");
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseSqlServer(connectionString)
             .Options;

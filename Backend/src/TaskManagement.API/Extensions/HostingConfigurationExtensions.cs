@@ -69,6 +69,9 @@ public static class HostingConfigurationExtensions
             var origins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
             if (origins.Length == 0 || origins.Any(origin => !Uri.TryCreate(origin, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps))
                 throw new InvalidOperationException("Cors:AllowedOrigins must contain an explicit HTTPS allowlist outside Development/Testing.");
+
+            RequireSecret(configuration, "Resend:ApiKey", environment, 20);
+            RequireEmail(configuration, "Resend:FromEmail", environment);
         }
     }
 
@@ -107,6 +110,13 @@ public static class HostingConfigurationExtensions
         var value = configuration[key]?.Trim();
         if (IsInvalidSecret(value, minimumLength))
             throw new InvalidOperationException($"{key} must come from environment variables or a secret store for {environment.EnvironmentName}; placeholders are rejected.");
+    }
+
+    private static void RequireEmail(IConfiguration configuration, string key, IHostEnvironment environment)
+    {
+        var value = configuration[key]?.Trim();
+        if (string.IsNullOrWhiteSpace(value) || !value.Contains('@', StringComparison.Ordinal) || value.Contains("sprinta.local", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"{key} must be configured with a verified sender mailbox for {environment.EnvironmentName}; do not use a local placeholder.");
     }
 
     private static void RequireJwtSecret(

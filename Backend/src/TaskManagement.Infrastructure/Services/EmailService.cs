@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using TaskManagement.Application.Interfaces;
 using System.Net;
 using System.Text;
@@ -10,20 +11,18 @@ namespace TaskManagement.Infrastructure.Services
     {
         private readonly IConfiguration _configuration;
         private readonly HttpClient _httpClient;
+        private readonly ILogger<EmailService> _logger;
 
-        public EmailService(IConfiguration configuration, HttpClient httpClient)
+        public EmailService(IConfiguration configuration, HttpClient httpClient, ILogger<EmailService> logger)
         {
             _configuration = configuration;
             _httpClient = httpClient;
+            _logger = logger;
         }
 
         public async Task SendOtpEmailAsync(string toEmail, string otpCode)
         {
-            Console.WriteLine($"=========================================");
-            Console.WriteLine($"[DEBUG OTP] Email: {toEmail} -> OTP Code: {otpCode}");
-            Console.WriteLine($"=========================================");
-
-            var subject = "Ma xac thuc OTP - SprintA";
+            var subject = "Mã xác thực OTP - SprintA";
             var html = $@"
                 <div style='font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background:#ffffff;'>
                     <div style='text-align:center; margin-bottom: 24px;'>
@@ -42,7 +41,7 @@ namespace TaskManagement.Infrastructure.Services
                     </p>
                 </div>";
 
-            var text = $"Ma xac thuc OTP cua ban la: {otpCode}\n\nMa nay co hieu luc trong 5 phut. Khong chia se ma nay voi bat ky ai.\n\nBan nhan email nay vi dang dang ky hoac dat lai mat khau tai SprintA.";
+            var text = $"Mã xác thực OTP của bạn là: {otpCode}\n\nMã này có hiệu lực trong 5 phút. Không chia sẻ mã này với bất kỳ ai.\n\nBạn nhận email này vì đang đăng ký hoặc đặt lại mật khẩu tại SprintA.";
 
             try
             {
@@ -54,10 +53,31 @@ namespace TaskManagement.Infrastructure.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR RESEND] Không thể gửi email thực tế qua Resend: {ex.Message}");
-                throw new InvalidOperationException("Khong the gui email OTP qua Resend. Vui long kiem tra Resend API key, FromEmail/domain va thu lai.", ex);
+                _logger.LogError(ex, "Resend OTP delivery failed for a recipient.");
+                throw new InvalidOperationException("Không thể gửi email OTP qua Resend. Vui lòng thử lại sau.");
             }
         }
+
+        public Task SendPaymentPendingEmailAsync(string toEmail, string planName, decimal amountVnd, string transferCode, string checkoutUrl) =>
+            SendResendEmailAsync(toEmail, "Đơn thanh toán SprintA đang chờ xác nhận", PaymentHtml(
+                "Đơn thanh toán đang chờ xác nhận",
+                $"Gói <strong>{WebUtility.HtmlEncode(planName)}</strong> · {amountVnd:N0} VND",
+                $"Mã chuyển khoản: <strong>{WebUtility.HtmlEncode(transferCode)}</strong><br/>Trạng thái: Chờ xác nhận",
+                checkoutUrl, "Mở trang thanh toán"), null);
+
+        public Task SendPaymentPaidEmailAsync(string toEmail, string planName, DateTime? currentPeriodEnd, string checkoutUrl) =>
+            SendResendEmailAsync(toEmail, "Gói SprintA đã được kích hoạt", PaymentHtml(
+                "Thanh toán đã được xác nhận",
+                $"Gói <strong>{WebUtility.HtmlEncode(planName)}</strong> đã được kích hoạt.",
+                $"Trạng thái: Đã thanh toán<br/>Kỳ hiện tại kết thúc: {WebUtility.HtmlEncode(currentPeriodEnd?.ToString("dd/MM/yyyy HH:mm 'UTC'") ?? "Đang cập nhật")}",
+                checkoutUrl, "Mở SprintA"), null);
+
+        public Task SendPaymentRejectedEmailAsync(string toEmail, string planName, string? reason, string pricingUrl) =>
+            SendResendEmailAsync(toEmail, "Đơn thanh toán SprintA bị từ chối", PaymentHtml(
+                "Đơn thanh toán chưa được chấp nhận",
+                $"Đơn cho gói <strong>{WebUtility.HtmlEncode(planName)}</strong> có trạng thái: Từ chối.",
+                string.IsNullOrWhiteSpace(reason) ? "Vui lòng xem lại thông tin và thử lại." : $"Lý do: {WebUtility.HtmlEncode(reason)}",
+                pricingUrl, "Xem bảng giá"), null);
 
         public async Task SendInviteEmailAsync(
             string toEmail,
@@ -179,15 +199,19 @@ namespace TaskManagement.Infrastructure.Services
 
         private async Task SendResendEmailAsync(string toEmail, string subject, string html, string? text = null, System.Threading.CancellationToken cancellationToken = default)
         {
-            var apiKey = _configuration["Resend:ApiKey"]
-                ?? throw new InvalidOperationException("Resend API key is missing.");
-            var fromEmail = _configuration["Resend:FromEmail"] ?? "noreply@sprinta.io.vn";
+            var apiKey = _configuration["Resend:ApiKey"]?.Trim();
+            if (string.IsNullOrWhiteSpace(apiKey))
+                throw new InvalidOperationException("Resend API key is missing.");
+            var fromEmail = _configuration["Resend:FromEmail"]?.Trim();
+            if (string.IsNullOrWhiteSpace(fromEmail))
+                throw new InvalidOperationException("Resend:FromEmail is not configured.");
+            var replyTo = _configuration["Resend:ReplyTo"]?.Trim();
             var fromDisplay = $"SprintA <{fromEmail}>";
 
             var requestBody = new
             {
                 from = fromDisplay,
-                reply_to = "support@sprinta.io.vn",
+                reply_to = string.IsNullOrWhiteSpace(replyTo) ? null : replyTo,
                 to = new[] { toEmail },
                 subject,
                 html,
@@ -203,12 +227,17 @@ namespace TaskManagement.Infrastructure.Services
             var response = await _httpClient.PostAsync("https://api.resend.com/emails", content, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                Console.WriteLine($"Resend API error: {errorContent}");
-                throw new InvalidOperationException($"Cannot send email. Resend returned: {errorContent}");
+                throw new InvalidOperationException($"Resend returned HTTP {(int)response.StatusCode}.");
             }
-
-            Console.WriteLine($"Email sent to {toEmail}: {subject}");
         }
+
+        private static string PaymentHtml(string title, string summary, string details, string link, string linkText) => $@"
+            <div style='font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px;color:#172b4d'>
+              <div style='font-size:22px;font-weight:700;color:#0c66e4;margin-bottom:24px'>SprintA</div>
+              <h1 style='font-size:24px;margin:0 0 16px'>{title}</h1>
+              <p style='line-height:1.6'>{summary}</p>
+              <p style='line-height:1.7'>{details}</p>
+              <a href='{WebUtility.HtmlEncode(link)}' style='display:inline-block;background:#0c66e4;color:#fff;text-decoration:none;border-radius:6px;padding:12px 18px;font-weight:700'>{linkText}</a>
+            </div>";
     }
 }

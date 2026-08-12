@@ -86,7 +86,7 @@ internal sealed record FixtureOptions(
         }
 
         var expectedServer = Environment.GetEnvironmentVariable("DEV_SQL_SERVER")
-            ?? @"KHOI\SQLEXPRESS";
+            ?? "localhost";
         if (!string.Equals(
                 builder.DataSource.Trim(),
                 expectedServer,

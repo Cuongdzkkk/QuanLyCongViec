@@ -15,9 +15,7 @@ public sealed class GoogleAuthSqlServerTests
 {
     private const string Email = "google-concurrency@sprinta.test";
     private const string Subject = "GOOGLE_SUBJECT_CONCURRENT";
-    private const string ConnectionString =
-        "Server=(localdb)\\MSSQLLocalDB;Database=SprintAGoogleAuth01Integration;" +
-        "Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+    private static string ConnectionString => SqlServerTestConfiguration.ConnectionString("SprintAGoogleAuth01Integration");
 
     [Fact]
     [Trait("Category", "SqlServerIntegration")]

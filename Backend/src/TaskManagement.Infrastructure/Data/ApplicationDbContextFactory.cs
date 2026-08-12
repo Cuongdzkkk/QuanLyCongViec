@@ -11,8 +11,10 @@ namespace TaskManagement.Infrastructure.Data
             var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
             if (string.IsNullOrWhiteSpace(connectionString))
             {
-                var server = Environment.GetEnvironmentVariable("DEV_SQL_SERVER") ?? @"KHOI\SQLEXPRESS";
+                var server = Environment.GetEnvironmentVariable("DEV_SQL_SERVER");
                 var database = Environment.GetEnvironmentVariable("DEV_SQL_DATABASE") ?? "TaskManagementDB_V4";
+                if (string.IsNullOrWhiteSpace(server))
+                    throw new InvalidOperationException("Set ConnectionStrings__DefaultConnection or DEV_SQL_SERVER for design-time database operations.");
                 var connectionBuilder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder
                 {
                     DataSource = server,

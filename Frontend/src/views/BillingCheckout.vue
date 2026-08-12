@@ -48,10 +48,14 @@
               <QrCode :size="24" />
             </div>
             <div class="qr-frame">
-              <img v-if="hasQr" :src="qrImagePath" :alt="t('QR thanh toán SprintA', 'SprintA payment QR')" @error="hasQr = false" />
-              <div v-else class="qr-placeholder"><QrCode :size="38" /><span>{{ t('Chưa cấu hình QR thanh toán.', 'Payment QR is not configured.') }}</span></div>
+              <img v-if="qrReady" :src="qrUrl" :alt="t('QR thanh toán SprintA', 'SprintA payment QR')" @error="qrFailed = true" />
+              <div v-else class="qr-placeholder">
+                <QrCode :size="38" />
+                <strong>{{ activeOrder ? t('Không thể hiển thị QR', 'QR could not be displayed') : t('Tạo đơn để nhận QR theo đơn', 'Create an order to receive its QR') }}</strong>
+                <span>{{ activeOrder ? t('Vẫn dùng thông tin chuyển khoản bên cạnh để thanh toán.', 'Use the transfer details beside this panel to complete payment.') : t('Mã và số tiền sẽ được tạo chính xác cho đơn của bạn.', 'The exact amount and transfer code will be generated for your order.') }}</span>
+              </div>
             </div>
-            <p class="payment-note">{{ t('Chuyển đúng số tiền và ghi đúng mã thanh toán. Gói sẽ được kích hoạt sau khi quản trị viên xác nhận.', 'Transfer the exact amount with the correct payment code. Your plan is activated after administrator approval.') }}</p>
+            <p class="payment-note">{{ t('Số tiền và mã thanh toán đã được nhúng vào QR. Gói sẽ được kích hoạt sau khi quản trị viên xác nhận.', 'The amount and payment code are embedded in the QR. Your plan is activated after administrator approval.') }}</p>
           </section>
 
           <section class="order-card">
@@ -60,6 +64,9 @@
               <h2>{{ t('Thông tin chuyển khoản', 'Transfer details') }}</h2>
               <dl>
                 <div><dt>{{ t('Gói', 'Plan') }}</dt><dd>{{ activeOrder.planName || plan.name }}</dd></div>
+                <div v-if="paymentInstructions?.bankName"><dt>{{ t('Ngân hàng', 'Bank') }}</dt><dd>{{ paymentInstructions.bankName }}</dd></div>
+                <div v-if="paymentInstructions?.accountNo" class="transfer-row"><dt>{{ t('Số tài khoản', 'Account number') }}</dt><dd><code>{{ paymentInstructions.accountNo }}</code><button type="button" @click="copyAccount"><Copy :size="15" /></button></dd></div>
+                <div v-if="paymentInstructions?.accountName"><dt>{{ t('Chủ tài khoản', 'Account name') }}</dt><dd>{{ paymentInstructions.accountName }}</dd></div>
                 <div><dt>{{ t('Số tiền', 'Amount') }}</dt><dd>{{ priceLabel(activeOrder.amountVnd) }}</dd></div>
                 <div class="transfer-row"><dt>{{ t('Mã thanh toán', 'Payment code') }}</dt><dd><code>{{ activeOrder.transferCode }}</code><button type="button" @click="copyCode"><Copy :size="15" /></button></dd></div>
                 <div><dt>{{ t('Tạo lúc', 'Created') }}</dt><dd>{{ formatDate(activeOrder.createdAt) }}</dd></div>
@@ -105,14 +112,16 @@ const error = ref('')
 const plan = ref(null)
 const billing = ref(null)
 const orders = ref([])
-const hasQr = ref(true)
-const qrImagePath = '/payment/sprinta-vietinbank-qr.png'
+const qrFailed = ref(false)
 const isVi = computed(() => language.value === 'vi')
 const t = (vi, en) => isVi.value ? vi : en
 const planCode = computed(() => String(route.params.planCode || '').toLowerCase())
 const isFree = computed(() => planCode.value === 'free' || Number(plan.value?.monthlyPriceVnd) === 0)
 const isEnterprise = computed(() => planCode.value === 'enterprise' || plan.value?.monthlyPriceVnd == null)
 const activeOrder = computed(() => orders.value.find(order => order.planCode === planCode.value && order.status === 'Pending'))
+const paymentInstructions = computed(() => activeOrder.value?.paymentInstructions || null)
+const qrUrl = computed(() => paymentInstructions.value?.qrUrl || '')
+const qrReady = computed(() => Boolean(activeOrder.value && paymentInstructions.value?.configured && qrUrl.value && !qrFailed.value))
 
 const loadData = async () => {
   loading.value = true
@@ -125,6 +134,7 @@ const loadData = async () => {
     plan.value = plans.find(item => String(item.id || item.code).toLowerCase() === planCode.value) || null
     billing.value = unwrapBillingData(billingResponse)
     orders.value = unwrapBillingData(ordersResponse) || []
+    qrFailed.value = false
     if (!plan.value) error.value = t('Gói dịch vụ không tồn tại hoặc chưa được công khai.', 'This plan does not exist or is not published.')
   } catch (requestError) {
     error.value = requestError.response?.data?.message || t('Vui lòng thử lại sau.', 'Please try again later.')
@@ -139,6 +149,7 @@ const createOrder = async () => {
     const response = await billingApi.createOrder(planCode.value)
     const order = unwrapBillingData(response)
     orders.value = [order, ...orders.value.filter(item => item.id !== order.id)]
+    qrFailed.value = false
     ElMessage.success(response.data?.message || t('Đã tạo đơn thanh toán.', 'Payment order created.'))
   } catch (requestError) {
     ElMessage.error(requestError.response?.data?.message || t('Không thể tạo đơn.', 'Could not create order.'))
@@ -161,8 +172,14 @@ const activateFree = async () => {
 }
 
 const copyCode = async () => {
-  await navigator.clipboard.writeText(activeOrder.value.transferCode)
-  ElMessage.success(t('Đã sao chép mã thanh toán.', 'Payment code copied.'))
+  await copyValue(activeOrder.value.transferCode, t('Đã sao chép mã thanh toán.', 'Payment code copied.'))
+}
+const copyAccount = async () => {
+  if (paymentInstructions.value?.accountNo) await copyValue(paymentInstructions.value.accountNo, t('Đã sao chép số tài khoản.', 'Account number copied.'))
+}
+const copyValue = async (value, message) => {
+  await navigator.clipboard.writeText(value)
+  ElMessage.success(message)
 }
 const priceLabel = (amount) => amount == null ? t('Liên hệ', 'Contact') : `${new Intl.NumberFormat(isVi.value ? 'vi-VN' : 'en-US').format(amount)} VND`
 const formatDate = (value) => value ? new Intl.DateTimeFormat(isVi.value ? 'vi-VN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '-'
@@ -184,7 +201,7 @@ onMounted(loadData)
 .payment-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(340px, .95fr); gap: 24px; margin-top: 28px; }
 .payment-card, .order-card, .free-panel, .state-panel { border: 1px solid var(--color-border, #dfe4ec); border-radius: 14px; background: var(--color-surface, #fff); padding: 26px; }
 .section-title { display: flex; align-items: center; justify-content: space-between; color: var(--color-primary, #3563e9); }.section-title h2 { color: var(--color-text-primary, #172033); font-size: 20px; }
-.qr-frame { width: min(310px, 100%); aspect-ratio: 1; margin: 24px auto; border: 1px solid var(--color-border, #dfe4ec); border-radius: 12px; padding: 12px; display: grid; place-items: center; background: #fff; }.qr-frame img { width: 100%; height: 100%; object-fit: contain; }.qr-placeholder { color: #667085; display: grid; place-items: center; gap: 12px; text-align: center; }
+.qr-frame { width: min(310px, 100%); aspect-ratio: 1; margin: 24px auto; border: 1px solid var(--color-border, #dfe4ec); border-radius: 12px; padding: 12px; display: grid; place-items: center; background: #fff; }.qr-frame img { width: 100%; height: 100%; object-fit: contain; }.qr-placeholder { color: #667085; display: grid; place-items: center; gap: 12px; padding: 18px; text-align: center; }.qr-placeholder strong { color: var(--color-text-primary, #172033); }
 .payment-note, .order-card > p, .pending-copy { color: var(--color-text-muted, #667085); line-height: 1.65; }.payment-note { margin: 0; font-size: 14px; }
 .order-card h2 { margin: 18px 0 12px; font-size: 22px; }.status-badge { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 999px; color: #875a00; background: #fff5d6; font-size: 12px; font-weight: 750; }.status-badge.paid { color: #12613d; background: #dcf8e9; }
 dl { margin: 22px 0; }dl > div { display: flex; justify-content: space-between; gap: 20px; padding: 12px 0; border-bottom: 1px solid var(--color-border, #dfe4ec); }dt { color: var(--color-text-muted, #667085); }dd { margin: 0; font-weight: 700; text-align: right; }.transfer-row dd { display: flex; align-items: center; gap: 8px; }.transfer-row code { color: var(--color-primary, #3563e9); font-size: 15px; }.transfer-row button { border: 0; background: transparent; color: var(--color-primary, #3563e9); cursor: pointer; }
