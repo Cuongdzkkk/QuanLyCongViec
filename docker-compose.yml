@@ -33,7 +33,8 @@ services:
       ZenMux__ApiKey: "${ZENMUX_API_KEY}"
       ZenMux__Model: "deepseek/deepseek-v4-flash"
       ZenMux__TimeoutSeconds: "60"
-
+      Resend__ApiKey: "${RESEND_API_KEY}"
+      Resend__FromEmail: "${RESEND_FROM_EMAIL}"
     depends_on:
       - db
     volumes:
