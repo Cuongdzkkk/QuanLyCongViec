@@ -1,10 +1,18 @@
 <template>
   <section class="manage-spaces-page">
-    <header class="page-header">
-      <div>
+    <header class="page-header app-shell-page-header">
+      <div class="app-shell-title-wrap">
         <span class="eyebrow">WORKSPACE</span>
         <h1>{{ t('Projects') }}</h1>
-        <p>{{ t('Quản lý và theo dõi danh sách tất cả các dự án trong workspace của bạn.', 'Manage and track all projects in your workspace.') }}</p>
+        <div class="app-shell-header-help">
+          <span class="app-shell-header-help-btn" aria-label="About Projects">
+            <i class="fa-solid fa-question"></i>
+          </span>
+          <div class="app-shell-header-help-popover" role="tooltip">
+            <span>WORKSPACE</span>
+            <p>{{ t('Quản lý và theo dõi danh sách tất cả các dự án trong workspace của bạn.', 'Manage and track all projects in your workspace.') }}</p>
+          </div>
+        </div>
       </div>
 
       <button class="primary-action" type="button" @click="isCreateModalVisible = true">
@@ -63,7 +71,7 @@
       </div>
       <div v-else>
         <div v-if="viewMode === 'grid'" class="spaces-grid">
-          <div class="project-card" v-for="(space, index) in filteredSpaces" :key="space.id" @click="goToSpace(space.id)">
+          <div class="project-card" v-for="(space, index) in filteredSpaces" :key="space.id" @click="goToSpace(space)">
             <!-- Cover Image Mock -->
             <div class="card-cover" :style="{ background: projectCover(space) }">
                <div class="card-actions-top" @click.stop>
@@ -107,13 +115,20 @@
               </p>
 
               <div class="card-footer" @click.stop>
-                 <span class="visibility-pill" :class="space.networkType?.toLowerCase()">
-                   <i :class="space.networkType === 'Private' ? 'fa-solid fa-lock' : 'fa-solid fa-globe'"></i>
-                   {{ space.networkType || 'Public' }}
-                 </span>
-                 <span style="font-size: 11px; color: var(--color-text-muted); margin-left: auto; margin-right: 8px;">
-                   Created: {{ new Date(space.originalRow?.createdAt || space.originalRow?.createdDate || Date.now()).toLocaleDateString() }}
-                 </span>
+                 <div class="project-meta-row">
+                   <span class="project-meta-item visibility-pill" :class="getSpaceVisibilityLabel(space).toLowerCase()">
+                     <i :class="getSpaceVisibilityLabel(space) === 'Private' ? 'fa-solid fa-lock' : 'fa-solid fa-globe'"></i>
+                     {{ getSpaceVisibilityLabel(space) }}
+                   </span>
+                   <span class="project-meta-item date-meta">
+                     <i class="fa-regular fa-calendar"></i>
+                     {{ formatSpaceCreatedDate(space) }}
+                   </span>
+                   <span class="project-meta-item member-meta">
+                     <i class="fa-solid fa-users"></i>
+                     {{ getSpaceMemberCountLabel(space) }}
+                   </span>
+                 </div>
                  <el-dropdown trigger="click" v-if="showProjectSettingsButton(space)" @click.stop>
                    <button class="card-icon-btn" type="button"><i class="fa-solid fa-ellipsis"></i></button>
                    <template #dropdown>
@@ -142,7 +157,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(space, index) in filteredSpaces" :key="'table-' + space.id" @click="goToSpace(space.id)" style="border-bottom: 1px solid var(--color-border); cursor: pointer; transition: background 0.2s;" class="table-row-hover">
+              <tr v-for="(space, index) in filteredSpaces" :key="'table-' + space.id" @click="goToSpace(space)" style="border-bottom: 1px solid var(--color-border); cursor: pointer; transition: background 0.2s;" class="table-row-hover">
                 <td style="padding: 12px 16px;" @click.stop>
                   <button class="card-icon-btn transparent-btn" type="button" :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, space.id)" :class="{ starred: space.starred }" :aria-pressed="space.starred" :aria-label="space.starred ? 'Bỏ gắn sao không gian' : 'Gắn sao không gian'" @click="toggleStar(space)">
                     <i :class="space.starred ? 'fa-solid fa-star' : 'fa-regular fa-star'" :style="{ color: space.starred ? '#EAB308' : '' }"></i>
@@ -198,7 +213,7 @@
       </div>
     </main>
 
-    <CreateSpaceModal v-model:visible="isCreateModalVisible" @created="fetchSpaces" />
+    <CreateSpaceModal v-model:visible="isCreateModalVisible" @created="handleProjectCreated" />
     <ProjectAppearanceDialog
       v-model:visible="isAppearanceModalVisible"
       :project="selectedAppearanceProject"
@@ -223,6 +238,7 @@ import { subscribeAdminRealtime } from '@/utils/adminRealtime'
 import { getProjectSettingsWindowName, openNamedAppWindow, PROJECT_ADMIN_WINDOW_NAME } from '@/utils/windowTabs'
 import { useI18n } from '@/composables/useI18n'
 import { translateDemoText } from '@/utils/demoContentLocale'
+import { buildSpacePath } from '@/utils/spaceRoute'
 import { getProjectBackgroundStyle } from '@/config/projectAppearance'
 
 const router = useRouter()
@@ -274,7 +290,7 @@ const goToAdmin = (space) => {
     ElMessage.warning(getProjectSettingsDeniedMessage())
     return
   }
-  const routeData = router.resolve(`/space/${space.id}/settings`)
+  const routeData = router.resolve(buildSpacePath(space, 'settings'))
   openNamedAppWindow(routeData.href, getProjectSettingsWindowName(space.id))
 }
 
@@ -294,7 +310,7 @@ const toggleSort = () => {
 }
 
 const copySpaceLink = async (space) => {
-  const url = `${window.location.origin}/space/${space.id}`
+  const url = `${window.location.origin}${buildSpacePath(space, 'work-items')}`
   try {
     await navigator.clipboard.writeText(url)
     ElMessage.success('Project link copied')
@@ -324,7 +340,104 @@ const coverGradients = [
 
 const emojiList = ['👇', '🚀', '⚡', '💡', '🔥', '🎯']
 
-const fetchSpaces = async () => {
+const getSpaceCreatedValue = (space) =>
+  space?.originalRow?.createdAt ||
+  space?.originalRow?.CreatedAt ||
+  space?.originalRow?.createdDate ||
+  space?.originalRow?.CreatedDate ||
+  space?.createdAt ||
+  space?.CreatedAt ||
+  null
+
+const formatSpaceCreatedDate = (space) => {
+  const value = getSpaceCreatedValue(space)
+  if (!value) return '--'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '--'
+
+  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+const getSpaceVisibilityLabel = (space) => {
+  const value = `${space?.networkType || ''}`.trim().toLowerCase()
+  return value === 'private' || value === 'privated' ? 'Private' : 'Public'
+}
+
+const getSpaceMemberCount = (space) => {
+  const row = space?.originalRow || {}
+  const directValue =
+    space?.memberCount ??
+    space?.MemberCount ??
+    space?.activeMemberCount ??
+    space?.ActiveMemberCount ??
+    row.memberCount ??
+    row.MemberCount ??
+    row.activeMemberCount ??
+    row.ActiveMemberCount ??
+    row.totalMembers ??
+    row.TotalMembers
+
+  if (Number.isFinite(Number(directValue))) {
+    return Number(directValue)
+  }
+
+  const members = space?.members || space?.Members || row.members || row.Members
+  return Array.isArray(members) ? members.length : 0
+}
+
+const getSpaceMemberCountLabel = (space) => {
+  const count = Number(getSpaceMemberCount(space))
+  if (!Number.isFinite(count)) return '-- members'
+  return `${count} members`
+}
+
+const mapProjectToSpace = (p) => {
+  const id = p.id || p.Id || p.projectId || p.ProjectId
+  const name = p.name || p.Name || ''
+
+  return {
+    id,
+    starred: starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, id),
+    name,
+    key: p.key || p.Key || p.identifier || p.Identifier || name.substring(0, 4).toUpperCase() || 'PRJ',
+    myRole: p.myRole || p.MyRole || null,
+    projectRole: p.projectRole || p.ProjectRole || null,
+    leadName: p.leadName || p.LeadName || p.reporterName || p.ReporterName || p.creatorName || p.CreatorName || 'Admin',
+    cover: p.cover || p.Cover,
+    icon: p.icon || p.Icon,
+    networkType: p.networkType || p.NetworkType || 'Public',
+    memberCount: p.memberCount ?? p.MemberCount ?? p.activeMemberCount ?? p.ActiveMemberCount ?? p.totalMembers ?? p.TotalMembers ?? (Array.isArray(p.members || p.Members) ? (p.members || p.Members).length : 0),
+    createdAt: p.createdAt || p.CreatedAt || p.createdDate || p.CreatedDate || null,
+    originalRow: p
+  }
+}
+
+const upsertSpace = (project) => {
+  const mapped = mapProjectToSpace(project)
+  if (!mapped.id) return
+
+  const existingIndex = spaces.value.findIndex(space => `${space.id}` === `${mapped.id}`)
+  if (existingIndex >= 0) {
+    spaces.value.splice(existingIndex, 1, { ...spaces.value[existingIndex], ...mapped })
+  } else {
+    spaces.value.unshift(mapped)
+  }
+}
+
+const handleProjectCreated = async (createdProject) => {
+  if (createdProject) {
+    const mappedProject = projectStore.applyProjectUpdate?.(createdProject) || createdProject
+    upsertSpace(mappedProject)
+    await router.push(buildSpacePath(mappedProject, 'work-items'))
+    return
+  }
+
+  await fetchSpaces({ preserveExisting: true })
+}
+
+const fetchSpaces = async (options = {}) => {
+  const previousSpaces = options.preserveExisting ? [...spaces.value] : []
   loading.value = true
   try {
     const [, data] = await Promise.all([
@@ -332,20 +445,14 @@ const fetchSpaces = async () => {
       projectStore.fetchAllProjects(true)
     ])
 
-    // Transform data
-    spaces.value = data.map(p => ({
-      id: p.id,
-      starred: starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, p.id),
-      name: p.name,
-      key: p.key || p.identifier || p.name.substring(0, 4).toUpperCase(),
-      myRole: p.myRole || p.MyRole || null,
-      projectRole: p.projectRole || p.ProjectRole || null,
-      leadName: p.leadName || p.reporterName || 'Admin',
-      cover: p.cover || p.Cover,
-      icon: p.icon || p.Icon,
-      networkType: p.networkType || 'Public',
-      originalRow: p
-    }))
+    const nextSpaces = data.map(mapProjectToSpace).filter(space => space.id)
+    spaces.value = options.preserveExisting
+      ? [...previousSpaces, ...nextSpaces].reduce((items, space) => {
+          if (!space.id || items.some(item => `${item.id}` === `${space.id}`)) return items
+          items.push(space)
+          return items
+        }, [])
+      : nextSpaces
   } catch (error) {
     console.error('Fetch spaces error:', error)
   } finally {
@@ -398,8 +505,8 @@ const filteredSpaces = computed(() => {
     })
 })
 
-const goToSpace = (id) => {
-  router.push(`/space/${id}/dashboard`)
+const goToSpace = (space) => {
+  router.push(buildSpacePath(space, 'work-items'))
 }
 
 const filterLabel = computed(() => ({
@@ -527,10 +634,10 @@ const filterLabel = computed(() => ({
 
 .page-header {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-  padding: 22px var(--sa-page-x, 24px) 18px;
+  padding: var(--app-shell-header-top, 18px) var(--app-shell-page-x, 18px) var(--app-shell-header-bottom, 18px);
   background: var(--color-surface);
   border-bottom: none !important;
   margin-bottom: 0 !important;
@@ -545,12 +652,18 @@ const filterLabel = computed(() => ({
 }
 
 .page-header h1 {
-  margin: 3px 0 4px;
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: 0;
-  color: var(--color-text-primary);
+  margin: 0 !important;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-size: 26px !important;
+  font-weight: 900 !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0 !important;
+  color: var(--color-text-primary) !important;
+}
+
+.page-header .app-shell-title-wrap > .eyebrow,
+.page-header .app-shell-title-wrap > p {
+  display: none !important;
 }
 
 .page-header p {
@@ -579,27 +692,44 @@ const filterLabel = computed(() => ({
 }
 
 .toolbar {
-  min-height: 54px;
+  position: relative;
+  z-index: 5;
+  min-height: 42px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 10px var(--sa-page-x, 24px);
-  background: var(--color-surface);
-  border-bottom: none !important;
-  margin-bottom: 0 !important;
+  padding: 8px !important;
+  margin: 0 var(--sa-page-x, 24px) 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 86%, transparent), color-mix(in srgb, var(--color-surface-hover) 46%, transparent));
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  border-radius: 12px;
+  box-shadow: 0 10px 24px color-mix(in srgb, #020617 6%, transparent);
   flex-wrap: wrap;
 }
 
 .search-field {
-  width: min(320px, 100%);
+  position: relative;
+  width: min(260px, 30vw);
+  min-height: 34px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 11px;
-  border: 1px solid var(--color-border);
-  border-radius: 7px;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
   color: var(--color-text-muted);
-  background: var(--color-bg);
+  background: transparent;
+  box-shadow: none;
+}
+
+.search-field > i {
+  position: absolute;
+  left: 12px;
+  z-index: 1;
+  color: var(--color-text-muted);
+  font-size: 14px;
 }
 
 .search-field input {
@@ -607,29 +737,46 @@ const filterLabel = computed(() => ({
   height: 34px;
   border: 0;
   outline: 0;
-  background: transparent;
+  padding-left: 36px;
+  padding-right: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
   color: var(--color-text-primary);
-  font-size: 12px;
+  font-size: 13.5px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-field input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
 }
 
 .view-toggles {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-hover);
 }
 
 .toolbar button {
+  height: 34px;
   min-height: 34px;
   border: 1px solid var(--color-border);
-  border-radius: 7px;
-  padding: 0 11px;
+  border-radius: 9px;
+  padding: 0 12px;
   background: var(--color-surface);
   color: var(--color-text-secondary);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   transition: all 0.15s ease;
 }
 
@@ -639,15 +786,71 @@ const filterLabel = computed(() => ({
 }
 
 .toolbar button.active {
-  border-color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
   color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.toolbar,
+.toolbar .search-field input,
+.toolbar button,
+.toolbar .view-toggles {
+  overflow: hidden;
+}
+
+.toolbar {
+  border-radius: 12px !important;
+}
+
+.toolbar .search-field input,
+.toolbar button {
+  border-radius: 9px !important;
+}
+
+.toolbar .view-toggles {
+  border-radius: 8px !important;
 }
 
 .toolbar > span {
   margin-left: auto;
   color: var(--color-text-muted);
   font-size: 11px;
+}
+
+.toolbar .search-field {
+  order: 1;
+  flex: 0 0 min(326px, 34vw);
+  width: min(326px, 34vw) !important;
+}
+
+.toolbar .project-filter-wrapper {
+  order: 2;
+}
+
+.toolbar > button {
+  order: 3;
+}
+
+.toolbar .view-toggles {
+  order: 4;
+}
+
+.toolbar > span {
+  order: 5;
+}
+
+.search-field > i {
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.search-field input[type="search"] {
+  box-sizing: border-box !important;
+  padding: 0 12px 0 36px !important;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .project-filter-wrapper { position: relative; }
@@ -690,14 +893,18 @@ const filterLabel = computed(() => ({
 }
 .clear-filter-btn:hover { background: var(--color-border); }
 
-.page-content {
-  padding: 18px var(--sa-page-x, 24px) 28px;
+.manage-spaces-page .page-content {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 18px !important;
+  box-sizing: border-box !important;
 }
 
 .projects-scroll-panel {
   min-height: 0;
   overflow-y: auto;
-  padding: 2px 8px 24px 2px;
+  padding: 18px !important;
   scrollbar-width: thin;
   scrollbar-color: #3f3f46 transparent;
 }
@@ -713,23 +920,33 @@ const filterLabel = computed(() => ({
 
 .spaces-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
+  width: 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
   align-items: stretch;
+  justify-items: stretch;
+}
+
+@media (max-width: 1280px) {
+  .spaces-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 /* Card */
 .project-card {
+  width: 100%;
+  max-width: none;
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 18px;
+  border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   flex-direction: column;
-  min-height: 300px;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  min-height: 228px;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.07);
 }
 .project-card:hover {
   border-color: rgba(14, 165, 233, 0.42);
@@ -738,11 +955,11 @@ const filterLabel = computed(() => ({
 }
 
 .card-cover {
-  height: 128px;
+  height: 76px;
   position: relative;
   display: flex;
   justify-content: flex-end;
-  padding: 12px;
+  padding: 10px;
 }
 
 .card-actions-top {
@@ -795,7 +1012,7 @@ const filterLabel = computed(() => ({
 .card-icon-btn.transparent-btn { background: transparent; border-color: transparent; color: var(--color-text-muted); }
 
 .card-body {
-  padding: 0 20px 20px 20px;
+  padding: 0 14px 14px;
   position: relative;
   flex: 1;
   display: flex;
@@ -821,17 +1038,17 @@ const filterLabel = computed(() => ({
 }
 
 .floating-project-avatar {
-  width: 52px !important;
-  min-width: 52px !important;
-  max-width: 52px !important;
-  height: 52px !important;
-  min-height: 52px !important;
-  max-height: 52px !important;
-  flex-basis: 52px !important;
-  padding: 12px !important;
-  font-size: 24px !important;
-  margin-top: -22px;
-  margin-bottom: 12px;
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  max-height: 42px !important;
+  flex-basis: 42px !important;
+  padding: 9px !important;
+  font-size: 18px !important;
+  margin-top: -18px;
+  margin-bottom: 9px;
   border: 2px solid #ffffff;
   color: #ffffff !important;
   box-shadow: 0 9px 22px rgba(15, 23, 42, 0.2);
@@ -845,12 +1062,12 @@ const filterLabel = computed(() => ({
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 .proj-title-row h3 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 900;
+  font-size: 14px;
+  font-weight: 800;
   color: #0f172a;
 }
 .proj-key {
@@ -861,10 +1078,10 @@ const filterLabel = computed(() => ({
 }
 
 .proj-desc {
-  font-size: 13px;
+  font-size: 12px;
   color: #64748b;
   line-height: 1.5;
-  margin: 0 0 20px 0;
+  margin: 0 0 14px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -877,28 +1094,76 @@ const filterLabel = computed(() => ({
   display: flex;
   justify-content: flex-start;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-top: auto;
+  min-width: 0;
+}
+
+.project-meta-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 5px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.project-meta-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  min-height: 20px;
+  padding: 4px 5px;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: color-mix(in srgb, var(--color-surface-hover, #f4f5f7) 72%, transparent);
+  color: var(--color-text-muted, #6b778c);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+}
+
+.project-meta-item i {
+  flex: 0 0 auto;
+  color: var(--color-accent);
+  font-size: 10px;
+}
+
+.member-meta {
+  color: #2563eb;
+  border-color: rgba(37, 99, 235, 0.18);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.date-meta {
+  color: #64748b;
+  border-color: rgba(14, 165, 233, 0.18);
+  background: rgba(14, 165, 233, 0.08);
 }
 
 .visibility-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 24px;
-  padding: 0 8px;
-  border-radius: 6px;
-  background: var(--color-surface-hover);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
-  font-size: 11px;
-  font-weight: 600;
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.1);
+  border-color: rgba(20, 184, 166, 0.22);
 }
 
 .visibility-pill.private {
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border-color: rgba(239, 68, 68, 0.2);
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.1);
+  border-color: rgba(124, 58, 237, 0.22);
+}
+
+.member-meta i,
+.date-meta i,
+.visibility-pill i {
+  color: currentColor;
 }
 
 .avatar-group {
@@ -920,17 +1185,31 @@ const filterLabel = computed(() => ({
 
 .card-footer .card-icon-btn {
   background: transparent;
-  border: none;
+  border: 0 !important;
   font-size: 14px;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
   margin-left: auto;
+  box-shadow: none;
+  backdrop-filter: none;
+  color: var(--color-text-muted);
 }
-.card-footer .card-icon-btn:hover { background: var(--color-border); }
+.card-footer .card-icon-btn:hover {
+  background: transparent;
+  color: var(--color-text-primary);
+  box-shadow: none;
+}
 
 .loading-state, .empty-state { text-align: center; margin-top: 60px; color: var(--color-text-muted); }
 .empty-icon { font-size: 48px; color: #3F3F46; margin-bottom: 16px; }
 .empty-state p { margin-bottom: 24px; }
 
 @media (max-width: 900px) {
+  .spaces-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .manage-spaces-page {
     padding: 0 !important;
   }
@@ -948,6 +1227,12 @@ const filterLabel = computed(() => ({
   .search-box input,
   .search-box input:focus {
     width: 180px;
+  }
+}
+
+@media (max-width: 640px) {
+  .spaces-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -990,6 +1275,36 @@ const filterLabel = computed(() => ({
 
 [data-theme='dark'] .proj-desc {
   color: #94a3b8;
+}
+
+[data-theme='dark'] .project-meta-item {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(30, 41, 59, 0.72);
+  color: #cbd5e1;
+}
+
+[data-theme='dark'] .member-meta {
+  color: #5eead4;
+  border-color: rgba(45, 212, 191, 0.24);
+  background: rgba(20, 83, 75, 0.42);
+}
+
+[data-theme='dark'] .date-meta {
+  color: #c4b5fd;
+  border-color: rgba(167, 139, 250, 0.22);
+  background: rgba(67, 56, 202, 0.24);
+}
+
+[data-theme='dark'] .visibility-pill {
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.24);
+  background: rgba(30, 64, 175, 0.28);
+}
+
+[data-theme='dark'] .visibility-pill.private {
+  color: #fcd34d;
+  border-color: rgba(251, 191, 36, 0.22);
+  background: rgba(146, 64, 14, 0.28);
 }
 
 .switch-trigger-btn {
@@ -1056,13 +1371,17 @@ const filterLabel = computed(() => ({
 }
 
 .projects-grid {
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)) !important;
+  width: 100% !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)) !important;
   gap: 14px !important;
+  justify-items: stretch !important;
 }
 
 .project-card {
-  min-height: 250px !important;
-  border-radius: 10px !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 228px !important;
+  border-radius: 8px !important;
 }
 
 .project-cover {
@@ -1080,7 +1399,7 @@ const filterLabel = computed(() => ({
 }
 
 .proj-title-row h3 {
-  font-size: 15px !important;
+  font-size: 14px !important;
   line-height: 1.25 !important;
 }
 

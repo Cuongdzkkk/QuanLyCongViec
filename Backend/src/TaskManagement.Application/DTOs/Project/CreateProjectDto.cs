@@ -17,6 +17,8 @@ namespace TaskManagement.Application.DTOs.Project
 
         public DateTime? EndDate { get; set; }
 
+        public Guid? WorkspaceId { get; set; }
+
         public Guid? DepartmentId { get; set; }
 
         public Guid? ProjectTemplateId { get; set; }

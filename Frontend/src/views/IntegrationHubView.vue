@@ -1,15 +1,23 @@
 <template>
   <section class="integration-page">
-    <header class="page-header">
-      <div class="hero-copy">
+    <header class="page-header app-shell-page-header">
+      <div class="hero-copy app-shell-title-wrap">
         <span class="eyebrow">INTEGRATION HUB</span>
         <h1>{{ t('Trung tâm tích hợp công việc', 'Work Integration Hub') }}</h1>
-        <p class="hero-subtitle">
-          {{ t(
-            'Kết nối Google Calendar thật để đưa cuộc họp, deadline và lịch sprint vào một inbox công việc có thể tạo task ngay.',
-            'Connect real Google Calendar events into a work inbox that can turn signals into tasks.'
-          ) }}
-        </p>
+        <div class="app-shell-header-help">
+          <span class="app-shell-header-help-btn" aria-label="About Integration Hub">
+            <i class="fa-solid fa-question"></i>
+          </span>
+          <div class="app-shell-header-help-popover" role="tooltip">
+            <span>INTEGRATION HUB</span>
+            <p>
+              {{ t(
+                'Kết nối Google Calendar thật để đưa cuộc họp, deadline và lịch sprint vào một inbox công việc có thể tạo task ngay.',
+                'Connect real Google Calendar events into a work inbox that can turn signals into tasks.'
+              ) }}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div class="hero-action-card" :class="{ connected: connectedProviders.length > 0 }">
@@ -1220,7 +1228,11 @@ onUnmounted(() => {
 }
 
 .page-content {
-  padding: 18px var(--sa-page-x, 24px) 28px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 18px;
+  box-sizing: border-box;
 }
 
 .hero-copy {
@@ -1443,8 +1455,9 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: stretch;
-  max-width: 1420px;
-  margin: 0 auto 10px;
+  width: 100%;
+  max-width: none;
+  margin: 0 0 10px;
   gap: 10px;
 }
 
@@ -1479,9 +1492,10 @@ button:disabled {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(280px, .32fr) minmax(0, .68fr);
-  max-width: 1420px;
-  margin: 0 auto;
+  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+  width: 100%;
+  max-width: none;
+  margin: 0;
   align-items: start;
   gap: 10px;
 }
@@ -1505,7 +1519,8 @@ button:disabled {
 }
 
 .inbox-panel {
-  flex: 1;
+  width: 100%;
+  justify-self: stretch;
 }
 
 .panel-head {

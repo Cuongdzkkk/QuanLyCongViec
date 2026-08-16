@@ -10,7 +10,7 @@
               <button class="primary-btn" @click="openCreateTeamModal">
                 {{ t('homeSite.teams.startTeam') }}
               </button>
-              <router-link to="/home/teams/list" class="secondary-btn">
+              <router-link :to="`${teamsBasePath}/list`" class="secondary-btn">
                 {{ t('homeSite.teams.browseTeams') }}
               </router-link>
             </div>
@@ -24,38 +24,50 @@
       </div>
 
       <div v-else class="teams-sections">
-        <section class="dashboard-section">
-          <div class="section-header" style="margin-bottom: 24px;">
-            <h2 style="font-size: 16px; margin-bottom: 16px; color: #172B4D; font-weight: 500;">
+        <section class="dashboard-section teams-content-panel">
+          <div class="section-header">
+            <h2>
               {{ t('homeSite.teams.yourTeams') }}
             </h2>
 
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div class="search-box" style="position: relative; width: 300px;">
-                <i class="fa-solid fa-magnifying-glass search-icon" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #6B778C; z-index: 1;"></i>
-                <input
-                  v-model="teamSearch"
-                  type="text"
-                  :placeholder="t('homeSite.teams.searchTeams')"
-                  class="search-input"
-                  style="width: 100%; padding: 8px 12px 8px 36px !important; border: 1px solid #DFE1E6; border-radius: 3px; outline: none; font-size: 14px; color: #172B4D; height: 36px; transition: border-color 0.2s;"
-                />
-              </div>
-
-              <div class="view-toggle">
-                <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" :title="t('homeSite.teams.gridView')">
-                  <i class="fa-solid fa-table-cells-large"></i>
-                </button>
-                <button class="toggle-btn" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'" :title="t('homeSite.teams.tableView')">
-                  <i class="fa-solid fa-list"></i>
-                </button>
-              </div>
-            </div>
+            <ProjectPageToolbar
+              v-model:searchQuery="teamSearch"
+              show-search
+              :search-placeholder="t('homeSite.teams.searchTeams')"
+            >
+              <template #filters>
+                <ToolbarFilterMenu
+                  label="Filters"
+                  :clear-label="t('common.clear') || 'Clear'"
+                  :clear-all-label="t('common.clear') || 'Clear all'"
+                  empty-label="No filters applied"
+                  :count="activeFilterCount"
+                  :active-items="activeFilterItems"
+                  @clear="clearFilters"
+                  @remove="removeFilter"
+                >
+                  <template #default="{ search }">
+                    <DropdownFilter v-if="matchesFilterSearch(t('homeSite.teams.teamType'), search)" :label="t('homeSite.teams.teamType')" :options="teamTypeOptions" v-model="filters.type" :searchable="false" />
+                    <DropdownFilter v-if="matchesFilterSearch(t('homeSite.teams.manager'), search)" :label="t('homeSite.teams.manager')" :options="managerOptions" v-model="filters.manager" :searchable="false" />
+                  </template>
+                </ToolbarFilterMenu>
+              </template>
+              <template #toggles>
+                <div class="view-toggles">
+                  <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" :title="t('homeSite.teams.gridView')">
+                    <i class="fa-solid fa-table-cells-large"></i>
+                  </button>
+                  <button class="toggle-btn" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'" :title="t('homeSite.teams.tableView')">
+                    <i class="fa-solid fa-list"></i>
+                  </button>
+                </div>
+              </template>
+            </ProjectPageToolbar>
           </div>
 
           <div class="team-cards-grid" v-if="viewMode === 'grid'">
             <div class="team-card" v-for="team in filteredTeams" :key="team.id" @click="goToTeam(team.id)">
-              <div class="team-card-cover" :style="{ backgroundColor: '#0052cc' }"></div>
+              <div class="team-card-cover"></div>
               <div class="team-card-content">
                 <div class="team-avatar">{{ team.avatarText }}</div>
                 <h3 class="team-name">{{ team.name }}</h3>
@@ -177,7 +189,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useTeamStore } from '@/store/useTeamStore'
 import { usePeopleStore } from '@/store/usePeopleStore'
 import { getStoredUser } from '@/utils/permissions'
@@ -185,11 +197,16 @@ import { getAvatarColor, getInitials } from '@/utils/avatarHelper'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useI18nStore } from '@/store/useI18nStore'
 import { AppModal, AppFormField } from '@/components/common/Foundation'
+import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ToolbarFilterMenu from '@/components/common/ToolbarFilterMenu.vue'
+import DropdownFilter from '@/components/common/DropdownFilter.vue'
 
 const TEAM_TYPE_OFFICIAL = 'Đội ngũ chính thức'
 const TEAM_TYPE_GROUP = 'Nhóm'
 
 const router = useRouter()
+const route = useRoute()
+const teamsBasePath = computed(() => route.path.startsWith('/teams') ? '/teams' : '/home/teams')
 const teamStore = useTeamStore()
 const peopleStore = usePeopleStore()
 const i18nStore = useI18nStore()
@@ -202,6 +219,10 @@ const memberSearchQuery = ref('')
 const isMemberDropdownOpen = ref(false)
 const memberInputRef = ref(null)
 const viewMode = ref('grid')
+const filters = ref({
+  type: '',
+  manager: ''
+})
 
 const noManagerLabel = computed(() => t('homeSite.teams.noManager'))
 
@@ -265,10 +286,45 @@ const teams = computed(() => teamStore.allTeams.map(team => {
   }
 }))
 
+const teamTypeOptions = computed(() => Array.from(new Set(teams.value.map(team => team.typeLabel).filter(Boolean))).sort())
+const managerOptions = computed(() => Array.from(new Set(
+  teams.value
+    .map(team => team.managerName)
+    .filter(name => name && name !== noManagerLabel.value)
+)).sort())
+const activeFilterCount = computed(() => Object.values(filters.value).filter(Boolean).length)
+const activeFilterItems = computed(() => [
+  filters.value.type ? { key: 'type', label: t('homeSite.teams.teamType'), icon: 'fa-solid fa-layer-group', value: filters.value.type } : null,
+  filters.value.manager ? { key: 'manager', label: t('homeSite.teams.manager'), icon: 'fa-regular fa-user', value: filters.value.manager } : null
+].filter(Boolean))
+const matchesFilterSearch = (label, search) => !search || String(label || '').toLowerCase().includes(search)
+
+const clearFilters = () => {
+  filters.value = {
+    type: '',
+    manager: ''
+  }
+}
+
+const removeFilter = (key) => {
+  if (Object.prototype.hasOwnProperty.call(filters.value, key)) {
+    filters.value[key] = ''
+  }
+}
+
 const filteredTeams = computed(() => {
   const query = teamSearch.value.trim().toLowerCase()
-  if (!query) return teams.value
-  return teams.value.filter(team => `${team.name} ${team.typeLabel} ${team.managerName}`.toLowerCase().includes(query))
+  let list = teams.value
+  if (query) {
+    list = list.filter(team => `${team.name} ${team.typeLabel} ${team.managerName}`.toLowerCase().includes(query))
+  }
+  if (filters.value.type) {
+    list = list.filter(team => team.typeLabel === filters.value.type)
+  }
+  if (filters.value.manager) {
+    list = list.filter(team => team.managerName === filters.value.manager)
+  }
+  return list
 })
 
 onMounted(() => {
@@ -283,7 +339,7 @@ onUnmounted(() => {
 })
 
 const goToTeam = (id) => {
-  router.push(`/home/teams/${id}`)
+  router.push(`${teamsBasePath.value}/${id}`)
 }
 
 const openCreateTeamModal = () => {
@@ -318,7 +374,7 @@ const submitCreateTeam = async () => {
       members: newTeamData.members
     })
     isCreateModalOpen.value = false
-    router.push(`/home/teams/${createdTeam.id}`)
+    router.push(`${teamsBasePath.value}/${createdTeam.id}`)
   } catch (err) {
     console.error(err)
   } finally {
@@ -335,6 +391,17 @@ const submitCreateTeam = async () => {
 .dashboard-content {
   display: flex;
   flex-direction: column;
+  background: transparent !important;
+}
+
+.teams-sections,
+.dashboard-section,
+.teams-content-panel {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
 }
 
 .empty-state-banner {
@@ -444,23 +511,29 @@ const submitCreateTeam = async () => {
   flex-direction: column;
 }
 
+.section-header {
+  margin: 0 0 16px;
+}
+
 .section-header h2 {
-  font-size: 20px;
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.25;
   color: #172B4D;
-  margin: 0 0 16px 0;
+  margin: 0;
 }
 
 .team-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 24px;
+  margin-top: 30px;
 }
 
 .team-card {
   background-color: #FFFFFF;
   border: 1px solid #DFE1E6;
-  border-radius: 3px;
+  border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
   transition: box-shadow 0.2s, transform 0.2s;
@@ -475,6 +548,26 @@ const submitCreateTeam = async () => {
 
 .team-card-cover {
   height: 64px;
+  background: #ffffff !important;
+  border-bottom: 1px solid #EEF2F6;
+}
+
+@media (max-width: 1280px) {
+  .team-cards-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .team-cards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .team-cards-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .team-card-content {
@@ -774,6 +867,7 @@ const submitCreateTeam = async () => {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
+  margin-top: 30px;
 }
 
 .jira-table th {

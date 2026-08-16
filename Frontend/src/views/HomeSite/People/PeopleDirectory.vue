@@ -1,6 +1,7 @@
 <template>
   <AppPageLayout fluid>
     <template #header>
+      <template v-if="!isEmbeddedInTeams">
       <AppPageHeader title="Mọi người">
         <template #actions>
           <button class="primary-btn" @click="openInviteModal">Mời mọi người</button>
@@ -13,26 +14,55 @@
         <router-link to="/home/teams/kudos" class="tab-link" active-class="active">Khen ngợi</router-link>
         <router-link to="/home/people" class="tab-link" active-class="active">Mọi người</router-link>
       </div>
+      </template>
     </template>
 
-    <div class="module-content">
-      <AppToolbar>
-        <template #search>
-          <AppSearchInput v-model="searchQuery" placeholder="Tìm kiếm người" />
-        </template>
-        <template #filters>
-          <DropdownFilter label="Dự án" :options="projectOptions" v-model="filters.projectId" />
-          <DropdownFilter label="Mục tiêu" :options="goalOptions" v-model="filters.goalId" />
-          <DropdownFilter label="Nhóm" :options="teamOptions" v-model="filters.teamId" />
-          <DropdownFilter label="Người quản lý" :options="managerOptions" v-model="filters.managerId" />
-          <DropdownFilter label="Chức danh" :options="jobTitleOptions" v-model="filters.jobTitle" />
-          <DropdownFilter label="Phòng ban" :options="departmentOptions" v-model="filters.department" />
-          <DropdownFilter label="Vị trí" :options="locationOptions" v-model="filters.location" />
-          <button v-if="hasActiveFilters" class="filter-chip" @click="clearFilters">Xóa lọc</button>
-        </template>
-      </AppToolbar>
+    <div class="module-content" :class="{ 'embedded-module-content': isEmbeddedInTeams }">
+      <section :class="{ 'teams-content-panel': isEmbeddedInTeams }">
+        <div v-if="isEmbeddedInTeams" class="section-header">
+          <h2>Mọi người</h2>
+        </div>
 
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; margin-top: 24px;">
+      <ProjectPageToolbar
+        v-model:searchQuery="searchQuery"
+        show-search
+        search-placeholder="Tìm kiếm người"
+      >
+        <template #filters>
+          <ToolbarFilterMenu
+            label="Filters"
+            clear-label="Xóa lọc"
+            clear-all-label="Xóa tất cả"
+            empty-label="Chưa áp dụng filter"
+            :count="activeFilterCount"
+            :active-items="activeFilterItems"
+            @clear="clearFilters"
+            @remove="removeFilter"
+          >
+            <template #default="{ search }">
+              <DropdownFilter v-if="matchesFilterSearch('Dự án', search)" label="Dự án" :options="projectOptions" v-model="filters.projectId" :searchable="false" />
+              <DropdownFilter v-if="matchesFilterSearch('Mục tiêu', search)" label="Mục tiêu" :options="goalOptions" v-model="filters.goalId" :searchable="false" />
+              <DropdownFilter v-if="matchesFilterSearch('Nhóm', search)" label="Nhóm" :options="teamOptions" v-model="filters.teamId" :searchable="false" />
+              <DropdownFilter v-if="matchesFilterSearch('Người quản lý', search)" label="Người quản lý" :options="managerOptions" v-model="filters.managerId" :searchable="false" />
+              <DropdownFilter v-if="matchesFilterSearch('Chức danh', search)" label="Chức danh" :options="jobTitleOptions" v-model="filters.jobTitle" :searchable="false" />
+              <DropdownFilter v-if="matchesFilterSearch('Phòng ban', search)" label="Phòng ban" :options="departmentOptions" v-model="filters.department" :searchable="false" />
+              <DropdownFilter v-if="matchesFilterSearch('Vị trí', search)" label="Vị trí" :options="locationOptions" v-model="filters.location" :searchable="false" />
+            </template>
+          </ToolbarFilterMenu>
+        </template>
+        <template #toggles>
+          <div class="view-toggles">
+            <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" title="Chế độ lưới">
+              <i class="fa-solid fa-table-cells-large"></i>
+            </button>
+            <button class="toggle-btn" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'" title="Chế độ danh sách">
+              <i class="fa-solid fa-list"></i>
+            </button>
+          </div>
+        </template>
+      </ProjectPageToolbar>
+
+      <div v-if="false" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; margin-top: 24px;">
         <div style="font-size: 14px; font-weight: 600; color: #172B4D;">{{ filteredUsers.length }} người</div>
         
         <div class="view-toggle" style="display: flex; border: 1px solid #DFE1E6; border-radius: 3px; overflow: hidden; height: 32px;">
@@ -46,8 +76,8 @@
 
       <div class="table-container" v-if="!isLoading">
         <!-- Grid View -->
-        <div v-if="viewMode === 'grid' && filteredUsers.length > 0" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">
-          <div class="people-card" v-for="user in filteredUsers" :key="user.id" @click="goToProfile(user.id)" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 16px; text-align: center; cursor: pointer; transition: background 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; align-items: center;" onmouseover="this.style.boxShadow='0 4px 8px rgba(9, 30, 66, 0.15)'" onmouseout="this.style.boxShadow='none'">
+        <div v-if="viewMode === 'grid' && filteredUsers.length > 0" class="people-cards-grid">
+          <div class="people-card" v-for="user in filteredUsers" :key="user.id" @click="goToProfile(user.id)" onmouseover="this.style.boxShadow='0 4px 8px rgba(9, 30, 66, 0.15)'" onmouseout="this.style.boxShadow='none'">
             <AppAvatar :src="user.avatarUrl" :name="user.fullName" :email="user.email" size="lg" style="margin-bottom: 12px;" />
             <div style="font-size: 14px; font-weight: 500; color: #172B4D; margin-bottom: 4px;">{{ user.fullName }}</div>
             <div v-if="user.email && user.email.includes('@')" style="font-size: 12px; color: #6B778C;">{{ user.email }}</div>
@@ -98,26 +128,27 @@
       </div>
       
       <div class="error-state" v-if="error">
-        <p style="color: #DE350B; text-align: center; margin-top: 24px;">Đã xảy ra lỗi khi tải danh sách người dùng. Vui lòng thử lại.</p>
+        <p style="color: #DE350B; text-align: center; margin-top: 24px;">ÄĂ£ xáº£y ra lá»—i khi táº£i danh sĂ¡ch ngÆ°á»i dĂ¹ng. Vui lĂ²ng thá»­ láº¡i.</p>
       </div>
+      </section>
     </div>
 
     <!-- Invite Modal -->
     <AppModal
       v-model="isInviteModalOpen"
-      title="Mời mọi người tham gia SprintA"
+      title="Má»i má»i ngÆ°á»i tham gia SprintA"
       width="500px"
-      :confirmText="isSending ? 'Đang gửi...' : 'Gửi lời mời'"
-      cancelText="Hủy"
+      :confirmText="isSending ? 'Äang gá»­i...' : 'Gá»­i lá»i má»i'"
+      cancelText="Há»§y"
       :loading="isSending"
       @confirm="sendInvites"
       @cancel="closeInviteModal"
     >
       <p class="invite-description" style="margin: 0 0 16px 0; font-size: 14px; color: #42526E; line-height: 1.5;">
-        Mời thành viên mới vào Không gian làm việc của bạn qua email. Họ sẽ nhận được một email chứa liên kết để tham gia.
+        Má»i thĂ nh viĂªn má»›i vĂ o KhĂ´ng gian lĂ m viá»‡c cá»§a báº¡n qua email. Há» sáº½ nháº­n Ä‘Æ°á»£c má»™t email chá»©a liĂªn káº¿t Ä‘á»ƒ tham gia.
       </p>
       
-      <AppFormField label="Địa chỉ email" helpText="Nhập email và nhấn Enter hoặc Dấu phẩy để thêm nhiều người">
+      <AppFormField label="Äá»‹a chá»‰ email" helpText="Nháº­p email vĂ  nháº¥n Enter hoáº·c Dáº¥u pháº©y Ä‘á»ƒ thĂªm nhiá»u ngÆ°á»i">
         <div class="email-input-container" @click="focusEmailInput">
           <div class="email-chip" v-for="(email, index) in inviteEmails" :key="index">
             {{ email }}
@@ -126,7 +157,7 @@
           <input 
             type="text" 
             v-model="emailInput" 
-            placeholder="Ví dụ: name@example.com" 
+            placeholder="VĂ­ dá»¥: name@example.com" 
             @keydown.enter.prevent="addEmail"
             @keydown.space.prevent="addEmail"
             @keydown.comma.prevent="addEmail"
@@ -137,7 +168,7 @@
       </AppFormField>
       
       <div class="success-message" v-if="inviteSuccess" style="margin-top: 16px; padding: 12px 16px; background-color: #E3FCEF; color: #006644; border-radius: 3px; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500;">
-        <i class="fa-solid fa-circle-check"></i> Đã gửi lời mời thành công!
+        <i class="fa-solid fa-circle-check"></i> ÄĂ£ gá»­i lá»i má»i thĂ nh cĂ´ng!
       </div>
     </AppModal>
   </AppPageLayout>
@@ -145,17 +176,20 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { usePeopleStore } from '@/store/usePeopleStore'
 import { useGoalStore } from '@/store/useGoalStore'
 import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { useTeamStore } from '@/store/useTeamStore'
 import debounce from 'lodash/debounce'
 import DropdownFilter from '@/components/common/DropdownFilter.vue'
+import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ToolbarFilterMenu from '@/components/common/ToolbarFilterMenu.vue'
 import axiosClient from '@/api/axiosClient'
-import { AppPageLayout, AppPageHeader, AppToolbar, AppSearchInput, AppEmptyState, AppAvatar, AppUserChip, AppModal, AppFormField } from '@/components/common/Foundation'
+import { AppPageLayout, AppPageHeader, AppEmptyState, AppAvatar, AppUserChip, AppModal, AppFormField } from '@/components/common/Foundation'
 
 const router = useRouter()
+const route = useRoute()
 const peopleStore = usePeopleStore()
 const goalStore = useGoalStore()
 const projectStore = useHomeProjectStore()
@@ -172,6 +206,8 @@ const filters = ref({
   department: '',
   location: ''
 })
+
+const isEmbeddedInTeams = computed(() => route.path.includes('/teams/people'))
 
 // Invite Modal State
 const isInviteModalOpen = ref(false)
@@ -246,6 +282,39 @@ const cleanFilters = () => Object.fromEntries(
 )
 
 const hasActiveFilters = computed(() => Object.values(filters.value).some(Boolean))
+const activeFilterCount = computed(() => Object.values(filters.value).filter(Boolean).length)
+
+const filterMeta = computed(() => [
+  { key: 'projectId', label: 'Dự án', options: projectOptions.value, icon: 'fa-solid fa-diagram-project' },
+  { key: 'goalId', label: 'Mục tiêu', options: goalOptions.value, icon: 'fa-solid fa-bullseye' },
+  { key: 'teamId', label: 'Nhóm', options: teamOptions.value, icon: 'fa-solid fa-user-group' },
+  { key: 'managerId', label: 'Người quản lý', options: managerOptions.value, icon: 'fa-regular fa-user' },
+  { key: 'jobTitle', label: 'Chức danh', options: jobTitleOptions.value, icon: 'fa-solid fa-id-badge' },
+  { key: 'department', label: 'Phòng ban', options: departmentOptions.value, icon: 'fa-regular fa-building' },
+  { key: 'location', label: 'Vị trí', options: locationOptions.value, icon: 'fa-solid fa-location-dot' }
+])
+
+const getOptionLabel = (options, value) => {
+  const selected = (options || []).find((option) => {
+    const optionValue = typeof option === 'object' ? (option.value ?? option.id ?? option) : option
+    return optionValue === value
+  })
+  if (!selected) return value
+  return typeof selected === 'object'
+    ? String(selected.label || selected.name || selected.title || selected.fullName || selected.value || selected.id || value)
+    : String(selected)
+}
+
+const activeFilterItems = computed(() => filterMeta.value
+  .filter((item) => filters.value[item.key])
+  .map((item) => ({
+    key: item.key,
+    label: item.label,
+    icon: item.icon,
+    value: getOptionLabel(item.options, filters.value[item.key])
+  })))
+
+const matchesFilterSearch = (label, search) => !search || label.toLowerCase().includes(search)
 
 const fetchPeople = async () => {
   await peopleStore.fetchPeople(searchQuery.value, 1, 20, cleanFilters())
@@ -317,6 +386,12 @@ const clearFilters = () => {
     jobTitle: '',
     department: '',
     location: ''
+  }
+}
+
+const removeFilter = (key) => {
+  if (Object.prototype.hasOwnProperty.call(filters.value, key)) {
+    filters.value[key] = ''
   }
 }
 
@@ -405,6 +480,85 @@ const goToProfile = (id) => {
 .module-content {
   padding: 32px 40px 40px;
   flex: 1;
+}
+
+.embedded-module-content {
+  padding: 0 !important;
+  max-width: none !important;
+}
+
+.teams-content-panel {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.section-header h2 {
+  color: #172B4D;
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.section-header {
+  margin: 0 0 16px;
+}
+
+:deep(.sprinta-layout-surface),
+:deep(.sprinta-layout-fluid),
+:deep(.sprinta-layout-content) {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin-top: 0 !important;
+}
+
+.people-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 30px;
+}
+
+.people-card {
+  min-height: 156px;
+  border: 1px solid #DFE1E6;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #FFFFFF;
+}
+
+@media (max-width: 1280px) {
+  .people-cards-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .people-cards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .people-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.jira-table {
+  margin-top: 30px;
 }
 
 .list-controls {

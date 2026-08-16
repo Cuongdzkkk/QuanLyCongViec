@@ -21,6 +21,7 @@ export const useHomeProjectStore = defineStore('homeProject', {
     relatedProjects: [],
     history: [],
     updates: [],
+    workspaceId: null,
     isLoading: false,
     error: null,
     isEmpty: false,
@@ -76,11 +77,11 @@ export const useHomeProjectStore = defineStore('homeProject', {
     },
     getWorkspaceId() {
       const siteStore = useSiteStore()
-      return resolveWorkspaceIdFromState({ siteStore, project: this.currentProject })
+      return resolveWorkspaceIdFromState({ siteStore })
     },
     async ensureWorkspaceId() {
       const siteStore = useSiteStore()
-      return ensureWorkspaceIdFromState({ siteStore, project: this.currentProject })
+      return ensureWorkspaceIdFromState({ siteStore })
     },
     async fetchProjectTabs(projectId) {
       try {
@@ -123,8 +124,15 @@ export const useHomeProjectStore = defineStore('homeProject', {
       this.isEmpty = false
       this.isSuccess = false
       try {
+        const workspaceId = await this.ensureWorkspaceId()
+        if (this.workspaceId && workspaceId && `${this.workspaceId}` !== `${workspaceId}`) {
+          this.clearWorkspaceData(workspaceId)
+        }
+        this.workspaceId = workspaceId || null
         const response = await axiosClient.get('/projects')
-        this.projects = (response.data?.data || response.data || []).map(this.mapProjectFromApi)
+        this.projects = (response.data?.data || response.data || [])
+          .map(this.mapProjectFromApi)
+          .filter(project => !workspaceId || `${project.workspaceId || ''}` === `${workspaceId}`)
         this.isEmpty = this.projects.length === 0
         this.isSuccess = true
       } catch (err) {
@@ -133,6 +141,23 @@ export const useHomeProjectStore = defineStore('homeProject', {
       } finally {
         this.isLoading = false
       }
+    },
+    clearWorkspaceData(workspaceId = null) {
+      this.projects = []
+      this.currentProject = null
+      this.project = null
+      this.linkedGoals = []
+      this.linkedTasks = []
+      this.relatedProjects = []
+      this.history = []
+      this.updates = []
+      this.lessons = []
+      this.risks = []
+      this.decisions = []
+      this.workspaceId = workspaceId
+      this.isEmpty = false
+      this.isSuccess = false
+      this.error = null
     },
     mapProjectFromApi(data) {
       const ownerName = data.leadName || data.creatorName || data.owner || data.ownerName || ''
@@ -355,9 +380,15 @@ export const useHomeProjectStore = defineStore('homeProject', {
     async createProject(projectData) {
       this.isLoading = true
       try {
-        const response = await axiosClient.post('/projects', projectData)
+        const workspaceId = await this.ensureWorkspaceId()
+        const response = await axiosClient.post('/projects', {
+          ...projectData,
+          workspaceId: projectData.workspaceId || workspaceId
+        })
         const newProject = this.mapProjectFromApi(response.data?.data || response.data)
-        this.upsertProject(newProject)
+        if (!workspaceId || `${newProject.workspaceId || ''}` === `${workspaceId}`) {
+          this.upsertProject(newProject)
+        }
         return newProject
       } catch (err) {
         console.error('Failed to create project', err)

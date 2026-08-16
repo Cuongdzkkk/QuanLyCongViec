@@ -63,6 +63,11 @@ namespace TaskManagement.Infrastructure.Services
                 return new(false, FailureReason: "Project does not exist in an active workspace.");
             }
 
+            if (ProjectAccessPolicy.IsUnrestricted)
+            {
+                return new(true, "Admin", "Admin");
+            }
+
             var workspaceMembership = await _dbContext.WorkspaceMembers
                 .AsNoTracking()
                 .Where(member =>

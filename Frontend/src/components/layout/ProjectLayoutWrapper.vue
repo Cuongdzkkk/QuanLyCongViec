@@ -44,7 +44,7 @@
           <router-link 
             v-for="nav in projectNavLinks" 
             :key="nav.name"
-            :to="`/space/${projectId}/${nav.path}`"
+            :to="buildSpacePath(project || projectId, nav.path)"
             class="nav-item"
             active-class="nav-active"
           >
@@ -77,6 +77,8 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useI18n } from '@/composables/useI18n'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import { projectAccessRestrictionsEnabled } from '@/config/projectAccess'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const route = useRoute()
 const router = useRouter()
@@ -164,6 +166,14 @@ const fetchProjectWithTimeout = projectKey => {
   return Promise.race([request, timeout])
 }
 
+const redirectWorkspaceRouteToDashboard = async targetId => {
+  await projectStore.fetchAllProjects(true).catch(() => [])
+  const matchingProject = projectStore.sidebarProjects.find(item => item.id === targetId)
+  if (matchingProject) return false
+  await router.replace('/dashboard')
+  return true
+}
+
 const loadProject = async () => {
   const targetProjectId = String(projectId.value || '')
   if (!targetProjectId || !route.path.startsWith('/space/')) return
@@ -171,6 +181,17 @@ const loadProject = async () => {
   const requestId = accessRequestId.value + 1
   accessRequestId.value = requestId
   accessState.value = 'checking'
+
+  if (!projectAccessRestrictionsEnabled) {
+    lastDeniedProjectId.value = null
+    const loadedProject = await fetchProjectWithTimeout(targetProjectId)
+    if (!loadedProject) {
+      const redirected = await redirectWorkspaceRouteToDashboard(targetProjectId)
+      if (redirected) return
+    }
+    accessState.value = 'allowed'
+    return
+  }
 
   let members
   try {
@@ -209,7 +230,7 @@ watch(projectId, () => {
 const createTask = () => {
   window.dispatchEvent(new CustomEvent('open-create-task', { detail: { statusName: 'TO DO' } }))
   if (route.name !== 'SpaceSummary') {
-    router.push({ name: 'SpaceSummary', params: { id: projectId.value } })
+    router.push(buildSpacePath(project.value || projectId.value, 'work-items'))
   }
 }
 </script>

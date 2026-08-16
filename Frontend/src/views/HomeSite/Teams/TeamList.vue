@@ -1,14 +1,19 @@
 <template>
-  <AppPageLayout fluid>
-    <template #header>
-      <AppPageHeader title="Tất cả các đội ngũ" />
-    </template>
-    <AppToolbar>
+  <div class="team-list-page">
+    <section class="teams-content-panel">
+      <div class="section-header">
+        <h2>All teams</h2>
+      </div>
+
+    <ProjectPageToolbar
+      v-model:searchQuery="searchQuery"
+      show-search
+      search-placeholder="Tìm kiếm các đội ngũ"
+    >
       <template #search>
-        <AppSearchInput v-model="searchQuery" placeholder="Tìm kiếm các đội ngũ" />
       </template>
-      <template #views>
-        <div class="view-toggle">
+      <template #toggles>
+        <div class="view-toggles">
           <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" title="Chế độ lưới">
             <i class="fa-solid fa-table-cells-large"></i>
           </button>
@@ -17,12 +22,12 @@
           </button>
         </div>
       </template>
-    </AppToolbar>
+    </ProjectPageToolbar>
 
     <!-- Grid View -->
     <div v-if="viewMode === 'grid'" class="team-cards-grid">
       <div class="team-card" v-for="team in filteredTeams" :key="team.id" @click="goToTeam(team.id)">
-        <div class="team-card-cover" :style="{ backgroundColor: '#0052cc' }"></div>
+        <div class="team-card-cover"></div>
         <div class="team-card-content">
           <div class="team-avatar">{{ team.avatarText }}</div>
           <h3 class="team-name-card">{{ team.name }}</h3>
@@ -84,16 +89,20 @@
         </tr>
       </tbody>
     </table>
-  </AppPageLayout>
+    </section>
+  </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useTeamStore } from '@/store/useTeamStore'
-import { AppPageLayout, AppPageHeader, AppToolbar, AppSearchInput, AppEmptyState, AppUserChip } from '@/components/common/Foundation'
+import { AppEmptyState, AppUserChip } from '@/components/common/Foundation'
+import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
 
 const router = useRouter()
+const route = useRoute()
+const teamsBasePath = computed(() => route.path.startsWith('/teams') ? '/teams' : '/home/teams')
 const teamStore = useTeamStore()
 
 const searchQuery = ref('')
@@ -127,13 +136,37 @@ const filteredTeams = computed(() => {
 })
 
 const goToTeam = (id) => {
-  router.push(`/home/teams/${id}`)
+  router.push(`${teamsBasePath.value}/${id}`)
 }
 </script>
 
 <style scoped>
 .team-list-container {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.team-list-page {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.teams-content-panel {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.section-header h2 {
+  color: #172B4D;
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.section-header {
+  margin: 0 0 16px;
 }
 
 .list-controls {
@@ -208,14 +241,15 @@ const goToTeam = (id) => {
 /* Grid View Styles */
 .team-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 24px;
+  margin-top: 30px;
 }
 
 .team-card {
   background-color: #FFFFFF;
   border: 1px solid #DFE1E6;
-  border-radius: 3px;
+  border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
   transition: box-shadow 0.2s, transform 0.2s;
@@ -230,6 +264,26 @@ const goToTeam = (id) => {
 
 .team-card-cover {
   height: 64px;
+  background: #ffffff !important;
+  border-bottom: 1px solid #EEF2F6;
+}
+
+@media (max-width: 1280px) {
+  .team-cards-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .team-cards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .team-cards-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .team-card-content {
@@ -281,6 +335,7 @@ const goToTeam = (id) => {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
+  margin-top: 30px;
 }
 
 .jira-table th {

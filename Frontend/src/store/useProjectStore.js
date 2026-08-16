@@ -3,7 +3,11 @@ import axiosClient from '@/api/axiosClient'
 import { reportExpectedError } from '@/utils/errorTelemetry'
 import { clearScopedCurrentProjectId } from '@/utils/projectContext'
 import { useStarredStore } from '@/store/useStarredStore'
+import { useSiteStore } from '@/store/useSiteStore'
 import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
+import { projectAccessRestrictionsEnabled } from '@/config/projectAccess'
+import { isValidEntityId, resolveWorkspaceIdFromState } from '@/utils/contextIds'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const PROJECT_BUNDLE_CACHE_TTL_MS = 30000
 let allProjectsRequest = null
@@ -12,6 +16,12 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/a
 const apiOrigin = new URL(apiBaseUrl, window.location.origin).origin
 const resolveProjectId = (project) => project?.id || project?.Id || project?.projectId || project?.ProjectId || null
 const projectIdentityKey = (project) => resolveProjectId(project) || `${project?.key || project?.Key || ''}:${project?.name || project?.Name || ''}`
+const canShowProject = (project) => !projectAccessRestrictionsEnabled || project.isMember !== false
+const projectBelongsToWorkspace = (project, workspaceId) => {
+  if (!isValidEntityId(workspaceId)) return true
+  const projectWorkspaceId = project?.workspaceId || project?.WorkspaceId || project?.originalRow?.workspaceId || project?.originalRow?.WorkspaceId
+  return `${projectWorkspaceId || ''}` === `${workspaceId}`
+}
 
 const dedupeProjects = (projects = []) => {
   const seen = new Map()
@@ -70,48 +80,48 @@ const upsertProject = (projects = [], rawProject) => {
   return dedupeProjects(nextProjects)
 }
 
-const defaultProjectNodes = (projectId) => ([
+const defaultProjectNodes = (projectId, projectName = '') => ([
   {
     id: `${projectId}-dashboard`,
     key: 'dashboard',
     label: 'Dashboard',
-    route: `/space/${projectId}/dashboard`
+    route: buildSpacePath({ id: projectId, name: projectName }, 'work-items')
   },
   {
     id: `${projectId}-work-items`,
     key: 'work-items',
     label: 'Work items',
-    route: `/space/${projectId}/work-items`
+    route: buildSpacePath({ id: projectId, name: projectName }, 'work-items')
   },
   {
     id: `${projectId}-cycles`,
     key: 'cycles',
     label: 'Cycles',
-    route: `/space/${projectId}/cycles`
+    route: buildSpacePath({ id: projectId, name: projectName }, 'cycles')
   },
   {
     id: `${projectId}-modules`,
     key: 'modules',
     label: 'Modules',
-    route: `/space/${projectId}/modules`
+    route: buildSpacePath({ id: projectId, name: projectName }, 'modules')
   },
   {
     id: `${projectId}-reports`,
     key: 'reports',
     label: 'Reports',
-    route: `/space/${projectId}/reports`
+    route: buildSpacePath({ id: projectId, name: projectName }, 'reports')
   },
   {
     id: `${projectId}-views`,
     key: 'views',
     label: 'Views',
-    route: `/space/${projectId}/views`
+    route: buildSpacePath({ id: projectId, name: projectName }, 'views')
   },
   {
     id: `${projectId}-pages`,
     key: 'pages',
     label: 'Pages',
-    route: `/space/${projectId}/pages`
+    route: buildSpacePath({ id: projectId, name: projectName }, 'pages')
   }
 ])
 
@@ -137,7 +147,7 @@ const mapProjectRow = (project) => {
     createdAt: project.createdAt || project.CreatedAt || null,
     updatedAt: project.updatedAt || project.UpdatedAt || null,
     WorkspaceId: workspaceId,
-    children: defaultProjectNodes(projectId),
+    children: defaultProjectNodes(projectId, project.name || project.Name || ''),
     originalRow: project
   }
 }
@@ -161,19 +171,49 @@ export const useProjectStore = defineStore('project', {
     detailsRequestId: 0
   }),
   getters: {
-    sidebarProjects: (state) => dedupeProjects(state.allProjects).filter(project => project.isMember !== false),
+    activeWorkspaceId: () => resolveWorkspaceIdFromState({ siteStore: useSiteStore() }),
+    sidebarProjects: (state) => {
+      const workspaceId = resolveWorkspaceIdFromState({ siteStore: useSiteStore() })
+      return dedupeProjects(state.allProjects)
+        .filter(project => projectBelongsToWorkspace(project, workspaceId))
+        .filter(canShowProject)
+    },
     favoriteProjects: (state) => {
       const starredStore = useStarredStore()
-      return dedupeProjects(state.allProjects).filter(project =>
-        starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id)
-      )
+      const workspaceId = resolveWorkspaceIdFromState({ siteStore: useSiteStore() })
+      return dedupeProjects(state.allProjects)
+        .filter(project => projectBelongsToWorkspace(project, workspaceId))
+        .filter(project => starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, project.id))
     },
-    projectTree: (state) => dedupeProjects(state.allProjects).filter(project => project.isMember !== false).map(project => ({
-      ...project,
-      expanded: state.expandedProjectIds.includes(project.id)
-    }))
+    projectTree: (state) => {
+      const workspaceId = resolveWorkspaceIdFromState({ siteStore: useSiteStore() })
+      return dedupeProjects(state.allProjects)
+        .filter(project => projectBelongsToWorkspace(project, workspaceId))
+        .filter(canShowProject)
+        .map(project => ({
+          ...project,
+          expanded: state.expandedProjectIds.includes(project.id)
+        }))
+    }
   },
   actions: {
+    clearWorkspaceData() {
+      allProjectsRequest = null
+      this.currentProject = null
+      this.allProjects = []
+      this.expandedProjectIds = []
+      this.members = []
+      this.tags = []
+      this.taskStatusesByProjectId = {}
+      this.previewTasksByProjectId = {}
+      this.projectDetailsById = {}
+      this.membersByProjectId = {}
+      this.labelsByProjectId = {}
+      this.bundleFetchedAtByProject = {}
+      this.error = null
+      this.detailsAbortController?.abort()
+      this.detailsAbortController = null
+    },
     applyProjectUpdate(rawProject) {
       const mappedProject = mapProjectRow(rawProject)
       if (!mappedProject?.id) return null
@@ -230,7 +270,9 @@ export const useProjectStore = defineStore('project', {
       try {
         const response = await request;
         const rows = response.data?.data || response.data || [];
-        this.allProjects = dedupeProjects(rows.map(mapProjectRow));
+        const workspaceId = resolveWorkspaceIdFromState({ siteStore: useSiteStore() })
+        this.allProjects = dedupeProjects(rows.map(mapProjectRow))
+          .filter(project => projectBelongsToWorkspace(project, workspaceId));
         const currentId = resolveProjectId(this.currentProject)
         const currentAppearance = currentId
           ? this.allProjects.find(project => project.id === currentId)

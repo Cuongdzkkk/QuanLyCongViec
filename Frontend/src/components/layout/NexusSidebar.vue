@@ -89,6 +89,7 @@
         <li class="nav-item">
           <div
             class="nav-link workspace-project-link"
+            :class="{ active: $route.path === '/spaces' }"
             role="link"
             tabindex="0"
             @click="router.push('/spaces')"
@@ -108,6 +109,26 @@
               <i class="fa-solid fa-ellipsis"></i>
             </button>
           </div>
+        </li>
+        <li class="nav-item">
+          <router-link
+            to="/teams"
+            class="nav-link workspace-site-link"
+            :class="{ active: $route.path.startsWith('/teams') }"
+          >
+            <i class="fa-solid fa-users"></i>
+            <span>{{ t('Teams') }}</span>
+          </router-link>
+        </li>
+        <li class="nav-item">
+          <router-link
+            to="/goals"
+            class="nav-link workspace-site-link"
+            :class="{ active: $route.path.startsWith('/goals') }"
+          >
+            <i class="fa-solid fa-bullseye"></i>
+            <span>{{ t('Goals') }}</span>
+          </router-link>
         </li>
       </ul>
 
@@ -218,6 +239,8 @@ import RecentDropdown from '@/components/RecentDropdown.vue'
 import StarredDropdown from '@/components/StarredDropdown.vue'
 import StatusUpdateModal from '@/components/collaboration/StatusUpdateModal.vue'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import { projectAccessRestrictionsEnabled } from '@/config/projectAccess'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const route = useRoute()
 const router = useRouter()
@@ -371,10 +394,12 @@ const currentUserIsProjectMember = members => {
 
 const openProject = async projectId => {
   if (pendingProjectId.value) return
+  const targetProject = projectStore.allProjects.find(project => `${project.id}` === `${projectId}`) || projectId
+  const targetPath = buildSpacePath(targetProject, 'work-items')
 
   if (isProjectContext.value && `${currentProjectId.value}` === `${projectId}`) {
-    if (route.path !== `/space/${projectId}/work-items`) {
-      await router.push(`/space/${projectId}/work-items`)
+    if (route.path !== targetPath) {
+      await router.push(targetPath)
       return
     }
     projectStore.toggleProject(projectId)
@@ -383,19 +408,21 @@ const openProject = async projectId => {
 
   pendingProjectId.value = projectId
   try {
-    const response = await axiosClient.get(`/projects/${projectId}/members`, { timeout: 5000 })
-    const members = response.data?.data || []
-    if (!currentUserIsProjectMember(members)) {
-      ElMessage.closeAll()
-      ElMessage.error(t(
-        'You cannot access this project because you are not a member.',
-        'Bạn không thể truy cập dự án này vì bạn không có trong danh sách thành viên.'
-      ))
-      return
+    if (projectAccessRestrictionsEnabled) {
+      const response = await axiosClient.get(`/projects/${projectId}/members`, { timeout: 5000 })
+      const members = response.data?.data || []
+      if (!currentUserIsProjectMember(members)) {
+        ElMessage.closeAll()
+        ElMessage.error(t(
+          'You cannot access this project because you are not a member.',
+          'Bạn không thể truy cập dự án này vì bạn không có trong danh sách thành viên.'
+        ))
+        return
+      }
     }
 
     projectStore.toggleProject(projectId)
-    await router.push(`/space/${projectId}`)
+    await router.push(targetPath)
   } catch (error) {
     ElMessage.closeAll()
     ElMessage.error(error.response?.status === 403
@@ -427,8 +454,11 @@ const triggerCreateTask = async () => {
     ? currentProjectId.value
     : projects[0].id
 
-  if (route.path !== `/space/${preferredProjectId}`) {
-    await router.push(`/space/${preferredProjectId}`)
+  const preferredProject = projects.find(project => project.id === preferredProjectId) || preferredProjectId
+  const preferredPath = buildSpacePath(preferredProject, 'work-items')
+
+  if (route.path !== preferredPath) {
+    await router.push(preferredPath)
     await nextTick()
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent('global-create-task'))
@@ -605,6 +635,16 @@ const triggerCreateTask = async () => {
 
 .workspace-project-link {
   gap: 0;
+}
+
+.workspace-site-link {
+  min-height: 34px;
+  margin-left: 6px;
+  padding-left: 10px;
+}
+
+.workspace-site-link span {
+  font-weight: 650;
 }
 
 .workspace-project-label {

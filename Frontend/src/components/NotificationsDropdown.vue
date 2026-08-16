@@ -81,6 +81,7 @@ import { isExpectedNetworkError } from '@/utils/errorTelemetry'
 import { getStoredAccessToken } from '@/utils/authSession'
 import { useAuthStore } from '@/store/useAuthStore'
 import { collaborationRealtime } from '@/services/collaborationRealtime'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -144,11 +145,11 @@ const getTypeClass = (type) => {
 const normalizeLink = (notification) => {
   if (notification.linkUrl?.startsWith('/chat')) return notification.linkUrl
   if (notification.linkUrl?.startsWith('/space/')) return notification.linkUrl
-  if (notification.relatedProjectId && notification.relatedTaskId) return `/space/${notification.relatedProjectId}?task=${notification.relatedTaskId}`
-  if (notification.relatedProjectId) return `/space/${notification.relatedProjectId}`
+  if (notification.relatedProjectId && notification.relatedTaskId) return `${buildSpacePath(notification.relatedProjectId, 'work-items')}?task=${notification.relatedTaskId}`
+  if (notification.relatedProjectId) return buildSpacePath(notification.relatedProjectId, 'work-items')
   if (notification.linkUrl?.startsWith('/projects/')) {
     const parts = notification.linkUrl.split('/').filter(Boolean)
-    if (parts[1]) return `/space/${parts[1]}`
+    if (parts[1]) return buildSpacePath(parts[1], 'work-items')
   }
   return notification.linkUrl || null
 }

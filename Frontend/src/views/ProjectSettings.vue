@@ -682,6 +682,7 @@
                       <div class="compact-checkboxes">
                         <label class="compact-label"><input type="checkbox" :checked="isPermissionChecked(selectedMatrixRole, 'task.assign')" :disabled="!canEditPermissions || selectedMatrixRole === 'Owner'" @change="togglePermission(selectedMatrixRole, 'task.assign')" /> Giao việc</label>
                         <label class="compact-label"><input type="checkbox" :checked="isPermissionChecked(selectedMatrixRole, 'task.changeStatus')" :disabled="!canEditPermissions || selectedMatrixRole === 'Owner'" @change="togglePermission(selectedMatrixRole, 'task.changeStatus')" /> Trạng thái</label>
+                        <label class="compact-label"><input type="checkbox" :checked="isPermissionChecked(selectedMatrixRole, 'task.assigneeOnly')" :disabled="!canEditPermissions || selectedMatrixRole === 'Owner'" @change="togglePermission(selectedMatrixRole, 'task.assigneeOnly')" /> Assignee-only</label>
                       </div>
                     </td>
                   </tr>
@@ -1429,6 +1430,7 @@ import { hasProjectWritePermission } from '@/utils/permissions'
 import { getSprintApiError, getSprintErrorMessage, getSprintStateMeta, normalizeSprintState } from '@/utils/sprintState'
 import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const route = useRoute()
 const router = useRouter()
@@ -2015,7 +2017,7 @@ const loadProjectSettings = async () => {
     }
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Could not load project settings')
-    router.replace(`/space/${projectId}`)
+    router.replace(buildSpacePath(projectStore.currentProject || projectId, 'work-items'))
   } finally {
     loading.value = false
   }
@@ -3050,15 +3052,15 @@ const deleteCustomField = async (field) => {
 }
 
 const goBack = () => {
-  router.push(`/space/${projectId}`)
+  router.push(buildSpacePath(projectStore.currentProject || projectId, 'work-items'))
 }
 
 const goToModulesWorkspace = () => {
-  router.push(`/space/${projectId}/modules`)
+  router.push(buildSpacePath(projectStore.currentProject || projectId, 'modules'))
 }
 
 const goToCyclesWorkspace = () => {
-  router.push(`/space/${projectId}/cycles`)
+  router.push(buildSpacePath(projectStore.currentProject || projectId, 'cycles'))
 }
 
 let unsubscribeAdminRealtime = null

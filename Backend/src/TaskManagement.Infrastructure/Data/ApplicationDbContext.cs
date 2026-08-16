@@ -99,6 +99,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<Intake> Intakes { get; set; }
         public DbSet<Page> Pages { get; set; }
         public DbSet<StickyNote> StickyNotes { get; set; }
+        public DbSet<DailyCheckin> DailyCheckins { get; set; }
         public DbSet<TaskDraft> TaskDrafts { get; set; }
         public DbSet<ProjectView> ProjectViews { get; set; }
         public DbSet<TaskSubscriber> TaskSubscribers { get; set; }
@@ -230,6 +231,23 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<TaskContingencyPlan>().HasIndex(plan => new { plan.WorkTaskId, plan.Status });
             modelBuilder.Entity<TaskContingencyPlan>().HasIndex(plan => plan.SupportPersonId);
             modelBuilder.Entity<ProjectMember>().HasIndex(pm => pm.UserId);
+            modelBuilder.Entity<DailyCheckin>(entity =>
+            {
+                entity.Property(item => item.Yesterday).HasMaxLength(4000).IsRequired();
+                entity.Property(item => item.Today).HasMaxLength(4000).IsRequired();
+                entity.Property(item => item.Blocker).HasMaxLength(1000).IsRequired();
+                entity.HasIndex(item => new { item.ProjectId, item.CheckinDate });
+                entity.HasIndex(item => new { item.UserId, item.CheckinDate });
+                entity.HasIndex(item => new { item.ProjectId, item.UserId, item.CheckinDate }).IsUnique();
+                entity.HasOne(item => item.Project)
+                    .WithMany()
+                    .HasForeignKey(item => item.ProjectId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(item => item.User)
+                    .WithMany()
+                    .HasForeignKey(item => item.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
             modelBuilder.Entity<TaskDraft>().HasIndex(td => new { td.UserId, td.UpdatedAt });
             modelBuilder.Entity<TaskDraft>().HasIndex(td => new { td.UserId, td.ProjectId, td.UpdatedAt });
             modelBuilder.Entity<AiConversation>().HasIndex(conversation => new { conversation.UserId, conversation.WorkspaceId, conversation.UpdatedAt });

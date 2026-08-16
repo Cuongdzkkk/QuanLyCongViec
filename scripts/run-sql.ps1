@@ -1,6 +1,6 @@
 param(
-    [string]$Server = $(if ($env:DEV_SQL_SERVER) { $env:DEV_SQL_SERVER } else { "KHOI\SQLEXPRESS" }),
-    [string]$Database = $(if ($env:DEV_SQL_DATABASE) { $env:DEV_SQL_DATABASE } else { "TaskManagementDB" }),
+    [string]$Server = $(if ($env:DEV_SQL_SERVER) { $env:DEV_SQL_SERVER } else { ".\SQL2022" }),
+    [string]$Database = $(if ($env:DEV_SQL_DATABASE) { $env:DEV_SQL_DATABASE } else { "TaskManagementDB_V4" }),
     [string]$InputFile = "",
     [string]$Query = ""
 )
@@ -16,7 +16,13 @@ Add-Type -AssemblyName System.Data
 # Build connection string matching appsettings.json
 $connectionString = "Data Source=$Server;Initial Catalog=$Database;Integrated Security=SSPI;TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True;Connection Timeout=300"
 $connection = New-Object System.Data.SqlClient.SqlConnection($connectionString)
-$connection.Open()
+try {
+    $connection.Open()
+}
+catch {
+    Write-Error "Khong ket noi duoc SQL Server '$Server' database '$Database'. Hay start dung SQL instance hoac set DEV_SQL_SERVER. Chi tiet: $($_.Exception.Message)"
+    exit 1
+}
 
 try {
     $sql = $Query

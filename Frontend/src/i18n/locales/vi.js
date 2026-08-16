@@ -225,7 +225,7 @@ export default {
       browseTeams: 'Duyệt xem các đội ngũ',
       forYou: 'Dành cho bạn',
       allTeams: 'Tất cả các đội ngũ',
-      kudos: 'Khen ngợi',
+      kudos: 'Praise',
       everyone: 'Mọi người',
       searchTeams: 'Tìm kiếm các đội ngũ',
       gridView: 'Chế độ lưới',

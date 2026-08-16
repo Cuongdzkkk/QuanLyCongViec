@@ -23,7 +23,7 @@
       :description="t('reports.noTasksPlaceholderDesc')"
     >
       <template #action>
-        <button class="nexus-btn-primary" @click="router.push('/space/' + projectId + '/work-items')">
+        <button class="nexus-btn-primary" @click="router.push(buildSpacePath(projectId, 'work-items'))">
           <i class="fa-solid fa-plus"></i> {{ t('reports.createWorkItem') }}
         </button>
       </template>
@@ -145,7 +145,7 @@
                 <i class="fa-solid fa-fire text-orange-500"></i> {{ t('reports.suggestedForToday', 'Suggested for today') }}
               </h3>
               <router-link
-                :to="{ name: 'SpaceSummary', params: { id: projectId } }"
+                :to="buildSpacePath(projectId, 'work-items')"
                 class="panel-link"
               >
                 {{ t('reports.viewAllTasks') === 'reports.viewAllTasks' ? 'View all' : t('reports.viewAllTasks') }} <i class="fa-solid fa-arrow-right"></i>
@@ -744,6 +744,7 @@ import { useSprintStore } from '@/store/useSprintStore'
 import { getStoredUser } from '@/utils/permissions'
 import axiosClient from '@/api/axiosClient'
 import { ElMessage } from 'element-plus'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -1204,8 +1205,7 @@ const formatDate = (value) => {
 
 const navigateToTask = (taskId) => {
   router.push({
-    name: 'SpaceSummary',
-    params: { id: projectId.value },
+    path: buildSpacePath(projectId.value, 'work-items'),
     query: { task: taskId }
   })
 }

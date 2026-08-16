@@ -60,7 +60,7 @@
       </aside>
 
       <!-- Main Content Area -->
-      <main class="main-content">
+      <main class="main-content" :class="{ 'teams-main-content': isModule('teams') }">
         <slot>
           <router-view></router-view>
         </slot>
@@ -425,5 +425,9 @@ const goToSiteSelection = () => {
   overflow-y: auto;
   background-color: #FAFBFC;
   position: relative;
+}
+
+.main-content.teams-main-content {
+  background-color: #ffffff;
 }
 </style>

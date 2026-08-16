@@ -55,6 +55,13 @@ namespace TaskManagement.API.Filters
                 return;
             }
 
+            if (ProjectAccessPolicy.IsUnrestricted)
+            {
+                context.HttpContext.Items["ProjectRole"] = "Admin";
+                await next();
+                return;
+            }
+
             var permissionCode = ResourcePermissionPolicy.IsKnownPermission(_authorizationRule)
                 ? _authorizationRule
                 : ResourcePermissionCodes.ProjectRead;

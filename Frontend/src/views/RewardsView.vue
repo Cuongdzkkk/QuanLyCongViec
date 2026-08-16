@@ -1,10 +1,18 @@
 <template>
   <section class="rewards-page">
-    <header class="page-header">
-      <div>
+    <header class="page-header app-shell-page-header">
+      <div class="app-shell-title-wrap">
         <span class="eyebrow">GAMIFICATION & REWARDS</span>
         <h1>{{ t('rewards.title') }}</h1>
-        <p>Theo dõi thành tích, điểm thưởng và thăng tiến cấp độ của bạn trong hệ thống.</p>
+        <div class="app-shell-header-help">
+          <span class="app-shell-header-help-btn" aria-label="About Rewards">
+            <i class="fa-solid fa-question"></i>
+          </span>
+          <div class="app-shell-header-help-popover" role="tooltip">
+            <span>GAMIFICATION & REWARDS</span>
+            <p>Theo dõi thành tích, điểm thưởng và thăng tiến cấp độ của bạn trong hệ thống.</p>
+          </div>
+        </div>
       </div>
       <button class="refresh-btn" type="button" :disabled="loading" @click="loadRewards">
         <i class="fa-solid fa-rotate" :class="{ 'fa-spin': loading }"></i> {{ loading ? t('rewards.refreshing') : t('rewards.refresh') }}
@@ -2196,7 +2204,5 @@ time {
 }
 
 </style>
-
-
 
 

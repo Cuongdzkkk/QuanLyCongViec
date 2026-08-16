@@ -1,10 +1,18 @@
-<template>
+﻿<template>
   <section class="checkin-page">
-    <header class="page-header">
-      <div>
+    <header class="page-header app-shell-page-header">
+      <div class="app-shell-title-wrap">
         <span class="eyebrow">DAILY CHECK-IN</span>
         <h1>{{ t('checkin.title') }}</h1>
-        <p>{{ t('checkin.subtitle') }}</p>
+        <div class="app-shell-header-help">
+          <span class="app-shell-header-help-btn" aria-label="About Daily Check-in">
+            <i class="fa-solid fa-question"></i>
+          </span>
+          <div class="app-shell-header-help-popover" role="tooltip">
+            <span>DAILY CHECK-IN</span>
+            <p>{{ t('checkin.subtitle') }}</p>
+          </div>
+        </div>
       </div>
 
       <!-- Quick Action: Submit Checkin -->
@@ -15,29 +23,25 @@
       </div>
       <div v-else>
         <el-tag type="success" size="large" class="flex items-center gap-2 font-semibold">
-          <i class="fa-solid fa-circle-check" style="margin-right: 5px;"></i>Đã Check-in hôm nay
+          <i class="fa-solid fa-circle-check" style="margin-right: 5px;"></i>ÄĂ£ Check-in hĂ´m nay
         </el-tag>
       </div>
     </header>
 
     <div class="page-content">
-      <!-- Project Selector ComboBox -->
-    <div 
-      class="project-selector-wrapper"
-      @mouseenter="handleMouseEnter"
-    >
-      <span class="project-selector-label">
-        <i class="fa-solid fa-folder-open"></i>
-        <span>Dự án đang xem:</span>
-      </span>
+      <!-- Check-in filters -->
+    <div class="project-selector-wrapper">
       <el-select
         ref="projectSelectRef"
         v-model="activeProjectId"
-        placeholder="Chọn dự án..."
+        placeholder="Filter dự án"
         @change="selectProject"
         class="custom-project-select"
         popper-class="custom-project-dropdown"
       >
+        <template #prefix>
+          <i class="fa-solid fa-filter"></i>
+        </template>
         <el-option
           v-for="p in projectsList"
           :key="p.id"
@@ -45,9 +49,23 @@
           :value="p.id"
         />
       </el-select>
+
+      <label class="checkin-search-field">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input v-model="checkinSearch" type="search" placeholder="Tìm thành viên, vai trò, nội dung..." />
+      </label>
+
+      <div class="checkin-filter-group" aria-label="Check-in filters">
+        <button type="button" :class="{ active: checkinStatusFilter === 'all' }" @click="checkinStatusFilter = 'all'">All</button>
+        <button type="button" :class="{ active: checkinStatusFilter === 'checked' }" @click="checkinStatusFilter = 'checked'">&#272;&#227; l&#224;m</button>
+        <button type="button" :class="{ active: checkinStatusFilter === 'missing' }" @click="checkinStatusFilter = 'missing'">Ch&#432;a l&#224;m</button>
+        <button type="button" :class="{ active: checkinStatusFilter === 'blocker' }" @click="checkinStatusFilter = 'blocker'">Blocker</button>
+      </div>
+
+      <span class="checkin-filter-count">{{ filteredTeamCheckins.length }}/{{ teamCheckins.length }}</span>
     </div>
 
-    <!-- AI Meeting Summary Widget (Tóm tắt cuộc họp AI) -->
+    <!-- AI Meeting Summary Widget (TĂ³m táº¯t cuá»™c há»p AI) -->
     <div class="ai-summary-widget card mb-6 p-5">
       <div class="flex justify-between items-center mb-3 border-bottom pb-2">
         <div style="display:flex; align-items:center; gap: 10px;">
@@ -64,8 +82,8 @@
           <div class="text-sm leading-relaxed text-secondary mb-2" v-html="renderMarkdown(aiSummaryText)"></div>
           <div class="flex gap-2 mt-3">
 
-            <el-tag size="small" type="success">{{ checkedInCount }}/{{ teamCheckins.length }} Thành viên đã làm</el-tag>
-            <el-tag size="small" type="danger" v-if="blockerCount > 0">Có {{ blockerCount }} Blocker</el-tag>
+            <el-tag size="small" type="success">{{ checkedInCount }}/{{ teamCheckins.length }} ThĂ nh viĂªn Ä‘Ă£ lĂ m</el-tag>
+            <el-tag size="small" type="danger" v-if="blockerCount > 0">CĂ³ {{ blockerCount }} Blocker</el-tag>
 
           <el-tag size="small" type="success">{{ t('checkin.doneCount') }}</el-tag>
             <el-tag size="small" type="danger">{{ t('checkin.blockerCount') }}</el-tag>
@@ -77,7 +95,7 @@
 
     <!-- Checkin Cards List (Both checked-in and not checked-in members) -->
     <div class="team-checkins-grid">
-      <div v-for="team in teamCheckins" :key="team.id" class="checkin-card card" :class="{ 'not-checked': !team.checkedIn }">
+      <div v-for="team in filteredTeamCheckins" :key="team.id" class="checkin-card card" :class="{ 'not-checked': !team.checkedIn }">
         <div class="card-header flex items-center justify-between">
           <div class="flex items-center" style="gap: 8px;">
             <el-avatar :size="32" :src="team.userAvatar" style="flex-shrink: 0;">{{ team.userName.charAt(0) }}</el-avatar>
@@ -87,7 +105,7 @@
             </div>
           </div>
           <el-tag size="small" :type="team.checkedIn ? 'success' : 'info'">
-            {{ team.checkedIn ? 'Đã Check-in' : 'Chưa Check-in' }}
+            {{ team.checkedIn ? 'ÄĂ£ Check-in' : 'ChÆ°a Check-in' }}
           </el-tag>
         </div>
 
@@ -103,21 +121,21 @@
 
             <!-- Done yesterday -->
             <div class="detail-section">
-              <span class="section-label">✅ Ngày hôm qua:</span>
+              <span class="section-label">âœ… NgĂ y hĂ´m qua:</span>
               <p class="section-desc">{{ team.yesterday }}</p>
             </div>
             
             <!-- Focus today -->
             <div class="detail-section mt-3">
-              <span class="section-label">📌 Mục tiêu hôm nay:</span>
+              <span class="section-label">đŸ“Œ Má»¥c tiĂªu hĂ´m nay:</span>
               <p class="section-desc">{{ team.today }}</p>
             </div>
 
             <!-- Blockers -->
             <div class="detail-section mt-3">
-              <span class="section-label">⚠️ Khó khăn (Blocker):</span>
+              <span class="section-label">â ï¸ KhĂ³ khÄƒn (Blocker):</span>
               <p class="section-desc" :class="{ 'has-blocker': team.blocker }">
-                {{ team.blocker || 'Không có khó khăn gì' }}
+                {{ team.blocker || 'KhĂ´ng cĂ³ khĂ³ khÄƒn gĂ¬' }}
               </p>
             </div>
           </div>
@@ -141,18 +159,18 @@
       <template #header>
         <DataModalHeader
           icon="bi bi-calendar-check"
-          title="Báo cáo tiến độ hàng ngày"
-          description="Chia sẻ kết quả hôm qua, mục tiêu hôm nay và khó khăn đang gặp"
+          title="BĂ¡o cĂ¡o tiáº¿n Ä‘á»™ hĂ ng ngĂ y"
+          description="Chia sáº» káº¿t quáº£ hĂ´m qua, má»¥c tiĂªu hĂ´m nay vĂ  khĂ³ khÄƒn Ä‘ang gáº·p"
           @close="checkinModalOpen = false"
         />
       </template>
       <div class="checkin-form-body flex flex-col gap-4">
         <!-- Project Select field -->
         <div>
-          <span class="field-label mb-1 block">Dự án báo cáo *</span>
+          <span class="field-label mb-1 block">Dá»± Ă¡n bĂ¡o cĂ¡o *</span>
           <el-select 
             v-model="form.projectId" 
-            placeholder="Chọn dự án liên quan..."
+            placeholder="Chá»n dá»± Ă¡n liĂªn quan..."
             class="w-full"
             disabled
           >
@@ -167,39 +185,39 @@
 
         <!-- Yesterday input -->
         <div>
-          <span class="field-label mb-1 block">Hôm qua bạn đã làm được gì? *</span>
+          <span class="field-label mb-1 block">HĂ´m qua báº¡n Ä‘Ă£ lĂ m Ä‘Æ°á»£c gĂ¬? *</span>
           <textarea 
             v-model="form.yesterday" 
-            placeholder="Ví dụ: Hoàn tất cập nhật connection string cho SQL Server, thiết kế các layout..."
+            placeholder="VĂ­ dá»¥: HoĂ n táº¥t cáº­p nháº­t connection string cho SQL Server, thiáº¿t káº¿ cĂ¡c layout..."
             class="w-full h-20 p-2"
           ></textarea>
         </div>
 
         <!-- Today input -->
         <div>
-          <span class="field-label mb-1 block">Mục tiêu chính hôm nay của bạn? *</span>
+          <span class="field-label mb-1 block">Má»¥c tiĂªu chĂ­nh hĂ´m nay cá»§a báº¡n? *</span>
           <textarea 
             v-model="form.today" 
-            placeholder="Ví dụ: Thiết kế giao diện Chat nhóm và Daily Checkin..."
+            placeholder="VĂ­ dá»¥: Thiáº¿t káº¿ giao diá»‡n Chat nhĂ³m vĂ  Daily Checkin..."
             class="w-full h-20 p-2"
           ></textarea>
         </div>
 
         <!-- Blocker input -->
         <div>
-          <span class="field-label mb-1 block">Khó khăn đang gặp phải (nếu có)?</span>
+          <span class="field-label mb-1 block">KhĂ³ khÄƒn Ä‘ang gáº·p pháº£i (náº¿u cĂ³)?</span>
           <input 
             v-model="form.blocker" 
             type="text" 
-            placeholder="Để trống nếu không có khó khăn nào"
+            placeholder="Äá»ƒ trá»‘ng náº¿u khĂ´ng cĂ³ khĂ³ khÄƒn nĂ o"
             class="w-full"
           />
         </div>
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <el-button class="cancel-btn" @click="checkinModalOpen = false"><i class="bi bi-x-lg"></i> Hủy</el-button>
-          <el-button class="btn-primary" type="primary" @click="submitCheckin"><i class="fa-solid fa-paper-plane"></i> Gửi báo cáo</el-button>
+          <el-button class="cancel-btn" @click="checkinModalOpen = false"><i class="bi bi-x-lg"></i> Há»§y</el-button>
+          <el-button class="btn-primary" type="primary" @click="submitCheckin"><i class="fa-solid fa-paper-plane"></i> Gá»­i bĂ¡o cĂ¡o</el-button>
         </div>
       </template>
     </el-dialog>
@@ -213,9 +231,11 @@ import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 
 import { useI18nStore } from '@/store/useI18nStore'
+import { useProjectStore } from '@/store/useProjectStore'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 
 const { t } = useI18nStore()
+const projectStore = useProjectStore()
 
 
 const checkinModalOpen = ref(false)
@@ -226,17 +246,8 @@ const activeProjectId = ref('')
 const teamCheckins = ref([])
 const userCheckedIn = ref(false)
 const projectSelectRef = ref(null)
-
-const handleMouseEnter = () => {
-  if (projectSelectRef.value) {
-    projectSelectRef.value.focus()
-    const isExpanded = projectSelectRef.value.expanded || 
-                       (projectSelectRef.value.states && projectSelectRef.value.states.menuVisible)
-    if (!isExpanded && typeof projectSelectRef.value.toggleMenu === 'function') {
-      projectSelectRef.value.toggleMenu()
-    }
-  }
-}
+const checkinSearch = ref('')
+const checkinStatusFilter = ref('all')
 
 const currentUser = ref({
   id: '',
@@ -260,6 +271,30 @@ const blockerCount = computed(() => {
   return teamCheckins.value.filter(t => t.checkedIn && t.blocker).length
 })
 
+const filteredTeamCheckins = computed(() => {
+  const query = checkinSearch.value.trim().toLowerCase()
+
+  return teamCheckins.value.filter(team => {
+    if (checkinStatusFilter.value === 'checked' && !team.checkedIn) return false
+    if (checkinStatusFilter.value === 'missing' && team.checkedIn) return false
+    if (checkinStatusFilter.value === 'blocker' && !team.blocker) return false
+
+    if (!query) return true
+
+    return [
+      team.userName,
+      team.role,
+      team.projectName,
+      team.projectKey,
+      team.yesterday,
+      team.today,
+      team.blocker
+    ]
+      .filter(Boolean)
+      .some(value => `${value}`.toLowerCase().includes(query))
+  })
+})
+
 const fetchCurrentUser = async () => {
   try {
     const res = await axiosClient.get('/users/me')
@@ -273,105 +308,50 @@ const fetchCurrentUser = async () => {
 
 const fetchProjectMembersAndCheckins = async () => {
   if (!activeProjectId.value) return
-  
+
   try {
-    const membersRes = await axiosClient.get(`/projects/${activeProjectId.value}/members`)
-    let membersData = []
-    if (membersRes.data && membersRes.data.data) {
-      membersData = membersRes.data.data.filter(m => m.status)
-    }
-    
-    if (membersData.length === 0) {
-      teamCheckins.value = []
-      userCheckedIn.value = false
-      return
-    }
-    
-    const storedCheckins = localStorage.getItem(`project_checkins_${activeProjectId.value}`)
-    let checkinMap = {}
-    if (storedCheckins) {
-      try {
-        checkinMap = JSON.parse(storedCheckins)
-      } catch (e) {
-        console.error(e)
-      }
-    } else {
-      if (activeProjectId.value === 'C0000001-0001-0001-0001-000000000001') {
-        checkinMap = {
-          'D0000001-0001-0001-0001-000000000009': {
-            checkedIn: true,
-            yesterday: 'Viết test case và thực hiện automation testing cho Kanban board.',
-            today: 'Viết tài liệu báo cáo kiểm thử và test hiệu năng tải trang.',
-            blocker: ''
-          },
-          'D0000001-0001-0001-0001-000000000006': {
-            checkedIn: true,
-            yesterday: 'Thiết kế giao diện chat nhóm và sửa lỗi đồng bộ tin nhắn.',
-            today: 'Tối ưu hóa tốc độ render các component nặng của chat board.',
-            blocker: ''
-          },
-          'D0000001-0001-0001-0001-000000000010': {
-            checkedIn: true,
-            yesterday: 'Thiết kế wireframe cho Dashboard và trang cài đặt dự án.',
-            today: 'Hoàn thiện bản mockup hi-fi và bàn giao file Figma cho team Frontend.',
-            blocker: ''
-          }
-        }
-      } else if (activeProjectId.value === 'C0000001-0001-0001-0001-000000000002') {
-        checkinMap = {
-          'D0000001-0001-0001-0001-000000000009': {
-            checkedIn: true,
-            yesterday: 'Tích hợp OAuth với GitHub và Slack.',
-            today: 'Cố gắng đồng bộ email Gmail thành task tự động.',
-            blocker: 'Đang bị nghẽn do API rate limit của Google OAuth cần cấu hình lại khóa app.'
-          }
-        }
-      }
-    }
-    
-    teamCheckins.value = membersData.map(m => {
-      const c = checkinMap[m.userId] || { checkedIn: false, yesterday: '', today: '', blocker: '' }
-      const isMe = m.userId === currentUser.value.id || m.email === currentUser.value.email
-      
-      return {
-        id: m.userId,
-        userName: m.fullName || m.email || 'Thành viên',
-        userAvatar: m.avatarUrl || '',
-        role: m.roleName || 'Member',
-        checkedIn: c.checkedIn,
-        yesterday: c.yesterday,
-        today: c.today,
-        blocker: c.blocker,
-        isCurrentUser: isMe
-      }
+    const res = await axiosClient.get('/checkins', {
+      params: { projectId: activeProjectId.value }
     })
-    
+    const payload = res.data?.data || {}
+    teamCheckins.value = Array.isArray(payload.members) ? payload.members : []
+
     const meCard = teamCheckins.value.find(t => t.isCurrentUser)
     userCheckedIn.value = meCard ? meCard.checkedIn : false
-    
   } catch (error) {
     console.error('Cannot load project members/checkins:', error)
+    ElMessage.error(error.response?.data?.message || 'Khong the tai danh sach check-in.')
+    teamCheckins.value = []
+    userCheckedIn.value = false
   }
 }
 
 onMounted(async () => {
   await fetchCurrentUser()
   try {
-    const res = await axiosClient.get('/projects')
-    if (res.data && res.data.data) {
-      projectsList.value = res.data.data
-      if (projectsList.value.length > 0) {
-        const savedProjId = localStorage.getItem('active_checkin_project_id')
-        if (savedProjId && projectsList.value.some(p => p.id === savedProjId)) {
-          activeProjectId.value = savedProjId
-        } else {
-          activeProjectId.value = projectsList.value[0].id
-        }
-        await fetchProjectMembersAndCheckins()
+    const projects = await projectStore.fetchAllProjects(true)
+    projectsList.value = projects
+      .filter(project => project.isMember !== false)
+      .map(project => ({
+        id: project.id,
+        key: project.key,
+        name: project.name,
+        isMember: project.isMember,
+        originalRow: project.originalRow
+      }))
+
+    if (projectsList.value.length > 0) {
+      const savedProjId = localStorage.getItem('active_checkin_project_id')
+      if (savedProjId && projectsList.value.some(p => p.id === savedProjId)) {
+        activeProjectId.value = savedProjId
+      } else {
+        activeProjectId.value = projectsList.value[0].id
       }
+      await fetchProjectMembersAndCheckins()
     }
   } catch (error) {
     console.error('Cannot load projects:', error)
+    ElMessage.error(error.response?.data?.message || 'Khong the tai danh sach du an.')
   }
 })
 
@@ -394,11 +374,11 @@ const openCheckinModal = () => {
 
 const submitCheckin = async () => {
   if (!form.value.projectId) {
-    ElMessage.warning('Vui lòng chọn dự án báo cáo!')
+    ElMessage.warning('Vui long chon du an bao cao!')
     return
   }
   if (!form.value.yesterday.trim() || !form.value.today.trim()) {
-    ElMessage.warning('Vui lòng điền đầy đủ thông tin ngày hôm qua và hôm nay!')
+    ElMessage.warning('Vui long dien day du thong tin ngay hom qua va hom nay!')
     return
   }
 
@@ -409,47 +389,21 @@ const submitCheckin = async () => {
       blocker: form.value.blocker,
       projectId: form.value.projectId
     })
-  } catch (error) {
-    console.log('API submission not available yet, saving locally:', error)
-  }
 
-  const stored = localStorage.getItem(`project_checkins_${form.value.projectId}`)
-  let checkinMap = {}
-  if (stored) {
-    try {
-      checkinMap = JSON.parse(stored)
-    } catch (e) {
-      console.error(e)
-    }
-  }
-  
-  checkinMap[currentUser.value.id || 'user-quan'] = {
-    checkedIn: true,
-    yesterday: form.value.yesterday,
-    today: form.value.today,
-    blocker: form.value.blocker
-  }
-  
-  localStorage.setItem(`project_checkins_${form.value.projectId}`, JSON.stringify(checkinMap))
-
-  if (form.value.projectId === activeProjectId.value) {
-    userCheckedIn.value = true
-    await fetchProjectMembersAndCheckins()
-  } else {
     activeProjectId.value = form.value.projectId
     localStorage.setItem('active_checkin_project_id', form.value.projectId)
-    userCheckedIn.value = true
     await fetchProjectMembersAndCheckins()
+    checkinModalOpen.value = false
+    ElMessage.success('Gui bao cao Check-in ngay thanh cong!')
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Khong the gui bao cao check-in.')
   }
-  
-  checkinModalOpen.value = false
-  ElMessage.success('Gửi báo cáo Check-in ngày thành công!')
 }
 
 const generateAiSummary = async () => {
   if (checkedInCount.value === 0) {
-    ElMessage.warning('Không có thành viên nào nộp báo cáo check-in hôm nay để tóm tắt!')
-    aiSummaryText.value = 'Không có báo cáo check-in nào được nộp hôm nay.'
+    ElMessage.warning('Khong co bao cao check-in hom nay de tom tat!')
+    aiSummaryText.value = 'Khong co bao cao check-in nao duoc nop hom nay.'
     return
   }
   aiLoading.value = true
@@ -457,37 +411,15 @@ const generateAiSummary = async () => {
     const res = await axiosClient.post('/checkins/ai-summary', {
       projectId: activeProjectId.value
     })
-    if (res.data && res.data.data && res.data.data.summaryText) {
+    if (res.data?.data?.summaryText) {
       aiSummaryText.value = res.data.data.summaryText
-      ElMessage.success('Đã tạo tóm tắt họp AI thành công!')
-      aiLoading.value = false
-      return
+      ElMessage.success('Da tao tom tat check-in thanh cong!')
     }
   } catch (error) {
-    console.log('AI API summary not available yet, using simulation summary:', error)
-  }
-
-  setTimeout(() => {
+    ElMessage.error(error.response?.data?.message || 'Khong the tao tom tat check-in.')
+  } finally {
     aiLoading.value = false
-    const proj = projectsList.value.find(p => p.id === activeProjectId.value)
-    const pName = proj ? proj.name : 'Dự án'
-    
-    if (activeProjectId.value === 'C0000001-0001-0001-0001-000000000002') {
-      aiSummaryText.value = `### Tóm tắt Daily Scrum của cả đội - ${pName} (Hôm nay):
-      
-1. **Tiến độ tốt**: Bùi Minh Anh đã tích hợp thành công OAuth cho GitHub và Slack.
-2. **Điểm cần lưu ý**: Minh Anh đang tìm cách đồng bộ email Gmail thành task tự động.
-3. **Đề xuất**: Cần giải quyết sự cố giới hạn request của Google API.`
-    } else {
-      aiSummaryText.value = `### Tóm tắt Daily Scrum của cả đội - ${pName} (Hôm nay):
-      
-1. **Tiến độ tốt**: Bùi Minh Anh và Đặng Bảo Ngọc đã viết xong test cases và thiết kế giao diện chat.
-2. **Điểm cần lưu ý**: Đỗ Quang Huy đã bàn giao mockup hi-fi cho team Frontend.
-3. **Đề xuất**: Tiếp tục tối ưu hóa hiệu năng render giao diện chat và tiến hành chạy thử nghiệm.`
-    }
-    
-    ElMessage.success('Đã tạo tóm tắt họp AI thành công!')
-  }, 1200)
+  }
 }
 
 const renderMarkdown = (text) => {
@@ -571,26 +503,34 @@ const renderMarkdown = (text) => {
 
 .page-content {
   padding: 18px var(--sa-page-x, 24px) 32px;
-  max-width: 1080px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
 }
 
 /* Project Selector wrapper */
 .project-selector-wrapper {
-  display: inline-flex;
+  position: relative;
+  z-index: 5;
+  width: 100%;
+  min-height: 42px;
+  display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  margin-bottom: 20px;
+  gap: 10px;
+  padding: 8px !important;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 86%, transparent), color-mix(in srgb, var(--color-surface-hover) 46%, transparent));
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  border-radius: 12px !important;
+  margin-bottom: 18px;
+  box-shadow: 0 10px 24px color-mix(in srgb, #020617 6%, transparent);
+  box-sizing: border-box;
+  overflow: hidden;
   transition: all 0.25s ease;
 }
 
 .project-selector-wrapper:hover {
-  border-color: var(--color-primary);
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-border) 72%, transparent);
+  box-shadow: 0 10px 24px color-mix(in srgb, #020617 6%, transparent);
 }
 
 .project-selector-label {
@@ -610,7 +550,121 @@ const renderMarkdown = (text) => {
 
 /* Custom project select container */
 .custom-project-select {
-  width: 280px;
+  width: min(220px, 24vw);
+  flex: 0 0 min(220px, 24vw);
+}
+
+.custom-project-select :deep(.el-select__wrapper) {
+  min-height: 34px;
+  height: 34px;
+  border-radius: 9px !important;
+  border: 1px solid var(--color-border);
+  box-shadow: none !important;
+  background: var(--color-surface) !important;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.custom-project-select :deep(.el-select__wrapper:hover),
+.custom-project-select :deep(.el-select__wrapper.is-focused) {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important;
+}
+
+.custom-project-select :deep(.el-select__prefix) {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.custom-project-select :deep(.el-select__placeholder),
+.custom-project-select :deep(.el-select__selected-item) {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.checkin-search-field {
+  position: relative;
+  flex: 0 0 min(326px, 34vw);
+  width: min(326px, 34vw);
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  color: var(--color-text-muted);
+}
+
+.checkin-search-field > i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  z-index: 1;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.checkin-search-field input {
+  width: 100%;
+  height: 34px !important;
+  box-sizing: border-box !important;
+  padding: 0 12px 0 36px !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 9px !important;
+  outline: 0;
+  background: var(--color-surface) !important;
+  color: var(--color-text-primary) !important;
+  font-size: 13.5px !important;
+  overflow: hidden;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.checkin-search-field input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+}
+
+.checkin-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px !important;
+  background: var(--color-surface-hover);
+  overflow: hidden;
+}
+
+.checkin-filter-group button {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 6px !important;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.checkin-filter-group button:hover,
+.checkin-filter-group button.active {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
+  color: var(--color-accent);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.checkin-filter-count {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .ai-summary-widget {
@@ -695,24 +749,25 @@ const renderMarkdown = (text) => {
 <style>
 /* Non-scoped styles for custom project dropdown options and select input overrides */
 body .custom-project-select .el-input__wrapper {
-  background-color: var(--color-surface-hover) !important;
+  background-color: var(--color-surface) !important;
   border: 1px solid var(--color-border) !important;
   box-shadow: none !important;
-  border-radius: 8px !important;
-  padding: 6px 12px !important;
-  height: 38px !important;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border-radius: 9px !important;
+  padding: 0 12px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s !important;
 }
 
 body .custom-project-select .el-input__wrapper:hover {
-  border-color: var(--color-primary) !important;
-  background-color: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface-hover)) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  background-color: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important;
 }
 
 body .custom-project-select .el-input__wrapper.is-focus {
-  border-color: var(--color-primary) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 20%, transparent) !important;
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important;
 }
 
 body .custom-project-select .el-input__inner {

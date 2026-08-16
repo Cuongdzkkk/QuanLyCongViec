@@ -830,6 +830,7 @@ import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 
 const route = useRoute()
 const router = useRouter()
+const teamsBasePath = computed(() => route.path.startsWith('/teams') ? '/teams' : '/home/teams')
 const teamStore = useTeamStore()
 const peopleStore = usePeopleStore()
 const goalStore = useGoalStore()
@@ -1159,7 +1160,7 @@ const confirmDelete = async () => {
   try {
     await teamStore.deleteTeam()
     isDeleteConfirmOpen.value = false
-    router.push('/home/teams/all')
+    router.push(`${teamsBasePath.value}/list`)
   } catch (err) {
     console.error('Failed to delete team')
   }

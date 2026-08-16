@@ -214,6 +214,7 @@ import DailyFocusWidget from '@/components/DailyFocusWidget.vue'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import { getProjectBackgroundStyle } from '@/config/projectAppearance'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -269,7 +270,8 @@ const fallbackCover = (project) => {
 const projectBackground = (project) => getProjectBackgroundStyle(project?.cover)
 
 const openProject = (projectId) => {
-  router.push(`/space/${projectId}`)
+  const project = visibleProjects.value.find(item => `${item.id}` === `${projectId}`) || projectId
+  router.push(buildSpacePath(project, 'work-items'))
 }
 
 const openTaskModal = async (project = null) => {

@@ -20,11 +20,95 @@ namespace TaskManagement.Infrastructure.Services
         private readonly IGamificationService _gamificationService;
         private static readonly string[] VisibilityOverrideRoles = { "PM", "PO", "Project Lead", "PROJECT_MANAGER", "PROJECT_LEAD", "Admin" };
         private const string TaskVisibilitySettingGroup = "TaskVisibility";
+        private const string ProjectPermissionsSettingGroup = "ProjectPermissions";
+        private const string TaskEditPermission = "task.update";
+        private const string TaskChangeStatusPermission = "task.changeStatus";
+        private const string TaskAssigneeOnlyPermission = "task.assigneeOnly";
 
         public WorkTaskService(ApplicationDbContext context, IGamificationService gamificationService)
         {
             _context = context;
             _gamificationService = gamificationService;
+        }
+
+        private static string MapProjectRoleToPermissionPreset(string? role)
+        {
+            var normalized = ProjectExecutionRuleHelper.NormalizeProjectRole(role);
+            return normalized switch
+            {
+                "owner" => "Owner",
+                "admin" => "Admin",
+                "pm" or "po" or "project_manager" or "project_lead" or "lead" or "manager" => "Manager",
+                "viewer" or "guest" or "client" or "stakeholder" or "readonly" => "Viewer",
+                _ => "Member"
+            };
+        }
+
+        private static HashSet<string> DefaultTaskPermissionsForPreset(string preset)
+        {
+            return preset switch
+            {
+                "Owner" or "Admin" => new HashSet<string>(new[] { TaskEditPermission, TaskChangeStatusPermission }, StringComparer.OrdinalIgnoreCase),
+                "Manager" => new HashSet<string>(new[] { TaskEditPermission, TaskChangeStatusPermission }, StringComparer.OrdinalIgnoreCase),
+                "Viewer" => new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                _ => new HashSet<string>(new[] { TaskEditPermission, TaskChangeStatusPermission }, StringComparer.OrdinalIgnoreCase)
+            };
+        }
+
+        private async Task<HashSet<string>> LoadProjectPermissionSetAsync(Guid projectId, string? projectRole)
+        {
+            var preset = MapProjectRoleToPermissionPreset(projectRole);
+            var defaults = DefaultTaskPermissionsForPreset(preset);
+            var setting = await _context.SystemSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(item => item.SettingGroup == ProjectPermissionsSettingGroup && item.Key == $"ProjectPermissions:{projectId}");
+            if (setting == null || string.IsNullOrWhiteSpace(setting.Value))
+            {
+                return defaults;
+            }
+
+            try
+            {
+                var matrix = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(setting.Value);
+                return matrix != null && matrix.TryGetValue(preset, out var permissions)
+                    ? new HashSet<string>(permissions, StringComparer.OrdinalIgnoreCase)
+                    : defaults;
+            }
+            catch
+            {
+                return defaults;
+            }
+        }
+
+        private static bool IsAssignedToUser(Domain.Entities.WorkTask task, Guid userId)
+        {
+            return task.AssignedUserId == userId ||
+                task.TaskAssignments.Any(assignment => assignment.UserId == userId && assignment.Status);
+        }
+
+        private async Task EnsureTaskMutationPermissionAsync(
+            Domain.Entities.WorkTask task,
+            Guid userId,
+            string projectRole,
+            string requiredPermission)
+        {
+            if (ProjectAccessPolicy.IsUnrestricted)
+            {
+                return;
+            }
+
+            var permissions = await LoadProjectPermissionSetAsync(task.ProjectId, projectRole);
+            if (!permissions.Contains(requiredPermission))
+            {
+                throw new UnauthorizedAccessException(requiredPermission == TaskChangeStatusPermission
+                    ? "Ban khong co quyen chuyen trang thai cong viec."
+                    : "Ban khong co quyen chinh sua chi tiet cong viec.");
+            }
+
+            if (permissions.Contains(TaskAssigneeOnlyPermission) && !IsAssignedToUser(task, userId))
+            {
+                throw new UnauthorizedAccessException("Assignee-only Task Access dang bat. Ban chi duoc thao tac tren cong viec duoc giao.");
+            }
         }
 
         public async Task<List<WorkTaskResponseDto>> GetByProjectAsync(Guid projectId, Guid userId)
@@ -33,14 +117,17 @@ namespace TaskManagement.Infrastructure.Services
                 .AsNoTracking()
                 .FirstOrDefaultAsync(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status);
 
-            if (membership == null)
+            if (membership == null && ProjectAccessPolicy.RestrictionsEnabled)
             {
                 throw new UnauthorizedAccessException("Ban khong phai thanh vien active cua du an nay.");
             }
 
             var executionRules = await LoadExecutionRulesAsync(projectId);
-            var normalizedProjectRole = ProjectExecutionRuleHelper.NormalizeProjectRole(membership?.ProjectRole);
-            var canSeeAllTasks = executionRules.ManagerAlwaysSeeAllTasks && IsVisibilityOverrideRole(normalizedProjectRole);
+            var normalizedProjectRole = ProjectAccessPolicy.IsUnrestricted
+                ? "admin"
+                : ProjectExecutionRuleHelper.NormalizeProjectRole(membership?.ProjectRole);
+            var canSeeAllTasks = ProjectAccessPolicy.IsUnrestricted ||
+                (executionRules.ManagerAlwaysSeeAllTasks && IsVisibilityOverrideRole(normalizedProjectRole));
 
             var query = _context.WorkTasks
                 .Include(wt => wt.TaskStatus)
@@ -220,17 +307,19 @@ namespace TaskManagement.Infrastructure.Services
                     member.IsActive &&
                     member.User.IsActive &&
                     !member.User.IsDeleted);
-            if (string.IsNullOrWhiteSpace(projectRole) || !hasWorkspaceMembership)
+            if (ProjectAccessPolicy.RestrictionsEnabled &&
+                (string.IsNullOrWhiteSpace(projectRole) || !hasWorkspaceMembership))
             {
                 throw new UnauthorizedAccessException(
                     "Active workspace and project membership are required.");
             }
 
             var executionRules = await LoadExecutionRulesAsync(projectId);
-            var normalizedProjectRole = ProjectExecutionRuleHelper.NormalizeProjectRole(projectRole);
-            var canSeeAllTasks =
-                executionRules.ManagerAlwaysSeeAllTasks &&
-                IsVisibilityOverrideRole(normalizedProjectRole);
+            var normalizedProjectRole = ProjectAccessPolicy.IsUnrestricted
+                ? "admin"
+                : ProjectExecutionRuleHelper.NormalizeProjectRole(projectRole);
+            var canSeeAllTasks = ProjectAccessPolicy.IsUnrestricted ||
+                (executionRules.ManagerAlwaysSeeAllTasks && IsVisibilityOverrideRole(normalizedProjectRole));
 
             var taskQuery = _context.WorkTasks
                 .AsNoTracking()
@@ -393,7 +482,7 @@ namespace TaskManagement.Infrastructure.Services
                 throw new UnauthorizedAccessException("Authenticated reporter is not active.");
             }
 
-            var hasActiveResourceMembership = await _context.ProjectMembers
+            var hasActiveResourceMembership = ProjectAccessPolicy.IsUnrestricted || await _context.ProjectMembers
                 .AsNoTracking()
                 .AnyAsync(member => member.ProjectId == request.ProjectId &&
                                     member.UserId == reporterId &&
@@ -410,7 +499,7 @@ namespace TaskManagement.Infrastructure.Services
             }
 
             // 1. Kiểm tra user là member của project
-            if (reporterId != Guid.Empty)
+            if (ProjectAccessPolicy.RestrictionsEnabled && reporterId != Guid.Empty)
             {
                 var isMember = await _context.ProjectMembers
                     .AnyAsync(pm => pm.ProjectId == request.ProjectId && pm.UserId == reporterId && pm.Status);
@@ -627,11 +716,11 @@ namespace TaskManagement.Infrastructure.Services
             var membership = await _context.ProjectMembers
                 .FirstOrDefaultAsync(pm => pm.ProjectId == taskToUpdate.ProjectId && pm.UserId == userId && pm.Status);
 
-            if (membership == null)
+            if (membership == null && ProjectAccessPolicy.RestrictionsEnabled)
                 throw new UnauthorizedAccessException("Bạn không phải thành viên của dự án này.");
 
-            bool isManager = IsManagerRole(ProjectExecutionRuleHelper.NormalizeProjectRole(membership.ProjectRole));
-            if (!isManager && taskToUpdate.ReporterId != userId && taskToUpdate.AssignedUserId != userId && !taskToUpdate.TaskAssignments.Any(ta => ta.UserId == userId))
+            await EnsureTaskMutationPermissionAsync(taskToUpdate, userId, membership?.ProjectRole ?? string.Empty, TaskEditPermission);
+            if (false)
             {
                  throw new UnauthorizedAccessException("Bạn không có quyền sửa đổi tác vụ này.");
             }
@@ -728,15 +817,10 @@ namespace TaskManagement.Infrastructure.Services
 
             var membership = await _context.ProjectMembers
                 .FirstOrDefaultAsync(pm => pm.ProjectId == taskToUpdate.ProjectId && pm.UserId == userId && pm.Status);
-            if (membership == null)
+            if (membership == null && ProjectAccessPolicy.RestrictionsEnabled)
                 throw new UnauthorizedAccessException("Ban khong phai thanh vien cua du an nay.");
 
-            var canUpdateTask = IsManagerRole(ProjectExecutionRuleHelper.NormalizeProjectRole(membership.ProjectRole))
-                || taskToUpdate.ReporterId == userId
-                || taskToUpdate.AssignedUserId == userId
-                || taskToUpdate.TaskAssignments.Any(ta => ta.UserId == userId && ta.Status);
-            if (!canUpdateTask)
-                throw new UnauthorizedAccessException("Ban khong co quyen sua tac vu nay.");
+            await EnsureTaskMutationPermissionAsync(taskToUpdate, userId, membership?.ProjectRole ?? string.Empty, TaskChangeStatusPermission);
 
             // Sprint Lock
             if (SprintStatePolicy.IsTaskMutationLocked(taskToUpdate.Sprint, DateTime.UtcNow))
@@ -1034,19 +1118,25 @@ namespace TaskManagement.Infrastructure.Services
                 throw new UnauthorizedAccessException("The authenticated user is not active.");
             }
 
-            var userProjectIds = await _context.ProjectMembers
-                .AsNoTracking()
-                .Where(pm =>
-                    pm.UserId == userId &&
-                    pm.Status &&
-                    pm.Project.Status &&
-                    !pm.Project.IsDeleted &&
-                    !pm.Project.IsArchived &&
-                    !pm.Project.Workspace.IsDeleted &&
-                    pm.Project.Workspace.Members.Any(member =>
-                        member.UserId == userId && member.IsActive))
-                .Select(pm => pm.ProjectId)
-                .ToListAsync();
+            var userProjectIds = ProjectAccessPolicy.IsUnrestricted
+                ? await _context.Projects
+                    .AsNoTracking()
+                    .Where(project => project.Status && !project.IsDeleted && !project.IsArchived && !project.Workspace.IsDeleted)
+                    .Select(project => project.Id)
+                    .ToListAsync()
+                : await _context.ProjectMembers
+                    .AsNoTracking()
+                    .Where(pm =>
+                        pm.UserId == userId &&
+                        pm.Status &&
+                        pm.Project.Status &&
+                        !pm.Project.IsDeleted &&
+                        !pm.Project.IsArchived &&
+                        !pm.Project.Workspace.IsDeleted &&
+                        pm.Project.Workspace.Members.Any(member =>
+                            member.UserId == userId && member.IsActive))
+                    .Select(pm => pm.ProjectId)
+                    .ToListAsync();
 
             var normalizedScope = (scope ?? "all").Trim().ToLowerInvariant();
             var dbQuery = _context.WorkTasks
@@ -1163,6 +1253,11 @@ namespace TaskManagement.Infrastructure.Services
             var allowedTaskIds = accessRecords
                 .Where(record =>
                 {
+                    if (ProjectAccessPolicy.IsUnrestricted)
+                    {
+                        return true;
+                    }
+
                     var rules = projectRuleLookup.TryGetValue(record.ProjectId, out var config)
                         ? config
                         : ProjectExecutionRuleHelper.NormalizeExecutionRules(null);

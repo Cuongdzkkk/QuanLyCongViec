@@ -1,6 +1,52 @@
 <template>
   <div class="team-kudos-container">
-    <div class="kudos-empty-state" v-if="teamStore.kudos.length === 0">
+    <section class="kudos-section">
+      <div class="section-header">
+        <div>
+          <h2>Lời khen</h2>
+        </div>
+        <button class="primary-btn" @click="isGiveKudosOpen = true">Gửi lời khen</button>
+      </div>
+
+      <ProjectPageToolbar
+        v-model:searchQuery="kudosSearch"
+        show-search
+        search-placeholder="Tìm kiếm lời khen"
+      />
+
+      <div v-if="false" class="kudos-summary">{{ filteredKudos.length }} lời khen</div>
+
+      <div class="kudos-empty-state" v-if="filteredKudos.length === 0">
+        <div class="kudos-illustration">
+          <div class="star-medal-illustration">
+            <i class="fa-solid fa-star"></i>
+            <div class="ribbon ribbon-left"></div>
+            <div class="ribbon ribbon-right"></div>
+          </div>
+        </div>
+        <h3>No praise found</h3>
+        <p>Use praise to thank a teammate, celebrate a small win, or recognize excellent work.</p>
+      </div>
+
+      <div class="kudos-feed" v-else>
+        <div v-for="kudo in filteredKudos" :key="kudo.id" class="kudo-card">
+          <div class="kudo-card-header">
+            <UserAvatar :user="{ fullName: kudo.senderName || kudo.sender, email: kudo.senderEmail, avatarUrl: kudo.senderAvatarUrl }" :size="32" :fontSize="14" class="kudo-avatar" />
+            <div>
+              <div class="kudo-sender">{{ kudo.senderName || kudo.sender }}</div>
+              <div class="kudo-date">{{ new Date(kudo.createdAt).toLocaleDateString('vi-VN') }}</div>
+            </div>
+          </div>
+          <div class="kudo-message" v-html="sanitizeHtml(kudo.message)"></div>
+          <div class="kudo-icon">
+            <i v-if="isIconClass(kudo.icon)" :class="kudo.icon"></i>
+            <span v-else>{{ kudo.icon }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="kudos-empty-state legacy-kudos-block" v-if="false">
       <div class="kudos-illustration">
         <div class="star-medal-illustration">
           <i class="fa-solid fa-star"></i>
@@ -14,7 +60,7 @@
     </div>
 
     <!-- Kudos Feed -->
-    <div class="kudos-feed" v-else>
+    <div class="kudos-feed legacy-kudos-block" v-if="false">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
         <h2 style="font-size: 20px; font-weight: 500; color: #172B4D; margin: 0;">Khen ngợi gần đây</h2>
         <button class="primary-btn" @click="isGiveKudosOpen = true">Gửi lời khen ngợi</button>
@@ -172,6 +218,7 @@ import { useTeamStore } from '@/store/useTeamStore'
 import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { useSiteStore } from '@/store/useSiteStore'
 import UserAvatar from '@/components/common/UserAvatar.vue'
+import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
 
 const peopleStore = usePeopleStore()
 const teamStore = useTeamStore()
@@ -217,6 +264,7 @@ const kudosLinkSearch = ref('')
 const kudosLinkDisplay = ref('')
 const kudosLinkTab = ref('Home')
 const kudosEmojiSearch = ref('')
+const kudosSearch = ref('')
 
 const isKudosGraphicDropdownOpen = ref(false)
 const kudosGraphics = [
@@ -241,6 +289,15 @@ const filteredKudosEmojis = computed(() => {
   if (!kudosEmojiSearch.value) return allEmojis
   return allEmojis.slice(0, 10)
 })
+
+const filteredKudos = computed(() => {
+  const query = kudosSearch.value.trim().toLowerCase()
+  const kudos = teamStore.kudos || []
+  if (!query) return kudos
+  return kudos.filter((kudo) => `${kudo.senderName || kudo.sender || ''} ${kudo.senderEmail || ''} ${kudo.message || ''}`.toLowerCase().includes(query))
+})
+
+const isIconClass = (icon) => typeof icon === 'string' && icon.includes('fa-')
 
 const kudosEditorRef = ref(null)
 
@@ -316,17 +373,53 @@ const submitKudos = async () => {
 <style scoped>
 .team-kudos-container {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  width: 100%;
+}
+
+.kudos-section {
+  width: 100%;
+}
+
+.section-header {
   display: flex;
-  justify-content: center;
-  padding-top: 64px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 16px;
+}
+
+.section-header h2 {
+  color: #172B4D;
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.section-header p {
+  color: #5E6C84;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+
+.kudos-summary {
+  color: #172B4D;
+  font-size: 14px;
+  font-weight: 700;
+  margin: 24px 0 14px;
 }
 
 .kudos-empty-state {
-  max-width: 480px;
+  min-height: 280px;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  border: 1px dashed #C7D2E2;
+  border-radius: 8px;
+  padding: 36px 20px;
 }
 
 .kudos-illustration {
@@ -373,11 +466,12 @@ const submitKudos = async () => {
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%);
 }
 
-.kudos-empty-state h2 {
+.kudos-empty-state h2,
+.kudos-empty-state h3 {
   font-size: 20px;
-  font-weight: 500;
+  font-weight: 700;
   color: #172B4D;
-  margin: 0 0 16px 0;
+  margin: 0 0 8px 0;
 }
 
 .kudos-empty-state p {
@@ -385,6 +479,71 @@ const submitKudos = async () => {
   color: #5E6C84;
   line-height: 1.5;
   margin: 0 0 24px 0;
+  max-width: 460px;
+}
+
+.kudos-feed {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 30px;
+}
+
+.kudo-card {
+  background: #ffffff;
+  border: 1px solid #DFE1E6;
+  border-radius: 8px;
+  padding: 16px;
+  min-height: 148px;
+}
+
+@media (max-width: 1280px) {
+  .kudos-feed {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .kudos-feed {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .kudos-feed {
+    grid-template-columns: 1fr;
+  }
+}
+
+.kudo-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.kudo-sender {
+  font-weight: 700;
+  color: #172B4D;
+}
+
+.kudo-date {
+  color: #6B778C;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.kudo-message {
+  color: #172B4D;
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.kudo-icon {
+  color: #0C66E4;
+  font-size: 24px;
+  line-height: 1;
 }
 
 .primary-btn {
@@ -403,4 +562,3 @@ const submitKudos = async () => {
   background-color: #0047B3;
 }
 </style>
-

@@ -72,6 +72,47 @@ export default [
         path: 'integrations',
         name: 'IntegrationHub',
         component: () => import('../views/IntegrationHubView.vue')
+      },
+      {
+        path: 'teams',
+        component: () => import('../views/HomeSite/Teams/TeamsWrapper.vue'),
+        children: [
+          {
+            path: '',
+            name: 'SpaceTeamsDashboard',
+            component: () => import('../views/HomeSite/Teams/TeamsDashboard.vue')
+          },
+          {
+            path: 'list',
+            name: 'SpaceTeamList',
+            component: () => import('../views/HomeSite/Teams/TeamList.vue')
+          },
+          {
+            path: 'kudos',
+            name: 'SpaceTeamKudos',
+            component: () => import('../views/HomeSite/Teams/TeamKudos.vue')
+          },
+          {
+            path: 'people',
+            name: 'SpaceTeamPeople',
+            component: () => import('../views/HomeSite/People/PeopleDirectory.vue')
+          },
+          {
+            path: ':id',
+            name: 'SpaceTeamDetail',
+            component: () => import('../views/HomeSite/Teams/TeamDetail.vue')
+          }
+        ]
+      },
+      {
+        path: 'goals',
+        name: 'SpaceGoals',
+        component: () => import('../views/HomeSite/Goals/GoalsDashboard.vue')
+      },
+      {
+        path: 'goals/:id',
+        name: 'SpaceGoalDetail',
+        component: () => import('../views/HomeSite/Goals/GoalDetail.vue')
       }
     ]
   }

@@ -39,20 +39,6 @@
       <img class="ai-pet-image" :src="petAsset" alt="" aria-hidden="true" draggable="false" />
     </button>
 
-    <div class="global-utility-rail" aria-label="Công cụ nhanh">
-      <button
-        type="button"
-        :class="{ active: notesVisible }"
-        title="Mở ghi chú nhanh"
-        aria-controls="global-stickies-drawer"
-        :aria-expanded="notesVisible"
-        @click="toggleNotes"
-      >
-        <i class="fa-solid fa-note-sticky"></i>
-        <span>Notes</span>
-      </button>
-    </div>
-
     <div
       v-if="selectedText && selectionPopover.visible && !aiVisible"
       class="ai-selection-popover"
@@ -569,6 +555,7 @@ import { useGoalStore } from '@/store/useGoalStore'
 import { useSprintStore } from '@/store/useSprintStore'
 import { getStoredUserSession } from '@/utils/authSession'
 import { getDefaultPermissionMatrix, hasPermission } from '@/utils/permissionGuard'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const props = defineProps({
   hideSidebar: {
@@ -1884,17 +1871,19 @@ const refreshAfterAiAction = async (action, result) => {
 
 const navigateToAiEntity = async ({ entityId, entityType, projectId }) => {
   if (!entityId) return
-  if (entityType === 'project') return router.push(`/space/${entityId}/dashboard`)
+  const project = projectStore.allProjects.find(item => `${item.id}` === `${projectId || entityId || currentProjectId.value}`)
+  const projectTarget = project || projectId || entityId || currentProjectId.value
+  if (entityType === 'project') return router.push(buildSpacePath(projectTarget, 'work-items'))
   if (entityType === 'worktask' || entityType === 'task') {
-    return router.push({ path: `/space/${projectId || currentProjectId.value}/work-items`, query: { task: entityId } })
+    return router.push({ path: buildSpacePath(projectTarget, 'work-items'), query: { task: entityId } })
   }
   if (entityType === 'goal') return router.push(`/home/goals/${entityId}`)
-  if (['cycle', 'sprint'].includes(entityType)) return router.push(`/space/${projectId || currentProjectId.value}/cycles`)
-  if (entityType === 'module') return router.push(`/space/${projectId || currentProjectId.value}/modules`)
-  if (entityType === 'page') return router.push(`/space/${projectId || currentProjectId.value}/pages`)
-  if (entityType === 'view') return router.push(`/space/${projectId || currentProjectId.value}/views`)
-  if (entityType === 'intake' || entityType === 'intake_request') return router.push(`/space/${projectId || currentProjectId.value}/intakes`)
-  if (entityType === 'report') return router.push(`/space/${projectId || currentProjectId.value}/reports`)
+  if (['cycle', 'sprint'].includes(entityType)) return router.push(buildSpacePath(projectTarget, 'cycles'))
+  if (entityType === 'module') return router.push(buildSpacePath(projectTarget, 'modules'))
+  if (entityType === 'page') return router.push(buildSpacePath(projectTarget, 'pages'))
+  if (entityType === 'view') return router.push(buildSpacePath(projectTarget, 'views'))
+  if (entityType === 'intake' || entityType === 'intake_request') return router.push(buildSpacePath(projectTarget, 'intakes'))
+  if (entityType === 'report') return router.push(buildSpacePath(projectTarget, 'reports'))
 }
 
 const normalizeTaskTitle = (title = '') => `${title}`.trim().replace(/\s+/g, ' ').toLocaleUpperCase('vi-VN')
@@ -1946,8 +1935,9 @@ const closeNotes = () => {
 const openDuplicateTask = (action, edit) => {
   const task = action.duplicateCandidate
   if (!task?.id) return
+  const project = projectStore.allProjects.find(item => `${item.id}` === `${currentProjectId.value}`) || currentProjectId.value
   return router.push({
-    path: `/space/${currentProjectId.value}/work-items`,
+    path: buildSpacePath(project, 'work-items'),
     query: { task: task.id, ...(edit ? { edit: '1' } : {}) }
   })
 }
@@ -2667,7 +2657,7 @@ const sendAiMessage = async () => {
 
 const handleSpaceCreated = (newSpace) => {
   if (newSpace && newSpace.id) {
-    window.location.href = `/space/${newSpace.id}`
+    window.location.href = buildSpacePath(newSpace, 'work-items')
   } else {
     window.location.reload()
   }
@@ -2734,6 +2724,9 @@ const handleProjectCreated = (newProject) => {
 }
 
 .content-wrapper {
+  --app-shell-page-x: 18px;
+  --app-shell-header-top: 18px;
+  --app-shell-header-bottom: 18px;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -2741,6 +2734,51 @@ const handleProjectCreated = (newProject) => {
   display: flex;
   flex-direction: column;
   background: transparent;
+}
+
+.content-wrapper :deep(.app-shell-page-header) {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 20px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: var(--app-shell-header-top) var(--app-shell-page-x) var(--app-shell-header-bottom) !important;
+  background: transparent !important;
+  border-top: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-left: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.content-wrapper :deep(.app-shell-page-header > div:first-child) {
+  min-width: 0;
+}
+
+.content-wrapper :deep(.app-shell-page-header .eyebrow) {
+  display: block;
+}
+
+.content-wrapper :deep(.app-shell-page-header h1) {
+  margin: 0 !important;
+  font-size: 26px !important;
+  line-height: 1.15 !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+}
+
+.content-wrapper :deep(.app-shell-page-header p) {
+  margin: 0 !important;
+  font-size: 12px !important;
+}
+
+.content-wrapper :deep(.app-shell-page-header + .page-content) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 18px !important;
+  box-sizing: border-box !important;
 }
 
 @media (max-width: 1024px) {
@@ -2800,38 +2838,6 @@ const handleProjectCreated = (newProject) => {
 .ai-floating-btn:hover {
   filter: brightness(1.04);
 }
-
-.global-utility-rail {
-  position: fixed;
-  z-index: 1510;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
-}
-
-.global-utility-rail button {
-  width: 46px;
-  min-height: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 3px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  box-shadow: var(--shadow-md);
-  cursor: pointer;
-}
-
-.global-utility-rail button:hover,
-.global-utility-rail button.active {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-}
-
-.global-utility-rail span { font-size: 9px; font-weight: 700; }
 
 .ai-floating-btn.is-dragging { cursor: grabbing; filter: brightness(1.08); }
 .ai-floating-btn.is-dragging .ai-pet-image { animation: none; }
@@ -3886,15 +3892,6 @@ const handleProjectCreated = (newProject) => {
     width: 58px;
     height: 58px;
   }
-
-  .global-utility-rail {
-    top: auto;
-    right: 8px;
-    bottom: 82px;
-    transform: none;
-  }
-
-  .global-utility-rail button { width: 42px; min-height: 44px; }
 
   .ai-pet-image {
     width: 58px;

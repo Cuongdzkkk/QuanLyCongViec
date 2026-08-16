@@ -112,6 +112,7 @@ const t = (key) => i18nStore.t(key)
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useSprintStore } from '@/store/useSprintStore'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const route = useRoute()
 const router = useRouter()
@@ -361,9 +362,9 @@ const getDeadlineClass = (task) => {
 }
 
 const navigateToTask = (taskId) => {
+  const project = projectStore.currentProject || projectStore.allProjects.find(item => `${item.id}` === `${projectId.value}`) || projectId.value
   router.push({
-    name: 'SpaceSummary',
-    params: { id: projectId.value },
+    path: buildSpacePath(project, 'work-items'),
     query: { task: taskId }
   })
 }

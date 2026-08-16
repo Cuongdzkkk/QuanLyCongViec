@@ -129,6 +129,8 @@
 import { ref, computed, watch } from 'vue'
 import axiosClient from '@/api/axiosClient'
 import { ElMessage } from 'element-plus'
+import { useSiteStore } from '@/store/useSiteStore'
+import { ensureWorkspaceIdFromState } from '@/utils/contextIds'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import ProjectAvatarPicker from '@/components/project/ProjectAvatarPicker.vue'
 import ProjectBackgroundPicker from '@/components/project/ProjectBackgroundPicker.vue'
@@ -145,6 +147,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:visible', 'created'])
+const siteStore = useSiteStore()
 
 const coverOptions = [
   { name: 'Coral', value: 'linear-gradient(135deg, #ffb199 0%, #ff5f6d 100%)' },
@@ -214,18 +217,24 @@ const selectIcon = (icon) => {
 }
 
 const fetchWorkspaceMembers = async () => {
+  workspaceMembers.value = []
   try {
-    const workspacesRes = await axiosClient.get('/workspaces')
-    const workspaces = workspacesRes.data?.data || []
-    const workspaceId = workspaces[0]?.id
+    const workspaceId = await ensureWorkspaceIdFromState({ siteStore })
     if (!workspaceId) return
 
     const membersRes = await axiosClient.get(`/workspaces/${workspaceId}/members`)
-    workspaceMembers.value = (membersRes.data?.data || []).map((member) => ({
-      userId: member.userId || member.UserId,
-      fullName: member.fullName || member.FullName,
-      email: member.email || member.Email
-    })).filter((m) => m.userId)
+    const seen = new Set()
+    workspaceMembers.value = (membersRes.data?.data || [])
+      .map((member) => ({
+        userId: member.userId || member.UserId || member.id || member.Id,
+        fullName: member.fullName || member.FullName || member.name || member.Name,
+        email: member.email || member.Email
+      }))
+      .filter((member) => {
+        if (!member.userId || seen.has(member.userId)) return false
+        seen.add(member.userId)
+        return true
+      })
   } catch (error) {
     console.error('Fetch members error:', error)
   }
@@ -242,6 +251,11 @@ const handleSubmit = async () => {
   if (!form.value.name) return
   loading.value = true
   try {
+    const workspaceId = await ensureWorkspaceIdFromState({ siteStore })
+    if (!workspaceId) {
+      ElMessage.error('Please select a workspace before creating a project')
+      return
+    }
     const payload = {
       name: form.value.name,
       key: form.value.key,
@@ -250,6 +264,7 @@ const handleSubmit = async () => {
       networkType: form.value.networkType,
       cover: form.value.cover,
       icon: form.value.icon,
+      workspaceId,
       leadUserId: form.value.leadUserId || null
     }
     const response = await axiosClient.post('/projects', payload)

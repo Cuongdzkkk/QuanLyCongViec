@@ -1,3 +1,104 @@
+import axiosClient from '@/api/axiosClient'
+import { buildSpacePath } from '@/utils/spaceRoute'
+
+const ensureProjectRoute = async (to) => {
+  const projectId = String(to.params.id || '').trim()
+  if (!projectId) {
+    return { path: '/dashboard' }
+  }
+
+  try {
+    await axiosClient.get(`/projects/${projectId}`)
+    return true
+  } catch (error) {
+    const status = Number(error?.response?.status || 0)
+
+    if (status === 404) {
+      return {
+        path: '/dashboard',
+        query: { invalidProject: projectId }
+      }
+    }
+
+    return true
+  }
+}
+
+const spaceChildren = [
+  {
+    path: '',
+    redirect: to => buildSpacePath({ id: to.params.id, name: to.params.spaceSlug }, 'work-items')
+  },
+  {
+    path: 'work-items',
+    name: 'SpaceSummary',
+    component: () => import('../views/SpaceSummary.vue')
+  },
+  {
+    path: 'cycles',
+    name: 'CyclesView',
+    component: () => import('../views/CyclesView.vue')
+  },
+  {
+    path: 'cycles/:cycleId',
+    name: 'CycleDetailView',
+    component: () => import('../views/SpaceSummary.vue')
+  },
+  {
+    path: 'intakes',
+    name: 'IntakesView',
+    component: () => import('../views/IntakesView.vue')
+  },
+  {
+    path: 'modules',
+    name: 'ModulesView',
+    component: () => import('../views/ModulesView.vue')
+  },
+  {
+    path: 'views',
+    name: 'ViewsViewSpace',
+    component: () => import('../views/ViewsView.vue')
+  },
+  {
+    path: 'pages',
+    name: 'PagesView',
+    component: () => import('../views/PagesView.vue')
+  },
+  {
+    path: 'reports',
+    name: 'ReportsView',
+    component: () => import('../views/ReportsView.vue')
+  },
+  {
+    path: 'dashboard',
+    redirect: to => buildSpacePath({ id: to.params.id, name: to.params.spaceSlug }, 'work-items')
+  },
+  {
+    path: 'members',
+    name: 'SpaceMembers',
+    component: () => import('../views/SpaceMembers.vue')
+  },
+  {
+    path: 'settings',
+    name: 'ProjectSettings',
+    component: () => import('../views/ProjectSettings.vue'),
+    meta: { requiresProjectSettingsAccess: true }
+  },
+  {
+    path: 'ai-intake',
+    name: 'AiFileIntake',
+    component: () => import('../views/AiFileIntake.vue')
+  }
+]
+
+const legacySpaceRedirect = to => {
+  const childPath = `${to.params.legacyPath || 'work-items'}`
+  return {
+    path: buildSpacePath(to.params.id, childPath === 'dashboard' ? 'work-items' : childPath),
+    query: to.query
+  }
+}
+
 export default [
   {
     path: '/',
@@ -24,75 +125,15 @@ export default [
         component: () => import('../views/GlobalArchivesView.vue')
       },
       {
-        path: 'space/:id',
+        path: 'space/:spaceSlug/:id([0-9a-fA-F-]{32,36})',
         component: () => import('../components/layout/ProjectLayoutWrapper.vue'),
         meta: { isSpaceContext: true },
-        children: [
-          {
-            path: '',
-            redirect: to => `/space/${to.params.id}/work-items`
-          },
-          {
-            path: 'work-items',
-            name: 'SpaceSummary',
-            component: () => import('../views/SpaceSummary.vue')
-          },
-          {
-            path: 'cycles',
-            name: 'CyclesView',
-            component: () => import('../views/CyclesView.vue')
-          },
-          {
-            path: 'cycles/:cycleId',
-            name: 'CycleDetailView',
-            component: () => import('../views/SpaceSummary.vue')
-          },
-          {
-            path: 'intakes',
-            name: 'IntakesView',
-            component: () => import('../views/IntakesView.vue')
-          },
-          {
-            path: 'modules',
-            name: 'ModulesView',
-            component: () => import('../views/ModulesView.vue')
-          },
-          {
-            path: 'views',
-            name: 'ViewsViewSpace',
-            component: () => import('../views/ViewsView.vue')
-          },
-          {
-            path: 'pages',
-            name: 'PagesView',
-            component: () => import('../views/PagesView.vue')
-          },
-          {
-            path: 'reports',
-            name: 'ReportsView',
-            component: () => import('../views/ReportsView.vue')
-          },
-          {
-            path: 'dashboard',
-            redirect: to => `/space/${to.params.id}/work-items`
-          },
-          {
-            path: 'members',
-            name: 'SpaceMembers',
-            component: () => import('../views/SpaceMembers.vue')
-          },
-          {
-            path: 'settings',
-            name: 'ProjectSettings',
-            component: () => import('../views/ProjectSettings.vue'),
-            meta: { requiresProjectSettingsAccess: true }
-          },
-          {
-            path: 'ai-intake',
-            name: 'AiFileIntake',
-            component: () => import('../views/AiFileIntake.vue')
-          }
-        ]
+        beforeEnter: ensureProjectRoute,
+        children: spaceChildren
+      },
+      {
+        path: 'space/:id([0-9a-fA-F-]{32,36})/:legacyPath?',
+        redirect: legacySpaceRedirect
       }
     ]
   }

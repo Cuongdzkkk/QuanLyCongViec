@@ -28,6 +28,7 @@ import {
 import { useRouter } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
 import ProductVideoSection from '@/components/landing/ProductVideoSection.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import { currentTheme, toggleTheme } from '@/utils/theme'
 import { clearAuthSession, getStoredAccessToken, getStoredUserSession } from '@/utils/authSession'
 import { language, setLanguage } from '@/i18n'
@@ -263,7 +264,10 @@ const loadContext = async () => {
 const loadPricing = async () => {
   pricingError.value = false
   try {
-    pricing.value = (await axiosClient.get('/public/pricing')).data?.data || null
+    pricing.value = (await axiosClient.get('/public/pricing', {
+      params: { refresh: Date.now() },
+      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' }
+    })).data?.data || null
   } catch {
     pricingError.value = true
   }
@@ -390,7 +394,7 @@ onBeforeUnmount(() => {
           </button>
 
           <button v-if="authenticated" type="button" class="user-chip desktop-only" @click="go('/dashboard')">
-            <span class="avatar">{{ initials }}</span>
+            <UserAvatar :user="user" :size="28" :font-size="10" />
             <span class="user-meta"><b>{{ displayName }}</b><small>{{ workspaceName }}</small></span>
           </button>
           <button v-if="authenticated" type="button" class="text-btn desktop-only" @click="logout">{{ copy.logout }}</button>
@@ -905,6 +909,31 @@ button { font: inherit; }
   color: var(--ink-2);
   background: rgba(2, 12, 25, .36);
 }
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px 4px 5px;
+  cursor: pointer;
+  text-align: left;
+}
+.user-chip > :first-child { flex: 0 0 auto; }
+.user-meta {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+  line-height: 1.1;
+}
+.user-meta b,
+.user-meta small {
+  display: block;
+  max-width: 116px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-meta b { color: var(--ink); font-size: 11px; font-weight: 850; }
+.user-meta small { color: var(--muted); font-size: 9px; font-weight: 700; }
 .icon-btn {
   width: 38px;
   display: inline-grid;
@@ -2016,14 +2045,16 @@ button { font: inherit; }
 .text-btn:hover::after { transform: scaleX(1); }
 
 .landing-page.is-light .icon-btn,
-.landing-page.is-light .lang-btn {
+.landing-page.is-light .lang-btn,
+.landing-page.is-light .user-chip {
   color: #1764d7;
   border-color: rgba(23,100,215,.24);
   background: rgba(255,255,255,.92);
   box-shadow: inset 0 1px rgba(255,255,255,.98), 0 8px 18px rgba(38,76,112,.07);
 }
 .landing-page.is-light .icon-btn:hover,
-.landing-page.is-light .lang-btn:hover {
+.landing-page.is-light .lang-btn:hover,
+.landing-page.is-light .user-chip:hover {
   color: #075fbd;
   border-color: rgba(11,130,189,.38);
   background: #eef7ff;

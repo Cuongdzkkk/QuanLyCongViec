@@ -2,15 +2,15 @@
   <div class="goal-detail-wrapper" v-if="goal">
     <!-- Module Header (matching the list view) -->
     <header class="module-header" style="padding-bottom: 0;">
-      <AppPageHeader title="Mục tiêu" @back="router.push('/home/goals')" :back="true">
+      <AppPageHeader title="Mục tiêu" @back="router.push(goalsBasePath)" :back="true">
         <template #actions>
           <button class="primary-btn">Tạo mục tiêu</button>
         </template>
         <template #bottom>
           <div class="tabs-nav" style="margin-top: 16px;">
-            <router-link to="/home/goals" class="tab-link">Thư mục mục tiêu</router-link>
-            <router-link to="/home/goals" class="tab-link">Đang theo dõi</router-link>
-            <router-link to="/home/goals" class="tab-link">Đã lưu trữ</router-link>
+            <router-link :to="goalsBasePath" class="tab-link">Thư mục mục tiêu</router-link>
+            <router-link :to="goalsBasePath" class="tab-link">Đang theo dõi</router-link>
+            <router-link :to="goalsBasePath" class="tab-link">Đã lưu trữ</router-link>
           </div>
         </template>
       </AppPageHeader>
@@ -673,6 +673,7 @@ import DOMPurify from 'dompurify'
 
 const route = useRoute()
 const router = useRouter()
+const goalsBasePath = computed(() => route.path.startsWith('/goals') ? '/goals' : '/home/goals')
 const goalStore = useGoalStore()
 const projectStore = useHomeProjectStore()
 const teamStore = useTeamStore()
