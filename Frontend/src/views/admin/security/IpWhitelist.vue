@@ -55,21 +55,33 @@
 
       <div class="settings-card">
          <h3 class="card-title">{{ t('Recent Access Log', 'Nhật ký truy cập (Recent Access Log)') }}</h3>
-         <p class="section-desc">{{ t('Login history for the last 30 days to detect suspicious devices and locations.', 'Lịch sử đăng nhập 30 ngày gần nhất để phát hiện thiết bị và địa điểm bất thường.') }}</p>
-         
-         <el-table :data="accessLogs" class="glass-table" style="width: 100%">
+         <p class="section-desc">{{ t('Recent login activity for your account.', 'Hoạt động đăng nhập gần đây của tài khoản của bạn.') }}</p>
+
+         <div v-if="accessLogsLoading" class="access-log-state">
+            {{ t('Loading recent login activity...', 'Đang tải hoạt động đăng nhập gần đây...') }}
+         </div>
+         <div v-else-if="accessLogsError" class="access-log-state access-log-error">
+            <span>{{ t('Unable to load recent login activity.', 'Không thể tải hoạt động đăng nhập gần đây.') }}</span>
+            <el-button type="primary" link @click="fetchAccessLogs">
+              {{ t('Retry', 'Thử lại') }}
+            </el-button>
+         </div>
+         <div v-else-if="accessLogs.length === 0" class="access-log-state">
+            {{ t('No recent login activity.', 'Chưa có hoạt động đăng nhập gần đây.') }}
+         </div>
+         <el-table v-else :data="accessLogs" class="glass-table" style="width: 100%">
             <el-table-column prop="time" :label="t('Time', 'Thời gian')" width="180" />
             <el-table-column prop="ip" :label="t('IP Address', 'Địa chỉ IP')" width="180">
               <template #default="{ row }">
                  <span class="ip-font">{{ row.ip }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="location" :label="t('Region (Estimated)', 'Khu vực (Ước tính)')" />
-            <el-table-column prop="device" :label="t('Access from', 'Truy cập từ')" />
+            <el-table-column prop="method" :label="t('Method', 'Phương thức')" width="160" />
+            <el-table-column prop="userAgent" :label="t('User Agent', 'Trình duyệt / thiết bị')" />
             <el-table-column :label="t('Status', 'Trạng thái')" width="150" align="center">
               <template #default="{ row }">
-                 <el-tag :type="row.risk === 'An Toàn' ? 'success' : (row.risk === 'IP Mới' ? 'warning' : 'danger')" effect="dark" size="small">
-                   {{ row.risk }}
+                 <el-tag effect="plain" size="small">
+                   {{ row.status }}
                  </el-tag>
               </template>
             </el-table-column>
@@ -91,17 +103,70 @@ const isEnabled = ref(false)
 const whitelistedIps = ref([])
 const currentIp = ref('')
 const currentIpError = ref(false)
-const accessLogs = ref([]) // Still mock for now as requested or wait, I am just connecting IP config.
+const accessLogs = ref([])
+const accessLogsLoading = ref(false)
+const accessLogsError = ref(false)
 
 onMounted(async () => {
-  await Promise.all([fetchIpWhitelist(), fetchCurrentIp()]);
-  // Keep mock logs for visualization
-  accessLogs.value = [
-    { time: '11/04/2026 08:30:12', ip: '203.0.113.10', location: 'Hanoi, VN', device: 'Chrome / Windows', risk: 'An Toàn' },
-    { time: '10/04/2026 19:45:00', ip: '14.161.40.112', location: 'Hanoi, VN', device: 'Safari / MacOS', risk: 'An Toàn' },
-    { time: '09/04/2026 02:11:05', ip: '43.224.23.11', location: 'Singapore, SG', device: 'Firefox / Linux', risk: 'IP Mới' }
-  ];
+  await Promise.all([fetchIpWhitelist(), fetchCurrentIp(), fetchAccessLogs()]);
 });
+
+const parseLoginDetails = (details) => {
+  if (!details) return {}
+
+  if (typeof details === 'object') {
+    return details
+  }
+
+  if (typeof details !== 'string' || !details.trim()) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(details)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch (err) {
+    return {}
+  }
+}
+
+const formatAccessLogTime = (createdAt) => {
+  if (!createdAt) return 'Unknown'
+
+  const date = new Date(createdAt)
+  if (Number.isNaN(date.getTime())) return 'Unknown'
+
+  return date.toLocaleString(currentLocale.value === 'vi' ? 'vi-VN' : 'en-US')
+}
+
+const fetchAccessLogs = async () => {
+  accessLogsLoading.value = true
+  accessLogsError.value = false
+
+  try {
+    const res = await axiosClient.get('/users/login-activity')
+    const items = Array.isArray(res.data?.data) ? res.data.data : []
+
+    accessLogs.value = items.map(item => {
+      const details = parseLoginDetails(item.details)
+      const method = typeof details.method === 'string' && details.method.trim() ? details.method : 'Unknown'
+      const userAgent = typeof details.userAgent === 'string' && details.userAgent.trim() ? details.userAgent : 'Unknown'
+
+      return {
+        time: formatAccessLogTime(item.createdAt),
+        ip: typeof item.ipAddress === 'string' && item.ipAddress.trim() ? item.ipAddress : 'Unknown',
+        status: typeof item.status === 'string' && item.status.trim() ? item.status : 'Unknown',
+        method,
+        userAgent
+      }
+    })
+  } catch (err) {
+    accessLogs.value = []
+    accessLogsError.value = true
+  } finally {
+    accessLogsLoading.value = false
+  }
+}
 
 const fetchCurrentIp = async () => {
   currentIpError.value = false;
@@ -314,6 +379,21 @@ const removeIp = (idx) => {
   font-weight: 500;
   font-size: 14px;
 }
-</style>
 
+.access-log-state {
+  margin-top: 16px;
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.access-log-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+</style>
 
