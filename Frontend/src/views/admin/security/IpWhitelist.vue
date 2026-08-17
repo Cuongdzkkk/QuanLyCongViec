@@ -25,10 +25,13 @@
 
          <div class="ip-action-bar mb-24">
             <div class="current-ip-info">
-               {{ t('Your current IP:', 'IP hiện tại của bạn:') }} <strong class="text-highlight">113.160.100.22</strong>
+               {{ t('Your current IP:', 'IP hiện tại của bạn:') }}
+               <strong v-if="currentIp" class="text-highlight">{{ currentIp }}</strong>
+               <span v-else-if="currentIpError" class="current-ip-error">{{ t('Unavailable', 'Không khả dụng') }}</span>
+               <span v-else>{{ t('Loading...', 'Đang tải...') }}</span>
             </div>
             <div class="action-buttons">
-               <el-button @click="addCurrentIp" type="default" plain>
+               <el-button @click="addCurrentIp" type="default" plain :disabled="!currentIp">
                  <i class="fa-solid fa-laptop-house mr-2"></i> {{ t('Add Current IP', 'Thêm IP Hiện Tại') }}
                </el-button>
                <el-button type="primary">
@@ -86,17 +89,35 @@ import { useLocale } from '@/composables/useLocale'
 const { t, locale: currentLocale } = useLocale()
 const isEnabled = ref(false)
 const whitelistedIps = ref([])
+const currentIp = ref('')
+const currentIpError = ref(false)
 const accessLogs = ref([]) // Still mock for now as requested or wait, I am just connecting IP config.
 
 onMounted(async () => {
-  await fetchIpWhitelist();
+  await Promise.all([fetchIpWhitelist(), fetchCurrentIp()]);
   // Keep mock logs for visualization
   accessLogs.value = [
-    { time: '11/04/2026 08:30:12', ip: '113.160.100.22', location: 'Hanoi, VN', device: 'Chrome / Windows', risk: 'An Toàn' },
+    { time: '11/04/2026 08:30:12', ip: '203.0.113.10', location: 'Hanoi, VN', device: 'Chrome / Windows', risk: 'An Toàn' },
     { time: '10/04/2026 19:45:00', ip: '14.161.40.112', location: 'Hanoi, VN', device: 'Safari / MacOS', risk: 'An Toàn' },
     { time: '09/04/2026 02:11:05', ip: '43.224.23.11', location: 'Singapore, SG', device: 'Firefox / Linux', risk: 'IP Mới' }
   ];
 });
+
+const fetchCurrentIp = async () => {
+  currentIpError.value = false;
+  currentIp.value = '';
+  try {
+    const res = await axiosClient.get('/security/current-ip');
+    const ipAddress = res.data?.ipAddress;
+    if (typeof ipAddress !== 'string' || !ipAddress.trim()) {
+      throw new Error('Current IP was not returned by the server');
+    }
+    currentIp.value = ipAddress;
+  } catch (err) {
+    currentIpError.value = true;
+    ElMessage.error(t('Unable to determine your current IP address', 'Không thể xác định địa chỉ IP hiện tại của bạn'));
+  }
+}
 
 const fetchIpWhitelist = async () => {
   try {
@@ -123,14 +144,18 @@ const saveAndApplyIpWhitelist = async () => {
 }
 
 const addCurrentIp = () => {
+  if (!currentIp.value) {
+    ElMessage.error(t('Current IP is unavailable. Please try again later.', 'IP hiện tại không khả dụng. Vui lòng thử lại sau.'));
+    return;
+  }
   if (!isEnabled.value) {
     ElMessage.warning(t('Please enable IP Whitelisting first.', 'Vui lòng kích hoạt tính năng IP Whitelisting trước.'));
     return;
   }
-  const exists = whitelistedIps.value.find(x => x.ip === '113.160.100.22');
+  const exists = whitelistedIps.value.find(x => x.ip === currentIp.value);
   if(!exists){
     whitelistedIps.value.push({
-      ip: '113.160.100.22',
+      ip: currentIp.value,
       note: t('Auto-added (Current device)', 'Thêm tự động (Thiết bị hiện tại)'),
       addedBy: t('You', 'Bạn'),
       date: new Date().toLocaleDateString(currentLocale.value === 'vi' ? 'vi-VN' : 'en-US')
@@ -247,6 +272,11 @@ const removeIp = (idx) => {
   font-size: 15px;
 }
 
+.current-ip-error {
+  color: #dc2626;
+  font-weight: 600;
+}
+
 .action-buttons {
   display: flex;
   gap: 12px;
@@ -285,6 +315,5 @@ const removeIp = (idx) => {
   font-size: 14px;
 }
 </style>
-
 
 
