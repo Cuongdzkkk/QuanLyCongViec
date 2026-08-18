@@ -8,7 +8,7 @@ internal static class SqlServerTestConfiguration
     {
         var builder = new SqlConnectionStringBuilder
         {
-            DataSource = Environment.GetEnvironmentVariable("DEV_SQL_SERVER") ?? @"KHOI\SQLEXPRESS",
+            DataSource = Environment.GetEnvironmentVariable("DEV_SQL_SERVER") ?? @"Quan",
             InitialCatalog = databaseName,
             IntegratedSecurity = true,
             TrustServerCertificate = true,
