@@ -181,13 +181,13 @@ namespace TaskManagement.Infrastructure.Services
         {
             var apiKey = _configuration["Resend:ApiKey"]
                 ?? throw new InvalidOperationException("Resend API key is missing.");
-            var fromEmail = _configuration["Resend:FromEmail"] ?? "noreply@sprinta.io.vn";
+            var fromEmail = _configuration["Resend:FromEmail"] ?? "noreply@sprinta.id.vn";
             var fromDisplay = $"SprintA <{fromEmail}>";
 
             var requestBody = new
             {
                 from = fromDisplay,
-                reply_to = "support@sprinta.io.vn",
+                reply_to = "support@sprinta.id.vn",
                 to = new[] { toEmail },
                 subject,
                 html,
