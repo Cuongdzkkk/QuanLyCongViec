@@ -134,7 +134,6 @@ export const useSprintStore = defineStore('sprint', {
           if (listAbortController === controller) listAbortController = null
         }
       }
-      return this.sprints
     },
 
     refreshActiveSprint() {
