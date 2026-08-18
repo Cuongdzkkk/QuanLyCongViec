@@ -44,11 +44,11 @@ export const getSprintApiError = (error) => {
 }
 
 const ERROR_MESSAGES = Object.freeze({
-  CYCLE_ALREADY_COMPLETED: 'Cycle này đã hoàn tất và không thể bắt đầu lại.',
-  CYCLE_NOT_ACTIVE: 'Chỉ Cycle đang hoạt động mới có thể được đóng.',
-  CYCLE_DATES_INVALID: 'Khoảng thời gian của Cycle không hợp lệ.',
-  ACTIVE_CYCLE_EXISTS: 'Dự án đang có một Cycle hoạt động khác.',
-  INVALID_TARGET_CYCLE: 'Cycle nhận task tồn đọng không hợp lệ.'
+  CYCLE_ALREADY_COMPLETED: 'Sprint này đã hoàn tất và không thể bắt đầu lại.',
+  CYCLE_NOT_ACTIVE: 'Chỉ Sprint đang hoạt động mới có thể được đóng.',
+  CYCLE_DATES_INVALID: 'Khoảng thời gian của Sprint không hợp lệ.',
+  ACTIVE_CYCLE_EXISTS: 'Dự án đã có một Sprint đang hoạt động. Hãy hoàn thành Sprint hiện tại trước khi bắt đầu Sprint mới.',
+  INVALID_TARGET_CYCLE: 'Sprint nhận task tồn đọng không hợp lệ.'
 })
 
 export const getSprintErrorMessage = (error) => {

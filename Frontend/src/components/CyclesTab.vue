@@ -657,8 +657,10 @@ watch(currentTheme, () => {
 })
 
 let cycleRefreshTimer = null
+let cycleTaskRefreshTimer = null
 let unsubscribeAdminRealtime = null
 let sprintRealtimeHandler = null
+let taskRealtimeHandler = null
 onMounted(() => {
   window.addEventListener('keydown', handleTransitionEscape)
   signalRService.startConnection(props.projectId)
@@ -669,6 +671,16 @@ onMounted(() => {
     fetchBurndowns()
   }
   signalRService.on('EntityChanged', sprintRealtimeHandler)
+  taskRealtimeHandler = () => {
+    clearTimeout(cycleTaskRefreshTimer)
+    cycleTaskRefreshTimer = window.setTimeout(() => {
+      cycleWorkItems.value = {}
+      loadCycles(true)
+    }, 150)
+  }
+  signalRService.on('TaskUpdated', taskRealtimeHandler)
+  signalRService.on('WorkTaskUpdated', taskRealtimeHandler)
+  signalRService.on('TasksUpdated', taskRealtimeHandler)
   cycleRefreshTimer = window.setInterval(() => {
     if (props.projectId) {
       loadCycles()
@@ -698,8 +710,14 @@ onUnmounted(() => {
   if (cycleRefreshTimer) {
     window.clearInterval(cycleRefreshTimer)
   }
+  clearTimeout(cycleTaskRefreshTimer)
   unsubscribeAdminRealtime?.()
   if (sprintRealtimeHandler) signalRService.off('EntityChanged', sprintRealtimeHandler)
+  if (taskRealtimeHandler) {
+    signalRService.off('TaskUpdated', taskRealtimeHandler)
+    signalRService.off('WorkTaskUpdated', taskRealtimeHandler)
+    signalRService.off('TasksUpdated', taskRealtimeHandler)
+  }
 })
 </script>
 
@@ -955,7 +973,7 @@ onUnmounted(() => {
                   <i class="fa-solid fa-star text-orange-400" v-if="cycle.isFavorite"></i>
                   <i class="fa-regular fa-star" v-else></i>
                 </button>
-                <button v-if="false" class="filter-action" type="button" @click.stop="toggleCarryOverPlanner(cycle)" :class="{ active: expandedCarryOverCycleId === cycle.id }">
+                <button v-if="canManageSprint" class="filter-action" type="button" @click.stop="toggleCarryOverPlanner(cycle)" :class="{ active: expandedCarryOverCycleId === cycle.id }">
                   <i class="fa-solid fa-list-check"></i> {{ t('cyclesTab.carryOver', 'Carry-over') }}
                 </button>
               </div>

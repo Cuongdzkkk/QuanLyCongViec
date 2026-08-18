@@ -16,9 +16,14 @@ namespace TaskManagement.Domain.Rules
                 return false;
             }
 
-            return ResolveState(sprint) != SprintStates.Active ||
-                !sprint.Status ||
-                sprint.EndDate.Date < utcNow.Date;
+            if (sprint.IsDeleted || sprint.EndDate.Date < utcNow.Date)
+            {
+                return true;
+            }
+
+            var state = ResolveState(sprint);
+            return state == SprintStates.Completed ||
+                (state == SprintStates.Active && !sprint.Status);
         }
     }
 }
