@@ -129,6 +129,9 @@ namespace TaskManagement.Infrastructure.Services
             if (sprint == null)
                 throw new ArgumentException("Sprint không tồn tại trong dự án này.");
 
+            if (SprintStatePolicy.ResolveState(sprint) != SprintStates.Planned)
+                throw new ArgumentException("Chỉ có thể chỉnh sửa sprint sắp tới.");
+
             if (dto.EndDate <= dto.StartDate)
                 throw new ArgumentException("Ngày kết thúc phải sau ngày bắt đầu.");
 
@@ -208,7 +211,7 @@ namespace TaskManagement.Infrastructure.Services
                 {
                     throw new SprintTransitionException(
                         "ACTIVE_CYCLE_EXISTS",
-                        "Project already has an active cycle. Close it before starting another cycle.");
+                        "Project already has an active sprint. Close it before starting another sprint.");
                 }
 
                 sprint.State = SprintStates.Active;
@@ -224,7 +227,7 @@ namespace TaskManagement.Infrastructure.Services
                 await RollbackAsync(transaction);
                 throw new SprintTransitionException(
                     "ACTIVE_CYCLE_EXISTS",
-                    "Project already has an active cycle. Close it before starting another cycle.");
+                    "Project already has an active sprint. Close it before starting another sprint.");
             }
             catch
             {

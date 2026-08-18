@@ -267,7 +267,10 @@ export const useSprintStore = defineStore('sprint', {
         ) {
           await this.fetchSprints(projectId, { force: true })
         }
-        reportExpectedError(`Failed to ${action} sprint`, error)
+        const sprintError = getSprintApiError(error)
+        if (sprintError.code !== 'ACTIVE_CYCLE_EXISTS') {
+          reportExpectedError(`Failed to ${action} sprint`, error)
+        }
         throw error
       } finally {
         if (transitionControllers.get(key) === controller) {

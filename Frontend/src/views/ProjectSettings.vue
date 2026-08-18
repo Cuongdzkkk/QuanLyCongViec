@@ -1151,7 +1151,7 @@
                   </div>
                 </div>
                 <div class="row-actions">
-                  <button v-if="canManageSprint" class="secondary-btn" type="button" @click="saveCycle(sprint)">Save</button>
+                  <button v-if="canManageSprint && getSprintStateMeta(sprint.state).canStart" class="secondary-btn" type="button" @click="saveCycle(sprint)">Save</button>
                   <button class="secondary-btn" type="button" @click="toggleFavoriteCycle(sprint)">
                     {{ sprint.isFavorite ? 'Unfavorite' : 'Favorite' }}
                   </button>

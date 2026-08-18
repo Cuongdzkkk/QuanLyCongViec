@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using TaskManagement.Application.DTOs.Sprint;
 using TaskManagement.Domain.Entities;
+using TaskManagement.Domain.Rules;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Infrastructure.Services;
 using Xunit;
@@ -150,6 +151,7 @@ namespace TaskManagement.Tests.Logic
                 _sprintService.StartAsync(projectId, sprint2Id));
 
             Assert.Equal("ACTIVE_CYCLE_EXISTS", ex.Code);
+            Assert.Equal("Project already has an active sprint. Close it before starting another sprint.", ex.Message);
         }
 
         // =========================================================
@@ -353,6 +355,43 @@ namespace TaskManagement.Tests.Logic
             };
 
             // Act & Assert
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                _sprintService.UpdateAsync(projectId, sprintId, dto));
+        }
+
+        [Fact]
+        public async Task UpdateAsync_ActiveSprint_ThrowsArgumentException()
+        {
+            var projectId = await SeedProjectAsync();
+            var sprintId = await SeedSprintAsync(projectId, isActive: true);
+            var dto = new UpdateSprintDto
+            {
+                Name = "Should not change",
+                StartDate = DateTime.UtcNow.AddDays(1),
+                EndDate = DateTime.UtcNow.AddDays(20)
+            };
+
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                _sprintService.UpdateAsync(projectId, sprintId, dto));
+        }
+
+        [Fact]
+        public async Task UpdateAsync_CompletedSprint_ThrowsArgumentException()
+        {
+            var projectId = await SeedProjectAsync();
+            var sprintId = await SeedSprintAsync(projectId);
+            var sprint = await _context.Sprints.FindAsync(sprintId);
+            sprint!.State = SprintStates.Completed;
+            sprint.Status = false;
+            await _context.SaveChangesAsync();
+
+            var dto = new UpdateSprintDto
+            {
+                Name = "Should not change",
+                StartDate = DateTime.UtcNow.AddDays(1),
+                EndDate = DateTime.UtcNow.AddDays(20)
+            };
+
             await Assert.ThrowsAsync<ArgumentException>(() =>
                 _sprintService.UpdateAsync(projectId, sprintId, dto));
         }
