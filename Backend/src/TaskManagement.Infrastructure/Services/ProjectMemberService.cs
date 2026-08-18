@@ -338,6 +338,182 @@ namespace TaskManagement.Infrastructure.Services
                 .ToListAsync();
         }
 
+        public async Task<IEnumerable<ProjectMemberCandidateResponseDto>> GetProjectMemberCandidatesAsync(
+            Guid projectId,
+            string? search,
+            int page,
+            int pageSize)
+        {
+            var projectWorkspaceId = await _context.Projects
+                .AsNoTracking()
+                .Where(project => project.Id == projectId && project.Status && !project.IsDeleted)
+                .Select(project => (Guid?)project.WorkspaceId)
+                .SingleOrDefaultAsync();
+
+            if (!projectWorkspaceId.HasValue)
+            {
+                throw new ArgumentException("Project does not exist.");
+            }
+
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 50);
+            var normalizedSearch = search?.Trim().ToLowerInvariant();
+
+            var query = _context.Users
+                .AsNoTracking()
+                .Where(user => user.IsActive && !user.IsDeleted)
+                .Where(user => _context.WorkspaceMembers.Any(workspaceMember =>
+                    workspaceMember.WorkspaceId == projectWorkspaceId.Value &&
+                    workspaceMember.UserId == user.Id &&
+                    workspaceMember.IsActive))
+                .Where(user => !_context.ProjectMembers.Any(projectMember =>
+                    projectMember.ProjectId == projectId &&
+                    projectMember.UserId == user.Id &&
+                    projectMember.Status))
+                .Where(user => !_context.ProjectMembers.Any(projectMember =>
+                    projectMember.ProjectId == projectId &&
+                    projectMember.UserId == user.Id &&
+                    !projectMember.Status &&
+                    projectMember.LeftAt == null));
+
+            if (!string.IsNullOrWhiteSpace(normalizedSearch))
+            {
+                query = query.Where(user =>
+                    user.FullName.ToLower().Contains(normalizedSearch) ||
+                    user.Email.ToLower().Contains(normalizedSearch));
+            }
+
+            return await query
+                .OrderBy(user => user.FullName)
+                .ThenBy(user => user.Email)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(user => new ProjectMemberCandidateResponseDto
+                {
+                    UserId = user.Id,
+                    Email = user.Email,
+                    FullName = user.FullName
+                })
+                .ToListAsync();
+        }
+
+        public async Task<ProjectMemberResponseDto> AddExistingMemberAsync(
+            Guid projectId,
+            AddExistingProjectMemberRequestDto request)
+        {
+            if (request.UserId == Guid.Empty)
+            {
+                throw new ArgumentException("User is required.");
+            }
+
+            IDbContextTransaction? transaction = null;
+            if (_context.Database.IsRelational())
+            {
+                transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+            }
+
+            try
+            {
+                if (_context.Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    var lockKey = Convert.ToHexString(SHA256.HashData(
+                        Encoding.UTF8.GetBytes($"project-member-add:{projectId:N}:{request.UserId:N}")));
+                    await _context.Database.ExecuteSqlInterpolatedAsync(
+                        $"EXEC sys.sp_getapplock @Resource={lockKey}, @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=10000;");
+                }
+
+                var project = await _context.Projects
+                    .SingleOrDefaultAsync(item => item.Id == projectId && item.Status && !item.IsDeleted);
+                if (project == null)
+                {
+                    throw new ArgumentException("Project does not exist.");
+                }
+
+                var user = await _context.Users
+                    .SingleOrDefaultAsync(item => item.Id == request.UserId);
+                if (user == null)
+                {
+                    throw new ArgumentException("User does not exist.");
+                }
+
+                if (!user.IsActive || user.IsDeleted)
+                {
+                    throw new ArgumentException("User is not active.");
+                }
+
+                var workspaceMember = await _context.WorkspaceMembers
+                    .SingleOrDefaultAsync(item =>
+                        item.WorkspaceId == project.WorkspaceId &&
+                        item.UserId == request.UserId);
+                if (workspaceMember == null || !workspaceMember.IsActive)
+                {
+                    throw new ArgumentException("User is not an active member of this workspace.");
+                }
+
+                var membership = await _context.ProjectMembers
+                    .SingleOrDefaultAsync(item =>
+                        item.ProjectId == projectId &&
+                        item.UserId == request.UserId);
+                if (membership?.Status == true)
+                {
+                    throw new InvalidOperationException("User is already an active project member.");
+                }
+
+                if (membership is { Status: false, LeftAt: null })
+                {
+                    throw new InvalidOperationException("A pending invitation already exists for this user.");
+                }
+
+                var resolvedProjectRole = await ResolveProjectRoleAsync(request.Role);
+                var now = DateTime.UtcNow;
+                if (membership == null)
+                {
+                    membership = new ProjectMember
+                    {
+                        ProjectId = projectId,
+                        UserId = request.UserId,
+                        ProjectRole = resolvedProjectRole,
+                        JoinedAt = now,
+                        Status = true
+                    };
+                    _context.ProjectMembers.Add(membership);
+                }
+                else
+                {
+                    membership.ProjectRole = resolvedProjectRole;
+                    membership.JoinedAt = now;
+                    membership.LeftAt = null;
+                    membership.Status = true;
+                }
+
+                await _context.SaveChangesAsync();
+                if (transaction != null) await transaction.CommitAsync();
+
+                return new ProjectMemberResponseDto
+                {
+                    UserId = user.Id,
+                    Email = user.Email,
+                    FullName = user.FullName,
+                    ProjectRole = membership.ProjectRole,
+                    JoinedAt = membership.JoinedAt
+                };
+            }
+            catch (DbUpdateException ex)
+            {
+                if (transaction != null) await transaction.RollbackAsync();
+                throw new InvalidOperationException("A project membership already exists for this user.", ex);
+            }
+            catch
+            {
+                if (transaction != null) await transaction.RollbackAsync();
+                throw;
+            }
+            finally
+            {
+                if (transaction != null) await transaction.DisposeAsync();
+            }
+        }
+
         private async Task<string> ResolveProjectRoleAsync(string? requestedRole)
         {
             var normalizedRequestedRole = ProjectExecutionRuleHelper.NormalizeProjectRole(requestedRole);

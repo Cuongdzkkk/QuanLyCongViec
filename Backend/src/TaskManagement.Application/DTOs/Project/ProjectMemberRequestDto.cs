@@ -8,4 +8,10 @@ namespace TaskManagement.Application.DTOs.Project
         public string Role { get; set; } = string.Empty;
         public string? InviteMessage { get; set; }
     }
+
+    public class AddExistingProjectMemberRequestDto
+    {
+        public Guid UserId { get; set; }
+        public string Role { get; set; } = string.Empty;
+    }
 }

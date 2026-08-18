@@ -212,7 +212,7 @@
       </template>
       <DataModalSection icon="bi bi-person-lines-fill" title="Thông tin thành viên">
       <el-tabs v-model="inviteTab" class="nexus-tabs-small mb-4">
-        <el-tab-pane label="Chọn từ hệ thống" name="system">
+        <el-tab-pane label="Thêm thành viên Workspace" name="system">
           <div class="mt-2">
             <label class="block text-sm font-medium mb-1">Thành viên</label>
             <el-select
@@ -220,16 +220,16 @@
               filterable
               remote
               reserve-keyword
-              placeholder="Tìm kiếm thành viên..."
+              placeholder="Tìm người trong Workspace..."
               :remote-method="searchSystemUsers"
               :loading="isSearchingUsers"
               class="w-full"
             >
                 <el-option
                 v-for="user in systemUsers"
-                :key="user.id"
+                :key="user.userId"
                 :label="user.fullName || user.email"
-                :value="user.email"
+                :value="user.userId"
                 style="height: auto; padding: 4px 8px;"
               >
                 <div class="flex items-center">
@@ -267,7 +267,7 @@
       <template #footer>
         <span class="dialog-footer">
           <el-button class="cancel-btn" @click="showAddMemberModal = false"><i class="bi bi-x-lg"></i> Hủy</el-button>
-          <el-button type="primary" @click="inviteMember" :loading="isInviting"><i class="fa-solid fa-plus"></i> Thêm vào dự án</el-button>
+          <el-button type="primary" @click="inviteMember" :loading="isInviting"><i class="fa-solid fa-plus"></i>{{ inviteTab === 'system' ? ' Thêm thành viên' : ' Gửi lời mời' }}</el-button>
         </span>
       </template>
     </el-dialog>
@@ -417,9 +417,9 @@ const systemUsers = ref([])
 const fetchDefaultUsers = async () => {
   isSearchingUsers.value = true
   try {
-    const res = await axiosClient.get(`/users`, { params: { pageSize: 50 } })
+    const res = await axiosClient.get(`/projects/${projectId.value}/members/member-candidates`, { params: { page: 1, pageSize: 50 } })
     const allUsers = res.data?.data || []
-    systemUsers.value = allUsers.filter(u => !members.value.some(m => m.userId === u.id))
+    systemUsers.value = allUsers
   } catch (error) {
     console.error('Lỗi khi fetch users:', error)
   } finally {
@@ -431,9 +431,9 @@ const searchSystemUsers = async (query) => {
   if (query !== '') {
     isSearchingUsers.value = true
     try {
-      const res = await axiosClient.get(`/users`, { params: { search: query, pageSize: 50 } })
+      const res = await axiosClient.get(`/projects/${projectId.value}/members/member-candidates`, { params: { search: query, page: 1, pageSize: 50 } })
       const allUsers = res.data?.data || []
-      systemUsers.value = allUsers.filter(u => !members.value.some(m => m.userId === u.id))
+      systemUsers.value = allUsers
     } catch (error) {
       console.error(error)
     } finally {
@@ -445,7 +445,7 @@ const searchSystemUsers = async (query) => {
 }
 
 watch(showAddMemberModal, (val) => {
-  if (val && systemUsers.value.length === 0) {
+  if (val && inviteTab.value === 'system') {
     fetchDefaultUsers()
   }
 })
@@ -609,29 +609,35 @@ const formatDate = (dateString) => {
 }
 
 const inviteMember = async () => {
-  let emailToInvite = ''
+  if (isInviting.value) return
+
   if (inviteTab.value === 'system') {
     if (!inviteForm.value.systemUserId) {
-      ElMessage.warning('Vui lòng chọn thành viên từ hệ thống.')
+      ElMessage.warning('Vui lòng chọn thành viên trong Workspace.')
       return
     }
-    emailToInvite = inviteForm.value.systemUserId
-  } else {
-    if (!inviteForm.value.email) {
-      ElMessage.warning('Vui lòng nhập email.')
-      return
-    }
-    emailToInvite = inviteForm.value.email
+  }
+  if (inviteTab.value === 'email' && !inviteForm.value.email) {
+    ElMessage.warning('Vui lòng nhập email.')
+    return
   }
 
   isInviting.value = true
   try {
-    await axiosClient.post(`/projects/${projectId.value}/members`, {
-      email: emailToInvite,
-      role: inviteForm.value.role,
-      inviteMessage: '' // No message needed as we add directly
-    })
-    ElMessage.success('Đã thêm thành viên vào dự án.')
+    if (inviteTab.value === 'system') {
+      await axiosClient.post(`/projects/${projectId.value}/members/add-existing`, {
+        userId: inviteForm.value.systemUserId,
+        role: inviteForm.value.role
+      })
+      ElMessage.success('Đã thêm thành viên vào dự án.')
+    } else {
+      await axiosClient.post(`/projects/${projectId.value}/members`, {
+        email: inviteForm.value.email,
+        role: inviteForm.value.role,
+        inviteMessage: inviteForm.value.message
+      })
+      ElMessage.success('Đã gửi lời mời qua email. Thành viên cần chấp nhận lời mời để tham gia dự án.')
+    }
     showAddMemberModal.value = false
     inviteForm.value = { email: '', systemUserId: '', role: 'Developer', message: '' }
     await fetchMembers()
