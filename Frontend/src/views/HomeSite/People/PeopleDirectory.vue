@@ -129,7 +129,7 @@
             placeholder="Ví dụ: name@example.com" 
             @keydown.enter.prevent="addEmail"
             @keydown.space.prevent="addEmail"
-            @keydown.comma.prevent="addEmail"
+            @keydown="handleEmailKeydown"
             @blur="addEmail"
             ref="emailInputRef"
           />
@@ -206,6 +206,12 @@ const addEmail = () => {
     }
   })
   emailInput.value = ''
+}
+
+const handleEmailKeydown = (event) => {
+  if (event.key !== ',') return
+  event.preventDefault()
+  addEmail()
 }
 
 const removeEmail = (index) => {
