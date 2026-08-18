@@ -55,6 +55,35 @@ public sealed class ChatRealtimeIntegrationTests
     }
 
     [Fact]
+    public async Task KanbanHubQueryTokenIsAcceptedOnlyForKanbanHubRoute()
+    {
+        await using var factory = new ChatApplicationFactory();
+        var userId = Guid.NewGuid();
+        await SeedUserAsync(factory, userId, active: true);
+
+        using var client = factory.CreateClient();
+        var validToken = CreateToken(factory, userId);
+
+        await using var validConnection = CreateKanbanConnection(factory, validToken);
+        await validConnection.StartAsync();
+
+        var valid = await client.PostAsync(
+            $"{KanbanHub.Route}/negotiate?negotiateVersion=1&access_token={validToken}",
+            content: null);
+        valid.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var missing = await client.PostAsync(
+            $"{KanbanHub.Route}/negotiate?negotiateVersion=1",
+            content: null);
+        missing.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        var invalid = await client.PostAsync(
+            $"{KanbanHub.Route}/negotiate?negotiateVersion=1&access_token=invalid-token",
+            content: null);
+        invalid.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task ChannelJoinAndEventsAreAuthorizedAndGroupIsolated()
     {
         await using var factory = new ChatApplicationFactory();
@@ -294,6 +323,20 @@ public sealed class ChatRealtimeIntegrationTests
                     options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
                     if (accessToken != null)
                         options.AccessTokenProvider = () => Task.FromResult(accessToken)!;
+                })
+            .Build();
+
+    private static HubConnection CreateKanbanConnection(
+        ChatApplicationFactory factory,
+        string accessToken) =>
+        new HubConnectionBuilder()
+            .WithUrl(
+                new Uri(factory.Server.BaseAddress, KanbanHub.Route),
+                options =>
+                {
+                    options.Transports = HttpTransportType.LongPolling;
+                    options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                    options.AccessTokenProvider = () => Task.FromResult(accessToken)!;
                 })
             .Build();
 
