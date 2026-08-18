@@ -134,7 +134,6 @@ export const useSprintStore = defineStore('sprint', {
           if (listAbortController === controller) listAbortController = null
         }
       }
-      return this.sprints
     },
 
     refreshActiveSprint() {
@@ -179,9 +178,9 @@ export const useSprintStore = defineStore('sprint', {
         isOptimistic: true
       })
       try {
-        const response = await axiosClient.post(`/projects/${projectId}/sprints`, payload)
+        const sprint = await sprintApi.createSprint(projectId, payload)
         this.removeSprint(tempId)
-        return this.upsertSprint(response.data?.data)
+        return this.upsertSprint(sprint)
       } catch (error) {
         this.removeSprint(tempId)
         throw error

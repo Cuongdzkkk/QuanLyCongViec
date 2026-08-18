@@ -48,7 +48,7 @@
                <p class="method-desc">{{ t('Receive a 6-digit verification code via SMS or email.', 'Nhận mã xác nhận gồm 6 chữ số gửi qua số điện thoại hoặc email. Thiết lập dễ dàng nhưng kém an toàn hơn Ứng dụng.') }}</p>
             </div>
             <div class="method-action">
-              <el-button type="default" :type="is2faEnabled ? 'danger' : 'success'" :plain="true" @click="is2faEnabled = !is2faEnabled; toggle2fa(is2faEnabled)">
+              <el-button :type="is2faEnabled ? 'danger' : 'success'" :plain="true" @click="is2faEnabled = !is2faEnabled; toggle2fa(is2faEnabled)">
                  {{ is2faEnabled ? t('Disable', 'Tắt') : t('Enable', 'Bật') }}
               </el-button>
             </div>

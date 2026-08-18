@@ -10,5 +10,7 @@ namespace TaskManagement.Application.Interfaces
         Task RemoveMemberAsync(Guid projectId, Guid userId, Guid removedBy, string? removalReason = null);
         Task UpdateMemberRoleAsync(Guid projectId, Guid userId, string newRole);
         Task<System.Collections.Generic.IEnumerable<ProjectMemberResponseDto>> GetProjectMembersAsync(Guid projectId);
+        Task<System.Collections.Generic.IEnumerable<ProjectMemberCandidateResponseDto>> GetProjectMemberCandidatesAsync(Guid projectId, string? search, int page, int pageSize);
+        Task<ProjectMemberResponseDto> AddExistingMemberAsync(Guid projectId, AddExistingProjectMemberRequestDto request);
     }
 }

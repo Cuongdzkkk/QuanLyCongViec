@@ -23,6 +23,15 @@ export const sprintApi = {
     return unwrapData(response)
   },
 
+  async createSprint(projectId, payload, options = {}) {
+    const response = await axiosClient.post(
+      `/projects/${projectId}/sprints`,
+      payload,
+      { signal: options.signal }
+    )
+    return unwrapData(response)
+  },
+
   async toggleFavorite(projectId, sprintId, options = {}) {
     const response = await axiosClient.patch(
       `/projects/${projectId}/sprints/${sprintId}/favorite`,

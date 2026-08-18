@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint src --ext .js,.vue",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -53,6 +55,8 @@
     "@vitejs/plugin-vue": "^6.0.5",
     "autoprefixer": "^10.4.27",
     "element-plus": "^2.13.5",
+    "eslint": "8.57.1",
+    "eslint-plugin-vue": "9.33.0",
     "postcss": "^8.5.9",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.3",

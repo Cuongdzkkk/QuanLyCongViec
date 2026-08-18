@@ -39,6 +39,59 @@ namespace TaskManagement.API.Controllers
             }
         }
 
+        [HttpGet("member-candidates")]
+        [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,Admin")]
+        public async Task<IActionResult> GetMemberCandidates(
+            Guid projectId,
+            [FromQuery] string? search,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                var candidates = await _projectMemberService.GetProjectMemberCandidatesAsync(projectId, search, page, pageSize);
+                return Ok(new { statusCode = 200, message = "Success", data = candidates, page, pageSize });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { statusCode = 400, message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { statusCode = 500, message = "Internal server error: " + ex.Message });
+            }
+        }
+
+        [HttpPost("add-existing")]
+        [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,Admin")]
+        public async Task<IActionResult> AddExistingMember(
+            Guid projectId,
+            [FromBody] AddExistingProjectMemberRequestDto request)
+        {
+            try
+            {
+                var member = await _projectMemberService.AddExistingMemberAsync(projectId, request);
+                await _hub.PublishEntityChangedAsync(projectId, "project-member", "created", member.UserId, new
+                {
+                    userId = member.UserId,
+                    role = member.ProjectRole
+                });
+                return Ok(new { statusCode = 200, message = "Member added successfully.", data = member });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { statusCode = 409, message = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { statusCode = 400, message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { statusCode = 500, message = "Internal server error: " + ex.Message });
+            }
+        }
+
         [HttpPost]
         [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,Admin")]
         public async Task<IActionResult> InviteMember(Guid projectId, [FromBody] ProjectMemberRequestDto request)

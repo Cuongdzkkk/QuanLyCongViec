@@ -41,6 +41,20 @@ namespace TaskManagement.API.Controllers
             public string? Date { get; set; }
         }
 
+        [HttpGet("current-ip")]
+        public async Task<IActionResult> GetCurrentIp()
+        {
+            if (!await CurrentUserHasAdminAccessAsync())
+            {
+                return Forbid();
+            }
+
+            return Ok(new
+            {
+                ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString()
+            });
+        }
+
         [HttpGet("ip-whitelist")]
         public async Task<IActionResult> GetIpWhitelist()
         {
