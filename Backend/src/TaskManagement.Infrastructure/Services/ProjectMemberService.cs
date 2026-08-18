@@ -33,6 +33,32 @@ namespace TaskManagement.Infrastructure.Services
             ProjectMemberRequestDto request,
             string inviterName)
         {
+            var persistence = _context.Database.IsRelational()
+                ? await _context.Database.CreateExecutionStrategy()
+                    .ExecuteAsync(() => PersistInvitationAsync(projectId, request))
+                : await PersistInvitationAsync(projectId, request);
+
+            if (persistence.Outcome != ProjectInvitationOutcome.InvitationCreated)
+            {
+                return persistence.Outcome;
+            }
+
+            await _emailService.SendInviteEmailAsync(
+                persistence.NormalizedEmail!,
+                persistence.InvitedUser!.FullName,
+                inviterName,
+                "SprintA",
+                persistence.InvitedProject!.Name,
+                BuildInviteUrl(persistence.RawInviteToken!),
+                request.InviteMessage);
+
+            return ProjectInvitationOutcome.InvitationCreated;
+        }
+
+        private async Task<InvitationPersistenceResult> PersistInvitationAsync(
+            Guid projectId,
+            ProjectMemberRequestDto request)
+        {
             var normalizedEmail = EmailCanonicalizer.Normalize(request.Email);
             if (string.IsNullOrWhiteSpace(normalizedEmail))
             {
@@ -102,13 +128,13 @@ namespace TaskManagement.Infrastructure.Services
                 if (membership?.Status == true)
                 {
                     if (transaction != null) await transaction.CommitAsync();
-                    return ProjectInvitationOutcome.AlreadyActiveMember;
+                    return new InvitationPersistenceResult(ProjectInvitationOutcome.AlreadyActiveMember, null, null, null, null);
                 }
 
                 if (membership is { Status: false, LeftAt: null })
                 {
                     if (transaction != null) await transaction.CommitAsync();
-                    return ProjectInvitationOutcome.InvitationAlreadyPending;
+                    return new InvitationPersistenceResult(ProjectInvitationOutcome.InvitationAlreadyPending, null, null, null, null);
                 }
 
                 if (membership == null)
@@ -186,16 +212,12 @@ namespace TaskManagement.Infrastructure.Services
                 if (transaction != null) await transaction.DisposeAsync();
             }
 
-            await _emailService.SendInviteEmailAsync(
+            return new InvitationPersistenceResult(
+                ProjectInvitationOutcome.InvitationCreated,
                 normalizedEmail,
-                invitedUser!.FullName,
-                inviterName,
-                "SprintA",
-                invitedProject!.Name,
-                BuildInviteUrl(rawInviteToken!),
-                request.InviteMessage);
-
-            return ProjectInvitationOutcome.InvitationCreated;
+                invitedUser,
+                invitedProject,
+                rawInviteToken);
         }
 
         public async Task RemoveMemberAsync(
@@ -576,5 +598,12 @@ namespace TaskManagement.Infrastructure.Services
                     : char.ToUpperInvariant(word[0]) + word[1..]);
             return string.Join(' ', words);
         }
+
+        private sealed record InvitationPersistenceResult(
+            ProjectInvitationOutcome Outcome,
+            string? NormalizedEmail,
+            User? InvitedUser,
+            Project? InvitedProject,
+            string? RawInviteToken);
     }
 }
