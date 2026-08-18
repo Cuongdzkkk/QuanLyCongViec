@@ -1496,6 +1496,15 @@ const upsertById = (collectionRef, item) => {
 const removeById = (collectionRef, id) => {
   collectionRef.value = collectionRef.value.filter(item => item.id !== id)
 }
+
+const parseOptions = (json) => {
+  try {
+    return json ? JSON.parse(json) : []
+  } catch {
+    return []
+  }
+}
+
 const integrationAnalysis = ref(null)
 const pointManagement = ref({
   totalProjectPoints: 0,
