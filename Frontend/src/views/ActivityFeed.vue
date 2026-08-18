@@ -35,8 +35,6 @@
               style="width: 220px;"
               popper-class="custom-project-dropdown"
             >
-              <!-- Dummy helper reference to trigger default project value assignment on render -->
-              <span style="display:none;">{{ unwatchProjects }}</span>
               <el-option label="— Tất cả dự án —" value="all" />
               <el-option 
                 v-for="proj in sidebarProjects" 
@@ -213,15 +211,6 @@ const handleTypeMouseEnter = () => {
     }
   }
 }
-
-// Watch projects list to set default project selection
-const unwatchProjects = computed(() => {
-  if (sidebarProjects.value.length > 0 && !selectedPostProject.value) {
-    selectedPostProject.value = 'all'
-  }
-  return sidebarProjects.value
-})
-
 
 const filterOptions = [
   { label: 'Tất cả', value: 'all', icon: 'fa-solid fa-list' },
