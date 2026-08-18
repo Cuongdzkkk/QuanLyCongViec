@@ -143,7 +143,18 @@ namespace TaskManagement.Infrastructure.Services
             return updated;
         }
 
-        public async Task<SprintResponseDto> StartAsync(Guid projectId, Guid sprintId)
+        public Task<SprintResponseDto> StartAsync(Guid projectId, Guid sprintId)
+        {
+            if (!_context.Database.IsRelational())
+            {
+                return StartCoreAsync(projectId, sprintId);
+            }
+
+            return _context.Database.CreateExecutionStrategy()
+                .ExecuteAsync(() => StartCoreAsync(projectId, sprintId));
+        }
+
+        private async Task<SprintResponseDto> StartCoreAsync(Guid projectId, Guid sprintId)
         {
             await using var transaction = await BeginProjectTransitionAsync(projectId);
             try
@@ -222,7 +233,22 @@ namespace TaskManagement.Infrastructure.Services
             }
         }
 
-        public async Task<SprintResponseDto> CloseAsync(
+        public Task<SprintResponseDto> CloseAsync(
+            Guid projectId,
+            Guid sprintId,
+            CloseSprintDto dto,
+            Guid actorUserId)
+        {
+            if (!_context.Database.IsRelational())
+            {
+                return CloseCoreAsync(projectId, sprintId, dto, actorUserId);
+            }
+
+            return _context.Database.CreateExecutionStrategy()
+                .ExecuteAsync(() => CloseCoreAsync(projectId, sprintId, dto, actorUserId));
+        }
+
+        private async Task<SprintResponseDto> CloseCoreAsync(
             Guid projectId,
             Guid sprintId,
             CloseSprintDto dto,
