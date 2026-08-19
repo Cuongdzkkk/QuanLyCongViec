@@ -16,6 +16,10 @@ public sealed class CollaborationChannelService : ICollaborationChannelService
     public const int MaximumDescriptionLength = 500;
     public const int MaximumIdempotencyKeyLength = 100;
     public const string PrivateVisibility = "Private";
+    public const string PrivateScope = "Private";
+    public const string ProjectDiscussionScope = "ProjectDiscussion";
+    private const string ProjectDiscussionProvisioningKey = "__project_discussion__";
+    private const string ProjectDiscussionName = "Project Discussion";
     public const string Ordering = "name_asc,createdAt_asc,channelId_asc";
 
     private readonly ApplicationDbContext _context;
@@ -43,6 +47,13 @@ public sealed class CollaborationChannelService : ICollaborationChannelService
             userId,
             projectId,
             ResourcePermissionCodes.ProjectWrite)).Succeeded;
+
+        await EnsureProjectDiscussionAsync(projectId, userId, cancellationToken);
+        await EnsureProjectMemberAccessAsync(
+            projectId,
+            userId,
+            cancellationToken: cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
 
         var query = _context.CollaborationChannels
             .AsNoTracking()
@@ -100,6 +111,221 @@ public sealed class CollaborationChannelService : ICollaborationChannelService
             .ToList();
 
         return new(items, page, pageSize, totalCount, Ordering);
+    }
+
+    public async Task<ProvisionCollaborationChannelResult> EnsureProjectDiscussionAsync(
+        Guid projectId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var workspaceId = await GetActiveProjectWorkspaceIdAsync(projectId, cancellationToken);
+        await AuthorizeReadAsync(workspaceId, projectId, userId);
+
+        try
+        {
+            if (_context.Database.IsRelational())
+            {
+                var strategy = _context.Database.CreateExecutionStrategy();
+                return await strategy.ExecuteAsync(() => EnsureProjectDiscussionCoreAsync(
+                    projectId,
+                    userId,
+                    useTransaction: true,
+                    cancellationToken));
+            }
+
+            return await EnsureProjectDiscussionCoreAsync(
+                projectId,
+                userId,
+                useTransaction: false,
+                cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            _context.ChangeTracker.Clear();
+            var concurrent = await FindProjectDiscussionAsync(projectId, cancellationToken);
+            if (concurrent == null) throw;
+            return new(ToDto(concurrent, canManage: false, canSend: true), false);
+        }
+    }
+
+    private async Task<ProvisionCollaborationChannelResult> EnsureProjectDiscussionCoreAsync(
+        Guid projectId,
+        Guid userId,
+        bool useTransaction,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = useTransaction
+            ? await _context.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable,
+                cancellationToken)
+            : null;
+
+        var workspaceId = await GetActiveProjectWorkspaceIdAsync(
+            projectId,
+            cancellationToken,
+            lockForUpdate: useTransaction);
+        await AuthorizeReadAsync(workspaceId, projectId, userId);
+
+        var existing = await FindProjectDiscussionAsync(projectId, cancellationToken);
+        if (existing != null)
+        {
+            await AddMissingProjectDiscussionMembershipsAsync(
+                projectId,
+                existing.Id,
+                cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+            if (transaction != null) await transaction.CommitAsync(cancellationToken);
+            return new(ToDto(existing, canManage: false, canSend: true), false);
+        }
+
+        var now = DateTime.UtcNow;
+        var channel = new CollaborationChannel
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = workspaceId,
+            ProjectId = projectId,
+            CreatedByUserId = userId,
+            ChannelScope = ProjectDiscussionScope,
+            Name = ProjectDiscussionName,
+            Description = "Project-wide discussion",
+            ProvisioningKey = ProjectDiscussionProvisioningKey,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        _context.CollaborationChannels.Add(channel);
+        await AddMissingProjectDiscussionMembershipsAsync(
+            projectId,
+            channel.Id,
+            cancellationToken,
+            includePendingChannel: true);
+        await _context.SaveChangesAsync(cancellationToken);
+        if (transaction != null) await transaction.CommitAsync(cancellationToken);
+
+        return new(ToDto(channel, canManage: false, canSend: true), true);
+    }
+
+    private Task<CollaborationChannel?> FindProjectDiscussionAsync(
+        Guid projectId,
+        CancellationToken cancellationToken) =>
+        _context.CollaborationChannels
+            .Include(channel => channel.Members)
+            .AsNoTracking()
+            .SingleOrDefaultAsync(channel =>
+                channel.ProjectId == projectId &&
+                channel.ChannelScope == ProjectDiscussionScope &&
+                !channel.IsDeleted &&
+                !channel.IsArchived,
+                cancellationToken);
+
+    public async Task EnsureProjectMemberAccessAsync(
+        Guid projectId,
+        Guid userId,
+        bool assumeActiveProjectMember = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (!assumeActiveProjectMember)
+        {
+            var isActiveProjectMember = await _context.ProjectMembers
+                .AsNoTracking()
+                .AnyAsync(member =>
+                    member.ProjectId == projectId &&
+                    member.UserId == userId &&
+                    member.Status &&
+                    member.User.IsActive &&
+                    !member.User.IsDeleted &&
+                    _context.WorkspaceMembers.Any(workspaceMember =>
+                        workspaceMember.WorkspaceId == member.Project.WorkspaceId &&
+                        workspaceMember.UserId == userId &&
+                        workspaceMember.IsActive),
+                    cancellationToken);
+            if (!isActiveProjectMember) return;
+        }
+
+        var channelIds = await _context.CollaborationChannels
+            .AsNoTracking()
+            .Where(channel =>
+                channel.ProjectId == projectId &&
+                channel.ChannelScope == ProjectDiscussionScope &&
+                !channel.IsDeleted &&
+                !channel.IsArchived)
+            .Select(channel => channel.Id)
+            .ToListAsync(cancellationToken);
+        if (channelIds.Count == 0) return;
+
+        await AddMissingProjectDiscussionMembershipsAsync(
+            projectId,
+            userId,
+            cancellationToken,
+            onlyUserId: userId,
+            assumeActiveProjectMember: assumeActiveProjectMember);
+    }
+
+    private async Task AddMissingProjectDiscussionMembershipsAsync(
+        Guid projectId,
+        Guid channelOrUserId,
+        CancellationToken cancellationToken,
+        bool includePendingChannel = false,
+        Guid? onlyUserId = null,
+        bool assumeActiveProjectMember = false)
+    {
+        var channelIds = includePendingChannel
+            ? [channelOrUserId]
+            : await _context.CollaborationChannels
+                .AsNoTracking()
+                .Where(channel =>
+                    channel.ProjectId == projectId &&
+                    channel.ChannelScope == ProjectDiscussionScope &&
+                    !channel.IsDeleted &&
+                    !channel.IsArchived)
+                .Select(channel => channel.Id)
+                .ToListAsync(cancellationToken);
+        if (channelIds.Count == 0) return;
+
+        var activeProjectMemberIds = assumeActiveProjectMember && onlyUserId.HasValue
+            ? [onlyUserId.Value]
+            : await _context.ProjectMembers
+                .AsNoTracking()
+                .Where(member =>
+                    member.ProjectId == projectId &&
+                    (!onlyUserId.HasValue || member.UserId == onlyUserId.Value) &&
+                    member.Status &&
+                    member.User.IsActive &&
+                    !member.User.IsDeleted &&
+                    _context.WorkspaceMembers.Any(workspaceMember =>
+                        workspaceMember.WorkspaceId == member.Project.WorkspaceId &&
+                        workspaceMember.UserId == member.UserId &&
+                        workspaceMember.IsActive))
+                .Select(member => member.UserId)
+                .ToListAsync(cancellationToken);
+        if (activeProjectMemberIds.Count == 0) return;
+
+        var existing = await _context.CollaborationChannelMembers
+            .AsNoTracking()
+            .Where(member =>
+                channelIds.Contains(member.ChannelId) &&
+                activeProjectMemberIds.Contains(member.UserId))
+            .Select(member => new { member.ChannelId, member.UserId })
+            .ToListAsync(cancellationToken);
+        var existingKeys = existing
+            .Select(member => (member.ChannelId, member.UserId))
+            .ToHashSet();
+        var now = DateTime.UtcNow;
+        foreach (var channelId in channelIds)
+        {
+            foreach (var memberId in activeProjectMemberIds)
+            {
+                if (existingKeys.Contains((channelId, memberId))) continue;
+                _context.CollaborationChannelMembers.Add(new CollaborationChannelMember
+                {
+                    ChannelId = channelId,
+                    UserId = memberId,
+                    JoinedAt = now,
+                    IsActive = true,
+                    CanSendMessages = true
+                });
+            }
+        }
     }
 
     private async Task<IReadOnlyDictionary<Guid, ReadMetadata>> BuildReadMetadataAsync(
@@ -240,6 +466,7 @@ public sealed class CollaborationChannelService : ICollaborationChannelService
             WorkspaceId = workspaceId,
             ProjectId = projectId,
             CreatedByUserId = userId,
+            ChannelScope = PrivateScope,
             Name = name,
             Description = description,
             ProvisioningKey = normalizedKey,

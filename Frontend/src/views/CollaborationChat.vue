@@ -441,7 +441,13 @@
                       <span class="sender-name">{{ msg.senderName }}</span>
                       <span class="message-time">{{ formatTime(msg.sentAt) }}</span>
                     </div>
-                    <div class="message-body" v-html="msg.content"></div>
+                    <div class="message-body">
+                      <span
+                        v-for="(segment, segmentIndex) in msg.contentSegments"
+                        :key="`${msg.messageId}-${segmentIndex}`"
+                        :class="{ 'message-mention': segment.isMention }"
+                      >{{ segment.text }}</span>
+                    </div>
                     <div v-if="msg.files && msg.files.length > 0" class="attachment-preview-container">
                       <div
                         v-for="file in msg.files"
@@ -2676,16 +2682,6 @@ const loadMentionSuggestions = (query, range, channelId) => {
     const selectedIds = new Set(selectedMentions.value.map(item => item.userId))
     const candidates = []
     
-    // Add @all option
-    if (!query || 'all'.includes(query.toLowerCase())) {
-      candidates.push({
-        userId: 'all',
-        displayName: 'all',
-        fullName: 'all (Mọi người)',
-        avatarUrl: ''
-      })
-    }
-    
     // Local filter on project members
     const queryLower = query ? query.toLowerCase() : ''
     projectMembers.value.forEach(member => {
@@ -3713,8 +3709,9 @@ onUnmounted(() => {
 }
 
 .message-body {
-  display: flex;
-  flex-direction: column;
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .message-card.mine .message-body {
