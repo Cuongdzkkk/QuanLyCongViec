@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Moq;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
 using TaskManagement.Application.DTOs.Auth;
 using TaskManagement.Application.DTOs.Project;
 using TaskManagement.Application.Interfaces;
@@ -112,6 +114,52 @@ public sealed class ProjectInvitationTests
     }
 
     [Fact]
+    public async Task ExistingGoogleUserWithEmptyPasswordIsRegisteredAndGetsNotification()
+    {
+        await using var fixture = await Fixture.CreateAsync(googleUser: true);
+
+        var inviteInfo = await fixture.CreateAuthService().GetInviteInfoAsync(fixture.InviteToken);
+
+        inviteInfo.IsRegistered.Should().BeTrue();
+        inviteInfo.RequiresAccountSetup.Should().BeFalse();
+        (await fixture.Context.Notifications.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RegisteredGoogleInvitationPublishesRealtimeNotificationAfterPersistence()
+    {
+        var persistedBeforePublish = false;
+        var notifier = new Mock<ISignalRClientNotifier>();
+        notifier.Setup(item => item.SendNotificationAsync(It.IsAny<Guid>(), It.IsAny<Notification>()))
+            .Callback<Guid, Notification>((_, _) => persistedBeforePublish = true);
+
+        await using var fixture = await Fixture.CreateAsync(googleUser: true, notifier: notifier.Object);
+
+        notifier.Verify(item => item.SendNotificationAsync(fixture.InviteeId, It.Is<Notification>(notification =>
+            notification.RelatedInvitationId == fixture.Invitation.Id &&
+            notification.ActionState == "Pending")), Times.Once);
+        persistedBeforePublish.Should().BeTrue();
+        (await fixture.Context.Notifications.SingleAsync()).RelatedInvitationId.Should().Be(fixture.Invitation.Id);
+    }
+
+    [Fact]
+    public async Task MatchingAuthenticatedGoogleUserCanAcceptWithoutPasswordSetup()
+    {
+        await using var fixture = await Fixture.CreateAsync(googleUser: true);
+
+        var result = await fixture.CreateAuthService(authenticatedUserId: fixture.InviteeId)
+            .AcceptInviteTokenAsync(new AcceptInviteTokenRequestDto { Token = fixture.InviteToken });
+
+        result.RequiresLogin.Should().BeFalse();
+        result.Response.Should().BeNull();
+        (await fixture.Context.ProjectMembers.SingleAsync(item => item.ProjectId == fixture.ProjectId && item.UserId == fixture.InviteeId))
+            .Status.Should().BeTrue();
+        (await fixture.Context.WorkspaceMembers.SingleAsync(item => item.WorkspaceId == fixture.WorkspaceId && item.UserId == fixture.InviteeId))
+            .IsActive.Should().BeTrue();
+        (await fixture.Context.ProjectInvitations.SingleAsync()).Status.Should().Be("Accepted");
+    }
+
+    [Fact]
     public async Task RealtimeFailureAfterAcceptCommitDoesNotFailAcceptance()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -174,7 +222,10 @@ public sealed class ProjectInvitationTests
         public string InviteeEmail { get; }
         public string InviteToken { get; }
 
-        public static async Task<Fixture> CreateAsync(bool placeholder = false)
+        public static async Task<Fixture> CreateAsync(
+            bool placeholder = false,
+            bool googleUser = false,
+            ISignalRClientNotifier? notifier = null)
         {
             var context = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
@@ -185,9 +236,29 @@ public sealed class ProjectInvitationTests
             var inviteeId = Guid.NewGuid();
             var wrongUserId = Guid.NewGuid();
             var inviteeEmail = "invitee@example.com";
+            var invitee = new User
+            {
+                Id = inviteeId,
+                Email = inviteeEmail,
+                FullName = "Invitee",
+                PasswordHash = placeholder || googleUser ? string.Empty : "hash",
+                IsActive = !placeholder
+            };
+            if (googleUser)
+            {
+                invitee.ExternalLogins.Add(new ExternalLogin
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = inviteeId,
+                    User = invitee,
+                    Provider = "Google",
+                    ProviderSubject = "google-subject",
+                    ProviderEmail = inviteeEmail
+                });
+            }
             context.Users.AddRange(
                 new User { Id = ownerId, Email = "owner@example.com", FullName = "Owner", PasswordHash = "hash", IsActive = true },
-                new User { Id = inviteeId, Email = inviteeEmail, FullName = "Invitee", PasswordHash = placeholder ? string.Empty : "hash", IsActive = !placeholder },
+                invitee,
                 new User { Id = wrongUserId, Email = "wrong@example.com", FullName = "Wrong", PasswordHash = "hash", IsActive = true });
             context.Workspaces.Add(new Workspace { Id = workspaceId, OwnerId = ownerId, Name = "Workspace", Slug = $"ws-{workspaceId:N}" });
             context.Projects.Add(new Project { Id = projectId, WorkspaceId = workspaceId, CreatorId = ownerId, Name = "Project", Identifier = "INV", Status = true });
@@ -203,7 +274,11 @@ public sealed class ProjectInvitationTests
             email.Setup(item => item.SendInviteEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))
                 .Callback<string, string, string, string, string, string, string?>((_, _, _, _, _, url, _) => inviteUrl = url)
                 .Returns(Task.CompletedTask);
-            var service = new ProjectMemberService(context, email.Object, new ConfigurationBuilder().Build());
+            var service = new ProjectMemberService(
+                context,
+                email.Object,
+                new ConfigurationBuilder().Build(),
+                clientNotifier: notifier);
             await service.InviteMemberAsync(projectId, new ProjectMemberRequestDto { Email = inviteeEmail, Role = "DEV" }, "Owner", ownerId);
             var invitation = await context.ProjectInvitations.SingleAsync();
             var tokenStart = inviteUrl.IndexOf("token=", StringComparison.Ordinal) + "token=".Length;
@@ -213,11 +288,24 @@ public sealed class ProjectInvitationTests
 
         public AuthService CreateAuthService(
             ICollaborationChannelService? collaboration = null,
-            ISignalRClientNotifier? notifier = null)
+            ISignalRClientNotifier? notifier = null,
+            Guid? authenticatedUserId = null)
         {
             var jwt = new Mock<IJwtService>();
             jwt.Setup(item => item.GenerateAccessToken(It.IsAny<User>(), It.IsAny<IList<string>>())).Returns("access-token");
             jwt.Setup(item => item.GenerateRefreshToken()).Returns("refresh-token");
+            IHttpContextAccessor? httpContextAccessor = null;
+            if (authenticatedUserId.HasValue)
+            {
+                var httpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.NameIdentifier, authenticatedUserId.Value.ToString())
+                    }, "Test"))
+                };
+                httpContextAccessor = new HttpContextAccessor { HttpContext = httpContext };
+            }
             return new AuthService(
                 Context,
                 jwt.Object,
@@ -225,6 +313,7 @@ public sealed class ProjectInvitationTests
                 new OtpService(new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()), Options.Create(new TaskManagement.Application.Configuration.OtpSecurityOptions())),
                 new Mock<IEmailService>().Object,
                 collaborationChannelService: collaboration,
+                httpContextAccessor: httpContextAccessor,
                 clientNotifier: notifier);
         }
 

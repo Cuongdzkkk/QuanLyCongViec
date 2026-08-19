@@ -126,6 +126,7 @@ namespace TaskManagement.Infrastructure.Services
                 var resolvedProjectRole = await ResolveProjectRoleAsync(request.Role);
                 var now = DateTime.UtcNow;
                 invitedUser = await _context.Users
+                    .Include(user => user.ExternalLogins)
                     .SingleOrDefaultAsync(user => user.Email == normalizedEmail);
 
                 if (invitedUser?.IsDeleted == true)
@@ -153,7 +154,8 @@ namespace TaskManagement.Infrastructure.Services
                     invitedUser.UpdatedAt = now;
                 }
 
-                var isExistingSprintAUser = !string.IsNullOrEmpty(invitedUser.PasswordHash);
+                var isExistingSprintAUser = !string.IsNullOrWhiteSpace(invitedUser.PasswordHash) ||
+                    invitedUser.ExternalLogins.Any();
 
                 var membership = await _context.ProjectMembers
                     .SingleOrDefaultAsync(member => member.ProjectId == projectId && member.UserId == invitedUser.Id);
