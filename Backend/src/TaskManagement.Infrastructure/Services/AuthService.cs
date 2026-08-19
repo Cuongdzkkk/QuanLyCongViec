@@ -738,7 +738,9 @@ namespace TaskManagement.Infrastructure.Services
             {
                 Email = user.Email,
                 FullName = user.FullName,
-                IsRegistered = !string.IsNullOrEmpty(user.PasswordHash),
+                IsRegistered = IsRegisteredAccount(user),
+                RequiresAccountSetup = !IsRegisteredAccount(user),
+                CanAcceptAuthenticated = GetCurrentUserId() == user.Id && IsRegisteredAccount(user),
                 ProjectNames = projectNames,
                 ExpiresAt = invite.ExpiryTime
             };
@@ -756,12 +758,13 @@ namespace TaskManagement.Infrastructure.Services
                     $"Lời mời này dành cho {user.Email}. Bạn đang đăng nhập bằng tài khoản khác.");
             }
 
-            if (!string.IsNullOrEmpty(user.PasswordHash) && !user.IsActive)
+            var isRegisteredAccount = IsRegisteredAccount(user);
+            if (isRegisteredAccount && !user.IsActive)
             {
                 throw new UnauthorizedAccessException("Account is suspended.");
             }
 
-            var isNewInvitedUser = string.IsNullOrEmpty(user.PasswordHash);
+            var isNewInvitedUser = !isRegisteredAccount;
             if (!isNewInvitedUser && !currentUserId.HasValue)
             {
                 return new AcceptInviteResultDto
@@ -1023,6 +1026,8 @@ namespace TaskManagement.Infrastructure.Services
                 .Include(rt => rt.User)
                     .ThenInclude(u => u.UserRoles)
                     .ThenInclude(ur => ur.Role)
+                .Include(rt => rt.User)
+                    .ThenInclude(u => u.ExternalLogins)
                 .Include(rt => rt.ProjectInvitation)
                 .FirstOrDefaultAsync(rt =>
                     rt.Token == tokenHash &&
@@ -1035,6 +1040,10 @@ namespace TaskManagement.Infrastructure.Services
 
             return invite;
         }
+
+        private static bool IsRegisteredAccount(User user) =>
+            !user.IsDeleted &&
+            (!string.IsNullOrWhiteSpace(user.PasswordHash) || user.ExternalLogins.Any());
 
         private static Guid? GetInviteProjectId(RefreshToken invite)
         {

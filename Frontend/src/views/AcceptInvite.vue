@@ -108,7 +108,7 @@
 
         <!-- STEP 2: FINISH SETTING UP ACCOUNT / REGISTERED USERS -->
         <div v-if="step === 2" class="step-container">
-          <h1 class="text-center">{{ invite.isRegistered ? 'Tài khoản đã tồn tại' : 'Hoàn tất thiết lập tài khoản' }}</h1>
+          <h1 class="text-center">{{ invite.requiresAccountSetup ? 'Hoàn tất thiết lập tài khoản' : 'Tài khoản đã tồn tại' }}</h1>
 
           <div class="verified-email">
             <span class="label">Địa chỉ email</span> <i class="fa-solid fa-circle-check text-success"></i>
@@ -116,7 +116,7 @@
             <strong>{{ invite.email }}</strong>
           </div>
 
-          <p v-if="invite.isRegistered" class="subtitle text-center">
+          <p v-if="!invite.requiresAccountSetup" class="subtitle text-center">
             Bạn đã có tài khoản trên hệ thống. Chỉ cần chấp nhận lời mời này để tham gia dự án.
           </p>
 
@@ -125,7 +125,7 @@
             <button type="button" class="secondary-btn" @click="switchAccount">Đăng xuất và chuyển tài khoản</button>
           </div>
 
-          <div v-else class="invite-form">
+          <div v-else-if="invite.requiresAccountSetup" class="invite-form">
             <div class="field">
               <span class="field-label">Họ và tên *</span>
               <input v-model="form.fullName" type="text" placeholder="Nhập họ tên của bạn" />
@@ -149,7 +149,7 @@
             @click="acceptInvite"
           >
             <i v-if="isSubmitting" class="fa-solid fa-spinner fa-spin"></i>
-            <span>{{ invite.isRegistered ? 'Đăng nhập để tiếp tục' : 'Tiếp tục' }}</span>
+            <span>{{ invite.requiresAccountSetup ? 'Tiếp tục' : 'Chấp nhận lời mời' }}</span>
           </button>
         </div>
       </template>
@@ -300,7 +300,7 @@ const loadInvite = async () => {
     invite.value = response.data?.data || {}
     form.fullName = invite.value.fullName || ''
     
-    if (!invite.value.isRegistered) {
+    if (invite.value.requiresAccountSetup) {
       await sendOtp()
       step.value = 1
     } else {
@@ -321,15 +321,15 @@ const loadInvite = async () => {
 }
 
 const acceptInvite = async () => {
-  if (invite.value.isRegistered && !getStoredAccessToken()) {
+  if (!invite.value.requiresAccountSetup && !getStoredAccessToken()) {
     router.push({ path: '/login', query: { redirect: route.fullPath } })
     return
   }
-  if (invite.value.isRegistered && !hasMatchingAuthenticatedUser()) {
+  if (!invite.value.requiresAccountSetup && !hasMatchingAuthenticatedUser()) {
     accountMismatch.value = true
     return
   }
-  if (!invite.value.isRegistered) {
+  if (invite.value.requiresAccountSetup) {
     if (!form.fullName || !form.password) {
       ElMessage.warning('Vui lòng nhập đầy đủ thông tin.')
       return
@@ -340,8 +340,8 @@ const acceptInvite = async () => {
   try {
     const payload = {
       token: token.value,
-      fullName: invite.value.isRegistered ? null : form.fullName,
-      password: invite.value.isRegistered ? null : form.password
+      fullName: invite.value.requiresAccountSetup ? form.fullName : null,
+      password: invite.value.requiresAccountSetup ? form.password : null
     }
 
     const response = await axiosClient.post('/auth/accept-invite-token', payload)
