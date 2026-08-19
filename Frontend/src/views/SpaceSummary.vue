@@ -2736,7 +2736,6 @@ let unsubscribeAdminRealtime = null
 let signalRTaskUpdatedHandler = null
 let signalREntityChangedHandler = null
 let signalRProjectEventHandler = null
-let signalREntityChangedHandler = null
 let realtimeRefreshTimer = null
 
 const handleRealtimeTaskUpdated = (task) => {
