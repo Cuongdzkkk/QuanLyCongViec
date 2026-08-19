@@ -10,9 +10,9 @@
 
       <ul class="nav-menu">
         <li class="nav-item">
-          <router-link to="/dashboard" class="nav-link" :class="{ active: $route.path === '/dashboard' && !$route.query.tab }" exact>
-            <i class="fa-solid fa-house"></i>
-            <span>{{ t('For you') }}</span>
+          <router-link to="/your-work" class="nav-link" :class="{ active: $route.path === '/your-work' }">
+            <i class="fa-regular fa-user"></i>
+            <span>{{ t('Your work') }}</span>
           </router-link>
         </li>
         <li class="nav-item">
@@ -58,26 +58,14 @@
           </el-popover>
         </li>
         <li class="nav-item">
-          <router-link to="/your-work" class="nav-link" :class="{ active: $route.path === '/your-work' }">
-            <i class="fa-regular fa-user"></i>
-            <span>{{ t('Your work') }}</span>
-          </router-link>
-        </li>
-        <li class="nav-item">
-          <router-link to="/priority" class="nav-link" :class="{ active: $route.path === '/priority' }">
-            <i class="fa-solid fa-fire" style="color: #f97316;"></i>
-            <span>{{ t('Daily Focus') }}</span>
-          </router-link>
-        </li>
-        <li class="nav-item">
           <router-link to="/chat" class="nav-link" :class="{ active: $route.path === '/chat' }">
-            <i class="fa-solid fa-comments" style="color: #3b82f6;"></i>
+            <i class="fa-solid fa-comments"></i>
             <span>{{ t('Discussion Channel') }}</span>
           </router-link>
         </li>
         <li class="nav-item">
           <router-link to="/checkin" class="nav-link" :class="{ active: $route.path === '/checkin' }">
-            <i class="fa-solid fa-calendar-check" style="color: #10b981;"></i>
+            <i class="fa-solid fa-calendar-check"></i>
             <span>{{ t('Daily Check-in') || 'Check-in ngày' }}</span>
           </router-link>
         </li>

@@ -16,74 +16,92 @@
     <div class="rewards-dashboard-container">
       <!-- Left Column: Leaderboard Card -->
       <div class="leaderboard-main-area">
+        <!-- Top 3 section (Outside panel) -->
+        <div class="top-three-section">
+          <!-- Rank #2 (Silver) -->
+          <div v-if="top2" class="top-three-col silver-col" :class="{ active: selectedUser?.userId === top2.userId }" @click="selectUser(top2)">
+            <div class="avatar-wrapper">
+              <div class="crown-badge silver-crown">
+                <i class="fa-solid fa-crown"></i>
+              </div>
+              <UserAvatar :user="{ ...top2, fullName: top2.userName, id: top2.userId }" :size="52" :fontSize="18" class="card-avatar" />
+              <div class="rank-badge silver-badge">#2</div>
+            </div>
+            <strong class="card-name">{{ top2.userName }}</strong>
+            <span class="card-points">{{ top2.totalPoints }} pts</span>
+            <span class="card-title">{{ top2.careerTitle || 'Contributor' }}</span>
+          </div>
+          <div v-else class="top-three-col silver-col empty-col">
+            <div class="avatar-wrapper">
+              <div class="crown-badge silver-crown">
+                <i class="fa-solid fa-crown"></i>
+              </div>
+              <div class="card-avatar avatar-empty">-</div>
+              <div class="rank-badge silver-badge">#2</div>
+            </div>
+            <strong class="card-name">Trống</strong>
+            <span class="card-points">-</span>
+          </div>
+
+          <!-- Rank #1 (Gold) -->
+          <div v-if="top1" class="top-three-col gold-col" :class="{ active: selectedUser?.userId === top1.userId }" @click="selectUser(top1)">
+            <div class="avatar-wrapper">
+              <div class="crown-badge gold-crown">
+                <i class="fa-solid fa-crown"></i>
+              </div>
+              <UserAvatar :user="{ ...top1, fullName: top1.userName, id: top1.userId }" :size="68" :fontSize="22" class="card-avatar" />
+              <div class="rank-badge gold-badge">#1</div>
+            </div>
+            <strong class="card-name">{{ top1.userName }}</strong>
+            <span class="card-points">{{ top1.totalPoints }} pts</span>
+            <span class="card-title">{{ top1.careerTitle || 'Specialist' }}</span>
+          </div>
+          <div v-else class="top-three-col gold-col empty-col">
+            <div class="avatar-wrapper">
+              <div class="crown-badge gold-crown">
+                <i class="fa-solid fa-crown"></i>
+              </div>
+              <div class="card-avatar avatar-empty">-</div>
+              <div class="rank-badge gold-badge">#1</div>
+            </div>
+            <strong class="card-name">Trống</strong>
+            <span class="card-points">-</span>
+          </div>
+
+          <!-- Rank #3 (Bronze) -->
+          <div v-if="top3" class="top-three-col bronze-col" :class="{ active: selectedUser?.userId === top3.userId }" @click="selectUser(top3)">
+            <div class="avatar-wrapper">
+              <div class="crown-badge bronze-crown">
+                <i class="fa-solid fa-crown"></i>
+              </div>
+              <UserAvatar :user="{ ...top3, fullName: top3.userName, id: top3.userId }" :size="52" :fontSize="18" class="card-avatar" />
+              <div class="rank-badge bronze-badge">#3</div>
+            </div>
+            <strong class="card-name">{{ top3.userName }}</strong>
+            <span class="card-points">{{ top3.totalPoints }} pts</span>
+            <span class="card-title">{{ top3.careerTitle || 'Contributor' }}</span>
+          </div>
+          <div v-else class="top-three-col bronze-col empty-col">
+            <div class="avatar-wrapper">
+              <div class="crown-badge bronze-crown">
+                <i class="fa-solid fa-crown"></i>
+              </div>
+              <div class="card-avatar avatar-empty">-</div>
+              <div class="rank-badge bronze-badge">#3</div>
+            </div>
+            <strong class="card-name">Trống</strong>
+            <span class="card-points">-</span>
+          </div>
+        </div>
+
+        <!-- Leaderboard Table Card -->
         <div class="leaderboard-card panel">
-          <div class="leaderboard-header">
-            <h2>Bảng xếp hạng</h2>
-            <span class="subtitle">Thành tích trong sprint hiện tại</span>
-          </div>
-
-          <!-- Top 3 section -->
-          <div class="top-three-section">
-            <!-- Rank #2 (Silver) -->
-            <div v-if="top2" class="top-three-col silver-col" :class="{ active: selectedUser?.userId === top2.userId }" @click="selectUser(top2)">
-              <div class="card-rank">#2</div>
-              <UserAvatar :user="{ ...top2, fullName: top2.userName, id: top2.userId }" :size="48" :fontSize="16" class="card-avatar" />
-              <strong class="card-name">{{ top2.userName }}</strong>
-              <span class="card-points">{{ top2.totalPoints }} pts</span>
-              <span class="card-title">{{ top2.careerTitle || 'Contributor' }}</span>
-            </div>
-            <div v-else class="top-three-col silver-col empty-col">
-              <div class="card-rank">#2</div>
-              <div class="card-avatar empty">-</div>
-              <strong class="card-name">Trống</strong>
-              <span class="card-points">-</span>
-            </div>
-
-            <!-- Rank #1 (Gold) -->
-            <div v-if="top1" class="top-three-col gold-col" :class="{ active: selectedUser?.userId === top1.userId }" @click="selectUser(top1)">
-              <div class="card-rank"><i class="fa-solid fa-star mr-1" style="font-size: 9px; vertical-align: middle;"></i>#1</div>
-              <UserAvatar :user="{ ...top1, fullName: top1.userName, id: top1.userId }" :size="64" :fontSize="20" class="card-avatar" />
-              <strong class="card-name">{{ top1.userName }}</strong>
-              <span class="card-points">{{ top1.totalPoints }} pts</span>
-              <span class="card-title">{{ top1.careerTitle || 'Specialist' }}</span>
-            </div>
-            <div v-else class="top-three-col gold-col empty-col">
-              <div class="card-rank">#1</div>
-              <div class="card-avatar empty">-</div>
-              <strong class="card-name">Trống</strong>
-              <span class="card-points">-</span>
-            </div>
-
-            <!-- Rank #3 (Bronze) -->
-            <div v-if="top3" class="top-three-col bronze-col" :class="{ active: selectedUser?.userId === top3.userId }" @click="selectUser(top3)">
-              <div class="card-rank">#3</div>
-              <UserAvatar :user="{ ...top3, fullName: top3.userName, id: top3.userId }" :size="48" :fontSize="16" class="card-avatar" />
-              <strong class="card-name">{{ top3.userName }}</strong>
-              <span class="card-points">{{ top3.totalPoints }} pts</span>
-              <span class="card-title">{{ top3.careerTitle || 'Contributor' }}</span>
-            </div>
-            <div v-else class="top-three-col bronze-col empty-col">
-              <div class="card-rank">#3</div>
-              <div class="card-avatar empty">-</div>
-              <strong class="card-name">Trống</strong>
-              <span class="card-points">-</span>
-            </div>
-          </div>
-
           <!-- Rankings Table -->
           <div class="rankings-table-container">
             <div v-if="restLeaders.length === 0" class="empty">
               Không có thành viên xếp hạng tiếp theo.
             </div>
             <table v-else class="rankings-table">
-              <thead>
-                <tr>
-                  <th class="col-rank">HẠNG</th>
-                  <th class="col-user">THÀNH VIÊN</th>
-                  <th class="col-level">CẤP ĐỘ</th>
-                  <th class="col-points">ĐIỂM SỐ</th>
-                </tr>
-              </thead>
               <tbody>
                 <tr v-for="(item, index) in restLeaders" :key="item.userId" class="ranking-row" :class="{ active: selectedUser?.userId === item.userId, 'is-me': item.userId === wallet.userId }" @click="selectUser(item)">
                   <td class="col-rank">
@@ -649,19 +667,19 @@ onMounted(loadRewards)
   color: var(--reward-muted);
 }
 
-/* Editorial Top 3 Columns */
+/* Editorial Top 3 Columns - outside the card panel */
 .top-three-section {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-bottom: 4px;
-  padding: 8px 4px;
-  border-bottom: 1px solid var(--reward-border);
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 4px;
 }
 
 @media (max-width: 640px) {
   .top-three-section {
     grid-template-columns: 1fr;
+    gap: 24px;
   }
 }
 
@@ -671,78 +689,127 @@ onMounted(loadRewards)
   align-items: center;
   text-align: center;
   cursor: pointer;
-  padding: 10px 8px;
-  border-radius: 8px;
-  transition: all 150ms ease;
-  min-height: 96px;
+  padding: 24px 16px;
+  border-radius: 12px;
+  transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: 160px;
   justify-content: center;
-  border: 1px solid transparent;
+  background: var(--reward-surface);
+  border: 1px solid var(--reward-border);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.02);
 }
 
 .top-three-col:hover {
-  background: var(--reward-bg);
-  opacity: 1 !important;
+  transform: translateY(-6px);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
 }
 
 .top-three-col.active {
   background: rgba(15, 98, 254, 0.03);
-  opacity: 1 !important;
+  border-color: var(--reward-accent) !important;
 }
 
-/* Proportional scaling & champagne signature for #1 */
+/* Standout Gold Card styling */
 .top-three-col.gold-col {
-  transform: scale(1.06); /* 6% larger */
+  transform: scale(1.05);
   z-index: 2;
-  background: radial-gradient(circle at center, rgba(201, 162, 39, 0.045) 0%, rgba(201, 162, 39, 0.01) 60%, transparent 100%);
-  border: 1px dashed rgba(201, 162, 39, 0.18) !important;
-  box-shadow: 0 4px 16px rgba(201, 162, 39, 0.03);
+  border: 1px solid rgba(250, 204, 21, 0.3) !important;
+  background: linear-gradient(180deg, rgba(250, 204, 21, 0.04), var(--reward-surface));
+  box-shadow: 0 6px 18px rgba(250, 204, 21, 0.06);
 }
 
-.top-three-col.silver-col,
+.top-three-col.gold-col:hover {
+  transform: scale(1.05) translateY(-6px);
+  box-shadow: 0 16px 36px rgba(250, 204, 21, 0.14);
+}
+
+.top-three-col.silver-col {
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.03), var(--reward-surface));
+}
+
 .top-three-col.bronze-col {
-  opacity: 0.85; /* reduced contrast */
+  background: linear-gradient(180deg, rgba(184, 115, 51, 0.03), var(--reward-surface));
 }
 
-.card-rank {
-  font-size: 11px; /* Rank: 11-13px */
-  font-weight: 600;
-  color: var(--reward-muted);
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.gold-col .card-rank {
-  color: var(--reward-gold);
-  font-size: 13px;
-}
-
-.silver-col .card-rank {
-  color: var(--reward-silver);
-  font-size: 12px;
-}
-
-.bronze-col .card-rank {
-  color: var(--reward-bronze);
-  font-size: 12px;
+/* Crown & Badge Avatar Wrapper styling */
+.avatar-wrapper {
+  position: relative;
+  margin-bottom: 18px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .card-avatar {
-  margin-bottom: 6px;
-  border: 1.5px solid var(--reward-border);
+  border-radius: 50%;
   box-sizing: border-box;
 }
 
 .gold-col .card-avatar {
-  border: 1.5px solid var(--reward-gold) !important;
+  border: 2.5px solid #FFD700 !important;
+  box-shadow: 0 0 16px rgba(255, 215, 0, 0.3);
 }
 
 .silver-col .card-avatar {
-  border: 1.5px solid var(--reward-silver) !important;
+  border: 2.5px solid #C0C0C0 !important;
+  box-shadow: 0 0 12px rgba(192, 192, 192, 0.2);
 }
 
 .bronze-col .card-avatar {
-  border: 1.5px solid var(--reward-bronze) !important;
+  border: 2.5px solid #CD7F32 !important;
+  box-shadow: 0 0 12px rgba(205, 127, 50, 0.2);
+}
+
+.crown-badge {
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-5deg);
+  z-index: 10;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+  animation: crown-float 3s ease-in-out infinite alternate;
+}
+
+.gold-crown { font-size: 24px; color: #FFD700; }
+.silver-crown { font-size: 20px; color: #C0C0C0; }
+.bronze-crown { font-size: 20px; color: #CD7F32; }
+
+.rank-badge {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  padding: 2px 12px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+  white-space: nowrap;
+  border: 1.5px solid var(--reward-surface);
+}
+
+.gold-badge {
+  background: linear-gradient(135deg, #FFE066, #F5A623);
+}
+
+.silver-badge {
+  background: linear-gradient(135deg, #E2E8F0, #94A3B8);
+}
+
+.bronze-badge {
+  background: linear-gradient(135deg, #FFB347, #F09819);
+}
+
+@keyframes crown-float {
+  0% {
+    transform: translateX(-50%) rotate(-5deg) translateY(0);
+  }
+  100% {
+    transform: translateX(-50%) rotate(-5deg) translateY(-2px);
+  }
 }
 
 .card-name {
@@ -781,18 +848,31 @@ onMounted(loadRewards)
   letter-spacing: 0.02em;
 }
 
-.empty-col .card-avatar.empty {
-  width: 44px;
-  height: 44px;
+.empty-col .card-avatar.avatar-empty {
   border-radius: 50%;
   background: var(--reward-bg);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--reward-muted);
-  font-size: 14px;
   border: 2px dashed var(--reward-border);
   margin-bottom: 8px;
+  box-sizing: border-box;
+  aspect-ratio: 1 / 1;
+  flex: 0 0 auto;
+}
+
+.silver-col.empty-col .card-avatar.avatar-empty,
+.bronze-col.empty-col .card-avatar.avatar-empty {
+  width: 48px;
+  height: 48px;
+  font-size: 14px;
+}
+
+.gold-col.empty-col .card-avatar.avatar-empty {
+  width: 64px;
+  height: 64px;
+  font-size: 18px;
 }
 
 /* Rankings Table */
