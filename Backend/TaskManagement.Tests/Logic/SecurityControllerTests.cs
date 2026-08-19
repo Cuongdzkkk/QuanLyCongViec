@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using TaskManagement.API.Controllers;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.Infrastructure.Services;
 
 namespace TaskManagement.Tests.Logic;
 
@@ -53,7 +54,7 @@ public sealed class SecurityControllerTests : IDisposable
             new System.Security.Claims.ClaimsIdentity(
                 new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, userId.ToString()) },
                 "Test"));
-        var controller = new SecurityController(_context)
+        var controller = new SecurityController(_context, new ResourceAuthorizationService(_context))
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext }
         };

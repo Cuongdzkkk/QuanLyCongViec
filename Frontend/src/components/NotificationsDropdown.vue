@@ -23,6 +23,12 @@
             <p>Loading notifications...</p>
           </div>
 
+          <div v-else-if="errorMessage" class="notif-empty-state notif-error-state">
+            <div class="empty-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <p>{{ errorMessage }}</p>
+            <el-button type="primary" link size="small" @click="retryNotifications">Thử lại</el-button>
+          </div>
+
           <div v-else-if="filteredNotifications.length === 0" class="notif-empty-state">
             <div class="empty-icon"><i class="fa-solid fa-flag"></i></div>
             <p>Không có thông báo phù hợp trong 30 ngày gần đây.</p>
@@ -108,15 +114,11 @@ let notificationAbortController = null
 
 const unreadCount = ref(0)
 const invitationActionId = ref(null)
+const errorMessage = ref('')
 const filteredNotifications = computed(() => {
   if (onlyUnread.value) return notifications.value.filter(item => !item.isRead)
   return notifications.value
 })
-
-const getInitials = (name) => {
-  if (!name) return '?'
-  return name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase()
-}
 
 const formatTimeAgo = (dateStr) => {
   if (!dateStr || dateStr.startsWith('0001-01-01')) return 'Vừa xong'
@@ -155,12 +157,20 @@ const getTypeClass = (type) => {
 
 const isPendingInvitation = (notification) =>
   notification.notificationType?.toUpperCase() === 'PROJECT_INVITATION' &&
-  notification.actionState === 'Pending' &&
+  notification.actionState?.toLowerCase() === 'pending' &&
   Boolean(notification.relatedInvitationId)
 
 const isResolvedInvitation = (notification) =>
   notification.notificationType?.toUpperCase() === 'PROJECT_INVITATION' &&
-  ['Accepted', 'Declined'].includes(notification.actionState)
+  ['accepted', 'declined'].includes(notification.actionState?.toLowerCase())
+
+const notificationRows = (payload) => {
+  const data = payload?.data
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(payload)) return payload
+  return []
+}
 
 const normalizeLink = (notification) => {
   if (notification.linkUrl?.startsWith('/chat')) return notification.linkUrl
@@ -180,6 +190,7 @@ const fetchNotifications = async () => {
   notificationAbortController = controller
   const requestId = ++notificationRequestId
   const requestToken = authStore.token
+  errorMessage.value = ''
   loading.value = true
   try {
     const response = await axiosClient.get('/notifications', {
@@ -187,18 +198,23 @@ const fetchNotifications = async () => {
       signal: controller.signal
     })
     if (requestId !== notificationRequestId || authStore.token !== requestToken) return
-    notifications.value = (response.data?.data || []).map(item => ({
+    notifications.value = notificationRows(response.data).map(item => ({
       ...item,
       linkUrl: normalizeLink(item)
     }))
   } catch (error) {
-    if (error?.code !== 'ERR_CANCELED') ElMessage.error('Could not load notifications')
+    if (error?.code !== 'ERR_CANCELED') errorMessage.value = 'Không thể tải thông báo. Vui lòng thử lại.'
   } finally {
     if (requestId === notificationRequestId) {
       loading.value = false
       notificationAbortController = null
     }
   }
+}
+
+const retryNotifications = () => {
+  void fetchNotifications()
+  void fetchUnreadCount()
 }
 
 const fetchUnreadCount = async () => {
@@ -284,7 +300,7 @@ const declineInvitation = async (notification) => {
 }
 
 const initSignalR = () => {
-    const token = getStoredAccessToken() || localStorage.getItem('token')
+  const token = getStoredAccessToken()
   if (!token) return
 
   const hubUrl = new URL(apiBaseUrl, window.location.origin)
@@ -301,13 +317,18 @@ const initSignalR = () => {
     .build()
 
   connection.value.on('ReceiveNotification', (notification) => {
-    if (notifications.value.some(item => item.id === notification.id)) return
-    notifications.value.unshift({
+    const normalized = {
       ...notification,
       isRead: false,
       linkUrl: normalizeLink(notification)
-    })
-    unreadCount.value += 1
+    }
+    const index = notifications.value.findIndex(item => item.id === normalized.id)
+    if (index >= 0) {
+      notifications.value[index] = { ...notifications.value[index], ...normalized }
+    } else {
+      notifications.value.unshift(normalized)
+      unreadCount.value += 1
+    }
   })
 
   connection.value.on('NotificationUpdated', (notification) => {
@@ -368,6 +389,7 @@ const handleNotificationReset = () => {
   notificationAbortController?.abort()
   notificationRequestId += 1
   notifications.value = []
+  errorMessage.value = ''
 }
 const handlePrivateMention = (notification) => {
   if (!notification?.notificationId || collaborationMentionIds.has(notification.notificationId)) return
