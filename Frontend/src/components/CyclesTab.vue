@@ -1766,15 +1766,16 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: var(--color-surface);
-  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  min-height: 54px !important;
+  height: 54px !important;
+  background: transparent !important;
+  border: none !important;
   color: var(--color-text-secondary) !important;
-  font-weight: 600;
-  box-shadow: var(--sp-shadow-xs);
+  font-weight: 550;
+  box-shadow: none !important;
   box-sizing: border-box;
-  margin: 0;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 .progress-ring {
@@ -1861,8 +1862,7 @@ onUnmounted(() => {
 
 [data-theme='dark'] .date-range,
 [data-theme='dark'] .tab-row,
-[data-theme='dark'] .cycle-work-item,
-[data-theme='dark'] .empty-state.text-muted {
+[data-theme='dark'] .cycle-work-item {
   background: rgba(30, 41, 59, 0.72) !important;
   border-color: rgba(148, 163, 184, 0.18) !important;
 }
@@ -1904,8 +1904,7 @@ onUnmounted(() => {
 [data-theme='light'] .nexus-project-header,
 [data-theme='light'] .grid-panel,
 [data-theme='light'] .create-cycle-modal,
-[data-theme='light'] .cycle-filter-menu,
-[data-theme='light'] .empty-state.text-muted {
+[data-theme='light'] .cycle-filter-menu {
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.97), rgba(248, 250, 252, 0.88)),
     #ffffff !important;

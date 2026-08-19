@@ -94,13 +94,14 @@
                 <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="gold-grad-main" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#D4AF37" />
-                      <stop offset="40%" stop-color="#AA7C11" />
-                      <stop offset="100%" stop-color="#7F5B00" />
+                      <stop offset="0%" stop-color="#FFE79A" />
+                      <stop offset="35%" stop-color="#FFB300" />
+                      <stop offset="75%" stop-color="#E58A00" />
+                      <stop offset="100%" stop-color="#B25900" />
                     </linearGradient>
                     <linearGradient id="gold-grad-tail" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#7F5B00" />
-                      <stop offset="100%" stop-color="#503700" />
+                      <stop offset="0%" stop-color="#E58A00" />
+                      <stop offset="100%" stop-color="#6E3300" />
                     </linearGradient>
                   </defs>
                   <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
@@ -126,13 +127,14 @@
                 <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="gold-grad-main-empty" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#D4AF37" />
-                      <stop offset="40%" stop-color="#AA7C11" />
-                      <stop offset="100%" stop-color="#7F5B00" />
+                      <stop offset="0%" stop-color="#FFE79A" />
+                      <stop offset="35%" stop-color="#FFB300" />
+                      <stop offset="75%" stop-color="#E58A00" />
+                      <stop offset="100%" stop-color="#B25900" />
                     </linearGradient>
                     <linearGradient id="gold-grad-tail-empty" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#7F5B00" />
-                      <stop offset="100%" stop-color="#503700" />
+                      <stop offset="0%" stop-color="#E58A00" />
+                      <stop offset="100%" stop-color="#6E3300" />
                     </linearGradient>
                   </defs>
                   <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
