@@ -129,6 +129,9 @@ namespace TaskManagement.Infrastructure.Services
             if (sprint == null)
                 throw new ArgumentException("Sprint không tồn tại trong dự án này.");
 
+            if (SprintStatePolicy.ResolveState(sprint) != SprintStates.Planned)
+                throw new ArgumentException("Chỉ có thể chỉnh sửa sprint sắp tới.");
+
             if (dto.EndDate <= dto.StartDate)
                 throw new ArgumentException("Ngày kết thúc phải sau ngày bắt đầu.");
 
@@ -143,7 +146,18 @@ namespace TaskManagement.Infrastructure.Services
             return updated;
         }
 
-        public async Task<SprintResponseDto> StartAsync(Guid projectId, Guid sprintId)
+        public Task<SprintResponseDto> StartAsync(Guid projectId, Guid sprintId)
+        {
+            if (!_context.Database.IsRelational())
+            {
+                return StartCoreAsync(projectId, sprintId);
+            }
+
+            return _context.Database.CreateExecutionStrategy()
+                .ExecuteAsync(() => StartCoreAsync(projectId, sprintId));
+        }
+
+        private async Task<SprintResponseDto> StartCoreAsync(Guid projectId, Guid sprintId)
         {
             await using var transaction = await BeginProjectTransitionAsync(projectId);
             try
@@ -197,7 +211,7 @@ namespace TaskManagement.Infrastructure.Services
                 {
                     throw new SprintTransitionException(
                         "ACTIVE_CYCLE_EXISTS",
-                        "Project already has an active cycle. Close it before starting another cycle.");
+                        "Project already has an active sprint. Close it before starting another sprint.");
                 }
 
                 sprint.State = SprintStates.Active;
@@ -213,7 +227,7 @@ namespace TaskManagement.Infrastructure.Services
                 await RollbackAsync(transaction);
                 throw new SprintTransitionException(
                     "ACTIVE_CYCLE_EXISTS",
-                    "Project already has an active cycle. Close it before starting another cycle.");
+                    "Project already has an active sprint. Close it before starting another sprint.");
             }
             catch
             {
@@ -222,7 +236,22 @@ namespace TaskManagement.Infrastructure.Services
             }
         }
 
-        public async Task<SprintResponseDto> CloseAsync(
+        public Task<SprintResponseDto> CloseAsync(
+            Guid projectId,
+            Guid sprintId,
+            CloseSprintDto dto,
+            Guid actorUserId)
+        {
+            if (!_context.Database.IsRelational())
+            {
+                return CloseCoreAsync(projectId, sprintId, dto, actorUserId);
+            }
+
+            return _context.Database.CreateExecutionStrategy()
+                .ExecuteAsync(() => CloseCoreAsync(projectId, sprintId, dto, actorUserId));
+        }
+
+        private async Task<SprintResponseDto> CloseCoreAsync(
             Guid projectId,
             Guid sprintId,
             CloseSprintDto dto,

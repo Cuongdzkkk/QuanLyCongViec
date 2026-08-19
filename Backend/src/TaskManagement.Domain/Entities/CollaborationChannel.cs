@@ -9,6 +9,7 @@ public sealed class CollaborationChannel
     public Project Project { get; set; } = null!;
     public Guid CreatedByUserId { get; set; }
     public User CreatedByUser { get; set; } = null!;
+    public string ChannelScope { get; set; } = "Private";
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string? ProvisioningKey { get; set; }

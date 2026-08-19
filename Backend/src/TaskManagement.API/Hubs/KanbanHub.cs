@@ -11,6 +11,8 @@ namespace TaskManagement.API.Hubs
     [Authorize]
     public class KanbanHub : Hub
     {
+        public const string Route = "/kanban-hub";
+
         private static readonly string[] SystemRoles = { "superadmin", "admin", "system admin", "systemadmin" };
         private readonly ApplicationDbContext _context;
 

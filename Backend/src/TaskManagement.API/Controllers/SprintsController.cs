@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.API.Filters;
 using TaskManagement.Application.Common;
@@ -8,6 +9,7 @@ using TaskManagement.Application.DTOs.Sprint;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Infrastructure.Services;
+using TaskManagement.API.Hubs;
 
 namespace TaskManagement.API.Controllers
 {
@@ -18,10 +20,12 @@ namespace TaskManagement.API.Controllers
     public class SprintsController : ControllerBase
     {
         private readonly ISprintService _sprintService;
+        private readonly IHubContext<KanbanHub>? _kanbanHub;
 
-        public SprintsController(ISprintService sprintService)
+        public SprintsController(ISprintService sprintService, IHubContext<KanbanHub>? kanbanHub = null)
         {
             _sprintService = sprintService;
+            _kanbanHub = kanbanHub;
         }
 
         [HttpGet]
@@ -312,6 +316,14 @@ namespace TaskManagement.API.Controllers
             }
 
             await context.SaveChangesAsync();
+            if (_kanbanHub != null)
+            {
+                await _kanbanHub.Clients.Group(projectId.ToString()).SendAsync("TasksUpdated", new
+                {
+                    projectId,
+                    taskIds = tasks.Select(task => task.Id).ToList()
+                });
+            }
             return Ok(ApiResponse<object>.Success(new { movedCount = tasks.Count }, "Da cap nhat cycle cho task ton dong."));
         }
 

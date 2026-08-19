@@ -39,6 +39,20 @@
       <img class="ai-pet-image" :src="petAsset" alt="" aria-hidden="true" draggable="false" />
     </button>
 
+    <div class="global-utility-rail" aria-label="Công cụ nhanh">
+      <button
+        type="button"
+        :class="{ active: notesVisible }"
+        title="Mở ghi chú nhanh"
+        aria-controls="global-stickies-drawer"
+        :aria-expanded="notesVisible"
+        @click="toggleNotes"
+      >
+        <i class="fa-solid fa-note-sticky"></i>
+        <span>Notes</span>
+      </button>
+    </div>
+
     <div
       v-if="selectedText && selectionPopover.visible && !aiVisible"
       class="ai-selection-popover"
@@ -72,6 +86,7 @@
             </button>
           </div>
           <p class="ai-hero-copy">{{ aiCopy.hero }}</p>
+
           <div
             v-if="aiUsage"
             class="ai-credit-card"
@@ -143,8 +158,8 @@
 
           <div v-if="selectedText" class="ai-selected-text" role="status">
             <i class="fa-solid fa-quote-left"></i>
-            <span>Dang dung doan da chon</span>
-            <button type="button" title="Xoa doan da chon" @click="clearSelectedText">
+            <span>Đang dùng đoạn đã chọn</span>
+            <button type="button" title="Xóa đoạn đã chọn" @click="clearSelectedText">
               <i class="fa-solid fa-xmark"></i>
             </button>
           </div>
@@ -1958,6 +1973,77 @@ const confirmDuplicateCreation = async (action) => {
   }
 }
 
+const normalizeTaskTitle = (title = '') => `${title}`.trim().replace(/\s+/g, ' ').toLocaleUpperCase('vi-VN')
+
+const taskTitlesAreSimilar = (existingTitle, requestedTitle) => {
+  const existingTokens = normalizeTaskTitle(existingTitle).split(' ').filter(Boolean)
+  const requestedTokens = normalizeTaskTitle(requestedTitle).split(' ').filter(Boolean)
+  if (existingTokens.join(' ') === requestedTokens.join(' ')) return true
+  if (existingTokens.length < 3 || requestedTokens.length < 3) return false
+  const existingSet = new Set(existingTokens)
+  const requestedSet = new Set(requestedTokens)
+  const intersection = [...existingSet].filter(token => requestedSet.has(token)).length
+  const union = new Set([...existingSet, ...requestedSet]).size
+  return union > 0 && intersection / union >= 0.8
+}
+
+const findDuplicateTask = async (action) => {
+  if (action.type !== 'create_task' || actionPayload(action).allowDuplicate) return null
+  const title = actionPayload(action).title || actionPayload(action).name
+  if (!title || !currentProjectId.value) return null
+  const tasks = await ensureProjectTasks()
+  const match = tasks.find(task => taskTitlesAreSimilar(task.title || task.Title, title))
+  if (!match) return null
+  return {
+    id: match.id || match.Id,
+    sequenceId: match.sequenceId || match.SequenceId,
+    title: match.title || match.Title,
+    statusName: match.statusName || match.StatusName || match.taskStatus?.name || match.TaskStatus?.Name || 'Không rõ trạng thái'
+  }
+}
+
+const toggleNotes = () => {
+  const willOpen = !notesVisible.value
+  notesVisible.value = willOpen
+  if (willOpen) {
+    aiVisible.value = false
+    window.dispatchEvent(new CustomEvent('global-utility-drawer-opened'))
+    stopPetWandering()
+  } else if (!aiVisible.value) {
+    startPetWandering()
+  }
+}
+
+const closeNotes = () => {
+  notesVisible.value = false
+  if (!aiVisible.value) startPetWandering()
+}
+
+const openDuplicateTask = (action, edit) => {
+  const task = action.duplicateCandidate
+  if (!task?.id) return
+  return router.push({
+    path: `/space/${currentProjectId.value}/work-items`,
+    query: { task: task.id, ...(edit ? { edit: '1' } : {}) }
+  })
+}
+
+const confirmDuplicateCreation = async (action) => {
+  try {
+    await ElMessageBox.confirm(
+      'Công việc mới sẽ được tạo dù có tiêu đề trùng hoặc rất gần với công việc hiện có.',
+      'Xác nhận tạo trùng',
+      { confirmButtonText: 'Vẫn tạo', cancelButtonText: 'Quay lại', type: 'warning' }
+    )
+    action.payload = { ...actionPayload(action), allowDuplicate: true }
+    action.duplicateCandidate = null
+    action.uiStatus = 'pending'
+    await executeAiAction(action)
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error('Không thể xác nhận thao tác.')
+  }
+}
+
 const executeAiAction = async (action) => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
   const duplicate = await findDuplicateTask(action)
@@ -2504,7 +2590,7 @@ const loadAiUsage = async () => {
     const response = await axiosClient.get('/ai/usage-summary')
     aiUsage.value = apiPayload(response) || null
   } catch {
-    // The credit badge must never make the assistant unusable.
+    // Lỗi badge Credits không được làm hỏng AI Drawer.
     aiUsage.value = null
   }
 }
@@ -2638,14 +2724,39 @@ const sendAiMessage = async () => {
   } catch (error) {
     if (loadingAdded && chatHistory.value.at(-1)?.loading) chatHistory.value.pop()
     const status = error.response?.status
-    const messages = {
-      400: error.response?.data?.message || 'Attachment không hợp lệ hoặc không thể xử lý.',
-      401: 'Vui lòng đăng nhập lại để sử dụng AI Copilot.',
-      403: 'Bạn không có quyền truy cập attachment trong workspace này.',
-      413: 'Attachment vượt quá giới hạn dung lượng.',
-      503: 'AI Copilot chưa sẵn sàng. Vui lòng thử lại sau.'
+    const errorData = error.response?.data?.data || {}
+    const errorCode = errorData?.code
+    const retryAfterSeconds = Number(errorData?.retryAfterSeconds || 0)
+
+    let message
+
+    if (errorCode === 'AI_CREDITS_EXHAUSTED') {
+      message = 'Bạn đã sử dụng hết AI Credits trong tháng này.'
+      await loadAiUsage()
+    } else if (errorCode === 'AI_RATE_LIMITED') {
+      message = retryAfterSeconds > 0
+        ? `Bạn thao tác AI quá nhanh. Vui lòng thử lại sau ${retryAfterSeconds} giây.`
+        : 'Bạn thao tác AI quá nhanh. Vui lòng thử lại sau.'
+    } else if (errorCode === 'AI_PROVIDER_RATE_LIMITED') {
+      message = 'Dịch vụ AI đang bận. Vui lòng thử lại sau.'
+    } else if (errorCode === 'AI_PROVIDER_UNAVAILABLE') {
+      message = 'Dịch vụ AI tạm thời không khả dụng. Vui lòng thử lại sau.'
+    } else {
+      const messages = {
+        400: error.response?.data?.message || 'Attachment không hợp lệ hoặc không thể xử lý.',
+        401: 'Vui lòng đăng nhập lại để sử dụng SprintA AI.',
+        402: 'Bạn đã sử dụng hết AI Credits trong tháng này.',
+        403: 'Bạn không có quyền truy cập attachment trong workspace này.',
+        413: 'Attachment vượt quá giới hạn dung lượng.',
+        429: 'Dịch vụ AI đang bận. Vui lòng thử lại sau.',
+        503: 'SprintA AI chưa sẵn sàng. Vui lòng thử lại sau.'
+      }
+
+      message =
+        messages[status]
+        || error.response?.data?.message
+        || 'Không thể kết nối SprintA AI. Vui lòng thử lại.'
     }
-    const message = messages[status] || error.response?.data?.message || 'Không thể kết nối AI Copilot. Vui lòng thử lại.'
     if (userMessageAdded) chatHistory.value.push({ role: 'bot', content: message })
     ElMessage.error(message)
   } finally {
@@ -2838,6 +2949,38 @@ const handleProjectCreated = (newProject) => {
 .ai-floating-btn:hover {
   filter: brightness(1.04);
 }
+
+.global-utility-rail {
+  position: fixed;
+  z-index: 1510;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+}
+
+.global-utility-rail button {
+  width: 46px;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+
+.global-utility-rail button:hover,
+.global-utility-rail button.active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.global-utility-rail span { font-size: 9px; font-weight: 700; }
 
 .ai-floating-btn.is-dragging { cursor: grabbing; filter: brightness(1.08); }
 .ai-floating-btn.is-dragging .ai-pet-image { animation: none; }
@@ -3892,6 +4035,15 @@ const handleProjectCreated = (newProject) => {
     width: 58px;
     height: 58px;
   }
+
+  .global-utility-rail {
+    top: auto;
+    right: 8px;
+    bottom: 82px;
+    transform: none;
+  }
+
+  .global-utility-rail button { width: 42px; min-height: 44px; }
 
   .ai-pet-image {
     width: 58px;

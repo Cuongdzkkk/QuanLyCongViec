@@ -2734,6 +2734,7 @@ onMounted(() => {
 
 let unsubscribeAdminRealtime = null
 let signalRTaskUpdatedHandler = null
+let signalREntityChangedHandler = null
 let signalRProjectEventHandler = null
 let signalREntityChangedHandler = null
 let realtimeRefreshTimer = null
@@ -2786,6 +2787,9 @@ const startTaskRealtime = async (projectId) => {
   if (signalRTaskUpdatedHandler) {
     signalRService.off('TaskUpdated', signalRTaskUpdatedHandler)
     signalRService.off('WorkTaskUpdated', signalRTaskUpdatedHandler)
+  }
+  if (signalREntityChangedHandler) {
+    signalRService.off('EntityChanged', signalREntityChangedHandler)
   }
   if (signalRProjectEventHandler) {
     signalRService.off('ProjectRealtimeEvent', signalRProjectEventHandler)
@@ -2897,6 +2901,9 @@ onUnmounted(() => {
   if (signalRTaskUpdatedHandler) {
     signalRService.off('TaskUpdated', signalRTaskUpdatedHandler)
     signalRService.off('WorkTaskUpdated', signalRTaskUpdatedHandler)
+  }
+  if (signalREntityChangedHandler) {
+    signalRService.off('EntityChanged', signalREntityChangedHandler)
   }
   if (signalRProjectEventHandler) {
     signalRService.off('ProjectRealtimeEvent', signalRProjectEventHandler)

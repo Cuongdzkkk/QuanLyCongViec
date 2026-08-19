@@ -244,7 +244,7 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/uploads"), bran
 app.UseStaticFiles();
 
 app.MapControllers();
-app.MapHub<TaskManagement.API.Hubs.KanbanHub>("/kanban-hub");
+app.MapHub<TaskManagement.API.Hubs.KanbanHub>(TaskManagement.API.Hubs.KanbanHub.Route);
 app.MapHub<TaskManagement.API.Hubs.NotificationHub>("/notification-hub");
 app.MapHub<TaskManagement.API.Hubs.ChatHub>(TaskManagement.API.Hubs.ChatHub.Route);
 

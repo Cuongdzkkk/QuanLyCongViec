@@ -35,8 +35,6 @@
               style="width: 220px;"
               popper-class="custom-project-dropdown"
             >
-              <!-- Dummy helper reference to trigger default project value assignment on render -->
-              <span style="display:none;">{{ unwatchProjects }}</span>
               <el-option label="— Tất cả dự án —" value="all" />
               <el-option 
                 v-for="proj in sidebarProjects" 
@@ -104,7 +102,20 @@
 
     <!-- Feed Timeline -->
     <div class="feed-timeline">
-      <div v-if="filteredActivities.length === 0" class="empty-state text-center py-12">
+      <div v-if="loading" class="empty-state text-center py-12">
+        <i class="fa-solid fa-spinner fa-spin text-4xl text-muted mb-4 block"></i>
+        <p class="text-muted">Đang tải bảng tin hoạt động...</p>
+      </div>
+
+      <div v-else-if="loadError" class="empty-state text-center py-12">
+        <i class="fa-solid fa-triangle-exclamation text-4xl text-warning mb-4 block"></i>
+        <p class="text-muted mb-4">{{ loadError }}</p>
+        <el-button class="btn-refresh-accent" @click="fetchActivities">
+          <i class="fa-solid fa-arrows-rotate mr-2"></i>Thử lại
+        </el-button>
+      </div>
+
+      <div v-else-if="filteredActivities.length === 0" class="empty-state text-center py-12">
         <i class="fa-regular fa-folder-open text-4xl text-muted mb-4 block"></i>
         <p class="text-muted">Không tìm thấy hoạt động nào phù hợp.</p>
       </div>
@@ -160,6 +171,7 @@ import axiosClient from '@/api/axiosClient'
 
 const projectStore = useProjectStore()
 const loading = ref(false)
+const loadError = ref('')
 
 // Load projects dynamically on mount
 onMounted(() => {
@@ -200,15 +212,6 @@ const handleTypeMouseEnter = () => {
   }
 }
 
-// Watch projects list to set default project selection
-const unwatchProjects = computed(() => {
-  if (sidebarProjects.value.length > 0 && !selectedPostProject.value) {
-    selectedPostProject.value = 'all'
-  }
-  return sidebarProjects.value
-})
-
-
 const filterOptions = [
   { label: 'Tất cả', value: 'all', icon: 'fa-solid fa-list' },
   { label: 'Công việc', value: 'task', icon: 'fa-solid fa-square-check' },
@@ -221,14 +224,16 @@ const activities = ref([])
 
 const fetchActivities = async () => {
   loading.value = true
+  loadError.value = ''
   try {
     const res = await axiosClient.get('/auditlogs', {
       params: {
         limit: 50
       }
     })
-    if (res.data && res.data.data && res.data.data.items) {
-      activities.value = res.data.data.items.map(item => ({
+    const items = res.data?.data?.items
+    activities.value = Array.isArray(items)
+      ? items.map(item => ({
         id: item.id,
         userName: item.user,
         userAvatar: '', 
@@ -239,67 +244,14 @@ const fetchActivities = async () => {
         timestamp: item.timestamp,
         project: item.projectName || 'TaskManagement'
       }))
-    }
+      : []
+    return true
   } catch (error) {
     console.error('Cannot load audit logs:', error)
-    // Fallback to mock data if API fails
-    activities.value = [
-      {
-        id: 1,
-        userName: 'Nguyễn Tuấn Kiệt',
-        userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=128',
-        type: 'task',
-        description: 'vừa hoàn thành công việc',
-        target: 'Tích hợp mô hình AI Priority',
-        detail: 'Đã hoàn tất tính toán điểm ưu tiên dựa trên trọng số deadline và mức độ quan trọng.',
-        timestamp: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
-        project: 'Dự án Alpha'
-      },
-      {
-        id: 2,
-        userName: 'Phạm Minh Tú',
-        userAvatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=128',
-        type: 'comment',
-        description: 'đã bình luận trong task',
-        target: 'Thiết kế cơ sở dữ liệu phân công',
-        detail: '“Cần bổ sung bảng lịch sử phân công (AssignmentHistory) để tracking chặt chẽ hơn.”',
-        timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-        project: 'Dự án Beta'
-      },
-      {
-        id: 3,
-        userName: 'Đoàn Minh Quân',
-        userAvatar: '',
-        type: 'status',
-        description: 'đã cập nhật trạng thái làm việc mới',
-        target: '💻 Đang code giao diện Team Collaboration',
-        detail: null,
-        timestamp: new Date(Date.now() - 1000 * 3600 * 1.5).toISOString(),
-        project: 'Workspace Chung'
-      },
-      {
-        id: 4,
-        userName: 'Lê Tiến Đạt',
-        userAvatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=128',
-        type: 'sprint',
-        description: 'vừa bắt đầu Sprint mới',
-        target: 'Sprint 5 - Hoàn thiện các tính năng cốt lõi',
-        detail: 'Sprint kéo dài từ 01/07/2026 đến 15/07/2026.',
-        timestamp: new Date(Date.now() - 1000 * 3600 * 3).toISOString(),
-        project: 'Dự án Alpha'
-      },
-      {
-        id: 5,
-        userName: 'Trần Gia Phát',
-        userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128',
-        type: 'task',
-        description: 'đã chuyển trạng thái công việc sang In Progress',
-        target: 'Kéo thả các thẻ Kanban',
-        detail: 'Đang triển khai thư viện vuedraggable.',
-        timestamp: new Date(Date.now() - 1000 * 3600 * 5).toISOString(),
-        project: 'Dự án Alpha'
-      }
-    ]
+    loadError.value = error.response?.status === 403
+      ? 'Không thể tải bảng tin vì bạn không có quyền xem nhật ký hoạt động.'
+      : 'Không thể tải bảng tin hoạt động. Vui lòng thử lại.'
+    return false
   } finally {
     loading.value = false
   }
@@ -346,8 +298,10 @@ const formatTimeAgo = (dateObj) => {
 }
 
 const refreshFeed = async () => {
-  await fetchActivities()
-  ElMessage.success('Đã cập nhật bảng tin hoạt động mới nhất')
+  const success = await fetchActivities()
+  if (success) {
+    ElMessage.success('Đã cập nhật bảng tin hoạt động mới nhất')
+  }
 }
 
 const submitActivityPost = () => {

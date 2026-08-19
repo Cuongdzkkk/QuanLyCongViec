@@ -1,6 +1,6 @@
 @echo off
 title Start Task Management System
-if not defined DEV_SQL_SERVER set "DEV_SQL_SERVER=KHOI\SQLEXPRESS"
+if not defined DEV_SQL_SERVER set "DEV_SQL_SERVER=Quan"
 
 echo =======================================
 echo KHỞI ĐỘNG HỆ THỐNG TASK MANAGEMENT

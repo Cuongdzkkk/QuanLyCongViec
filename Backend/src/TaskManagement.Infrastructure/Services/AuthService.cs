@@ -23,6 +23,7 @@ namespace TaskManagement.Infrastructure.Services
         private readonly IOtpService _otpService;
         private readonly IEmailService _emailService;
         private readonly IGoogleIdentityValidator _googleIdentityValidator;
+        private readonly ICollaborationChannelService? _collaborationChannelService;
 
         public AuthService(
             ApplicationDbContext context,
@@ -30,7 +31,8 @@ namespace TaskManagement.Infrastructure.Services
             IConfiguration configuration,
             IOtpService otpService,
             IEmailService emailService,
-            IGoogleIdentityValidator? googleIdentityValidator = null)
+            IGoogleIdentityValidator? googleIdentityValidator = null,
+            ICollaborationChannelService? collaborationChannelService = null)
         {
             _context = context;
             _jwtService = jwtService;
@@ -38,6 +40,7 @@ namespace TaskManagement.Infrastructure.Services
             _otpService = otpService;
             _emailService = emailService;
             _googleIdentityValidator = googleIdentityValidator ?? new GoogleIdentityValidator(configuration);
+            _collaborationChannelService = collaborationChannelService;
         }
 
         public async Task<(AuthResponseDto? response, string? refreshToken, bool requires2FA)> LoginAsync(LoginRequestDto request)
@@ -559,6 +562,17 @@ namespace TaskManagement.Infrastructure.Services
             {
                 workspaceMember.IsActive = true;
             }
+
+            if (_collaborationChannelService != null)
+            {
+                foreach (var projectMember in pendingProjects)
+                {
+                    await _collaborationChannelService.EnsureProjectMemberAccessAsync(
+                        projectMember.ProjectId,
+                        userId,
+                        assumeActiveProjectMember: true);
+                }
+            }
         }
 
         private bool VerifyPassword(string inputPassword, string storedHash)
@@ -680,6 +694,17 @@ namespace TaskManagement.Infrastructure.Services
             foreach (var workspaceMember in workspaceMemberships)
             {
                 workspaceMember.IsActive = true;
+            }
+
+            if (_collaborationChannelService != null)
+            {
+                foreach (var projectMember in pendingProjects)
+                {
+                    await _collaborationChannelService.EnsureProjectMemberAccessAsync(
+                        projectMember.ProjectId,
+                        user.Id,
+                        assumeActiveProjectMember: true);
+                }
             }
 
             await _context.SaveChangesAsync();

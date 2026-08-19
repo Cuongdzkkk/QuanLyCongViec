@@ -1152,7 +1152,7 @@
                   </div>
                 </div>
                 <div class="row-actions">
-                  <button v-if="canManageSprint" class="secondary-btn" type="button" @click="saveCycle(sprint)">Save</button>
+                  <button v-if="canManageSprint && getSprintStateMeta(sprint.state).canStart" class="secondary-btn" type="button" @click="saveCycle(sprint)">Save</button>
                   <button class="secondary-btn" type="button" @click="toggleFavoriteCycle(sprint)">
                     {{ sprint.isFavorite ? 'Unfavorite' : 'Favorite' }}
                   </button>
@@ -1498,6 +1498,15 @@ const upsertById = (collectionRef, item) => {
 const removeById = (collectionRef, id) => {
   collectionRef.value = collectionRef.value.filter(item => item.id !== id)
 }
+
+const parseOptions = (json) => {
+  try {
+    return json ? JSON.parse(json) : []
+  } catch {
+    return []
+  }
+}
+
 const integrationAnalysis = ref(null)
 const pointManagement = ref({
   totalProjectPoints: 0,

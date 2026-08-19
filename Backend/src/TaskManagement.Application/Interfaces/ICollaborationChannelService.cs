@@ -4,6 +4,17 @@ namespace TaskManagement.Application.Interfaces;
 
 public interface ICollaborationChannelService
 {
+    Task<ProvisionCollaborationChannelResult> EnsureProjectDiscussionAsync(
+        Guid projectId,
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task EnsureProjectMemberAccessAsync(
+        Guid projectId,
+        Guid userId,
+        bool assumeActiveProjectMember = false,
+        CancellationToken cancellationToken = default);
+
     Task<CollaborationChannelPageDto> DiscoverAsync(
         Guid projectId,
         Guid userId,

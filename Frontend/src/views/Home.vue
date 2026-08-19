@@ -52,6 +52,10 @@ const isVi = computed(() => language.value === 'vi')
 const displayName = computed(() => user.value?.fullName || user.value?.username || user.value?.email || (isVi.value ? 'Người dùng SprintA' : 'SprintA user'))
 const initials = computed(() => displayName.value.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(-2).join('').toUpperCase() || 'SA')
 const workspaceName = computed(() => user.value?.currentWorkspace?.name || user.value?.workspaceName || 'Workspace')
+const usagePercent = computed(() => {
+  const total = Number(usage.value?.includedCredits || 0) + Number(usage.value?.adjustmentCredits || 0)
+  return total > 0 ? Math.min(100, Math.round((Number(usage.value?.usedCredits || 0) / total) * 100)) : 0
+})
 const editorialHeadlines = computed(() => isVi.value ? {
   hero: [
     [{ text: 'Quản lý ' }, { text: 'công việc', tone: 'cyan' }],
@@ -109,7 +113,7 @@ const copy = computed(() => isVi.value ? {
   nav: ['Tính năng', 'AI', 'Quy trình', 'Bảng giá', 'Video'],
   badge: 'SPRINTA',
   title: 'Quản lý công việc rõ ràng, chạy sprint gọn hơn.',
-  intro: 'SprintA gom task, cycle, mục tiêu, tài liệu, báo cáo và AI Copilot vào một workspace thống nhất để đội nhóm luôn thấy rõ việc cần làm, người phụ trách và rủi ro.',
+  intro: 'SprintA gom task, cycle, mục tiêu, tài liệu, báo cáo và SprintA AI vào một workspace thống nhất để đội nhóm luôn thấy rõ việc cần làm, người phụ trách và rủi ro.',
   start: 'Bắt đầu miễn phí',
   demo: 'Xem demo',
   proof: ['Không cần thẻ thanh toán', 'Demo data có sẵn', 'Cài như PWA'],
@@ -146,7 +150,7 @@ const copy = computed(() => isVi.value ? {
   nav: ['Features', 'AI', 'Workflow', 'Pricing', 'Video'],
   badge: 'SPRINTA',
   title: 'Work with clarity. Run focused sprints without noise.',
-  intro: 'SprintA brings tasks, cycles, goals, documents, reports and AI Copilot into one focused workspace so ownership, risk and progress stay visible.',
+  intro: 'SprintA brings tasks, cycles, goals, documents, reports and SprintA AI into one focused workspace so ownership, risk and progress stay visible.',
   start: 'Start for free',
   demo: 'Watch demo',
   proof: ['No credit card', 'Demo data included', 'Install as PWA'],
@@ -277,7 +281,7 @@ const loadUsage = async () => {
   if (!authenticated.value) return
   usageError.value = false
   try {
-    usage.value = (await axiosClient.get('/ai/usage-summary')).data?.data || null
+    usage.value = (await axiosClient.get('/billing/me')).data?.data || null
   } catch {
     usageError.value = true
   }
@@ -309,6 +313,16 @@ const planFeatures = (plan) => {
   if (plan.extraAiCreditsEnabled) features.push(copy.value.extraCredits)
   return features
 }
+
+const handlePlan = (plan) => {
+  const code = planCode(plan)
+  if (code === 'enterprise' || plan.monthlyPriceVnd == null) return
+  const checkoutPath = `/billing/checkout/${encodeURIComponent(code)}`
+  if (authenticated.value) router.push(checkoutPath)
+  else router.push({ path: '/login', query: { redirect: checkoutPath } })
+}
+
+const isCurrentPlan = (plan) => usage.value?.planCode === planCode(plan)
 
 const logout = () => {
   clearAuthSession()
@@ -470,7 +484,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="float-card float-card-b">
                 <span class="mini-icon"><Bot :size="16" /></span>
-                <div><b>{{ isVi ? 'AI Copilot' : 'AI Copilot' }}</b><small>{{ isVi ? 'Gợi ý có xác nhận' : 'Confirmed suggestions' }}</small></div>
+                <div><b>SprintA AI</b><small>{{ isVi ? 'Gợi ý có xác nhận' : 'Confirmed suggestions' }}</small></div>
               </div>
               <div class="float-card float-card-c">
                 <BarChart3 :size="17" />
@@ -637,6 +651,19 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <div v-if="authenticated && usage" class="usage-panel" data-reveal>
+            <div>
+              <span>{{ isVi ? 'Gói hiện tại' : 'Current plan' }}</span>
+              <b>{{ usage.planName }} · {{ usage.subscriptionStatus }}</b>
+              <small>{{ isVi ? 'Kết thúc kỳ' : 'Period ends' }}: {{ new Intl.DateTimeFormat(isVi ? 'vi-VN' : 'en-US').format(new Date(usage.currentPeriodEnd)) }}</small>
+            </div>
+            <div class="usage-credit-meter">
+              <div class="usage-values"><span>{{ isVi ? 'Đã dùng' : 'Used' }} <b>{{ usage.usedCredits }}</b></span><span>{{ isVi ? 'Còn lại' : 'Remaining' }} <b>{{ usage.remainingCredits }}</b></span></div>
+              <progress :value="usagePercent" max="100" :aria-label="isVi ? 'Tiến độ sử dụng AI credits' : 'AI credit usage progress'"></progress>
+            </div>
+          </div>
+          <div v-else-if="authenticated && usageError" class="api-state">{{ copy.usageFail }}</div>
+
           <div v-if="displayedPlans.length" class="pricing-grid">
             <article
               v-for="plan in displayedPlans"
@@ -657,8 +684,8 @@ onBeforeUnmount(() => {
                 <span v-if="plan.monthlyPriceVnd != null">{{ copy.perMonth }}<template v-if="plan.perUser"> {{ copy.perUser }}</template></span>
               </div>
               <p class="price-status"><i></i>{{ plan.monthlyPriceVnd == null ? copy.pending : copy.transparentPricing }}</p>
-              <button class="plan-cta" type="button" @click="go(authenticated ? '/dashboard' : '/register')">
-                {{ copy.choosePlan }} {{ plan.name }} <ArrowRight :size="15" />
+              <button class="plan-cta" type="button" :disabled="plan.monthlyPriceVnd == null" @click="handlePlan(plan)">
+                {{ plan.monthlyPriceVnd == null ? copy.pending : isCurrentPlan(plan) ? (isVi ? 'Gói hiện tại' : 'Current plan') : `${copy.choosePlan} ${plan.name}` }} <ArrowRight v-if="plan.monthlyPriceVnd != null" :size="15" />
               </button>
               <div v-show="showPlanBenefits" class="feature-list">
                 <div v-for="feature in planFeatures(plan)" :key="feature" class="price-line"><span><Check :size="13" /></span>{{ feature }}</div>
@@ -800,10 +827,11 @@ onBeforeUnmount(() => {
   --shadow: 0 28px 80px rgba(0, 4, 18, .48);
   min-height: 100vh;
   overflow-x: clip;
+  color: var(--ink);
   background:
     radial-gradient(circle at 50% -10%, rgba(43, 123, 255, .13), transparent 34rem),
     linear-gradient(180deg, #020b17 0%, #03101f 56%, #020b17 100%);
-  font-family: Inter, "Avenir Next", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: 'Be Vietnam Pro', Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -948,7 +976,36 @@ button { font: inherit; }
   color: var(--cyan);
   cursor: pointer;
 }
-.text-btn { padding: 0 8px; display: inline-flex; align-items: center; border: 0; background: transparent; cursor: pointer; }
+.text-btn { padding: 0 8px; display: inline-flex; align-items: center; border: 0; background: transparent; text-decoration: underline; cursor: pointer; }
+.user-chip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px 4px 5px; cursor: pointer; }
+.avatar { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 50%; background: linear-gradient(135deg,var(--cyan),var(--blue)); color:white; font-size:11px; font-weight:900; }
+.user-meta { display: grid; gap: 1px; text-align: left; }
+.user-meta b { color: var(--ink); font-size: 11px; }
+.user-meta small { font-size: 9px; color: var(--muted); }
+.mobile-menu { display: none; }
+
+.mobile-nav {
+  display: grid;
+  gap: 10px;
+  padding: 0 18px 18px;
+}
+.mobile-nav a { padding: 10px 0; color: var(--ink-2); border-bottom: 1px solid var(--line); }
+
+.btn {
+  min-height: 42px;
+  padding: 0 17px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--ink);
+  background: rgba(6, 23, 42, .68);
+  cursor: pointer;
+  font-weight: 800;
+  transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease, background .22s ease;
+}
 .btn:hover { transform: translateY(-2px); border-color: var(--line-strong); }
 .btn-primary {
   border-color: rgba(84, 212, 255, .62);
@@ -1048,6 +1105,7 @@ button { font: inherit; }
 }
 .hero-actions { display: flex; gap: 12px; margin-top: 28px; }
 .proof-row { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 28px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.proof-row span { display: inline-flex; align-items: center; gap: 6px; }
 .proof-row svg { color: var(--mint); }
 
 .hero-stage {
@@ -1076,165 +1134,6 @@ button { font: inherit; }
     0 0 54px rgba(28, 150, 255, .12),
     inset 0 1px rgba(255,255,255,.1);
 }
-.frame-bar { display: flex; align-items: center; gap: 7px; padding: 14px 16px; color: #a9c4d7; font-size: 12px; }
-.frame-bar i { width: 8px; height: 8px; border-radius: 50%; background: #ef5b63; }
-.frame-bar i:nth-child(2) { background: #f4b63f; }
-.frame-bar i:nth-child(3) { background: #25b66d; }
-.frame-bar span { margin-left: 8px; }
-.dashboard-frame img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: top; }
-.context-card { position: absolute; right: -16px; top: 18%; display: flex; align-items: center; gap: 10px; max-width: 250px; padding: 14px; border: 1px solid rgba(255,255,255,.22); border-radius: 16px; color: #edf9ff; background: rgba(8, 37, 66, .88); box-shadow: 0 20px 48px rgba(7, 26, 47, .22); }
-.context-card span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: rgba(0, 167, 216, .24); color: #62daf1; }
-.context-card div { display: grid; gap: 2px; }
-.context-card small { color: #a8c4d8; }
-.live-strip { position: absolute; left: 24px; bottom: -17px; display: flex; align-items: center; gap: 9px; padding: 10px 14px; color: var(--ink); border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(14px); box-shadow: var(--shadow); font-size: 12px; font-weight: 850; }
-.live-strip span { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent-2) 18%, transparent); animation: livePulse 2s ease-out infinite; }
-.orbit { position: absolute; z-index: -1; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 50%; pointer-events: none; }
-.orbit::after { content: ''; position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); }
-.orbit-one { width: 112px; height: 112px; right: -46px; bottom: -42px; animation: orbitSpin 12s linear infinite; }
-.orbit-one::after { top: 15px; left: 10px; }
-.orbit-two { width: 68px; height: 68px; left: -28px; top: 22px; animation: orbitSpin 9s linear infinite reverse; }
-.orbit-two::after { right: 3px; bottom: 12px; }
-.signal-rail { overflow: hidden; padding: 14px 0; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--surface); font-size: 11px; font-weight: 900; letter-spacing: .16em; }
-.signal-track { display: flex; align-items: center; gap: 28px; width: max-content; animation: railMove 28s linear infinite; }
-.signal-track span { white-space: nowrap; }
-.signal-track i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
-.section { padding: 118px 0; scroll-margin-top: 112px; }
-.section-raised { background: color-mix(in srgb, var(--surface-2) 86%, transparent); }
-.section-intro { max-width: 760px; }
-.section-intro h2, .ai-section h2, .faq-section h2, .final-cta h2 { margin: 14px 0 12px; font-size: clamp(38px, 4.4vw, 68px); line-height: 1; letter-spacing: -.055em; }
-.product-headline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .22em; }
-#features .product-headline em { color: var(--accent-gold); text-shadow: 0 0 28px color-mix(in srgb, var(--accent-gold) 22%, transparent); }
-.workflow-title { max-width: none; white-space: nowrap; font-size: clamp(42px, 4vw, 62px) !important; }
-.section-intro p, .section-copy { color: var(--muted); line-height: 1.75; font-size: 16px; }
-.product-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; margin-top: 46px; }
-.product-card { grid-column: span 2; min-height: 360px; display: flex; flex-direction: column; padding: 24px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); box-shadow: 0 16px 42px rgba(7, 26, 47, .055); transition: transform .24s cubic-bezier(.2,.8,.2,1), border-color .18s ease, box-shadow .18s ease; }
-.product-card.wide { grid-column: span 3; }
-.product-card:hover { transform: translateY(-7px); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); box-shadow: var(--shadow); }
-.product-top { display: flex; justify-content: space-between; align-items: center; }
-.product-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.product-index { margin-left: auto; color: color-mix(in srgb, var(--muted) 55%, transparent); font-size: 11px; font-weight: 900; letter-spacing: .12em; }
-.product-index + .link-btn { margin-left: 18px; }
-.link-btn { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); border: 0; background: transparent; cursor: pointer; font-weight: 900; }
-.product-card h3 { margin: 24px 0 10px; font-size: 27px; letter-spacing: -.04em; }
-.product-card p { min-height: 54px; margin: 0 0 18px; color: var(--muted); line-height: 1.6; }
-.product-card img { margin-top: auto; width: 100%; aspect-ratio: 16 / 8.5; object-fit: cover; object-position: top; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); filter: saturate(.95) contrast(1.02); }
-.ai-section { position: relative; overflow: hidden; color: #edf9ff; background: var(--navy); }
-.inverted { color: #66d9f1; }
-.ai-grid { display: grid; grid-template-columns: minmax(460px, .95fr) minmax(540px, 1.05fr); gap: clamp(52px, 7vw, 98px); align-items: center; }
-.ai-section h2 { color: #edf9ff; }
-.final-cta h2 em { color: var(--accent-2); text-shadow: 0 0 30px color-mix(in srgb, var(--accent-2) 24%, transparent); }
-#pricing h2 em { color: var(--accent-gold); text-shadow: 0 0 28px color-mix(in srgb, var(--accent-gold) 20%, transparent); }
-.faq-section h2 > span, .faq-section h2 > em { display: block; }
-.faq-section h2 em { color: var(--accent-warm); text-shadow: 0 0 28px color-mix(in srgb, var(--accent-warm) 18%, transparent); }
-.ai-section .section-copy { color: #a9c4d8; }
-.ai-flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 12px; margin: 34px 0; }
-.ai-flow > div { display: grid; gap: 7px; padding: 16px; border: 1px solid rgba(255,255,255,.15); border-radius: 18px; background: rgba(255,255,255,.06); }
-.ai-flow span { color: #66d9f1; font-size: 12px; font-weight: 950; }
-.ai-flow small { color: #a9c4d8; line-height: 1.45; }
-.ai-flow > svg { align-self: center; color: #67cfe7; }
-.spotlight-card { position: relative; isolation: isolate; --spot-x: 50%; --spot-y: 50%; }
-.spotlight-card:hover::after { opacity: 1; }
-.ai-panel { padding: 28px; border: 1px solid rgba(255,255,255,.17); border-radius: 28px; background: #0b2940; box-shadow: inset 0 1px rgba(255,255,255,.08), 0 28px 70px rgba(0,0,0,.18); }
-.panel-head { display: flex; align-items: center; gap: 13px; }
-.panel-head img { width: 58px !important; height: 58px !important; object-fit: contain !important; border-radius: 18px; background: rgba(255,255,255,.06); }
-.panel-head div { display: grid; gap: 2px; }
-.panel-head small { color: #a9c4d8; }
-.prompt-bubble { width: min(82%, 520px); margin: 24px 0 16px auto; padding: 15px 16px; border-radius: 18px 18px 4px 18px; color: #dff7ff; background: rgba(0, 167, 216, .18); line-height: 1.6; }
-.action-card { padding: 18px; border: 1px solid rgba(255,255,255,.16); border-radius: 18px; background: rgba(2, 17, 31, .56); }
-.action-title { display: flex; align-items: center; gap: 8px; font-weight: 900; }
-.action-title svg { color: #28d0a3; }
-.action-title span { margin-left: auto; padding: 5px 8px; border-radius: 999px; color: #ffd789; background: rgba(255, 216, 137, .12); font-size: 12px; }
-.action-card p { margin-bottom: 0; color: #a9c4d8; }
-.split { max-width: none; display: grid; grid-template-columns: 1fr .85fr; gap: 70px; align-items: end; }
-.pricing-section { position: relative; isolation: isolate; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--brand-sky) 5%, var(--bg)), var(--bg) 72%); }
-.pricing-orb { position: absolute; z-index: -1; border-radius: 999px; pointer-events: none; filter: blur(2px); }
-.pricing-header { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .72fr); gap: 70px; align-items: end; }
-.pricing-heading { max-width: 760px; }
-.pricing-mode { display: inline-flex; align-items: center; gap: 5px; margin-top: 24px; padding: 5px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--surface) 88%, transparent); box-shadow: 0 12px 28px color-mix(in srgb, var(--ink) 6%, transparent); }
-.pricing-mode span { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 13px; color: var(--muted); border-radius: 999px; font-size: 12px; font-weight: 850; }
-.pricing-mode .pricing-mode-active { color: #fff; background: var(--brand-deep); box-shadow: 0 8px 18px color-mix(in srgb, var(--brand-deep) 24%, transparent); }
-.pricing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 52px; align-items: stretch; }
-.price-card { position: relative; min-height: 500px; display: flex; flex-direction: column; padding: 30px; border: 1px solid color-mix(in srgb, var(--brand-slate) 24%, var(--line)); border-radius: 26px; background: color-mix(in srgb, var(--surface) 96%, transparent); box-shadow: 0 20px 54px color-mix(in srgb, var(--brand-deep) 8%, transparent); transition: transform .24s cubic-bezier(.2,.8,.2,1), border-color .22s ease, box-shadow .22s ease; }
-.price-card:hover { transform: translateY(-7px); border-color: color-mix(in srgb, var(--brand-sky) 58%, var(--line)); box-shadow: 0 28px 64px color-mix(in srgb, var(--brand-deep) 14%, transparent); }
-.price-card.featured { border-color: color-mix(in srgb, var(--brand-royal) 70%, var(--line)); box-shadow: 0 26px 70px color-mix(in srgb, var(--brand-royal) 17%, transparent); }
-.price-card.featured::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: linear-gradient(145deg, color-mix(in srgb, var(--brand-sky) 9%, transparent), transparent 38%); pointer-events: none; }
-.popular-badge { position: absolute; top: -15px; left: 50%; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 13px; color: #fff; border-radius: 999px; background: var(--brand-royal); box-shadow: 0 10px 24px color-mix(in srgb, var(--brand-royal) 30%, transparent); transform: translateX(-50%); font-size: 11px; font-weight: 900; white-space: nowrap; }
-.price-card-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
-.plan-icon { display: grid; place-items: center; width: 44px; height: 44px; color: var(--brand-deep); border-radius: 14px; background: color-mix(in srgb, var(--brand-sky) 16%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-sky) 24%, transparent); }
-:global([data-theme="dark"] .landing-page) .plan-icon { color: var(--brand-sky); }
-.price-label { color: var(--brand-slate); font-size: 11px; font-weight: 950; letter-spacing: .16em; text-transform: uppercase; }
-.price-card h3 { margin: 22px 0 8px; font-size: 31px; letter-spacing: -.045em; }
-.price-value { min-height: 58px; display: flex; align-items: baseline; gap: 8px; }
-.price-value strong { color: var(--ink); font-size: clamp(25px, 2vw, 34px); letter-spacing: -.04em; }
-.price-value span { color: var(--muted); font-size: 12px; font-weight: 750; }
-.price-value.pending strong { color: var(--brand-deep); font-size: 24px; }
-:global([data-theme="dark"] .landing-page) .price-value.pending strong { color: var(--brand-sky); }
-.price-status { display: flex; align-items: center; gap: 8px; min-height: 40px; margin: 5px 0 20px; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.price-status > span { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--brand-sky); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-sky) 13%, transparent); }
-.plan-cta { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 48px; padding: 0 18px; color: var(--brand-deep); border: 1px solid color-mix(in srgb, var(--brand-deep) 62%, var(--line)); border-radius: 14px; background: transparent; font-weight: 900; cursor: pointer; transition: transform .2s ease, color .2s ease, background .2s ease, box-shadow .2s ease; }
-.plan-cta:hover { color: #fff; background: var(--brand-deep); box-shadow: 0 14px 28px color-mix(in srgb, var(--brand-deep) 22%, transparent); transform: translateY(-2px); }
-.featured .plan-cta { color: #fff; border-color: var(--brand-royal); background: var(--brand-royal); box-shadow: 0 14px 30px color-mix(in srgb, var(--brand-royal) 25%, transparent); }
-.featured .plan-cta:hover { background: var(--brand-deep); }
-.price-divider { height: 1px; margin: 24px 0 15px; background: var(--line); }
-.feature-list { display: grid; gap: 12px; }
-.price-line { display: flex; align-items: flex-start; gap: 10px; color: var(--muted); line-height: 1.5; font-size: 13px; font-weight: 700; }
-.price-line > span { flex: 0 0 auto; display: grid; place-items: center; width: 22px; height: 22px; color: #fff; border-radius: 7px; background: var(--brand-deep); }
-.price-line.muted > span { background: var(--brand-slate); }
-.pricing-empty { display: flex; align-items: center; gap: 16px; max-width: 760px; margin: 46px auto 0; padding: 22px 24px; border: 1px dashed color-mix(in srgb, var(--brand-sky) 52%, var(--line)); border-radius: 20px; background: color-mix(in srgb, var(--brand-sky) 7%, var(--surface)); }
-.pricing-empty > span { flex: 0 0 auto; display: grid; place-items: center; width: 52px; height: 52px; color: var(--brand-deep); border-radius: 16px; background: color-mix(in srgb, var(--brand-sky) 18%, var(--surface)); }
-.pricing-empty div { display: grid; gap: 5px; }
-.pricing-empty b { font-size: 16px; }
-.pricing-empty p { margin: 0; color: var(--muted); line-height: 1.55; }
-.api-state { margin-top: 28px; padding: 18px; border: 1px solid #efc6c6; border-radius: 16px; color: #b33131; background: #fff2f2; }
-.usage-panel { display: flex; justify-content: space-between; gap: 16px; margin-top: 20px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--muted); }
-.usage-panel div { display: grid; gap: 4px; }
-.usage-panel b { color: var(--ink); }
-.usage-values { display: flex !important; flex-direction: row; gap: 20px; }
-.video-section { background: var(--surface); }
-.workflow-line { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; min-height: 266px; margin-top: 38px; padding: 0 6px; }
-.workflow-line::before { content: ''; position: absolute; z-index: 0; top: 50%; right: 5.5%; left: 5.5%; height: 2px; background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--accent) 68%, transparent) 0 11px, transparent 11px 20px); opacity: .72; }
-.workflow-line::after { content: ''; position: absolute; z-index: 1; top: calc(50% - 5px); left: 5.5%; width: 10px; height: 10px; border-radius: 999px; background: var(--accent-2); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent-2) 13%, transparent), 0 0 22px color-mix(in srgb, var(--accent-2) 78%, transparent); animation: journeySignal 9s cubic-bezier(.4,0,.2,1) infinite; }
-.workflow-node { position: relative; z-index: 2; display: grid; grid-template-rows: 1fr 76px 1fr; min-width: 0; }
-.workflow-copy { position: relative; display: grid; align-content: end; gap: 6px; min-height: 104px; padding: 15px 14px; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: 0 12px 26px color-mix(in srgb, var(--ink) 7%, transparent); transition: transform .26s cubic-bezier(.2,.8,.2,1), border-color .26s ease, box-shadow .26s ease; }
-.workflow-copy::after { content: ''; position: absolute; right: 18px; bottom: -16px; width: 1px; height: 16px; border-right: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); }
-.workflow-node.is-lower .workflow-copy { grid-row: 3; align-content: start; }
-.workflow-node.is-lower .workflow-copy::after { top: -16px; bottom: auto; }
-.workflow-anchor { display: grid; grid-row: 2; place-self: center; place-items: center; width: 58px; height: 58px; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line)); border-radius: 999px; background: var(--surface); box-shadow: 0 0 0 7px color-mix(in srgb, var(--canvas) 82%, transparent), 0 12px 28px color-mix(in srgb, var(--ink) 10%, transparent); transition: transform .26s cubic-bezier(.2,.8,.2,1), color .26s ease, background-color .26s ease, box-shadow .26s ease; }
-.workflow-node:hover .workflow-copy { border-color: color-mix(in srgb, var(--accent) 58%, var(--line)); box-shadow: 0 18px 34px color-mix(in srgb, var(--accent) 13%, transparent); transform: translateY(-4px); }
-.workflow-node:hover .workflow-anchor { color: #fff; background: var(--accent); box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 12%, transparent), 0 15px 28px color-mix(in srgb, var(--accent) 29%, transparent); transform: scale(1.08); }
-.workflow-number { color: var(--accent); font-size: 11px; font-weight: 950; letter-spacing: .12em; }
-.workflow-copy b { color: var(--ink); font-size: 14px; line-height: 1.28; }
-.workflow-copy small { color: var(--muted); font-size: 11px; line-height: 1.4; }
-.final-cta { display: flex; align-items: center; justify-content: space-between; gap: 32px; margin-top: 74px; padding: 42px; border-radius: 28px; color: #edf9ff; background: var(--navy); box-shadow: 0 30px 80px rgba(8, 37, 66, .2); overflow: hidden; }
-.final-cta h2 { color: #edf9ff !important; }
-.faq-grid { display: grid; grid-template-columns: .78fr 1.22fr; gap: 96px; }
-.faq-list { border-top: 1px solid var(--line); }
-.faq-item { border-bottom: 1px solid var(--line); }
-.faq-item button { display: flex; justify-content: space-between; width: 100%; padding: 21px 0; color: var(--ink); border: 0; background: transparent; font: inherit; font-weight: 900; text-align: left; cursor: pointer; }
-.faq-item svg { transition: transform .18s ease; }
-.faq-item svg.rotate { transform: rotate(180deg); }
-.faq-item p { max-width: 720px; margin: 0 0 20px; color: var(--muted); line-height: 1.65; }
-.footer { padding: 30px 0; border-top: 1px solid var(--line); background: var(--surface); }
-.footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 20px; color: var(--muted); font-size: 13px; }
-.footer-inner > div { display: flex; gap: 16px; }
-.footer-inner a:not(.brand) { color: var(--muted); text-decoration: none; }
-.motion-ready [data-reveal] { opacity: 0; transform: translateY(28px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
-.motion-ready [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
-.motion-ready.motion-complete [data-reveal] { opacity: 1; transform: translateY(0); }
-.motion-ready .product-card:nth-child(2), .motion-ready .price-card:nth-child(2) { transition-delay: .08s; }
-.motion-ready .product-card:nth-child(3), .motion-ready .price-card:nth-child(3) { transition-delay: .16s; }
-.motion-ready .product-card:nth-child(4) { transition-delay: .04s; }
-.motion-ready .product-card:nth-child(5) { transition-delay: .12s; }
-.motion-ready .product-card:nth-child(6) { transition-delay: .20s; }
-@keyframes wordReveal { from { opacity: 0; transform: translateY(24px) rotate(1.5deg); filter: blur(7px); } to { opacity: 1; transform: translateY(0) rotate(0); filter: blur(0); } }
-@keyframes glintTwinkle { 0%, 100% { opacity: .28; transform: scale(.72) rotate(0); } 48% { opacity: 1; transform: scale(1.12) rotate(18deg); } }
-@keyframes dashboardEnter { from { opacity: 0; transform: translateY(28px) rotateX(7deg) scale(.97); } to { opacity: 1; transform: translateY(0) rotateX(0) scale(1); } }
-@keyframes dashboardFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-@keyframes auroraDrift { from { transform: translate3d(-2%, -2%, 0) scale(.95); } to { transform: translate3d(8%, 7%, 0) scale(1.08); } }
-@keyframes orbitSpin { to { transform: rotate(360deg); } }
-@keyframes livePulse { 0% { box-shadow: 0 0 0 0 rgba(32,199,168,.35); } 70%,100% { box-shadow: 0 0 0 9px rgba(32,199,168,0); } }
-@keyframes railMove { to { transform: translateX(-50%); } }
-@keyframes journeySignal { 0%, 8% { left: 5.5%; opacity: 0; } 12% { opacity: 1; } 84% { left: calc(94.5% - 10px); opacity: 1; } 94%, 100% { left: calc(94.5% - 10px); opacity: 0; } }
 
 .window-top {
   height: 42px;
@@ -1605,6 +1504,13 @@ button { font: inherit; }
 .price-line.muted { color:var(--muted); }
 .pricing-empty, .api-state { max-width:680px; margin:0 auto; padding:18px 20px; border:1px solid var(--line); border-radius:14px; display:flex; align-items:flex-start; gap:12px; color:var(--ink-2); background:rgba(9,31,55,.6); }
 .pricing-empty p { margin:4px 0 0; color:var(--muted); }
+.usage-panel { display:flex; justify-content:space-between; align-items:center; gap:24px; margin:20px 0 24px; padding:18px 20px; border:1px solid var(--line); border-radius:18px; color:var(--muted); background:var(--surface); }
+.usage-panel div { display:grid; gap:4px; }
+.usage-panel b { color:var(--ink); }
+.usage-values { display:flex !important; flex-direction:row; gap:20px; }
+.usage-credit-meter { min-width:min(340px,45%); }
+.usage-credit-meter progress { width:100%; height:7px; accent-color:var(--blue); }
+.plan-cta:disabled { cursor:default; opacity:.62; }
 
 .video-section { background:linear-gradient(180deg,#020b17,#07172a 60%,#020b17); }
 .video-section :deep(.product-video-section) { width:min(1180px,calc(100% - 56px)); }
@@ -1951,7 +1857,7 @@ button { font: inherit; }
 .ai-title,
 .faq-heading h2,
 .final-cta h2 {
-  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-family: 'Be Vietnam Pro', Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-kerning: normal;
   font-feature-settings: "kern" 1, "liga" 1;
   text-wrap: balance;

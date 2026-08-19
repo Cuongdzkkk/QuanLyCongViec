@@ -24,63 +24,17 @@
       <div class="sidebar-header" style="display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); margin-bottom: 14px;">
         <span class="eyebrow" style="font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: var(--color-accent); text-transform: uppercase;">TEAM COLLABORATION</span>
         <div class="flex items-center justify-between" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-          <h3 class="font-bold truncate" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0;">
-            <i class="fa-solid fa-comments text-primary text-lg" style="margin-right: 4px;"></i>
-            <span>{{ t('Discussion Channel') }}</span>
+          <h3 class="font-bold" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0; white-space: normal; line-height: 1.3;">
+            <i class="fa-solid fa-comments text-primary text-lg" style="margin-right: 4px; flex-shrink: 0;"></i>
+            <span>{{ activeProject?.name || 'Chọn Project' }}</span>
           </h3>
         </div>
-        
-        <!-- Toggle Tabs -->
-        <div class="tab-switcher">
-          <button 
-            @click="switchTab('channel')" 
-            class="tab-btn" 
-            :class="{ active: currentTab === 'channel' }"
-          >
-            <i class="fa-solid fa-server"></i>
-            <span>{{ t('Group Chat') }}</span>
-          </button>
-          <button 
-            @click="switchTab('dm')" 
-            class="tab-btn" 
-            :class="{ active: currentTab === 'dm' }"
-          >
-            <i class="fa-solid fa-message"></i>
-            <span>{{ t('Direct Chat') }}</span>
-          </button>
-        </div>
       </div>
-
-      <div class="sidebar-header">
-        <h3 class="font-bold truncate" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0;">
-          <i class="fa-solid fa-diagram-project text-primary text-base" v-if="currentTab === 'channel'"></i>
-          <i class="fa-solid fa-comments text-primary text-lg" v-else style="margin-right: 8px;"></i>
-          <span>{{ currentTab === 'channel' ? (activeProject?.name || 'Chọn Project') : 'Kênh Thảo Luận' }}</span>
-        </h3>
-
-      </div>
-      <select
-        v-if="currentTab === 'channel'"
-        v-model="activeProjectId"
-        class="project-scope-select"
-        aria-label="Chọn Project cho Channel"
-      >
-        <option value="">Chọn Project</option>
-        <option v-for="project in projectOptions" :key="project.id" :value="project.id">
-          {{ project.name }}
-        </option>
-      </select>
 
       <!-- Sidebar lists wrap in scrollable container to pin voice panel at bottom -->
       <div class="sidebar-lists-scrollable">
         <!-- Channels List -->
         <div class="sidebar-section" v-if="currentTab === 'channel'">
-          <!-- Server Name & Settings -->
-          <div class="server-name-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed var(--color-border);">
-            <span style="font-size: 13px; font-weight: 700; color: var(--color-text-primary);" class="truncate">{{ activeServer?.name }}</span>
-            <i class="fa-solid fa-gear text-xs text-muted hover-settings-icon" style="cursor: pointer; transition: color 0.2s;" @click.stop="openServerSettingsModal" title="Cài đặt Server"></i>
-          </div>
-
           <div class="flex items-center justify-between section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <span class="section-title" style="margin-bottom: 0;">CHANNELS</span>
             <button
@@ -110,10 +64,10 @@
               Chọn Project để xem Channel.
             </div>
             <div v-else-if="channels.length === 0" class="channel-state">
-              Project này chưa có Channel bạn có thể truy cập.
+              chưa có tạo #channel
             </div>
             <button 
-              v-for="ch in channels" 
+              v-for="ch in visibleChannels" 
               :key="ch.id" 
               class="list-item" 
               :class="{ active: activeChat?.id === ch.id && activeChat?.type === 'channel' }"
@@ -142,7 +96,7 @@
         </div>
 
         <!-- Voice Channels List -->
-        <div class="sidebar-section mt-4" v-if="currentTab === 'voice'">
+        <div class="sidebar-section mt-4" v-if="currentTab === 'channel' && activeProjectId">
           <div class="flex items-center justify-between section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <span class="section-title" style="margin-bottom: 0;">KÊNH THOẠI (VOICE)</span>
             <button class="add-btn-small" title="Tạo kênh thoại mới" @click="openCreateVoiceModal">
@@ -159,9 +113,10 @@
                 class="list-item voice-item w-full text-left" 
                 :class="{ active: activeVoiceChannel?.id === vc.id }"
                 @click="joinVoiceChannel(vc)"
+                style="display: flex; align-items: center;"
               >
                 <span class="item-icon"><i class="fa-solid fa-volume-high"></i></span>
-                <span class="item-name truncate">{{ vc.name }}</span>
+                <span class="item-name" style="white-space: normal; word-break: break-word; line-height: 1.3;">{{ vc.name }}</span>
               </button>
               <!-- Users in this voice channel -->
               <div class="voice-users-list ml-6 flex flex-col gap-1.5 mt-1" v-if="vc.users.length">
@@ -178,89 +133,10 @@
             </div>
           </div>
         </div>
-
-        <!-- Direct Messages List -->
-        <div class="sidebar-section mt-4" v-if="currentTab === 'dm'">
-          <span class="section-title">TIN NHẮN TRỰC TIẾP</span>
-          <select
-            v-model="activeProjectId"
-            class="project-scope-select"
-            aria-label="Chọn Project để tìm người nhận"
-          >
-            <option value="">Chọn Project</option>
-            <option v-for="project in projectOptions" :key="project.id" :value="project.id">
-              {{ project.name }}
-            </option>
-          </select>
-          <select
-            class="project-scope-select"
-            :value="selectedRecipientId"
-            :disabled="membersLoading || findingConversation || !activeProjectId"
-            aria-label="Chọn người nhận Direct Message"
-            @change="selectDirectRecipient($event.target.value)"
-          >
-            <option value="">
-              {{ membersLoading ? 'Đang tải thành viên...' : 'Chọn người nhận' }}
-            </option>
-            <option v-for="member in members" :key="member.id" :value="member.id">
-              {{ member.name }}
-            </option>
-          </select>
-          <div class="section-list">
-            <div v-if="membersError" class="channel-state channel-state-error" role="alert">
-              <span>{{ membersError }}</span>
-              <button type="button" class="state-action" aria-label="Thử tải lại thành viên" @click="retryMembers">Thử lại</button>
-            </div>
-            <div v-if="conversationsLoading" class="channel-state" role="status">
-              <i class="fa-solid fa-spinner fa-spin"></i>
-              <span>Đang tải cuộc trò chuyện...</span>
-            </div>
-            <div v-else-if="conversationsError" class="channel-state channel-state-error" role="alert">
-              <span>{{ conversationsError }}</span>
-              <button type="button" class="state-action" aria-label="Thử tải lại cuộc trò chuyện" @click="retryConversations">Thử lại</button>
-            </div>
-            <div v-else-if="directConversations.length === 0" class="channel-state">
-              Bạn chưa có cuộc trò chuyện nào.
-            </div>
-            <button 
-              v-for="conversation in directConversations"
-              :key="conversation.id"
-              class="list-item" 
-              :class="{ active: activeChat?.id === conversation.id && activeChat?.type === 'dm' }"
-              :disabled="findingConversation"
-              @click="selectChat(conversation, 'dm')"
-            >
-              <el-avatar :size="24" :src="conversation.avatar">{{ conversation.name.charAt(0) }}</el-avatar>
-              <div class="flex flex-col text-left overflow-hidden ml-2">
-                <span class="item-name truncate">{{ conversation.name }}</span>
-                <span class="text-xs text-muted truncate">{{ conversation.lastMessagePreview || 'Chưa có tin nhắn' }}</span>
-              </div>
-              <span class="conversation-time">
-                {{ formatTime(conversation.lastMessageAt || conversation.createdAt) }}
-              </span>
-              <span
-                v-if="conversation.unreadCount > 0"
-                class="collaboration-unread-badge"
-                role="status"
-                aria-live="polite"
-                :aria-label="`${conversation.unreadCount} tin nhắn chưa đọc từ ${conversation.name}`"
-              >{{ formatUnreadCount(conversation.unreadCount) }}</span>
-            </button>
-            <button
-              v-if="directConversations.length < conversationPagination.totalCount"
-              type="button"
-              class="state-action load-more-action"
-              :disabled="conversationsLoadingMore"
-              @click="loadMoreConversations"
-            >
-              {{ conversationsLoadingMore ? 'Đang tải...' : 'Tải thêm cuộc trò chuyện' }}
-            </button>
-          </div>
-        </div>
       </div>
 
       <!-- Connected Voice Control Panel (Discord style) -->
-      <div v-if="currentTab === 'voice' && activeVoiceChannel" class="connected-voice-panel mt-auto">
+      <div v-if="activeVoiceChannel" class="connected-voice-panel mt-auto" @click="showVoiceCallMain = true" style="cursor: pointer;">
         <div class="voice-status-info flex items-center justify-between" style="display: flex; justify-content: space-between; align-items: center;">
           <div class="flex items-center gap-2" style="display: flex; align-items: center; gap: 8px;">
             <span class="status-indicator-ping"><i class="fa-solid fa-signal text-success text-xs" style="color: var(--color-success);"></i></span>
@@ -269,16 +145,16 @@
               <span class="text-xxs text-muted truncate" style="font-size: 10px; color: var(--color-text-muted); max-width: 130px; display: inline-block;">{{ activeVoiceChannel.name }}</span>
             </div>
           </div>
-          <button class="disconnect-btn-round" title="Ngắt kết nối" @click="leaveVoiceChannel">
+          <button class="disconnect-btn-round" title="Ngắt kết nối" @click.stop="leaveVoiceChannel">
             <i class="fa-solid fa-phone-slash text-xs"></i>
           </button>
         </div>
-        <div class="voice-actions-row flex justify-around mt-2 pt-2 border-t border-slate-700/40" style="display: flex; justify-content: space-around; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.08);">
+        <div class="voice-actions-row flex justify-around mt-2 pt-2 border-t border-slate-700/40" style="display: flex; justify-content: space-around; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-border);">
           <button 
             class="voice-action-btn-small" 
             :class="{ active: isMuted }" 
             :title="isMuted ? 'Bật micro' : 'Tắt tiếng'"
-            @click="isMuted = !isMuted"
+            @click.stop="isMuted = !isMuted"
           >
             <i :class="isMuted ? 'fa-solid fa-microphone-slash text-danger' : 'fa-solid fa-microphone'"></i>
           </button>
@@ -286,7 +162,7 @@
             class="voice-action-btn-small" 
             :class="{ active: isCameraOn }" 
             :title="isCameraOn ? 'Tắt camera' : 'Bật camera'"
-            @click="isCameraOn = !isCameraOn"
+            @click.stop="isCameraOn = !isCameraOn"
           >
             <i :class="isCameraOn ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'"></i>
           </button>
@@ -296,493 +172,442 @@
 
     <!-- Active Chat Area -->
     <div class="chat-main">
-      <div class="chat-header">
-        <div class="active-info">
-          <span class="active-icon">{{ activeChat?.type === 'channel' ? '#' : '@' }}</span>
-          <div>
-            <h4 class="font-semibold text-primary leading-tight">{{ activeChat?.name || 'Chưa chọn Channel' }}</h4>
-            <p class="text-xs text-muted leading-none">
-              {{ activeChat?.type === 'channel' ? activeChat.desc : (activeChat ? 'Tin nhắn được lưu trên máy chủ' : 'Chọn một cuộc trò chuyện') }}
-            </p>
+      
+      <!-- Embedded Voice Call View (Discord Style) -->
+      <template v-if="showVoiceCallMain && activeVoiceChannel">
+        <div class="chat-header">
+          <div class="active-info">
+            <span class="active-icon"><i class="fa-solid fa-volume-high"></i></span>
+            <div>
+              <h4 class="font-semibold text-primary leading-tight">Kênh thoại: {{ activeVoiceChannel.name }}</h4>
+              <p class="text-xs text-muted leading-none">
+                Đang kết nối thoại • {{ activeVoiceChannel.users.length }} người tham gia
+              </p>
+            </div>
+          </div>
+          <div class="header-actions">
+            <button 
+              class="action-btn" 
+              title="Mở kênh chat"
+              @click="openVoiceChannelChat"
+              style="display: flex; align-items: center; justify-content: center;"
+            >
+              <i class="fa-solid fa-message text-lg"></i>
+            </button>
           </div>
         </div>
 
-        <div class="header-actions">
-          <button class="action-btn" v-if="currentTab === 'dm'" title="Kết bạn & Mời thành viên" @click="openAddFriendModal">
-            <i class="fa-solid fa-user-plus text-lg"></i>
-          </button>
-          <button class="action-btn" v-if="currentTab === 'dm'" title="Gọi thoại" @click="startVoiceCall">
-            <i class="fa-solid fa-phone text-lg"></i>
-          </button>
-          <button class="action-btn" v-if="currentTab === 'dm'" title="Gọi video" @click="startVideoCall">
-            <i class="fa-solid fa-video text-lg"></i>
-          </button>
-          <button class="action-btn" v-if="currentTab === 'dm'" title="Tìm kiếm tin nhắn">
-            <i class="fa-solid fa-magnifying-glass text-lg"></i>
-          </button>
-          <button v-if="currentTab === 'dm'" class="action-btn" title="Tạo nhóm Server" @click="openCreateServerFromDmModal">
-            <i class="fa-solid fa-users text-lg"></i>
-          </button>
-        </div>
-      </div>
-      <div
-        v-if="connectionNotice"
-        class="connection-notice"
-        :class="`is-${connectionState}`"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        <i :class="connectionNoticeIcon" aria-hidden="true"></i>
-        <span>{{ connectionNotice }}</span>
-      </div>
-
-      <!-- Main body layout with horizontal partition for Discord style members list -->
-      <div style="display: flex; flex: 1; min-height: 0; width: 100%;">
-        <!-- Chat Area (Messages + Input) -->
-        <div style="display: flex; flex-direction: column; flex: 1; min-width: 0; height: 100%;">
-          <!-- Messages View -->
-          <div ref="messageThread" class="messages-thread">
-            <div v-if="historyLoading" class="history-state" role="status">
-              <i class="fa-solid fa-spinner fa-spin"></i>
-              <span>Đang tải tin nhắn...</span>
-            </div>
-            <div v-else-if="historyError" class="history-state history-state-error" role="alert">
-              <span>{{ historyError }}</span>
-              <button type="button" class="state-action" @click="retryHistory">Thử lại</button>
-            </div>
-            <div v-else-if="currentTab === 'channel' && !activeChannel" class="history-state">
-              Chọn một Channel để xem tin nhắn.
-            </div>
-            <div v-else-if="currentTab === 'channel' && activeMessages.length === 0" class="history-state">
-              Chưa có tin nhắn trong kênh này.
-            </div>
-            <div v-else-if="currentTab === 'dm' && !activeChat" class="history-state">
-              Chọn một cuộc trò chuyện hoặc người nhận để bắt đầu.
-            </div>
-            <div v-else-if="currentTab === 'dm' && activeMessages.length === 0" class="history-state">
-              Chưa có tin nhắn trong cuộc trò chuyện này.
-            </div>
-            <button
-              v-if="activeChat && activeMessages.length < messagePagination.totalCount"
-              type="button"
-              class="state-action load-older-action"
-              :disabled="historyLoadingOlder"
-              @click="loadOlderMessages"
-            >
-              {{ historyLoadingOlder ? 'Đang tải...' : 'Tải tin nhắn cũ hơn' }}
-            </button>
+        <div style="flex: 1; padding: 24px; background-color: #0f172a; display: flex; flex-direction: column; justify-content: space-between; position: relative; min-height: 0; overflow-y: auto;">
+          <div class="video-grid group-video-grid" style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; align-items: center; align-content: center; flex: 1; min-height: 240px;">
             <div 
-              v-for="msg in activeMessages"
-              :key="messageKey(msg)"
-              class="message-card"
-              :class="{ 'mine': msg.senderId === currentUser.id, 'mention-target': route.query.messageId === msg.messageId }"
-              :data-message-id="msg.messageId"
+              v-for="user in activeVoiceChannel?.users" 
+              :key="user.id" 
+              class="video-feed"
+              :class="{ 'local-user': user.id === currentUser.id, 'camera-active': (user.id === currentUser.id && (isCallCameraOn || isSharingScreen)) }"
+              :style="{ 
+                aspectRatio: '16/9', 
+                width: '100%',
+                maxWidth: '260px',
+                height: 'auto', 
+                backgroundColor: (user.id === currentUser.id && (isCallCameraOn || isSharingScreen)) ? '#000' : getFeedBg(user.name),
+                borderRadius: '12px',
+                border: 'none',
+                overflow: 'hidden',
+                position: 'relative'
+              }"
             >
-              <el-avatar :size="32" :src="msg.senderAvatar" class="flex-shrink-0">
-                {{ msg.senderName?.charAt(0) || '?' }}
-              </el-avatar>
-              <div class="message-body">
-                <div class="message-meta">
-                  <span class="sender-name">{{ msg.senderName }}</span>
-                  <span class="send-time">{{ formatTime(msg.sentAt) }}</span>
+              <div v-if="user.id === currentUser.id" style="width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center;">
+                <div v-show="isCallCameraOn || isSharingScreen" style="width: 100%; height: 100%;">
+                  <video 
+                    :ref="el => { if (el) groupLocalVideoRef = el }" 
+                    autoplay 
+                    playsinline 
+                    muted 
+                    :style="{ 
+                      width: '100%', 
+                      height: '100%', 
+                      objectFit: 'cover', 
+                      transform: isSharingScreen ? 'none' : 'scaleX(-1)', 
+                      display: 'block' 
+                    }"
+                  ></video>
                 </div>
-                <div class="message-content">
-                  <p><template v-for="(segment, index) in msg.contentSegments" :key="`${msg.messageId}-${index}`"><span v-if="segment.isMention" class="message-mention">{{ segment.text }}</span><span v-else>{{ segment.text }}</span></template></p>
+                <div v-show="!isCallCameraOn && !isSharingScreen" class="feed-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                  <el-avatar 
+                    :size="72" 
+                    :src="currentUser.avatar" 
+                    style="border: 2px solid rgba(255,255,255,0.25); box-shadow: 0 4px 14px rgba(0,0,0,0.3);"
+                  >
+                    {{ currentUser.name.charAt(0) }}
+                  </el-avatar>
+                </div>
+              </div>
+              
+              <div v-else class="feed-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                <el-avatar 
+                  :size="72" 
+                  :src="user.avatar" 
+                  style="border: 2px solid rgba(255,255,255,0.25); box-shadow: 0 4px 14px rgba(0,0,0,0.3);"
+                >
+                  {{ user.name?.charAt(0) }}
+                </el-avatar>
+              </div>
+
+              <div class="feed-overlay" style="position: absolute; bottom: 8px; left: 8px; display: flex; align-items: center; gap: 6px; pointer-events: none; z-index: 2;">
+                <div style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px; background: rgba(0,0,0,0.55); color: #fff; font-size: 12px; font-weight: 500;">
+                  <i v-if="user.id === currentUser.id ? isMuted : false" class="fa-solid fa-microphone-slash text-danger" style="font-size: 10px; color: #ef4444; margin-right: 2px;"></i>
+                  <span>{{ user.name }} {{ user.id === currentUser.id ? '(Bạn)' : '' }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: center; align-items: center; margin-top: 24px; flex-shrink: 0;">
+            <div style="display: flex; gap: 14px; background-color: #1e1f22; padding: 10px 24px; border-radius: 28px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05);">
+              <button 
+                class="call-control-circle-btn" 
+                :class="{ 'inactive': isMuted }" 
+                @click="isMuted = !isMuted"
+                :title="isMuted ? 'Bật Micro' : 'Tắt Micro'"
+              >
+                <i :class="isMuted ? 'fa-solid fa-microphone-slash' : 'fa-solid fa-microphone'"></i>
+              </button>
+
+              <button 
+                class="call-control-circle-btn" 
+                :class="{ 'inactive': !isCallCameraOn }" 
+                @click="isCallCameraOn = !isCallCameraOn"
+                :title="isCallCameraOn ? 'Tắt Camera' : 'Bật Camera'"
+              >
+                <i :class="isCallCameraOn ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'"></i>
+              </button>
+
+              <button 
+                class="call-control-circle-btn" 
+                :class="{ 'active-share': isSharingScreen }" 
+                @click="toggleScreenShare"
+                :title="isSharingScreen ? 'Tắt chia sẻ' : 'Chia sẻ màn hình'"
+                style="background-color: #2b2d31; color: white;"
+              >
+                <i class="fa-solid fa-desktop" :style="{ color: isSharingScreen ? '#22c55e' : '#dbdee1' }"></i>
+              </button>
+
+              <button 
+                class="call-control-circle-btn hang-up" 
+                @click="leaveVoiceChannel"
+                title="Rời kênh thoại"
+              >
+                <i class="fa-solid fa-phone-slash"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Standard Text Chat View -->
+      <template v-else>
+        <div class="chat-header">
+          <div class="active-info">
+            <span class="active-icon">{{ activeChat?.type === 'channel' ? '#' : '@' }}</span>
+            <div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <h4 class="font-semibold text-primary leading-tight">{{ activeChat?.name || 'Chưa chọn Channel' }}</h4>
+                <span 
+                  v-if="activeChannel?.desc?.startsWith('__voice_chat_channel__')"
+                  style="font-size: 10px; background-color: rgba(34, 197, 94, 0.1); color: #22c55e; padding: 2px 6px; border-radius: 4px; font-weight: 600; line-height: 1;"
+                >
+                  Voice Chat
+                </span>
+              </div>
+              <p class="text-xs text-muted leading-none" style="margin-top: 2px;">
+                {{ activeChat?.type === 'channel' ? (activeChat.desc.startsWith('__voice_chat_channel__') ? 'Kênh chat riêng dành cho phòng thoại' : activeChat.desc) : (activeChat ? 'Tin nhắn được lưu trên máy chủ' : 'Chọn một cuộc trò chuyện') }}
+              </p>
+            </div>
+          </div>
+
+          <div class="header-actions" v-if="activeProjectId">
+            <button 
+              v-if="activeChannel?.desc?.startsWith('__voice_chat_channel__') && activeVoiceChannel?.id === activeChannel.desc.split(':')[1]"
+              class="action-btn"
+              title="Quay lại phòng thoại"
+              @click="showVoiceCallMain = true"
+              style="display: flex; align-items: center; justify-content: center; background-color: var(--sa-primary-soft, rgba(99,102,241,0.08)); color: var(--color-accent, #6366f1); margin-right: 8px; border-radius: 6px; padding: 4px 10px; font-size: 12px; gap: 6px; width: auto; height: 32px;"
+            >
+              <i class="fa-solid fa-volume-high"></i>
+              <span class="font-semibold">Vào phòng thoại</span>
+            </button>
+
+            <el-popover
+              placement="bottom-end"
+              :width="300"
+              trigger="click"
+              popper-class="project-members-popover"
+              @before-enter="fetchProjectMembers"
+            >
+              <template #reference>
+                <button class="action-btn" title="Thành viên dự án">
+                  <i class="fa-solid fa-users text-lg"></i>
+                </button>
+              </template>
+              
+              <div class="popover-members-content" style="padding: 4px;">
+                <h5 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 700; color: #f8fafc; border-bottom: 1px solid var(--color-border); padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>Thành viên Project ({{ projectMembers.length }})</span>
+                  <i v-if="loadingMembers" class="fa-solid fa-spinner fa-spin text-xs"></i>
+                </h5>
+                
+                <div style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+                  <div v-if="projectMembers.length === 0 && !loadingMembers" style="text-align: center; color: var(--color-text-muted); font-size: 12px; padding: 12px 0;">
+                    Không có thành viên nào.
+                  </div>
                   
-                  <div v-if="msg.attachments.length" class="attachment-preview-container mt-2">
-                    <div v-for="attachment in msg.attachments" :key="attachment.attachmentId" class="message-attachment">
-                      <button
-                        v-if="attachment.isImage && attachment.previewUrl"
-                        type="button"
-                        class="image-attachment"
-                        :aria-label="`Tải ảnh ${attachment.originalFileName}`"
-                        @click="downloadAttachment(attachment)"
-                      >
-                        <img :src="attachment.previewUrl" :alt="attachment.originalFileName" />
-                      </button>
-                      <div v-else class="attachment-preview flex items-center p-2 rounded">
-                        <i :class="getFileIconClass(attachment.originalFileName)" class="text-2xl mr-2"></i>
-                        <div class="flex flex-col overflow-hidden min-w-0">
-                          <span class="text-xs font-semibold truncate text-primary">{{ attachment.originalFileName }}</span>
-                          <span class="text-xxs text-muted">{{ formatFileSize(attachment.sizeBytes) }}</span>
-                        </div>
-                        <button
-                          type="button"
-                          class="attachment-download-btn"
-                          :disabled="attachment.downloading"
-                          :aria-label="`Tải ${attachment.originalFileName}`"
-                          @click="downloadAttachment(attachment)"
-                        ><i :class="attachment.downloading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-download'"></i> Tải xuống</button>
-                      </div>
+                  <div 
+                    v-for="member in projectMembers" 
+                    :key="member.userId || member.id"
+                    style="display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px;"
+                  >
+                    <el-avatar :size="28" :src="member.avatarUrl || member.avatar">{{ (member.fullName || member.name || '?').charAt(0) }}</el-avatar>
+                    <div style="display: flex; flex-direction: column; min-width: 0; flex: 1;">
+                      <span style="font-size: 13px; font-weight: 600; color: #f8fafc;" class="truncate">{{ member.fullName || member.name }}</span>
+                      <span style="font-size: 11px; color: var(--color-text-muted);" class="truncate">{{ member.email || member.jobTitle || 'Thành viên' }}</span>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
+            </el-popover>
           </div>
+        </div>
 
-          <!-- Input Bar -->
-          <div class="chat-input-area">
-            <!-- Hidden file input for attachment -->
-            <input 
-              type="file" 
-              ref="fileInputRef" 
-              style="display: none;" 
-              multiple
-              accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.docx,.xlsx"
-              @change="handleFileChange" 
-            />
+        <div
+          v-if="connectionNotice"
+          class="connection-notice"
+          :class="`is-${connectionState}`"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <i :class="connectionNoticeIcon" aria-hidden="true"></i>
+          <span>{{ connectionNotice }}</span>
+        </div>
 
-            <!-- Attached File Preview Bar -->
-            <div v-if="attachedFiles.length" class="attached-files-preview" aria-label="File đã chọn">
-              <div v-for="file in attachedFiles" :key="file.id" class="attached-file-preview-bar">
-                <img v-if="file.previewUrl" :src="file.previewUrl" alt="" class="selected-file-thumbnail" />
-                <i v-else :class="getFileIconClass(file.name)" class="text-xl"></i>
-                <span class="text-xs truncate font-semibold text-secondary">{{ file.name }}</span>
-                <span class="text-xxs text-muted">({{ formatFileSize(file.sizeBytes) }})</span>
-                <button type="button" class="remove-attachment-btn ml-auto" @click="removeAttachedFile(file.id)" :aria-label="`Gỡ ${file.name}`" title="Gỡ file đính kèm">
-                  <i class="fa-solid fa-xmark"></i>
-                </button>
+        <!-- Main body layout with horizontal partition for Discord style members list -->
+        <div style="display: flex; flex: 1; min-height: 0; width: 100%;">
+          <!-- Chat Area (Messages + Input) -->
+          <div style="display: flex; flex-direction: column; flex: 1; min-width: 0; height: 100%;">
+            <!-- Messages View -->
+            <div ref="messageThread" class="messages-thread">
+              <div v-if="historyLoading" class="history-state" role="status">
+                <i class="fa-solid fa-spinner fa-spin"></i>
+                <span>Đang tải tin nhắn...</span>
               </div>
-            </div>
-
-            <div class="input-actions-bar">
-              <el-button
-                size="small"
-                class="btn-secondary"
-                title="Đính kèm file"
-                :disabled="composerDisabled || attachedFiles.length >= 5"
-                aria-label="Chọn file đính kèm"
-                @click="triggerAttachment"
-              >
-                <i class="fa-solid fa-paperclip"></i>
-              </el-button>
-              
-              <!-- Emoji Picker Popover -->
-              <el-popover
-                placement="top-start"
-                :width="280"
-                trigger="click"
-                popper-class="emoji-popover-popper"
-              >
-                <template #reference>
-                  <el-button size="small" class="btn-secondary" title="Emojis">
-                    <i class="fa-regular fa-smile"></i>
-                  </el-button>
-                </template>
-                <div class="emoji-picker-grid">
-                  <span 
-                    v-for="emoji in emojiList" 
-                    :key="emoji" 
-                    class="emoji-item"
-                    @click="insertEmoji(emoji)"
-                  >
-                    {{ emoji }}
-                  </span>
+              <div v-else-if="historyError" class="history-state history-state-error" role="alert">
+                <span>{{ historyError }}</span>
+                <button type="button" class="state-action" @click="retryHistory">Thử lại</button>
+              </div>
+              <div v-else-if="currentTab === 'channel' && !activeChannel" class="history-state">
+                Chọn một Channel để xem tin nhắn.
+              </div>
+              <div v-else-if="currentTab === 'channel' && activeMessages.length === 0" class="history-state">
+                chưa có tạo #channel
+              </div>
+              <div v-else-if="currentTab === 'dm' && !activeChat" class="history-state">
+                Chọn người dùng để bắt đầu trò chuyện.
+              </div>
+              <div v-else-if="currentTab === 'dm' && activeMessages.length === 0" class="history-state">
+                Chưa có tin nhắn nào ở đây. Gửi tin nhắn đầu tiên để bắt đầu cuộc trò chuyện.
+              </div>
+              <template v-else>
+                <div v-if="historyLoadingOlder" class="history-state" role="status">
+                  <i class="fa-solid fa-spinner fa-spin"></i>
+                  <span>Đang tải tin nhắn cũ hơn...</span>
                 </div>
-              </el-popover>
-
-            </div>
-            <div class="input-form mention-composer">
-              <textarea
-                ref="composerInput"
-                v-model="newMessage" 
-                :placeholder="composerPlaceholder"
-                class="chat-input w-full"
-                rows="1"
-                :maxlength="4000"
-                :disabled="composerDisabled"
-                @input="handleComposerInput"
-                @keydown="handleComposerKeydown"
-              ></textarea>
-              <div
-                v-if="mentionMenuOpen"
-                class="mention-menu"
-                role="listbox"
-                aria-label="Channel members"
-              >
-                <div v-if="mentionLoading" class="mention-menu-state">Đang tìm thành viên...</div>
                 <button
-                  v-for="(member, index) in mentionSuggestions"
-                  :key="member.userId"
+                  v-else-if="messagePagination.page < Math.ceil(messagePagination.totalCount / messagePagination.pageSize)"
                   type="button"
-                  class="mention-option"
-                  :class="{ active: index === mentionActiveIndex }"
-                  role="option"
-                  :aria-selected="index === mentionActiveIndex"
-                  @mousedown.prevent="selectMention(member)"
+                  class="state-action load-older-action"
+                  @click="loadOlderMessages"
                 >
-                  <el-avatar :size="26" :src="member.avatarUrl || ''">{{ member.displayName?.charAt(0) || '?' }}</el-avatar>
-                  <span>{{ member.displayName }}</span>
+                  Tải tin nhắn cũ hơn
                 </button>
-                <div v-if="!mentionLoading && mentionSuggestions.length === 0" class="mention-menu-state">Không có thành viên phù hợp.</div>
-              </div>
-              <button
-                class="btn-send"
-                :disabled="composerDisabled || (!newMessage.trim() && attachedFiles.length === 0)"
-                :aria-label="sendingMessage ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'"
-                :title="sendingMessage ? 'Đang gửi...' : 'Gửi tin nhắn'"
-                @click="sendMessage"
-              >
-                <i :class="sendingMessage ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
-              </button>
+                <div
+                  v-for="msg in activeMessages"
+                  :key="msg.messageId"
+                  class="message-card"
+                  :class="{ 'mention-target': msg.isMentioned }"
+                >
+                  <el-avatar :size="36" :src="msg.senderAvatar || ''" class="sender-avatar">{{ msg.senderName?.charAt(0) || '?' }}</el-avatar>
+                  <div class="message-content-wrapper">
+                    <div class="message-header-line">
+                      <span class="sender-name">{{ msg.senderName }}</span>
+                      <span class="message-time">{{ formatTime(msg.sentAt) }}</span>
+                    </div>
+                    <div class="message-body">
+                      <span
+                        v-for="(segment, segmentIndex) in msg.contentSegments"
+                        :key="`${msg.messageId}-${segmentIndex}`"
+                        :class="{ 'message-mention': segment.isMention }"
+                      >{{ segment.text }}</span>
+                    </div>
+                    <div v-if="msg.files && msg.files.length > 0" class="attachment-preview-container">
+                      <div
+                        v-for="file in msg.files"
+                        :key="file.id"
+                        class="attachment-preview"
+                        style="display: flex; align-items: center; padding: 8px; border-radius: 8px; margin-top: 4px;"
+                      >
+                        <template v-if="isImageFile(file.fileName)">
+                          <button
+                            type="button"
+                            class="image-attachment"
+                            @click="previewImage(file.url)"
+                            title="Nhấp để xem ảnh lớn"
+                          >
+                            <img :src="file.url" :alt="file.fileName" />
+                          </button>
+                        </template>
+                        <template v-else>
+                          <div class="message-attachment" style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                            <i class="fa-solid fa-file-lines text-muted text-lg"></i>
+                            <div style="display: flex; flex-direction: column; min-width: 0; text-align: left;">
+                              <span style="font-size: 13px; font-weight: 600; color: #fff;" class="truncate">{{ file.fileName }}</span>
+                              <span style="font-size: 11px; color: var(--color-text-muted);">{{ formatFileSize(file.fileSize) }}</span>
+                            </div>
+                            <a
+                              :href="file.url"
+                              download
+                              class="attachment-download-btn"
+                              style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 10px; color: #fff; font-size: 12px; text-decoration: none;"
+                            >
+                              <i class="fa-solid fa-download mr-1"></i> Tải xuống
+                            </a>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
             </div>
-            <div v-if="newMessage.length >= 3600" class="character-counter">
-              {{ newMessage.length }}/4000
-            </div>
-          </div>
-        </div>
 
-        <!-- Right Server Members Sidebar -->
-        <div v-if="currentTab === 'server' && showMembersSidebar" class="members-sidebar-right">
-          <div class="flex items-center justify-between" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <span class="text-xs font-bold text-muted uppercase">Thành viên ({{ activeServerMembers.length }})</span>
-          </div>
-          <button class="invite-server-btn-sidebar mb-3" @click="openInviteServerModal">
-            <i class="fa-solid fa-users"></i>
-            <span>Mời bạn bè</span>
-          </button>
-          
-          <div class="member-list-scrollable">
-            <div v-for="user in activeServerMembers" :key="user.id" class="member-sidebar-card">
-              <div class="avatar-status-wrapper">
-                <el-avatar :size="24" :src="user.avatar">{{ user.name.charAt(0) }}</el-avatar>
-                <span class="status-dot online"></span>
+            <!-- Input Bar -->
+            <div class="chat-input-area">
+              <!-- Hidden file input for attachment -->
+              <input 
+                type="file" 
+                ref="fileInputRef" 
+                style="display: none;" 
+                multiple
+                accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.docx,.xlsx"
+                @change="handleFileChange" 
+              />
+
+              <!-- Attached File Preview Bar -->
+              <div v-if="attachedFiles.length" class="attached-files-preview" aria-label="File đã chọn">
+                <div v-for="file in attachedFiles" :key="file.id" class="attached-file-preview-bar">
+                  <img v-if="file.previewUrl" :src="file.previewUrl" alt="" class="selected-file-thumbnail" />
+                  <i v-else :class="getFileIconClass(file.name)" class="text-xl"></i>
+                  <span class="text-xs truncate font-semibold text-secondary">{{ file.name }}</span>
+                  <span class="text-xxs text-muted">({{ formatFileSize(file.sizeBytes) }})</span>
+                  <button type="button" class="remove-attachment-btn ml-auto" @click="removeAttachedFile(file.id)" :aria-label="`Gỡ ${file.name}`" title="Gỡ file đính kèm">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
               </div>
-              <span class="member-name truncate ml-2" style="font-size: 13px; color: var(--color-text-secondary);">{{ user.name }}</span>
+
+              <div class="input-actions-bar">
+                <el-button
+                  size="small"
+                  class="btn-secondary"
+                  title="Đính kèm file"
+                  :disabled="composerDisabled || attachedFiles.length >= 5"
+                  aria-label="Chọn file đính kèm"
+                  @click="triggerAttachment"
+                >
+                  <i class="fa-solid fa-paperclip"></i>
+                </el-button>
+                
+                <!-- Emoji Picker Popover -->
+                <el-popover
+                  placement="top-start"
+                  :width="280"
+                  trigger="click"
+                  popper-class="emoji-popover-popper"
+                >
+                  <template #reference>
+                    <el-button size="small" class="btn-secondary" title="Emojis">
+                      <i class="fa-regular fa-smile"></i>
+                    </el-button>
+                  </template>
+                  <div class="emoji-picker-grid">
+                    <span 
+                      v-for="emoji in emojiList" 
+                      :key="emoji" 
+                      class="emoji-item"
+                      @click="insertEmoji(emoji)"
+                    >
+                      {{ emoji }}
+                    </span>
+                  </div>
+                </el-popover>
+              </div>
+
+              <div class="input-form mention-composer">
+                <textarea
+                  ref="composerInput"
+                  v-model="newMessage" 
+                  :placeholder="composerPlaceholder"
+                  class="chat-input w-full"
+                  rows="1"
+                  :maxlength="4000"
+                  :disabled="composerDisabled"
+                  @input="handleComposerInput"
+                  @keydown="handleComposerKeydown"
+                ></textarea>
+                <div
+                  v-if="mentionMenuOpen"
+                  class="mention-menu"
+                  role="listbox"
+                  aria-label="Channel members"
+                >
+                  <div v-if="mentionLoading" class="mention-menu-state">Đang tìm thành viên...</div>
+                  <button
+                    v-for="(member, index) in mentionSuggestions"
+                    :key="member.userId"
+                    type="button"
+                    class="mention-option"
+                    :class="{ active: index === mentionActiveIndex }"
+                    role="option"
+                    :aria-selected="index === mentionActiveIndex"
+                    @mousedown.prevent="selectMention(member)"
+                  >
+                    <el-avatar :size="26" :src="member.avatarUrl || ''">
+                      <i v-if="member.userId === 'all'" class="fa-solid fa-bullhorn text-xs"></i>
+                      <template v-else>{{ member.displayName?.charAt(0) || '?' }}</template>
+                    </el-avatar>
+                    <span>{{ member.userId === 'all' ? member.fullName : member.displayName }}</span>
+                  </button>
+                  <div v-if="!mentionLoading && mentionSuggestions.length === 0" class="mention-menu-state">Không có thành viên phù hợp.</div>
+                </div>
+                <button
+                  class="btn-send"
+                  :disabled="composerDisabled || (!newMessage.trim() && attachedFiles.length === 0)"
+                  :aria-label="sendingMessage ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'"
+                  :title="sendingMessage ? 'Đang gửi...' : 'Gửi tin nhắn'"
+                  @click="sendMessage"
+                >
+                  <i :class="sendingMessage ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
+                </button>
+              </div>
+              <div v-if="newMessage.length >= 3600" class="character-counter">
+                {{ newMessage.length }}/4000
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </template>
     </div>
 
-    <!-- Video Call Overlay (WebRTC / Jitsi Simulation) -->
-    <el-dialog
-      v-model="videoCallActive"
-      width="800px"
-      class="video-call-dialog sa-info-dialog"
-      destroy-on-close
-      append-to-body
-    >
-      <template #header>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <i :class="isCallCameraOn ? 'fa-solid fa-video text-primary' : 'fa-solid fa-phone text-success'"></i>
-          <span style="font-size: 15px; font-weight: 600; color: #f8fafc;">
-            {{ isCallCameraOn ? 'Cuộc gọi Video trực tiếp - ' : 'Cuộc gọi thoại trực tiếp - ' }}{{ activeChat.name }}
-          </span>
-        </div>
-      </template>
 
-      <div class="video-grid">
-        <!-- Local User Feed -->
-        <div class="video-feed local" :class="{ 'camera-active': (isCallCameraOn || isSharingScreen) }">
-          <div v-show="isCallCameraOn || isSharingScreen" class="camera-stream-active" style="width: 100%; height: 100%;">
-            <video 
-              ref="localVideoRef" 
-              autoplay 
-              playsinline 
-              muted 
-              :style="{ 
-                width: '100%', 
-                height: '100%', 
-                objectFit: 'cover', 
-                transform: isSharingScreen ? 'none' : 'scaleX(-1)', 
-                display: 'block' 
-              }"
-            ></video>
-            <div class="feed-overlay">
-              <span class="badge-live"><i class="fa-solid fa-circle text-danger animate-pulse"></i> LIVE</span>
-              <span class="feed-name">Bạn (Quân)</span>
-            </div>
-          </div>
-          <div v-show="!isCallCameraOn && !isSharingScreen" class="feed-placeholder">
-            <el-avatar :size="80" :src="currentUser.avatar">{{ currentUser.name.charAt(0) }}</el-avatar>
-            <span class="feed-name">Bạn (Quân) (Camera tắt)</span>
-          </div>
-        </div>
-
-        <!-- Remote Partner Feed -->
-        <div class="video-feed remote" :class="{ 'camera-active': isRemoteCameraOn }">
-          <div v-if="isRemoteCameraOn" class="camera-stream-active">
-            <div class="simulated-camera-bg remote-bg">
-              <div class="camera-scanner"></div>
-            </div>
-            <div class="feed-overlay">
-              <span class="badge-live"><i class="fa-solid fa-circle text-danger animate-pulse"></i> LIVE</span>
-              <span class="feed-name">{{ activeChat.name }}</span>
-            </div>
-          </div>
-          <div v-else class="feed-placeholder">
-            <el-avatar :size="80" :src="activeChat.avatar">{{ activeChat.name.charAt(0) }}</el-avatar>
-            <span class="feed-name">{{ activeChat.name }} (Camera tắt)</span>
-          </div>
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="call-controls-container">
-          <!-- Mic Toggle -->
-          <button 
-            class="call-control-circle-btn" 
-            :class="{ 'inactive': isCallMuted }" 
-            @click="isCallMuted = !isCallMuted"
-            :title="isCallMuted ? 'Bật Micro' : 'Tắt Micro'"
-          >
-            <i :class="isCallMuted ? 'fa-solid fa-microphone-slash' : 'fa-solid fa-microphone'"></i>
-          </button>
-
-          <!-- Camera Toggle -->
-          <button 
-            class="call-control-circle-btn" 
-            :class="{ 'inactive': !isCallCameraOn }" 
-            @click="toggleCallCamera"
-            :title="isCallCameraOn ? 'Tắt Camera' : 'Bật Camera'"
-          >
-            <i :class="isCallCameraOn ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'"></i>
-          </button>
-
-          <!-- Screen Share Toggle -->
-          <button 
-            class="call-control-circle-btn" 
-            :class="{ 'active-share': isSharingScreen }" 
-            @click="toggleScreenShare"
-            :title="isSharingScreen ? 'Tắt chia sẻ' : 'Chia sẻ màn hình'"
-            style="background-color: #4b5563; color: white;"
-          >
-            <i class="fa-solid fa-desktop" :style="{ color: isSharingScreen ? '#22c55e' : '#fff' }"></i>
-          </button>
-
-          <!-- Hang up -->
-          <button 
-            class="call-control-circle-btn hang-up" 
-            @click="videoCallActive = false"
-            title="Kết thúc cuộc gọi"
-          >
-            <i class="fa-solid fa-phone-slash"></i>
-          </button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- Add Friend Dialog -->
-    <el-dialog
-      v-model="addFriendActive"
-      width="480px"
-      class="add-friend-dialog sa-data-dialog sa-modal--md"
-      append-to-body
-      :show-close="false"
-    >
-      <template #header>
-        <DataModalHeader
-          icon="bi bi-person-plus"
-          title="Kết bạn & Mời thành viên"
-          description="Chia sẻ mã kết bạn, gửi lời mời và xử lý yêu cầu"
-          @close="addFriendActive = false"
-        />
-      </template>
-      <div class="add-friend-content">
-        <!-- My Invite Info -->
-        <DataModalSection icon="bi bi-person-badge" title="Tài khoản của bạn">
-        <div class="my-invite-card mb-5">
-          <div class="flex flex-col gap-3">
-            <div class="info-row">
-              <span class="info-label">Mã kết bạn:</span>
-              <div class="info-value-wrapper">
-                <code class="info-code">{{ myFriendCode }}</code>
-                <button class="copy-btn-link" @click="copyToClipboard(myFriendCode)">
-                  <i class="fa-regular fa-copy"></i> <span>Sao chép</span>
-                </button>
-              </div>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Link kết bạn:</span>
-              <div class="info-value-wrapper">
-                <span class="info-link truncate">{{ myInviteLink }}</span>
-                <button class="copy-btn-link" @click="copyToClipboard(myInviteLink)">
-                  <i class="fa-regular fa-copy"></i> <span>Sao chép</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-        </DataModalSection>
-
-        <!-- Send Invite Form -->
-        <DataModalSection icon="bi bi-send" title="Gửi lời mời kết bạn">
-        <DataModalField>
-          <div style="display: flex; gap: 10px; align-items: center; width: 100%;">
-            <input
-              v-model="searchFriendQuery"
-              placeholder="Nhập mã kết bạn, email hoặc tên..."
-              class="custom-friend-input"
-              style="flex: 1; height: 38px;"
-              @keyup.enter="sendFriendRequest"
-            />
-            <button class="btn-save" @click="sendFriendRequest">Gửi yêu cầu</button>
-          </div>
-        </DataModalField>
-        </DataModalSection>
-
-        <!-- Friend Requests List -->
-        <DataModalSection class="friend-requests-divider" icon="bi bi-inbox" :title="`Lời mời kết bạn đang chờ (${friendRequests.length})`">
-        <div class="friend-requests-section">
-          <div v-if="friendRequests.length === 0" class="text-center py-6 text-sm text-muted">
-            Không có lời mời nào đang chờ
-          </div>
-          <div v-else class="requests-list">
-            <div v-for="req in friendRequests" :key="req.id" class="request-item" style="display: flex; align-items: center; padding: 12px 16px; justify-content: space-between;">
-              <div style="display: flex; align-items: center; flex: 1; min-width: 0;">
-                <el-avatar :size="36" :src="req.avatar" style="flex-shrink: 0;">{{ req.name.charAt(0) }}</el-avatar>
-                <div class="flex flex-col ml-3 overflow-hidden" style="margin-left: 12px;">
-                  <span class="text-sm font-semibold truncate" style="color: var(--color-text-primary); display: block;">{{ req.name }}</span>
-                  <span class="text-xs text-muted truncate" style="display: block; margin-top: 2px;">{{ req.email || 'Mã: ' + req.code }}</span>
-                </div>
-              </div>
-              <div style="display: flex; gap: 10px; margin-left: 16px; flex-shrink: 0;">
-                <button class="btn-action-accept" @click="acceptFriend(req)">Đồng ý</button>
-                <button class="btn-action-decline" @click="declineFriend(req)">Từ chối</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        </DataModalSection>
-      </div>
-    </el-dialog>
-
-
-    <!-- Create Server Dialog -->
-    <el-dialog
-      v-model="createServerActive"
-      width="440px"
-      append-to-body
-      class="sa-data-dialog sa-modal--sm"
-      :show-close="false"
-    >
-      <template #header>
-        <DataModalHeader
-          icon="bi bi-hdd-network"
-          title="Tạo Server mới"
-          description="Tạo không gian chat nhóm với các kênh riêng"
-          @close="createServerActive = false"
-        />
-      </template>
-      <DataModalSection icon="bi bi-card-text" title="Thông tin Server">
-        <DataModalField label="Tên Server">
-          <input
-            v-model="newServerName"
-            placeholder="Nhập tên server mới..."
-            class="custom-friend-input"
-          />
-        </DataModalField>
-      </DataModalSection>
-      <template #footer>
-        <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <button class="btn-cancel-custom" @click="createServerActive = false"><i class="bi bi-x-lg"></i> Hủy</button>
-          <button class="btn-save" @click="createNewServer"><i class="fa-solid fa-plus"></i> Tạo Server</button>
-        </div>
-      </template>
-    </el-dialog>
 
     <!-- Create Channel Dialog -->
     <el-dialog
@@ -804,7 +629,7 @@
         <DataModalField label="Tên Kênh">
           <input 
             v-model="newChannelName" 
-            placeholder="Ví dụ: backend-dev" 
+            placeholder="đặt tên cho channel" 
             class="custom-friend-input"
             style="width: 100%; height: 38px;"
             maxlength="100"
@@ -863,328 +688,10 @@
       </DataModalSection>
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <button class="btn-cancel-custom" @click="createVoiceActive = false"><i class="bi bi-x-lg"></i> Hủy</button>
-          <button class="btn-primary-custom" @click="createNewVoice">
-            <i class="fa-solid fa-plus"></i> Tạo Kênh thoại
+          <el-button @click="createVoiceActive = false">Hủy</el-button>
+          <button class="btn-primary-custom" @click="createNewVoice" style="background-color: var(--color-primary); color: white; border: none; border-radius: var(--radius-button); padding: 8px 16px; font-weight: 600; cursor: pointer;">
+            Tạo Kênh thoại
           </button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- Invite Friends to Server Dialog -->
-    <el-dialog
-      v-model="inviteServerActive"
-      width="460px"
-      append-to-body
-      class="sa-data-dialog sa-modal--sm"
-      :show-close="false"
-    >
-      <template #header>
-        <DataModalHeader
-          icon="bi bi-person-plus"
-          title="Mời bạn bè vào Server"
-          description="Chọn bạn bè từ danh sách hệ thống để thêm vào server này"
-          @close="inviteServerActive = false"
-        />
-      </template>
-      <DataModalSection icon="bi bi-people" title="Danh sách bạn bè">
-      <div style="display: flex; flex-direction: column; gap: 12px; max-height: 300px; overflow-y: auto;">
-        <div v-if="inviteableUsers.length === 0" class="text-center py-6 text-sm text-muted">
-          Tất cả bạn bè đã ở trong Server này.
-        </div>
-        <div v-else style="display: flex; flex-direction: column; gap: 10px;">
-          <div 
-            v-for="u in inviteableUsers" 
-            :key="u.id" 
-            style="display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; border-radius: 8px; background-color: rgba(255,255,255,0.02);"
-          >
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <el-avatar :size="28" :src="u.avatar">{{ u.name.charAt(0) }}</el-avatar>
-              <div style="display: flex; flex-direction: column; text-align: left;">
-                <span style="font-size: 13px; font-weight: 600; color: var(--color-text-primary);">{{ u.name }}</span>
-                <span style="font-size: 11px; color: var(--color-text-muted);">{{ u.statusText || 'Thành viên' }}</span>
-              </div>
-            </div>
-            <el-checkbox v-model="u.checked" size="large" />
-          </div>
-        </div>
-      </div>
-      </DataModalSection>
-      <template #footer>
-        <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <button class="btn-cancel-custom" @click="inviteServerActive = false"><i class="bi bi-x-lg"></i> Hủy</button>
-          <button class="btn-save" :disabled="inviteableUsers.filter(u => u.checked).length === 0" @click="confirmInviteToServer">
-            <i class="bi bi-person-plus"></i>
-            Mời vào nhóm
-          </button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- Server Settings Dialog -->
-    <el-dialog
-      v-model="serverSettingsActive"
-      width="480px"
-      append-to-body
-      class="sa-data-dialog sa-modal--md"
-      :show-close="false"
-    >
-      <template #header>
-        <DataModalHeader
-          icon="bi bi-gear"
-          title="Cài đặt Server"
-          description="Cập nhật tên, màu chủ đạo và thao tác quản trị server"
-          @close="serverSettingsActive = false"
-        />
-      </template>
-      <div style="display: flex; flex-direction: column; gap: 0;">
-        <DataModalSection icon="bi bi-card-text" title="Thông tin Server">
-        <DataModalField label="Tên Server">
-          <input 
-            v-model="editServerName" 
-            placeholder="Nhập tên server..." 
-            class="custom-friend-input"
-          />
-        </DataModalField>
-        <DataModalField label="Màu chủ đạo">
-          <div style="display: flex; gap: 8px;">
-            <div 
-              v-for="color in colors" 
-              :key="color"
-              :style="{ backgroundColor: color }"
-              style="width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; border: 2px solid transparent;"
-              :class="{ 'selected-color-swatch': editServerColor === color }"
-              @click="editServerColor = color"
-            >
-              <i class="fa-solid fa-check text-white text-xs" v-if="editServerColor === color"></i>
-            </div>
-          </div>
-        </DataModalField>
-        </DataModalSection>
-
-        <!-- Danger Zone -->
-        <DataModalSection icon="bi bi-exclamation-triangle" title="Vùng nguy hiểm" v-if="activeServer.id !== 'srv-sprinta'">
-        <div>
-          <h5 style="color: var(--color-danger); font-size: 14px; font-weight: 600; margin-bottom: 8px;">Vùng nguy hiểm</h5>
-          <span style="font-size: 12px; color: var(--color-text-muted); display: block; margin-bottom: 12px;">Hành động này sẽ xóa hoàn toàn Server này cùng tất cả các kênh chat và lịch sử trò chuyện đi kèm.</span>
-          <button class="btn-danger-custom" @click="deleteActiveServer">
-            <i class="fa-solid fa-trash-can"></i> Xóa Server
-          </button>
-        </div>
-        </DataModalSection>
-      </div>
-      <template #footer>
-        <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <button class="btn-cancel-custom" @click="serverSettingsActive = false"><i class="bi bi-x-lg"></i> Hủy</button>
-          <button class="btn-primary-custom" @click="saveServerSettings">
-            <i class="fa-solid fa-floppy-disk"></i> Lưu thay đổi
-          </button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- Create Server From Dm Dialog -->
-    <el-dialog
-      v-model="createServerFromDmActive"
-      width="440px"
-      append-to-body
-      class="sa-data-dialog sa-modal--sm"
-      :show-close="false"
-    >
-      <template #header>
-        <DataModalHeader
-          icon="bi bi-people"
-          title="Tạo nhóm Server từ cuộc trò chuyện"
-          description="Tạo server mới với bạn và đối tác chat hiện tại"
-          @close="createServerFromDmActive = false"
-        />
-      </template>
-      <DataModalSection
-        icon="bi bi-card-text"
-        title="Thông tin nhóm"
-        description="Hệ thống sẽ tự động chuyển sang tab Chat nhóm sau khi tạo thành công"
-      >
-        <DataModalField label="Tên nhóm Server mới">
-          <input
-            v-model="dmServerName"
-            placeholder="Nhập tên nhóm..."
-            class="custom-friend-input"
-          />
-        </DataModalField>
-      </DataModalSection>
-      <template #footer>
-        <div style="display: flex; justify-content: flex-end; gap: 10px;">
-          <button class="btn-cancel-custom" @click="createServerFromDmActive = false"><i class="bi bi-x-lg"></i> Hủy</button>
-          <button class="btn-primary-custom" @click="confirmCreateServerFromDm">
-            <i class="fa-solid fa-plus"></i> Tạo nhóm
-          </button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- Outgoing Call (Ringing) Overlay -->
-    <div v-if="outgoingCallActive" class="calling-overlay">
-      <div class="calling-container">
-        <div class="calling-avatar-pulse">
-          <el-avatar :size="100" :src="callingPartnerAvatar">{{ callingPartnerName.charAt(0) }}</el-avatar>
-          <div class="pulse-ring ring-1"></div>
-          <div class="pulse-ring ring-2"></div>
-        </div>
-        <h3 class="calling-name">{{ callingPartnerName }}</h3>
-        <p class="calling-status">Đang đổ chuông...</p>
-        
-        <!-- Hang up button -->
-        <button class="call-decline-circle-btn" @click="cancelOutgoingCall" style="margin-bottom: 20px;">
-          <i class="fa-solid fa-phone-slash text-xl"></i>
-        </button>
-
-        <!-- Simulated Partner Receiver Control Panel -->
-        <div class="simulated-receiver-panel" style="margin-top: 15px; padding: 16px; border-radius: 12px; background: rgba(0,0,0,0.4); border: 1px dashed rgba(255,255,255,0.2); width: 100%; text-align: center;">
-          <p style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 12px; font-weight: 500;">[ Giả lập phía người nhận cuộc gọi ]</p>
-          <div style="display: flex; gap: 16px; justify-content: center; align-items: center;">
-            <button class="call-accept-circle-btn small" @click="partnerAcceptCall" style="width: 44px; height: 44px; font-size: 14px;" title="Chấp nhận cuộc gọi">
-              <i class="fa-solid fa-phone text-sm"></i>
-            </button>
-            <button class="call-decline-circle-btn small" @click="partnerDeclineCall" style="width: 44px; height: 44px; font-size: 14px;" title="Từ chối cuộc gọi">
-              <i class="fa-solid fa-phone-slash text-sm"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Incoming Call Overlay -->
-    <div v-if="incomingCallActive" class="calling-overlay">
-      <div class="calling-container">
-        <div class="calling-avatar-pulse animate-bounce">
-          <el-avatar :size="100" :src="callingPartnerAvatar">{{ callingPartnerName.charAt(0) }}</el-avatar>
-        </div>
-        <h3 class="calling-name">{{ callingPartnerName }}</h3>
-        <p class="calling-status">Cuộc gọi đến...</p>
-        <div style="display: flex; gap: 24px; margin-top: 24px;">
-          <button class="call-accept-circle-btn" @click="acceptIncomingCall">
-            <i class="fa-solid fa-phone text-xl"></i>
-          </button>
-          <button class="call-decline-circle-btn" @click="declineIncomingCall">
-            <i class="fa-solid fa-phone-slash text-xl"></i>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Group Voice Channel Call Dialog -->
-    <el-dialog
-      v-model="voiceChannelCallActive"
-      width="900px"
-      class="video-call-dialog group-call-dialog"
-      append-to-body
-    >
-      <template #header>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <i class="fa-solid fa-volume-high text-primary"></i>
-          <span style="font-size: 15px; font-weight: 600; color: #f8fafc;">
-            Kênh thoại: {{ activeVoiceChannel?.name }}
-          </span>
-        </div>
-      </template>
-
-      <div class="video-grid group-video-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; height: auto; min-height: 320px;">
-        <!-- Render each user in the voice channel -->
-        <div 
-          v-for="user in activeVoiceChannel?.users" 
-          :key="user.id" 
-          class="video-feed"
-          :class="{ 'local-user': user.id === currentUser.id, 'camera-active': (user.id === currentUser.id && (isCallCameraOn || isSharingScreen)) }"
-          style="aspect-ratio: 4/3; height: auto;"
-        >
-          <!-- If local user and camera/screen share is on, render video element -->
-          <div v-if="user.id === currentUser.id" style="width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center;">
-            <div v-show="isCallCameraOn || isSharingScreen" style="width: 100%; height: 100%;">
-              <video 
-                :ref="el => { if (el) groupLocalVideoRef = el }" 
-                autoplay 
-                playsinline 
-                muted 
-                :style="{ 
-                  width: '100%', 
-                  height: '100%', 
-                  objectFit: 'cover', 
-                  transform: isSharingScreen ? 'none' : 'scaleX(-1)', 
-                  display: 'block' 
-                }"
-              ></video>
-            </div>
-            <div v-show="!isCallCameraOn && !isSharingScreen" class="feed-placeholder">
-              <el-avatar :size="80" :src="currentUser.avatar">{{ currentUser.name.charAt(0) }}</el-avatar>
-            </div>
-          </div>
-          
-          <!-- Remote user placeholder -->
-          <div v-else class="feed-placeholder">
-            <el-avatar :size="80" :src="user.avatar">{{ user.name?.charAt(0) }}</el-avatar>
-          </div>
-
-          <div class="feed-overlay">
-            <span class="badge-live" v-if="user.id === currentUser.id && (isCallCameraOn || isSharingScreen)">
-              <i class="fa-solid fa-circle text-danger animate-pulse"></i> LIVE
-            </span>
-            <span class="feed-name">{{ user.name }} {{ user.id === currentUser.id ? '(Bạn)' : '' }}</span>
-          </div>
-        </div>
-      </div>
-
-      <template #footer>
-        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-          <!-- Left: minimize button -->
-          <el-button @click="voiceChannelCallActive = false" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
-            <i class="fa-solid fa-compress mr-1" style="margin-right: 6px;"></i> Thu nhỏ về nền
-          </el-button>
-
-          <!-- Center: Call controls -->
-          <div class="call-controls-container" style="margin: 0; display: flex; gap: 12px; justify-content: center; align-items: center;">
-            <!-- Mic Toggle -->
-            <button 
-              class="call-control-circle-btn" 
-              :class="{ 'inactive': isMuted }" 
-              @click="isMuted = !isMuted"
-              :title="isMuted ? 'Bật Micro' : 'Tắt Micro'"
-            >
-              <i :class="isMuted ? 'fa-solid fa-microphone-slash' : 'fa-solid fa-microphone'"></i>
-            </button>
-
-            <!-- Camera Toggle -->
-            <button 
-              class="call-control-circle-btn" 
-              :class="{ 'inactive': !isCallCameraOn }" 
-              @click="isCallCameraOn = !isCallCameraOn"
-              :title="isCallCameraOn ? 'Tắt Camera' : 'Bật Camera'"
-            >
-              <i :class="isCallCameraOn ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'"></i>
-            </button>
-
-            <!-- Screen Share Toggle -->
-            <button 
-              class="call-control-circle-btn" 
-              :class="{ 'active-share': isSharingScreen }" 
-              @click="toggleScreenShare"
-              :title="isSharingScreen ? 'Tắt chia sẻ' : 'Chia sẻ màn hình'"
-              style="background-color: #4b5563; color: white;"
-            >
-              <i class="fa-solid fa-desktop" :style="{ color: isSharingScreen ? '#22c55e' : '#fff' }"></i>
-            </button>
-
-            <!-- Disconnect -->
-            <button 
-              class="call-control-circle-btn hang-up" 
-              @click="leaveVoiceChannelAndClose"
-              title="Rời kênh thoại"
-            >
-              <i class="fa-solid fa-phone-slash"></i>
-            </button>
-          </div>
-          
-          <!-- Right: spacer to balance layout -->
-          <div style="width: 130px;"></div>
         </div>
       </template>
     </el-dialog>
@@ -1222,16 +729,9 @@ const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
 const authStore = useAuthStore()
-const currentTab = computed(() => route.query.tab === 'dm' ? 'dm' : 'channel')
-const switchTab = (tab) => {
-  const nextTab = tab === 'dm' ? 'dm' : 'channel'
-  if (currentTab.value === nextTab) return
+const currentTab = computed(() => 'channel')
+const switchTab = () => {}
 
-  router.push({
-    path: '/chat',
-    query: { ...route.query, tab: nextTab }
-  })
-}
 const projectOptions = computed(() => projectStore.sidebarProjects)
 const activeProjectId = ref('')
 const activeProject = computed(() =>
@@ -1240,45 +740,10 @@ const activeProject = computed(() =>
 const projectsLoading = ref(false)
 const projectsError = ref('')
 
-
-const defaultServers = [
-  { id: 'srv-sprinta', name: 'SprintA Workspace', color: '#6366f1', channels: [], voiceChannels: [
-    { id: 'vc-sprint', name: 'Họp Kế Hoạch Sprint 🚀', users: [
-      { id: 'user-kiet', name: 'Nguyễn Tuấn Kiệt', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=128' },
-      { id: 'user-phat', name: 'Trần Gia Phát', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128' }
-    ] },
-    { id: 'vc-tech', name: 'Trao Đổi Kỹ Thuật 💻', users: [] },
-    { id: 'vc-lounge', name: 'Trà Chanh Chém Gió ☕', users: [] }
-  ], members: [
-    { id: 'user-kiet', name: 'Nguyễn Tuấn Kiệt', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=128' },
-    { id: 'user-phat', name: 'Trần Gia Phát', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=128' }
-  ] },
-  { id: 'srv-gaming', name: 'Góc Giải Trí 🎮', color: '#10b981', channels: [], voiceChannels: [
-    { id: 'vc-pubg', name: 'PUBG Team 🔫', users: [] },
-    { id: 'vc-lol', name: 'Liên Minh Huyền Thoại ⚔️', users: [] }
-  ] }
-]
-
-const loadServers = () => {
-  const stored = localStorage.getItem('collaboration_servers')
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch (e) {
-      console.error(e)
-    }
-  }
-  return defaultServers
-}
-
-const servers = ref(loadServers())
-const saveServers = () => {
-  localStorage.setItem('collaboration_servers', JSON.stringify(servers.value))
-}
-
-const activeServer = ref(servers.value[0])
-
 const channels = ref([])
+const visibleChannels = computed(() => {
+  return channels.value.filter(ch => !ch.desc?.startsWith('__voice_chat_channel__'))
+})
 const channelsLoading = ref(false)
 const channelsLoadingMore = ref(false)
 const channelsError = ref('')
@@ -1290,18 +755,38 @@ const channelPagination = ref({
 })
 const channelAbortController = ref(null)
 let channelRequestId = 0
-const voiceChannels = computed(() => activeServer.value ? activeServer.value.voiceChannels : [])
 
-const selectServer = (srv) => {
-  activeServer.value = srv
-  if (srv.channels.length > 0) {
-    selectChat(srv.channels[0], 'channel')
+const voiceChannels = ref([])
+const loadVoiceChannels = (projectId) => {
+  if (!projectId) {
+    voiceChannels.value = []
+    return
   }
+  const key = `voice_channels_${projectId}`
+  const stored = localStorage.getItem(key)
+  if (stored) {
+    try {
+      voiceChannels.value = JSON.parse(stored)
+      return
+    } catch (e) {
+      console.error(e)
+    }
+  }
+  const defaultVcs = [
+    { id: `vc-gen-${projectId}`, name: 'Phòng thoại chung 🔊', users: [] },
+    { id: `vc-tech-${projectId}`, name: 'Trao Đổi Kỹ Thuật 💻', users: [] }
+  ]
+  voiceChannels.value = defaultVcs
+  localStorage.setItem(key, JSON.stringify(defaultVcs))
+}
+
+const saveVoiceChannels = () => {
+  if (!activeProjectId.value) return
+  const key = `voice_channels_${activeProjectId.value}`
+  localStorage.setItem(key, JSON.stringify(voiceChannels.value))
 }
 
 // Modal state refs
-const createServerActive = ref(false)
-const newServerName = ref('')
 const createChannelActive = ref(false)
 const newChannelName = ref('')
 const newChannelDesc = ref('')
@@ -1311,49 +796,6 @@ const createChannelPayloadFingerprint = ref('')
 const createChannelAbortController = ref(null)
 const createVoiceActive = ref(false)
 const newVoiceName = ref('')
-
-// Server Settings States
-const serverSettingsActive = ref(false)
-const editServerName = ref('')
-const editServerColor = ref('')
-
-const openServerSettingsModal = () => {
-  if (!activeServer.value) return
-  editServerName.value = activeServer.value.name
-  editServerColor.value = activeServer.value.color
-  serverSettingsActive.value = true
-}
-
-const saveServerSettings = () => {
-  if (!editServerName.value.trim()) {
-    ElMessage.warning('Vui lòng nhập tên Server!')
-    return
-  }
-  if (activeServer.value) {
-    activeServer.value.name = editServerName.value.trim()
-    activeServer.value.color = editServerColor.value
-    saveServers()
-    ElMessage.success('Cập nhật cài đặt Server thành công!')
-  }
-  serverSettingsActive.value = false
-}
-
-const deleteActiveServer = () => {
-  if (activeServer.value.id === 'srv-sprinta') {
-    ElMessage.error('Không thể xóa Server mặc định!')
-    return
-  }
-  servers.value = servers.value.filter(s => s.id !== activeServer.value.id)
-  saveServers()
-  serverSettingsActive.value = false
-  selectServer(servers.value[0])
-  ElMessage.success('Đã xóa Server thành công!')
-}
-
-const openCreateServerModal = () => {
-  newServerName.value = ''
-  createServerActive.value = true
-}
 const openCreateChannelModal = () => {
   if (!activeProjectId.value) {
     ElMessage.warning('Chọn Project trước khi tạo Channel.')
@@ -1377,93 +819,8 @@ const openCreateVoiceModal = () => {
   createVoiceActive.value = true
 }
 
-const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#06b6d4']
 
-const createNewServer = () => {
-  if (!newServerName.value.trim()) {
-    ElMessage.warning('Vui lòng nhập tên Server!')
-    return
-  }
-  const color = colors[Math.floor(Math.random() * colors.length)]
-  const newSrv = {
-    id: `srv-${Date.now()}`,
-    name: newServerName.value.trim(),
-    color: color,
-    channels: [],
-    voiceChannels: [
-      { id: `vc-gen-${Date.now()}`, name: 'Phòng thoại chung 🔊', users: [] }
-    ],
-    members: [
-      {
-        id: currentUser.value.id,
-        name: currentUser.value.name,
-        avatar: currentUser.value.avatar
-      }
-    ]
-  }
-  servers.value.push(newSrv)
-  saveServers()
-  createServerActive.value = false
-  selectServer(newSrv)
-  ElMessage.success(`Đã tạo Server mới: ${newSrv.name}`)
-}
 
-const createServerFromDmActive = ref(false)
-const dmServerName = ref('')
-
-const openCreateServerFromDmModal = () => {
-  const myLastName = currentUser.value.name ? currentUser.value.name.split(' ').pop() : 'Quân'
-  const partnerLastName = activeChat.value.name ? activeChat.value.name.split(' ').pop() : 'Bạn'
-  dmServerName.value = `Nhóm ${myLastName} & ${partnerLastName}`
-  createServerFromDmActive.value = true
-}
-
-const confirmCreateServerFromDm = () => {
-  if (!dmServerName.value.trim()) {
-    ElMessage.warning('Vui lòng nhập tên nhóm!')
-    return
-  }
-  
-  const color = colors[Math.floor(Math.random() * colors.length)]
-  const partnerId = activeChat.value.id
-  const partner = members.value.find(m => m.id === partnerId)
-  
-  const newSrv = {
-    id: `srv-${Date.now()}`,
-    name: dmServerName.value.trim(),
-    color: color,
-    channels: [],
-    voiceChannels: [
-      { id: `vc-gen-${Date.now()}`, name: 'Phòng thoại chung 🔊', users: [] }
-    ],
-    members: [
-      {
-        id: currentUser.value.id,
-        name: currentUser.value.name,
-        avatar: currentUser.value.avatar
-      }
-    ]
-  }
-  
-  if (partner) {
-    newSrv.members.push({
-      id: partner.id,
-      name: partner.name,
-      avatar: partner.avatar
-    })
-  }
-  
-  servers.value.push(newSrv)
-  saveServers()
-  createServerFromDmActive.value = false
-  
-  // Switch to Team Chat
-  router.push({ path: '/chat', query: { tab: 'channel' } })
-  
-  // Select the newly created server
-  selectServer(newSrv)
-  ElMessage.success(`Đã tạo nhóm server "${newSrv.name}" và chuyển sang chat nhóm!`)
-}
 const createNewChannel = async () => {
   if (creatingChannel.value || !activeProjectId.value) return
   const name = newChannelName.value.trim()
@@ -1667,6 +1024,7 @@ const localVideoRef = ref(null)
 let localStream = null
 const groupLocalVideoRef = ref(null)
 const voiceChannelCallActive = ref(false)
+const showVoiceCallMain = ref(false)
 const isSharingScreen = ref(false)
 let screenStream = null
 
@@ -1799,7 +1157,7 @@ watch([videoCallActive, voiceChannelCallActive, isCallCameraOn], async ([activeD
 
 const joinVoiceChannel = (vc) => {
   if (activeVoiceChannel.value?.id === vc.id) {
-    voiceChannelCallActive.value = true
+    showVoiceCallMain.value = true
     return
   }
   
@@ -1814,7 +1172,7 @@ const joinVoiceChannel = (vc) => {
     avatar: currentUser.value.avatar
   })
   ElMessage.success(`Đã kết nối vào kênh thoại: ${vc.name}`)
-  voiceChannelCallActive.value = true
+  showVoiceCallMain.value = true
 }
 
 const leaveVoiceChannel = () => {
@@ -1826,6 +1184,50 @@ const leaveVoiceChannel = () => {
   }
   ElMessage.info(`Đã ngắt kết nối khỏi kênh thoại: ${activeVoiceChannel.value.name}`)
   activeVoiceChannel.value = null
+  showVoiceCallMain.value = false
+}
+
+const openVoiceChannelChat = async () => {
+  if (!activeVoiceChannel.value || !activeProjectId.value) return
+  const voiceVc = activeVoiceChannel.value
+  const targetDesc = `__voice_chat_channel__:${voiceVc.id}`
+  
+  let targetChannel = channels.value.find(ch => ch.desc === targetDesc)
+  
+  if (!targetChannel) {
+    try {
+      ElMessage.info('Đang mở kết nối kênh chat cho phòng thoại...')
+      const cleanName = voiceVc.name
+        .replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g, '')
+        .replace(/[^a-zA-Z0-9\sÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂĐÊÔƠưăâđêôơ]/g, '')
+        .trim() || 'Kênh thoại'
+      
+      const result = await collaborationApi.createProjectChannel(
+        activeProjectId.value,
+        {
+          name: cleanName,
+          description: targetDesc,
+          visibility: 'Private'
+        },
+        {
+          idempotencyKey: makeChannelIdempotencyKey()
+        }
+      )
+      targetChannel = mapChannel(result, activeProjectId.value)
+      channels.value.push(targetChannel)
+      channelPagination.value.totalCount += 1
+    } catch (error) {
+      console.error('Failed to create voice channel chat:', error)
+      const details = error?.response?.data?.message || error?.message || 'Lỗi không xác định'
+      ElMessage.error(`Không thể kết nối kênh chat cho phòng thoại này: ${details}`)
+      return
+    }
+  }
+  
+  if (targetChannel) {
+    showVoiceCallMain.value = false
+    await selectChat(targetChannel, 'channel')
+  }
 }
 
 const isCanceledRequest = (error) =>
@@ -2373,7 +1775,10 @@ const loadChannels = async ({
       channels.value.length > 0
     ) {
       const linkedChannel = channels.value.find(item => item.id === route.query.channelId)
-      await selectChat(linkedChannel || channels.value[0], 'channel')
+      const lastChannelId = localStorage.getItem(`last_channel_id_${projectId}`)
+      const savedChannel = lastChannelId ? channels.value.find(item => item.id === lastChannelId) : null
+      const firstVisibleChannel = channels.value.find(ch => !ch.desc?.startsWith('__voice_chat_channel__'))
+      await selectChat(linkedChannel || savedChannel || firstVisibleChannel || channels.value[0], 'channel')
     }
   } catch (error) {
     if (
@@ -3002,15 +2407,18 @@ const initializeCollaborationContext = async ({ forceProjects = false } = {}) =>
   await loadProjects({ force: forceProjects })
   if (!componentMounted || version !== collaborationContextVersion) return
   const linkedProjectId = `${route.query.projectId || ''}`
+  const savedProjectId = localStorage.getItem('last_active_project_id')
   if (linkedProjectId && projectOptions.value.some(project => project.id === linkedProjectId)) {
     activeProjectId.value = linkedProjectId
+  } else if (savedProjectId && projectOptions.value.some(project => project.id === savedProjectId)) {
+    activeProjectId.value = savedProjectId
   } else if (!activeProjectId.value && projectOptions.value.length > 0) {
     activeProjectId.value = projectOptions.value[0].id
-  } else if (currentTab.value === 'dm') {
-    if (activeProjectId.value) {
-      await loadDirectMessageUsers(activeProjectId.value)
-    }
-    await loadDirectConversations({ page: 1 })
+  }
+  if (activeProjectId.value) {
+    loadVoiceChannels(activeProjectId.value)
+    fetchProjectMembers()
+    await loadChannels({ page: 1 })
   }
 }
 
@@ -3020,51 +2428,23 @@ onMounted(() => {
   void initializeCollaborationContext()
 })
 
-watch(() => route.query.tab, async (newTab) => {
-  await leaveActiveRealtimeGroup()
-  if (newTab === 'dm') {
-    clearChannelSelection()
-    clearDirectContext()
-    if (activeProjectId.value) {
-      await loadDirectMessageUsers(activeProjectId.value)
-    }
-    await loadDirectConversations({ page: 1 })
-  } else {
-    clearDirectContext()
-    if (activeProjectId.value) {
-      await loadChannels({ page: 1 })
-    }
-  }
-})
-
 watch(activeProjectId, async (projectId, previousProjectId) => {
   if (projectId === previousProjectId) return
   await leaveActiveRealtimeGroup()
-  if (currentTab.value === 'dm') {
-    clearDirectContext()
-  } else {
-    clearChannels()
-  }
+  clearChannels()
+  loadVoiceChannels(projectId)
   if (!projectId) {
     clearScopedCurrentProjectId()
-    if (currentTab.value === 'dm') {
-      await loadDirectConversations({ page: 1 })
-    }
     return
   }
+  fetchProjectMembers()
   if (!projectOptions.value.some(project => project.id === projectId)) {
     activeProjectId.value = ''
     return
   }
   setScopedCurrentProjectId(projectId)
-  if (currentTab.value === 'dm') {
-    await Promise.all([
-      loadDirectMessageUsers(projectId),
-      loadDirectConversations({ page: 1 })
-    ])
-  } else {
-    await loadChannels({ page: 1 })
-  }
+  localStorage.setItem('last_active_project_id', projectId)
+  await loadChannels({ page: 1 })
 })
 
 watch(() => authStore.token, async (token, previousToken) => {
@@ -3296,37 +2676,34 @@ const loadMentionSuggestions = (query, range, channelId) => {
   mentionMenuOpen.value = true
   mentionLoading.value = true
   mentionRange.value = range
-  mentionDebounceTimer = window.setTimeout(async () => {
-    mentionAbortController.value?.abort()
-    const controller = new AbortController()
-    mentionAbortController.value = controller
-    const requestId = ++mentionRequestId
-    try {
-      const result = await collaborationApi.searchChannelMembers(channelId, query, {
-        limit: 20,
-        signal: controller.signal
-      })
-      if (
-        requestId !== mentionRequestId ||
-        activeChannel.value?.id !== channelId ||
-        mentionRange.value?.start !== range.start
-      ) return
-      const selectedIds = new Set(selectedMentions.value.map(item => item.userId))
-      mentionSuggestions.value = (Array.isArray(result) ? result : [])
-        .filter(item => item?.userId && item?.displayName && !selectedIds.has(item.userId))
-        .slice(0, 20)
-      mentionActiveIndex.value = 0
-    } catch (error) {
-      if (!isCanceledRequest(error) && requestId === mentionRequestId) {
-        mentionSuggestions.value = []
+  
+  mentionDebounceTimer = window.setTimeout(() => {
+    mentionLoading.value = false
+    const selectedIds = new Set(selectedMentions.value.map(item => item.userId))
+    const candidates = []
+    
+    // Local filter on project members
+    const queryLower = query ? query.toLowerCase() : ''
+    projectMembers.value.forEach(member => {
+      const uId = member.userId || member.id
+      if (selectedIds.has(uId)) return
+      
+      const fName = member.fullName || member.name || ''
+      const email = member.email || ''
+      
+      if (!query || fName.toLowerCase().includes(queryLower) || email.toLowerCase().includes(queryLower)) {
+        candidates.push({
+          userId: uId,
+          displayName: fName,
+          fullName: fName,
+          avatarUrl: member.avatarUrl || member.avatar || ''
+        })
       }
-    } finally {
-      if (requestId === mentionRequestId) {
-        mentionLoading.value = false
-        mentionAbortController.value = null
-      }
-    }
-  }, 180)
+    })
+    
+    mentionSuggestions.value = candidates.slice(0, 20)
+    mentionActiveIndex.value = 0
+  }, 100)
 }
 
 const handleComposerInput = (event) => {
@@ -3633,6 +3010,7 @@ const selectChat = async (item, type) => {
   clearMessageHistory()
   removeAttachedFile()
   resetMentionComposer()
+  showVoiceCallMain.value = false
   const selectionId = chatSelectionId
   activeChat.value = {
     id: item.id,
@@ -3648,6 +3026,10 @@ const selectChat = async (item, type) => {
     canManage: type === 'channel' ? item.canManage : false,
     unreadCount: item.unreadCount || 0,
     lastReadMessageId: item.lastReadMessageId || null
+  }
+
+  if (type === 'channel' && activeProjectId.value) {
+    localStorage.setItem(`last_channel_id_${activeProjectId.value}`, item.id)
   }
 
   await joinRealtimeForChat(activeChat.value)
@@ -3683,125 +3065,48 @@ const isNearMessageBottom = () => {
   return distance <= 120
 }
 
-// Call simulation helpers
-const outgoingCallActive = ref(false)
-const incomingCallActive = ref(false)
-const callingPartnerName = ref('')
-const callingPartnerAvatar = ref('')
 
-const startVoiceCall = () => {
-  if (!activeChat.value || activeChat.value.type !== 'dm') return
-  isCallCameraOn.value = false
-  isRemoteCameraOn.value = false
-  callingPartnerName.value = activeChat.value.name
-  callingPartnerAvatar.value = activeChat.value.avatar || ''
-  outgoingCallActive.value = true
+
+const getFeedBg = (name) => {
+  if (!name) return '#273549'
+  const colors = [
+    '#5c85b6', // Blue-grey like Discord
+    '#e6b8a2', // Soft sand
+    '#76949f', // Muted slate
+    '#b08e8b', // Soft rose
+    '#979f8b', // Sage
+    '#9f8b9e', // Soft lilac
+    '#8da9c4', // Light blue
+    '#a2b9a7', // Light green
+    '#d6a2a2', // Muted red
+    '#d9b897'  // Peach
+  ]
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const index = Math.abs(hash) % colors.length
+  return colors[index]
 }
 
-const startVideoCall = () => {
-  if (!activeChat.value || activeChat.value.type !== 'dm') return
-  isCallCameraOn.value = true
-  isRemoteCameraOn.value = true
-  callingPartnerName.value = activeChat.value.name
-  callingPartnerAvatar.value = activeChat.value.avatar || ''
-  outgoingCallActive.value = true
-}
-
-const cancelOutgoingCall = () => {
-  outgoingCallActive.value = false
-  ElMessage.info('Đã hủy cuộc gọi.')
-}
-
-const partnerAcceptCall = () => {
-  outgoingCallActive.value = false
-  videoCallActive.value = true
-  ElMessage.success('Cuộc gọi đã được kết nối!')
-}
-
-const partnerDeclineCall = () => {
-  outgoingCallActive.value = false
-  ElMessage.error(`${callingPartnerName.value} đã từ chối cuộc gọi.`)
-}
-
-const acceptIncomingCall = () => {
-  incomingCallActive.value = false
-  videoCallActive.value = true
-  ElMessage.success('Đã chấp nhận cuộc gọi!')
-}
-
-const declineIncomingCall = () => {
-  incomingCallActive.value = false
-  ElMessage.info('Đã từ chối cuộc gọi.')
-}
-
-// Friend request actions
-const sendFriendRequest = () => {
-  if (!searchFriendQuery.value.trim()) {
-    ElMessage.warning('Vui lòng nhập thông tin kết bạn!')
+const projectMembers = ref([])
+const loadingMembers = ref(false)
+const fetchProjectMembers = async () => {
+  if (!activeProjectId.value) {
+    projectMembers.value = []
     return
   }
-  ElMessage.success(`Đã gửi yêu cầu kết bạn tới "${searchFriendQuery.value.trim()}"!`)
-  searchFriendQuery.value = ''
-}
-
-const acceptFriend = (req) => {
-  friendRequests.value = friendRequests.value.filter(r => r.id !== req.id)
-  ElMessage.success(`Đã đồng ý kết bạn với ${req.name}!`)
-}
-
-const declineFriend = (req) => {
-  friendRequests.value = friendRequests.value.filter(r => r.id !== req.id)
-  ElMessage.info(`Đã từ chối yêu cầu kết bạn của ${req.name}.`)
-}
-
-// Server invite helpers
-const inviteServerActive = ref(false)
-const inviteableUsers = ref([])
-
-const openInviteServerModal = () => {
-  if (!activeServer.value) return
-  // Find friends who are not currently members of the server
-  const currentMemberIds = (activeServer.value.members || []).map(m => m.id)
-  inviteableUsers.value = members.value
-    .filter(m => !currentMemberIds.includes(m.id))
-    .map(m => ({ ...m, checked: false }))
-  
-  inviteServerActive.value = true
-}
-
-const confirmInviteToServer = () => {
-  if (!activeServer.value) return
-  const selected = inviteableUsers.value.filter(u => u.checked)
-  if (selected.length === 0) return
-  
-  if (!activeServer.value.members) {
-    activeServer.value.members = []
+  loadingMembers.value = true
+  try {
+    const res = await axiosClient.get(`/projects/${activeProjectId.value}/members`)
+    projectMembers.value = res.data?.data || []
+  } catch (error) {
+    console.error('Cannot load project members:', error)
+    projectMembers.value = []
+  } finally {
+    loadingMembers.value = false
   }
-  
-  selected.forEach(u => {
-    activeServer.value.members.push({
-      id: u.id,
-      name: u.name,
-      avatar: u.avatar
-    })
-  })
-  
-  saveServers()
-  inviteServerActive.value = false
-  ElMessage.success(`Đã thêm ${selected.length} thành viên vào Server!`)
 }
-
-
-// Simulate receiving call after 15s if in DM
-onMounted(() => {
-  setTimeout(() => {
-    if (activeChat.value && activeChat.value.type === 'dm' && !videoCallActive.value && !outgoingCallActive.value) {
-      callingPartnerName.value = activeChat.value.name
-      callingPartnerAvatar.value = activeChat.value.avatar || ''
-      incomingCallActive.value = true
-    }
-  }, 15000)
-})
 
 import { onUnmounted } from 'vue'
 onUnmounted(() => {
@@ -3811,9 +3116,28 @@ onUnmounted(() => {
 
 
 <style scoped>
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
 .server-bar {
   width: 72px;
-  background-color: #1e1f22;
+  background-color: var(--color-surface-hover, #f1f5f9);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3930,7 +3254,7 @@ onUnmounted(() => {
   left: 0;
   width: 4px;
   height: 20px;
-  background-color: #ffffff;
+  background-color: var(--color-primary, #6366f1);
   border-radius: 0 4px 4px 0;
   transform: scaleX(0);
   transition: all 0.2s ease;
@@ -4157,14 +3481,14 @@ onUnmounted(() => {
 
 .chat-container {
   display: flex;
-  width: min(calc(100% - 36px), 1280px);
-  height: calc(100vh - 132px);
-  margin: 22px auto;
+  width: 100%;
+  height: calc(100vh - 64px);
+  margin: 0;
   background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
+  border: none;
+  border-radius: 0;
   overflow: hidden;
-  box-shadow: 0 18px 46px color-mix(in srgb, #020617 12%, transparent);
+  box-shadow: none;
 }
 
 .chat-sidebar {
@@ -4185,7 +3509,7 @@ onUnmounted(() => {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   padding: 12px;
-  background-color: rgba(255, 255, 255, 0.01);
+  background-color: var(--color-surface-hover, #f8fafc);
 }
 
 .section-title {
@@ -4385,8 +3709,9 @@ onUnmounted(() => {
 }
 
 .message-body {
-  display: flex;
-  flex-direction: column;
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .message-card.mine .message-body {
@@ -4408,6 +3733,18 @@ onUnmounted(() => {
 
 .send-time {
   font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.message-header-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.message-time {
+  font-size: 11px;
   color: var(--color-text-muted);
 }
 
@@ -4643,45 +3980,42 @@ onUnmounted(() => {
 }
 
 .call-control-circle-btn {
-  width: 50px;
-  height: 50px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  background-color: #273549;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #e2e8f0;
-  font-size: 18px;
+  background-color: #2b2d31;
+  border: none;
+  color: #dbdee1;
+  font-size: 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: background-color 0.15s, color 0.15s;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
 }
 
 .call-control-circle-btn:hover {
-  background-color: #384a62;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 14px rgba(56, 189, 248, 0.15);
+  background-color: #35373c;
+  color: #ffffff;
 }
 
 .call-control-circle-btn.inactive {
-  background-color: #ea580c !important;
+  background-color: #f23f43 !important;
   color: #ffffff !important;
-  border-color: rgba(234, 88, 12, 0.3) !important;
 }
 
 .call-control-circle-btn.inactive:hover {
-  background-color: #d97706 !important;
+  background-color: #db3737 !important;
 }
 
 .call-control-circle-btn.hang-up {
-  background-color: #dc2626 !important;
+  background-color: #f23f43 !important;
   color: #ffffff !important;
-  border-color: rgba(220, 38, 38, 0.3) !important;
 }
 
 .call-control-circle-btn.hang-up:hover {
-  background-color: #b91c1c !important;
+  background-color: #db3737 !important;
   box-shadow: 0 6px 16px rgba(220, 38, 38, 0.4);
 }
 
@@ -4749,6 +4083,53 @@ onUnmounted(() => {
     bottom: 0;
     z-index: 2;
   }
+}
+
+.connected-voice-panel {
+  background-color: var(--color-surface-hover, #f1f5f9);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: auto;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+.disconnect-btn-round {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  color: #ffffff;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.disconnect-btn-round:hover {
+  background-color: #db3737;
+  color: #ffffff;
+}
+.voice-action-btn-small {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.voice-action-btn-small:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+.voice-action-btn-small.active {
+  background-color: rgba(99, 102, 241, 0.1);
+  color: var(--color-primary);
 }
 </style>
 
@@ -5581,5 +4962,35 @@ background-color: #111c2d !important;
 .emoji-popover-popper .el-popper__arrow::before {
   background-color: var(--color-surface) !important;
   border: 1px solid var(--color-border) !important;
+}
+
+/* Custom dialog style for group call to match Discord */
+.group-call-dialog.video-call-dialog {
+  background-color: #111214 !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.6) !important;
+  overflow: hidden;
+}
+.group-call-dialog.video-call-dialog .el-dialog__header {
+  background-color: #111214 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+  padding: 14px 20px !important;
+  margin-right: 0 !important;
+}
+.group-call-dialog.video-call-dialog .el-dialog__headerbtn .el-dialog__close {
+  color: #94a3b8 !important;
+}
+.group-call-dialog.video-call-dialog .el-dialog__headerbtn:hover .el-dialog__close {
+  color: #ffffff !important;
+}
+.group-call-dialog.video-call-dialog .el-dialog__body {
+  background-color: #111214 !important;
+  padding: 16px !important;
+}
+.group-call-dialog.video-call-dialog .el-dialog__footer {
+  background-color: #0b0c0e !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+  padding: 12px 20px !important;
 }
 </style>

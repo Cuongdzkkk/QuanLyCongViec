@@ -74,6 +74,9 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<AiPricingPlan> AiPricingPlans { get; set; }
         public DbSet<AiCreditRule> AiCreditRules { get; set; }
         public DbSet<AiUsageLedger> AiUsageLedgerEntries { get; set; }
+        public DbSet<AiSubscription> AiSubscriptions { get; set; }
+        public DbSet<AiCreditAdjustment> AiCreditAdjustments { get; set; }
+        public DbSet<PaymentOrder> PaymentOrders { get; set; }
         public DbSet<AIFeedback> AIFeedbacks { get; set; }
         public DbSet<AITrainingDataset> AITrainingDatasets { get; set; }
         public DbSet<TaskVectorEmbedding> TaskVectorEmbeddings { get; set; }
@@ -743,6 +746,30 @@ namespace TaskManagement.Infrastructure.Data
                 .HasOne(x => x.Workspace).WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<AiUsageLedger>()
                 .HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.SetNull);
+            modelBuilder.Entity<AiSubscription>().HasIndex(x => x.UserId).IsUnique();
+            modelBuilder.Entity<AiSubscription>().HasIndex(x => new { x.Status, x.CurrentPeriodEnd });
+            modelBuilder.Entity<AiSubscription>().Property(x => x.PlanCode).HasMaxLength(64);
+            modelBuilder.Entity<AiSubscription>().Property(x => x.Status).HasMaxLength(32);
+            modelBuilder.Entity<AiSubscription>()
+                .HasOne(x => x.User).WithOne(x => x.AiSubscription).HasForeignKey<AiSubscription>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<AiCreditAdjustment>().HasIndex(x => new { x.UserId, x.EffectivePeriodStart, x.EffectivePeriodEnd });
+            modelBuilder.Entity<AiCreditAdjustment>().Property(x => x.AdjustmentType).HasMaxLength(32);
+            modelBuilder.Entity<AiCreditAdjustment>().Property(x => x.Reason).HasMaxLength(500);
+            modelBuilder.Entity<AiCreditAdjustment>()
+                .HasOne(x => x.User).WithMany(x => x.AiCreditAdjustments).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<AiCreditAdjustment>()
+                .HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PaymentOrder>().HasIndex(x => x.TransferCode).IsUnique();
+            modelBuilder.Entity<PaymentOrder>().HasIndex(x => new { x.Status, x.CreatedAt });
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.PlanCode).HasMaxLength(64);
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.Status).HasMaxLength(32);
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.TransferCode).HasMaxLength(64);
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.AmountVnd).HasPrecision(18, 2);
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.AdminNote).HasMaxLength(1000);
+            modelBuilder.Entity<PaymentOrder>()
+                .HasOne(x => x.User).WithMany(x => x.PaymentOrders).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PaymentOrder>()
+                .HasOne(x => x.ApprovedByUser).WithMany().HasForeignKey(x => x.ApprovedByUserId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<AiActionExecution>().HasIndex(x => new { x.UserId, x.IdempotencyKey }).IsUnique();
             modelBuilder.Entity<AiActionExecution>().HasIndex(x => new { x.UserId, x.State, x.UpdatedAt });
             modelBuilder.Entity<AiActionExecution>().Property(x => x.ActionType).HasMaxLength(128);
@@ -1170,6 +1197,10 @@ namespace TaskManagement.Infrastructure.Data
 
             modelBuilder.Entity<CollaborationChannel>(entity =>
             {
+                entity.Property(channel => channel.ChannelScope)
+                    .HasMaxLength(32)
+                    .HasDefaultValue("Private")
+                    .IsRequired();
                 entity.Property(channel => channel.Name).HasMaxLength(100).IsRequired();
                 entity.Property(channel => channel.Description).HasMaxLength(500);
                 entity.Property(channel => channel.ProvisioningKey).HasMaxLength(100);
@@ -1183,6 +1214,9 @@ namespace TaskManagement.Infrastructure.Data
                     })
                     .IsUnique()
                     .HasFilter("[ProvisioningKey] IS NOT NULL");
+                entity.HasIndex(channel => new { channel.ProjectId, channel.ChannelScope })
+                    .IsUnique()
+                    .HasFilter("[ChannelScope] = 'ProjectDiscussion' AND [IsDeleted] = 0 AND [IsArchived] = 0");
                 entity.HasOne(channel => channel.Workspace)
                     .WithMany()
                     .HasForeignKey(channel => channel.WorkspaceId)

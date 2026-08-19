@@ -16,8 +16,13 @@ WORKDIR /app
 
 COPY --from=build /app/publish .
 
+RUN mkdir -p /app/uploads /app/data-protection-keys \
+    && chown -R app:app /app/uploads /app/data-protection-keys
+
 ENV ASPNETCORE_URLS=http://+:8080
 
 EXPOSE 8080
+
+USER app
 
 ENTRYPOINT ["dotnet", "TaskManagement.API.dll"]

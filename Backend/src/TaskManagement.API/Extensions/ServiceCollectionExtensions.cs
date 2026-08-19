@@ -35,6 +35,7 @@ namespace TaskManagement.API.Extensions
                 client.Timeout = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("ZenMux:TimeoutSeconds", 30), 5, 120));
             });
             services.AddScoped<IAiCreditUsageService, AiCreditUsageService>();
+            services.AddScoped<IBillingService, BillingService>();
             services.AddScoped<IAiIntegrationService, AiIntegrationService>();
             services.AddHttpClient<IAiService, GeminiAiService>(client =>
             {
@@ -85,8 +86,9 @@ namespace TaskManagement.API.Extensions
                 {
                     OnMessageReceived = context =>
                     {
-                        if (context.HttpContext.Request.Path.StartsWithSegments(
-                                TaskManagement.API.Hubs.ChatHub.Route) &&
+                        var requestPath = context.HttpContext.Request.Path;
+                        if ((requestPath.StartsWithSegments(TaskManagement.API.Hubs.ChatHub.Route) ||
+                                requestPath.StartsWithSegments(TaskManagement.API.Hubs.KanbanHub.Route)) &&
                             context.Request.Query.TryGetValue("access_token", out var accessToken) &&
                             !string.IsNullOrWhiteSpace(accessToken))
                         {
@@ -153,4 +155,3 @@ namespace TaskManagement.API.Extensions
         }
     }
 }
-
