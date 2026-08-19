@@ -26,7 +26,7 @@
               </div>
               <UserAvatar :user="{ ...top2, fullName: top2.userName, id: top2.userId }" :size="80" :fontSize="24" class="card-avatar" />
               <div class="rank-badge silver-badge">
-                <svg viewBox="0 0 100 28" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
+                <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="silver-grad-main" x1="0%" y1="0%" x2="0%" y2="100%">
                       <stop offset="0%" stop-color="#FFFFFF" />
@@ -38,11 +38,11 @@
                       <stop offset="100%" stop-color="#475569" />
                     </linearGradient>
                   </defs>
-                  <path d="M 14 18 L 18 18 L 18 22 Z" class="ribbon-shadow" />
-                  <path d="M 86 18 L 82 18 L 82 22 Z" class="ribbon-shadow" />
-                  <path d="M 4 10 L 18 6 L 18 18 L 2 20 L 6 15 Z" class="ribbon-tail" fill="url(#silver-grad-tail)" />
-                  <path d="M 96 10 L 82 6 L 82 18 L 98 20 L 94 15 Z" class="ribbon-tail" fill="url(#silver-grad-tail)" />
-                  <path d="M 14 4 L 86 4 L 86 18 L 14 18 Z" class="ribbon-main" fill="url(#silver-grad-main)" />
+                  <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
+                  <path d="M 86 24 L 82 24 L 82 29 Z" class="ribbon-shadow" />
+                  <path d="M 4 13 L 18 8 L 18 24 L 2 26 L 6 19 Z" class="ribbon-tail" fill="url(#silver-grad-tail)" />
+                  <path d="M 96 13 L 82 8 L 82 24 L 98 26 L 94 19 Z" class="ribbon-tail" fill="url(#silver-grad-tail)" />
+                  <path d="M 14 5 L 86 5 L 86 24 L 14 24 Z" class="ribbon-main" fill="url(#silver-grad-main)" />
                 </svg>
                 <span class="rank-text">#2</span>
               </div>
@@ -58,7 +58,7 @@
               </div>
               <div class="card-avatar avatar-empty">-</div>
               <div class="rank-badge silver-badge">
-                <svg viewBox="0 0 100 28" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
+                <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="silver-grad-main-empty" x1="0%" y1="0%" x2="0%" y2="100%">
                       <stop offset="0%" stop-color="#FFFFFF" />
@@ -70,11 +70,11 @@
                       <stop offset="100%" stop-color="#475569" />
                     </linearGradient>
                   </defs>
-                  <path d="M 14 18 L 18 18 L 18 22 Z" class="ribbon-shadow" />
-                  <path d="M 86 18 L 82 18 L 82 22 Z" class="ribbon-shadow" />
-                  <path d="M 4 10 L 18 6 L 18 18 L 2 20 L 6 15 Z" class="ribbon-tail" fill="url(#silver-grad-tail-empty)" />
-                  <path d="M 96 10 L 82 6 L 82 18 L 98 20 L 94 15 Z" class="ribbon-tail" fill="url(#silver-grad-tail-empty)" />
-                  <path d="M 14 4 L 86 4 L 86 18 L 14 18 Z" class="ribbon-main" fill="url(#silver-grad-main-empty)" />
+                  <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
+                  <path d="M 86 24 L 82 24 L 82 29 Z" class="ribbon-shadow" />
+                  <path d="M 4 13 L 18 8 L 18 24 L 2 26 L 6 19 Z" class="ribbon-tail" fill="url(#silver-grad-tail-empty)" />
+                  <path d="M 96 13 L 82 8 L 82 24 L 98 26 L 94 19 Z" class="ribbon-tail" fill="url(#silver-grad-tail-empty)" />
+                  <path d="M 14 5 L 86 5 L 86 24 L 14 24 Z" class="ribbon-main" fill="url(#silver-grad-main-empty)" />
                 </svg>
                 <span class="rank-text">#2</span>
               </div>
@@ -91,7 +91,7 @@
               </div>
               <UserAvatar :user="{ ...top1, fullName: top1.userName, id: top1.userId }" :size="96" :fontSize="28" class="card-avatar" />
               <div class="rank-badge gold-badge">
-                <svg viewBox="0 0 100 28" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
+                <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="gold-grad-main" x1="0%" y1="0%" x2="0%" y2="100%">
                       <stop offset="0%" stop-color="#FFE57F" />
@@ -103,11 +103,11 @@
                       <stop offset="100%" stop-color="#C36A00" />
                     </linearGradient>
                   </defs>
-                  <path d="M 14 18 L 18 18 L 18 22 Z" class="ribbon-shadow" />
-                  <path d="M 86 18 L 82 18 L 82 22 Z" class="ribbon-shadow" />
-                  <path d="M 4 10 L 18 6 L 18 18 L 2 20 L 6 15 Z" class="ribbon-tail" fill="url(#gold-grad-tail)" />
-                  <path d="M 96 10 L 82 6 L 82 18 L 98 20 L 94 15 Z" class="ribbon-tail" fill="url(#gold-grad-tail)" />
-                  <path d="M 14 4 L 86 4 L 86 18 L 14 18 Z" class="ribbon-main" fill="url(#gold-grad-main)" />
+                  <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
+                  <path d="M 86 24 L 82 24 L 82 29 Z" class="ribbon-shadow" />
+                  <path d="M 4 13 L 18 8 L 18 24 L 2 26 L 6 19 Z" class="ribbon-tail" fill="url(#gold-grad-tail)" />
+                  <path d="M 96 13 L 82 8 L 82 24 L 98 26 L 94 19 Z" class="ribbon-tail" fill="url(#gold-grad-tail)" />
+                  <path d="M 14 5 L 86 5 L 86 24 L 14 24 Z" class="ribbon-main" fill="url(#gold-grad-main)" />
                 </svg>
                 <span class="rank-text">#1</span>
               </div>
@@ -123,7 +123,7 @@
               </div>
               <div class="card-avatar avatar-empty">-</div>
               <div class="rank-badge gold-badge">
-                <svg viewBox="0 0 100 28" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
+                <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="gold-grad-main-empty" x1="0%" y1="0%" x2="0%" y2="100%">
                       <stop offset="0%" stop-color="#FFE57F" />
@@ -135,11 +135,11 @@
                       <stop offset="100%" stop-color="#C36A00" />
                     </linearGradient>
                   </defs>
-                  <path d="M 14 18 L 18 18 L 18 22 Z" class="ribbon-shadow" />
-                  <path d="M 86 18 L 82 18 L 82 22 Z" class="ribbon-shadow" />
-                  <path d="M 4 10 L 18 6 L 18 18 L 2 20 L 6 15 Z" class="ribbon-tail" fill="url(#gold-grad-tail-empty)" />
-                  <path d="M 96 10 L 82 6 L 82 18 L 98 20 L 94 15 Z" class="ribbon-tail" fill="url(#gold-grad-tail-empty)" />
-                  <path d="M 14 4 L 86 4 L 86 18 L 14 18 Z" class="ribbon-main" fill="url(#gold-grad-main-empty)" />
+                  <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
+                  <path d="M 86 24 L 82 24 L 82 29 Z" class="ribbon-shadow" />
+                  <path d="M 4 13 L 18 8 L 18 24 L 2 26 L 6 19 Z" class="ribbon-tail" fill="url(#gold-grad-tail-empty)" />
+                  <path d="M 96 13 L 82 8 L 82 24 L 98 26 L 94 19 Z" class="ribbon-tail" fill="url(#gold-grad-tail-empty)" />
+                  <path d="M 14 5 L 86 5 L 86 24 L 14 24 Z" class="ribbon-main" fill="url(#gold-grad-main-empty)" />
                 </svg>
                 <span class="rank-text">#1</span>
               </div>
@@ -156,7 +156,7 @@
               </div>
               <UserAvatar :user="{ ...top3, fullName: top3.userName, id: top3.userId }" :size="68" :fontSize="20" class="card-avatar" />
               <div class="rank-badge bronze-badge">
-                <svg viewBox="0 0 100 28" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
+                <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="bronze-grad-main" x1="0%" y1="0%" x2="0%" y2="100%">
                       <stop offset="0%" stop-color="#FFD8B3" />
@@ -168,11 +168,11 @@
                       <stop offset="100%" stop-color="#5C2E16" />
                     </linearGradient>
                   </defs>
-                  <path d="M 14 18 L 18 18 L 18 22 Z" class="ribbon-shadow" />
-                  <path d="M 86 18 L 82 18 L 82 22 Z" class="ribbon-shadow" />
-                  <path d="M 4 10 L 18 6 L 18 18 L 2 20 L 6 15 Z" class="ribbon-tail" fill="url(#bronze-grad-tail)" />
-                  <path d="M 96 10 L 82 6 L 82 18 L 98 20 L 94 15 Z" class="ribbon-tail" fill="url(#bronze-grad-tail)" />
-                  <path d="M 14 4 L 86 4 L 86 18 L 14 18 Z" class="ribbon-main" fill="url(#bronze-grad-main)" />
+                  <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
+                  <path d="M 86 24 L 82 24 L 82 29 Z" class="ribbon-shadow" />
+                  <path d="M 4 13 L 18 8 L 18 24 L 2 26 L 6 19 Z" class="ribbon-tail" fill="url(#bronze-grad-tail)" />
+                  <path d="M 96 13 L 82 8 L 82 24 L 98 26 L 94 19 Z" class="ribbon-tail" fill="url(#bronze-grad-tail)" />
+                  <path d="M 14 5 L 86 5 L 86 24 L 14 24 Z" class="ribbon-main" fill="url(#bronze-grad-main)" />
                 </svg>
                 <span class="rank-text">#3</span>
               </div>
@@ -188,7 +188,7 @@
               </div>
               <div class="card-avatar avatar-empty">-</div>
               <div class="rank-badge bronze-badge">
-                <svg viewBox="0 0 100 28" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
+                <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="bronze-grad-main-empty" x1="0%" y1="0%" x2="0%" y2="100%">
                       <stop offset="0%" stop-color="#FFD8B3" />
@@ -200,11 +200,11 @@
                       <stop offset="100%" stop-color="#5C2E16" />
                     </linearGradient>
                   </defs>
-                  <path d="M 14 18 L 18 18 L 18 22 Z" class="ribbon-shadow" />
-                  <path d="M 86 18 L 82 18 L 82 22 Z" class="ribbon-shadow" />
-                  <path d="M 4 10 L 18 6 L 18 18 L 2 20 L 6 15 Z" class="ribbon-tail" fill="url(#bronze-grad-tail-empty)" />
-                  <path d="M 96 10 L 82 6 L 82 18 L 98 20 L 94 15 Z" class="ribbon-tail" fill="url(#bronze-grad-tail-empty)" />
-                  <path d="M 14 4 L 86 4 L 86 18 L 14 18 Z" class="ribbon-main" fill="url(#bronze-grad-main-empty)" />
+                  <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
+                  <path d="M 86 24 L 82 24 L 82 29 Z" class="ribbon-shadow" />
+                  <path d="M 4 13 L 18 8 L 18 24 L 2 26 L 6 19 Z" class="ribbon-tail" fill="url(#bronze-grad-tail-empty)" />
+                  <path d="M 96 13 L 82 8 L 82 24 L 98 26 L 94 19 Z" class="ribbon-tail" fill="url(#bronze-grad-tail-empty)" />
+                  <path d="M 14 5 L 86 5 L 86 24 L 14 24 Z" class="ribbon-main" fill="url(#bronze-grad-main-empty)" />
                 </svg>
                 <span class="rank-text">#3</span>
               </div>
@@ -838,6 +838,8 @@ onMounted(loadRewards)
 .card-avatar {
   border-radius: 50%;
   box-sizing: border-box;
+  position: relative;
+  z-index: 5;
 }
 
 .gold-col .card-avatar {
@@ -846,8 +848,8 @@ onMounted(loadRewards)
 }
 
 .silver-col .card-avatar {
-  border: 3.5px solid #E2E8F0 !important;
-  box-shadow: 0 0 18px rgba(226, 232, 240, 0.35);
+  border: 3.5px solid #94A3B8 !important;
+  box-shadow: 0 0 18px rgba(148, 163, 184, 0.45);
 }
 
 .bronze-col .card-avatar {
@@ -859,39 +861,39 @@ onMounted(loadRewards)
   position: absolute;
   left: 50%;
   transform: translateX(-50%) rotate(-5deg);
-  z-index: 10;
+  z-index: 1;
   filter: drop-shadow(0 4px 6px rgba(0,0,0,0.25));
 }
 
 .gold-crown {
   font-size: 32px;
   color: #FFD700;
-  top: -24px;
+  top: -20px;
   text-shadow: 0 2px 0 #b38600, 0 4px 0 #806000;
 }
 
 .silver-crown {
   font-size: 26px;
-  color: #E2E8F0;
-  top: -20px;
-  text-shadow: 0 2px 0 #94a3b8, 0 4px 0 #64748b;
+  color: #94A3B8;
+  top: -16px;
+  text-shadow: 0 2px 0 #475569, 0 4px 0 #334155;
 }
 
 .bronze-crown {
   font-size: 24px;
   color: #CD7F32;
-  top: -18px;
+  top: -14px;
   text-shadow: 0 2px 0 #a0522d, 0 4px 0 #8b4513;
 }
 
 .rank-badge {
   position: absolute;
-  bottom: -12px;
+  bottom: -14px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
-  width: 90px;
-  height: 30px;
+  width: 100px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -914,12 +916,25 @@ onMounted(loadRewards)
 .rank-text {
   position: relative;
   z-index: 11;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 900;
-  color: #fff;
   letter-spacing: 0.05em;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
   margin-top: -3px;
+}
+
+.gold-badge .rank-text {
+  color: #4a2700;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.silver-badge .rank-text {
+  color: #1e293b;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.bronze-badge .rank-text {
+  color: #4a1c00;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 .card-name {
