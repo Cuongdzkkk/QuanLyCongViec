@@ -12,6 +12,9 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Net.Http.Headers;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Http;
+using System.Security.Claims;
 
 namespace TaskManagement.Infrastructure.Services
 {
@@ -24,6 +27,9 @@ namespace TaskManagement.Infrastructure.Services
         private readonly IEmailService _emailService;
         private readonly IGoogleIdentityValidator _googleIdentityValidator;
         private readonly ICollaborationChannelService? _collaborationChannelService;
+        private readonly IHttpContextAccessor? _httpContextAccessor;
+        private readonly ISignalRClientNotifier? _clientNotifier;
+        private readonly ILogger<AuthService>? _logger;
 
         public AuthService(
             ApplicationDbContext context,
@@ -32,7 +38,10 @@ namespace TaskManagement.Infrastructure.Services
             IOtpService otpService,
             IEmailService emailService,
             IGoogleIdentityValidator? googleIdentityValidator = null,
-            ICollaborationChannelService? collaborationChannelService = null)
+            ICollaborationChannelService? collaborationChannelService = null,
+            IHttpContextAccessor? httpContextAccessor = null,
+            ISignalRClientNotifier? clientNotifier = null,
+            ILogger<AuthService>? logger = null)
         {
             _context = context;
             _jwtService = jwtService;
@@ -41,6 +50,9 @@ namespace TaskManagement.Infrastructure.Services
             _emailService = emailService;
             _googleIdentityValidator = googleIdentityValidator ?? new GoogleIdentityValidator(configuration);
             _collaborationChannelService = collaborationChannelService;
+            _httpContextAccessor = httpContextAccessor;
+            _clientNotifier = clientNotifier;
+            _logger = logger;
         }
 
         public async Task<(AuthResponseDto? response, string? refreshToken, bool requires2FA)> LoginAsync(LoginRequestDto request)
@@ -737,12 +749,30 @@ namespace TaskManagement.Infrastructure.Services
             var invite = await FindValidInviteTokenAsync(request.Token);
             var user = invite.User;
 
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId.HasValue && currentUserId.Value != user.Id)
+            {
+                throw new InvalidOperationException(
+                    $"Lời mời này dành cho {user.Email}. Bạn đang đăng nhập bằng tài khoản khác.");
+            }
+
             if (!string.IsNullOrEmpty(user.PasswordHash) && !user.IsActive)
             {
                 throw new UnauthorizedAccessException("Account is suspended.");
             }
 
             var isNewInvitedUser = string.IsNullOrEmpty(user.PasswordHash);
+            if (!isNewInvitedUser && !currentUserId.HasValue)
+            {
+                return new AcceptInviteResultDto
+                {
+                    Email = user.Email,
+                    RequiresLogin = true,
+                    RedirectPath = GetInviteRedirectPath(invite),
+                    ProjectId = GetInviteProjectId(invite)
+                };
+            }
+
             if (isNewInvitedUser)
             {
                 if (string.IsNullOrWhiteSpace(request.FullName))
@@ -766,15 +796,24 @@ namespace TaskManagement.Infrastructure.Services
 
             await ActivatePendingProjectInvitesAsync(user.Id, GetInviteProjectId(invite));
             invite.IsRevoked = true;
+            List<Notification> updatedNotifications = [];
+            if (invite.ProjectInvitation != null)
+            {
+                invite.ProjectInvitation.Status = "Accepted";
+                invite.ProjectInvitation.AcceptedAt = DateTime.UtcNow;
+                invite.ProjectInvitation.UpdatedAt = DateTime.UtcNow;
+                updatedNotifications = await UpdateInvitationNotificationsAsync(invite.ProjectInvitation.Id, user.Id, "Accepted");
+            }
             await _context.SaveChangesAsync();
+            await NotifyInvitationUpdatesAsync(user.Id, updatedNotifications);
 
             if (!isNewInvitedUser)
             {
                 return new AcceptInviteResultDto
                 {
                     Email = user.Email,
-                    RequiresLogin = true,
-                    RedirectPath = "/dashboard"
+                    RequiresLogin = !currentUserId.HasValue,
+                    RedirectPath = GetInviteRedirectPath(invite)
                 };
             }
 
@@ -783,11 +822,196 @@ namespace TaskManagement.Infrastructure.Services
             {
                 Email = user.Email,
                 RequiresLogin = false,
-                RedirectPath = "/dashboard",
+                RedirectPath = GetInviteRedirectPath(invite),
+                ProjectId = GetInviteProjectId(invite),
                 Response = tokenResult.response,
                 RefreshToken = tokenResult.refreshToken
             };
         }
+
+        public async Task<AcceptInviteResultDto> AcceptProjectInvitationAsync(Guid invitationId, Guid userId)
+        {
+            if (userId == Guid.Empty) throw new UnauthorizedAccessException("Authenticated user is required.");
+
+            InvitationActionResult action;
+            if (_context.Database.IsRelational())
+            {
+                var strategy = _context.Database.CreateExecutionStrategy();
+                action = await strategy.ExecuteAsync(() => AcceptProjectInvitationCoreAsync(invitationId, userId));
+            }
+            else
+            {
+                action = await AcceptProjectInvitationCoreAsync(invitationId, userId);
+            }
+
+            await NotifyInvitationUpdatesAsync(userId, action.UpdatedNotifications);
+            return action.Result;
+        }
+
+        private async Task<InvitationActionResult> AcceptProjectInvitationCoreAsync(Guid invitationId, Guid userId)
+        {
+            await using var transaction = _context.Database.IsRelational()
+                ? await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable)
+                : null;
+
+            var invitation = await _context.ProjectInvitations
+                .Include(item => item.Project)
+                .Include(item => item.User)
+                .SingleOrDefaultAsync(item => item.Id == invitationId);
+            if (invitation == null) throw new KeyNotFoundException("Invitation not found.");
+            if (invitation.UserId != userId)
+                throw new InvalidOperationException($"Lời mời này dành cho {invitation.User.Email}. Bạn đang đăng nhập bằng tài khoản khác.");
+            if (!string.Equals(invitation.Status, "Pending", StringComparison.OrdinalIgnoreCase) || invitation.ExpiresAt <= DateTime.UtcNow)
+                throw new InvalidOperationException("Invitation is no longer pending or has expired.");
+
+            var membership = await _context.ProjectMembers.SingleOrDefaultAsync(item =>
+                item.ProjectId == invitation.ProjectId && item.UserId == userId);
+            if (membership == null || membership.LeftAt != null)
+                throw new InvalidOperationException("Project membership is no longer available.");
+            if (membership.Status)
+                throw new InvalidOperationException("You are already an active project member.");
+
+            membership.Status = true;
+            var workspaceMembership = await _context.WorkspaceMembers.SingleOrDefaultAsync(item =>
+                item.WorkspaceId == invitation.Project.WorkspaceId && item.UserId == userId);
+            if (workspaceMembership == null)
+            {
+                _context.WorkspaceMembers.Add(new WorkspaceMember
+                {
+                    WorkspaceId = invitation.Project.WorkspaceId,
+                    UserId = userId,
+                    WorkspaceRole = "MEMBER",
+                    JoinedAt = DateTime.UtcNow,
+                    IsActive = true
+                });
+            }
+            else
+            {
+                workspaceMembership.IsActive = true;
+            }
+
+            invitation.Status = "Accepted";
+            invitation.AcceptedAt = DateTime.UtcNow;
+            invitation.UpdatedAt = DateTime.UtcNow;
+                var updatedNotifications = await UpdateInvitationNotificationsAsync(invitation.Id, userId, "Accepted");
+            if (_collaborationChannelService != null)
+            {
+                await _collaborationChannelService.EnsureProjectMemberAccessAsync(
+                    invitation.ProjectId,
+                    userId,
+                    assumeActiveProjectMember: true);
+            }
+
+            var invitationTokens = await _context.RefreshTokens
+                .Where(token => token.ProjectInvitationId == invitation.Id && !token.IsRevoked)
+                .ToListAsync();
+            foreach (var token in invitationTokens) token.IsRevoked = true;
+            await _context.SaveChangesAsync();
+            if (transaction != null) await transaction.CommitAsync();
+
+            return new InvitationActionResult(
+                new AcceptInviteResultDto
+                {
+                    Email = invitation.User.Email,
+                    RequiresLogin = false,
+                    RedirectPath = $"/space/{invitation.ProjectId}",
+                    ProjectId = invitation.ProjectId
+                },
+                updatedNotifications);
+        }
+
+        public async Task DeclineProjectInvitationAsync(Guid invitationId, Guid userId)
+        {
+            if (userId == Guid.Empty) throw new UnauthorizedAccessException("Authenticated user is required.");
+
+            IReadOnlyList<Notification> updatedNotifications;
+            if (_context.Database.IsRelational())
+            {
+                var strategy = _context.Database.CreateExecutionStrategy();
+                updatedNotifications = await strategy.ExecuteAsync(() => DeclineProjectInvitationCoreAsync(invitationId, userId));
+            }
+            else
+            {
+                updatedNotifications = await DeclineProjectInvitationCoreAsync(invitationId, userId);
+            }
+
+            await NotifyInvitationUpdatesAsync(userId, updatedNotifications);
+        }
+
+        private async Task<IReadOnlyList<Notification>> DeclineProjectInvitationCoreAsync(Guid invitationId, Guid userId)
+        {
+            await using var transaction = _context.Database.IsRelational()
+                ? await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable)
+                : null;
+            var invitation = await _context.ProjectInvitations
+                .Include(item => item.User)
+                .SingleOrDefaultAsync(item => item.Id == invitationId);
+            if (invitation == null) throw new KeyNotFoundException("Invitation not found.");
+            if (invitation.UserId != userId)
+                throw new InvalidOperationException($"Lời mời này dành cho {invitation.User.Email}. Bạn đang đăng nhập bằng tài khoản khác.");
+            if (!string.Equals(invitation.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Invitation is no longer pending.");
+
+            invitation.Status = "Declined";
+            invitation.DeclinedAt = DateTime.UtcNow;
+            invitation.UpdatedAt = DateTime.UtcNow;
+            var membership = await _context.ProjectMembers.SingleOrDefaultAsync(item =>
+                item.ProjectId == invitation.ProjectId && item.UserId == userId && !item.Status);
+            if (membership != null) membership.LeftAt = DateTime.UtcNow;
+            var updatedNotifications = await UpdateInvitationNotificationsAsync(invitation.Id, userId, "Declined");
+            var invitationTokens = await _context.RefreshTokens
+                .Where(token => token.ProjectInvitationId == invitation.Id && !token.IsRevoked)
+                .ToListAsync();
+            foreach (var token in invitationTokens) token.IsRevoked = true;
+            await _context.SaveChangesAsync();
+            if (transaction != null) await transaction.CommitAsync();
+            return updatedNotifications;
+        }
+
+        private async Task NotifyInvitationUpdatesAsync(Guid userId, IEnumerable<Notification> notifications)
+        {
+            if (_clientNotifier == null) return;
+
+            foreach (var notification in notifications)
+            {
+                try
+                {
+                    await _clientNotifier.SendNotificationUpdatedAsync(userId, notification);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex,
+                        "Invitation notification realtime update failed after the invitation state was committed for user {UserId}.",
+                        userId);
+                }
+            }
+        }
+
+        private sealed record InvitationActionResult(
+            AcceptInviteResultDto Result,
+            IReadOnlyList<Notification> UpdatedNotifications);
+
+        private async Task<List<Notification>> UpdateInvitationNotificationsAsync(Guid invitationId, Guid userId, string actionState)
+        {
+            var notifications = await _context.Notifications
+                .Where(notification => notification.UserId == userId && notification.RelatedInvitationId == invitationId)
+                .ToListAsync();
+            foreach (var notification in notifications)
+            {
+                notification.ActionState = actionState;
+                notification.IsRead = true;
+            }
+            return notifications;
+        }
+
+        private Guid? GetCurrentUserId()
+        {
+            var claim = _httpContextAccessor?.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            return Guid.TryParse(claim, out var userId) ? userId : null;
+        }
+
+        private static string GetInviteRedirectPath(RefreshToken invite) =>
+            GetInviteProjectId(invite) is Guid projectId ? $"/space/{projectId}" : "/dashboard";
 
         private async Task<RefreshToken> FindValidInviteTokenAsync(string rawToken)
         {
@@ -799,6 +1023,7 @@ namespace TaskManagement.Infrastructure.Services
                 .Include(rt => rt.User)
                     .ThenInclude(u => u.UserRoles)
                     .ThenInclude(ur => ur.Role)
+                .Include(rt => rt.ProjectInvitation)
                 .FirstOrDefaultAsync(rt =>
                     rt.Token == tokenHash &&
                     (rt.DeviceId == "Invite" || (rt.DeviceId != null && rt.DeviceId.StartsWith("Invite:"))) &&

@@ -58,6 +58,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<SiteAuditLog> SiteAuditLogs { get; set; }
         public DbSet<Notification> Notifications { get; set; }
+        public DbSet<ProjectInvitation> ProjectInvitations { get; set; }
         public DbSet<NotificationPreference> NotificationPreferences { get; set; }
         public DbSet<RecentView> RecentViews { get; set; }
 
@@ -540,6 +541,27 @@ namespace TaskManagement.Infrastructure.Data
                 entity.HasOne(n => n.ChannelMessage).WithMany()
                     .HasForeignKey(n => n.ChannelMessageId)
                     .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(n => n.RelatedInvitation).WithMany()
+                    .HasForeignKey(n => n.RelatedInvitationId)
+                    .OnDelete(DeleteBehavior.NoAction);
+                entity.Property(n => n.ActionState).HasMaxLength(32);
+            });
+
+            modelBuilder.Entity<ProjectInvitation>(entity =>
+            {
+                entity.HasKey(invitation => invitation.Id);
+                entity.Property(invitation => invitation.InvitedEmail).HasMaxLength(320).IsRequired();
+                entity.Property(invitation => invitation.Status).HasMaxLength(32).IsRequired();
+                entity.HasIndex(invitation => new { invitation.ProjectId, invitation.UserId, invitation.Status });
+                entity.HasOne(invitation => invitation.Project).WithMany()
+                    .HasForeignKey(invitation => invitation.ProjectId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(invitation => invitation.User).WithMany()
+                    .HasForeignKey(invitation => invitation.UserId)
+                    .OnDelete(DeleteBehavior.NoAction);
+                entity.HasOne(invitation => invitation.InvitedByUser).WithMany()
+                    .HasForeignKey(invitation => invitation.InvitedByUserId)
+                    .OnDelete(DeleteBehavior.NoAction);
             });
 
             modelBuilder.Entity<SystemAuditLog>()

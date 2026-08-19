@@ -11,6 +11,11 @@ namespace TaskManagement.Infrastructure.Data.Configurations
             builder.HasKey(t => t.Id);
             builder.Property(t => t.Token).IsRequired().HasMaxLength(500);
             builder.Property(t => t.DeviceId).HasMaxLength(255);
+
+            builder.HasOne(rt => rt.ProjectInvitation)
+                   .WithMany()
+                   .HasForeignKey(rt => rt.ProjectInvitationId)
+                   .OnDelete(DeleteBehavior.SetNull);
             
             builder.HasOne(rt => rt.User)
                    .WithMany(u => u.RefreshTokens)

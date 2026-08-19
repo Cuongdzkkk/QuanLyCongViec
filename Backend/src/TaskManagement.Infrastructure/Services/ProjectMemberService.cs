@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.Project;
 using TaskManagement.Application.Interfaces;
@@ -18,32 +19,55 @@ namespace TaskManagement.Infrastructure.Services
         private readonly IEmailService _emailService;
         private readonly IConfiguration _configuration;
         private readonly ICollaborationChannelService? _collaborationChannelService;
+        private readonly ISignalRClientNotifier? _clientNotifier;
+        private readonly ILogger<ProjectMemberService>? _logger;
 
         public ProjectMemberService(
             ApplicationDbContext context,
             IEmailService emailService,
             IConfiguration configuration,
-            ICollaborationChannelService? collaborationChannelService = null)
+            ICollaborationChannelService? collaborationChannelService = null,
+            ISignalRClientNotifier? clientNotifier = null,
+            ILogger<ProjectMemberService>? logger = null)
         {
             _context = context;
             _emailService = emailService;
             _configuration = configuration;
             _collaborationChannelService = collaborationChannelService;
+            _clientNotifier = clientNotifier;
+            _logger = logger;
         }
 
         public async Task<ProjectInvitationOutcome> InviteMemberAsync(
             Guid projectId,
             ProjectMemberRequestDto request,
-            string inviterName)
+            string inviterName,
+            Guid? inviterUserId = null)
         {
             var persistence = _context.Database.IsRelational()
                 ? await _context.Database.CreateExecutionStrategy()
-                    .ExecuteAsync(() => PersistInvitationAsync(projectId, request))
-                : await PersistInvitationAsync(projectId, request);
+                    .ExecuteAsync(() => PersistInvitationAsync(projectId, request, inviterName, inviterUserId))
+                : await PersistInvitationAsync(projectId, request, inviterName, inviterUserId);
 
             if (persistence.Outcome != ProjectInvitationOutcome.InvitationCreated)
             {
                 return persistence.Outcome;
+            }
+
+            if (persistence.Notification != null && _clientNotifier != null)
+            {
+                try
+                {
+                    await _clientNotifier.SendNotificationAsync(
+                        persistence.Notification.UserId,
+                        persistence.Notification);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex,
+                        "Invitation notification realtime delivery failed after persistence for user {UserId}.",
+                        persistence.Notification.UserId);
+                }
             }
 
             await _emailService.SendInviteEmailAsync(
@@ -60,7 +84,9 @@ namespace TaskManagement.Infrastructure.Services
 
         private async Task<InvitationPersistenceResult> PersistInvitationAsync(
             Guid projectId,
-            ProjectMemberRequestDto request)
+            ProjectMemberRequestDto request,
+            string inviterName,
+            Guid? inviterUserId)
         {
             var normalizedEmail = EmailCanonicalizer.Normalize(request.Email);
             if (string.IsNullOrWhiteSpace(normalizedEmail))
@@ -77,6 +103,8 @@ namespace TaskManagement.Infrastructure.Services
             string? rawInviteToken = null;
             User? invitedUser = null;
             Project? invitedProject = null;
+            ProjectInvitation? invitation = null;
+            Notification? notification = null;
 
             try
             {
@@ -125,19 +153,21 @@ namespace TaskManagement.Infrastructure.Services
                     invitedUser.UpdatedAt = now;
                 }
 
+                var isExistingSprintAUser = !string.IsNullOrEmpty(invitedUser.PasswordHash);
+
                 var membership = await _context.ProjectMembers
                     .SingleOrDefaultAsync(member => member.ProjectId == projectId && member.UserId == invitedUser.Id);
 
                 if (membership?.Status == true)
                 {
                     if (transaction != null) await transaction.CommitAsync();
-                    return new InvitationPersistenceResult(ProjectInvitationOutcome.AlreadyActiveMember, null, null, null, null);
+                    return new InvitationPersistenceResult(ProjectInvitationOutcome.AlreadyActiveMember, null, null, null, null, null, null);
                 }
 
                 if (membership is { Status: false, LeftAt: null })
                 {
                     if (transaction != null) await transaction.CommitAsync();
-                    return new InvitationPersistenceResult(ProjectInvitationOutcome.InvitationAlreadyPending, null, null, null, null);
+                    return new InvitationPersistenceResult(ProjectInvitationOutcome.InvitationAlreadyPending, null, null, null, null, null, null);
                 }
 
                 if (membership == null)
@@ -159,6 +189,20 @@ namespace TaskManagement.Infrastructure.Services
                     membership.LeftAt = null;
                     membership.Status = false;
                 }
+
+                invitation = new ProjectInvitation
+                {
+                    Id = Guid.NewGuid(),
+                    ProjectId = projectId,
+                    UserId = invitedUser.Id,
+                    InvitedByUserId = inviterUserId,
+                    InvitedEmail = normalizedEmail,
+                    Status = "Pending",
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                    ExpiresAt = now.AddDays(7)
+                };
+                _context.ProjectInvitations.Add(invitation);
 
                 var workspaceMembership = await _context.WorkspaceMembers.SingleOrDefaultAsync(member =>
                     member.WorkspaceId == invitedProject.WorkspaceId && member.UserId == invitedUser.Id);
@@ -190,11 +234,32 @@ namespace TaskManagement.Infrastructure.Services
                 {
                     Id = Guid.NewGuid(),
                     UserId = invitedUser.Id,
+                    ProjectInvitationId = invitation.Id,
                     Token = HashToken(rawInviteToken),
                     DeviceId = inviteDeviceId,
                     ExpiryTime = now.AddDays(7),
                     IsRevoked = false
                 });
+
+                if (isExistingSprintAUser)
+                {
+                    notification = new Notification
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = invitedUser.Id,
+                        Title = invitedProject.Name,
+                        Content = $"{inviterName} đã mời bạn tham gia dự án {invitedProject.Name}",
+                        NotificationType = "PROJECT_INVITATION",
+                        RelatedProjectId = projectId,
+                        RelatedInvitationId = invitation.Id,
+                        ActionState = "Pending",
+                        LinkUrl = $"/space/{projectId}",
+                        TriggeredByUserId = inviterUserId,
+                        CreatedAt = now,
+                        IsRead = false
+                    };
+                    _context.Notifications.Add(notification);
+                }
 
                 await _context.SaveChangesAsync();
                 if (transaction != null) await transaction.CommitAsync();
@@ -220,7 +285,9 @@ namespace TaskManagement.Infrastructure.Services
                 normalizedEmail,
                 invitedUser,
                 invitedProject,
-                rawInviteToken);
+                rawInviteToken,
+                invitation,
+                notification);
         }
 
         public async Task RemoveMemberAsync(
@@ -615,6 +682,8 @@ namespace TaskManagement.Infrastructure.Services
             string? NormalizedEmail,
             User? InvitedUser,
             Project? InvitedProject,
-            string? RawInviteToken);
+            string? RawInviteToken,
+            ProjectInvitation? Invitation,
+            Notification? Notification);
     }
 }

@@ -34,8 +34,7 @@
               :key="notification.id"
               class="notif-item-wrapper"
             >
-              <button
-                type="button"
+              <div
                 class="notif-item"
                 :class="{ unread: !notification.isRead }"
                 @click="openNotification(notification)"
@@ -52,18 +51,29 @@
                     <span class="notif-title-badge">{{ notification.title }}</span>
                     <span class="time-ago">{{ formatTimeAgo(notification.createdAt) }}</span>
                   </div>
+                  <div
+                    v-if="isPendingInvitation(notification)"
+                    class="invitation-actions"
+                    @click.stop
+                  >
+                    <el-button type="primary" size="small" :loading="invitationActionId === notification.id" @click="acceptInvitation(notification)">Chấp nhận</el-button>
+                    <el-button size="small" :loading="invitationActionId === notification.id" @click="declineInvitation(notification)">Từ chối</el-button>
+                  </div>
+                  <div v-else-if="isResolvedInvitation(notification)" class="invitation-resolved">
+                    {{ notification.actionState === 'Accepted' ? 'Bạn đã tham gia dự án này.' : 'Bạn đã từ chối lời mời tham gia dự án này.' }}
+                  </div>
                 </div>
                 <div v-if="!notification.isRead" class="unread-dot-box" @click.stop="markAsRead(notification)">
                   <div class="unread-dot"></div>
                   <div class="mark-read-hint">Đánh dấu đã đọc</div>
                 </div>
-              </button>
+              </div>
             </div>
           </div>
         </div>
 
         <div class="notif-footer">
-          <el-button type="primary" link size="small" @click="router.push('/notifications')">Xem tất cả thông báo</el-button>
+          <el-button type="primary" link size="small" @click="router.push('/home/notifications')">Xem tất cả thông báo</el-button>
         </div>
       </div>
     </template>
@@ -95,7 +105,8 @@ let unsubscribeCollaborationReconnect = null
 let notificationRequestId = 0
 let notificationAbortController = null
 
-const unreadCount = computed(() => notifications.value.filter(item => !item.isRead).length)
+const unreadCount = ref(0)
+const invitationActionId = ref(null)
 const filteredNotifications = computed(() => {
   if (onlyUnread.value) return notifications.value.filter(item => !item.isRead)
   return notifications.value
@@ -141,6 +152,15 @@ const getTypeClass = (type) => {
   }
 }
 
+const isPendingInvitation = (notification) =>
+  notification.notificationType?.toUpperCase() === 'PROJECT_INVITATION' &&
+  notification.actionState === 'Pending' &&
+  Boolean(notification.relatedInvitationId)
+
+const isResolvedInvitation = (notification) =>
+  notification.notificationType?.toUpperCase() === 'PROJECT_INVITATION' &&
+  ['Accepted', 'Declined'].includes(notification.actionState)
+
 const normalizeLink = (notification) => {
   if (notification.linkUrl?.startsWith('/chat')) return notification.linkUrl
   if (notification.linkUrl?.startsWith('/space/')) return notification.linkUrl
@@ -180,13 +200,24 @@ const fetchNotifications = async () => {
   }
 }
 
+const fetchUnreadCount = async () => {
+  try {
+    const response = await axiosClient.get('/notifications/unread-count')
+    unreadCount.value = Number(response.data?.data ?? 0)
+  } catch (error) {
+    if (!isExpectedNetworkError(error)) ElMessage.error('Could not load unread notification count')
+  }
+}
+
 const markAsRead = async (notification) => {
   if (notification.isRead) return
   try {
     notification.isRead = true
     await axiosClient.put(`/notifications/${notification.id}/read`)
+    await fetchUnreadCount()
   } catch (error) {
     notification.isRead = false
+    await fetchUnreadCount()
     ElMessage.error('Could not update notification')
   }
 }
@@ -206,13 +237,49 @@ const markAllAsRead = async () => {
   try {
     await axiosClient.put('/notifications/read-all')
     notifications.value = notifications.value.map(item => ({ ...item, isRead: true }))
+    unreadCount.value = 0
   } catch (error) {
     ElMessage.error('Could not mark all notifications as read')
   }
 }
 
 const handleDropdownOpen = (visible) => {
-  if (visible) fetchNotifications()
+  if (visible) {
+    void fetchNotifications()
+    void fetchUnreadCount()
+  }
+}
+
+const acceptInvitation = async (notification) => {
+  if (!isPendingInvitation(notification) || invitationActionId.value) return
+  invitationActionId.value = notification.id
+  try {
+    const response = await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/accept`)
+    notification.actionState = 'Accepted'
+    notification.isRead = true
+    await fetchUnreadCount()
+    const redirectPath = response.data?.data?.redirectPath || notification.linkUrl || '/dashboard'
+    await router.push(redirectPath)
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Không thể chấp nhận lời mời.')
+  } finally {
+    invitationActionId.value = null
+  }
+}
+
+const declineInvitation = async (notification) => {
+  if (!isPendingInvitation(notification) || invitationActionId.value) return
+  invitationActionId.value = notification.id
+  try {
+    await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/decline`)
+    notification.actionState = 'Declined'
+    notification.isRead = true
+    await fetchUnreadCount()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Không thể từ chối lời mời.')
+  } finally {
+    invitationActionId.value = null
+  }
 }
 
 const initSignalR = () => {
@@ -239,13 +306,33 @@ const initSignalR = () => {
       isRead: false,
       linkUrl: normalizeLink(notification)
     })
+    unreadCount.value += 1
   })
 
-  connection.value.start().catch((error) => {
-    if (!isExpectedNetworkError(error)) {
-      console.error('Notification hub connection failed:', error)
-    }
+  connection.value.on('NotificationUpdated', (notification) => {
+    const index = notifications.value.findIndex(item => item.id === notification.id)
+    if (index >= 0) notifications.value[index] = { ...notifications.value[index], ...notification }
+    else void fetchNotifications()
+    void fetchUnreadCount()
   })
+
+  connection.value.onreconnected(async () => {
+    try {
+      await connection.value.invoke('JoinUserChannel')
+    } catch (error) {
+      if (!isExpectedNetworkError(error)) console.error('Notification channel join failed:', error)
+    }
+    await fetchUnreadCount()
+    await fetchNotifications()
+  })
+
+  connection.value.start()
+    .then(() => connection.value.invoke('JoinUserChannel'))
+    .catch((error) => {
+      if (!isExpectedNetworkError(error)) {
+        console.error('Notification hub connection failed:', error)
+      }
+    })
 }
 
 let notificationRefreshTimer = null
@@ -257,6 +344,7 @@ const handleNotificationEntityChanged = (event) => {
 
 watch(onlyUnread, () => {
   fetchNotifications()
+  fetchUnreadCount()
 })
 
 watch(() => authStore.token, (token, previousToken) => {
@@ -389,6 +477,18 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
+}
+
+.invitation-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.invitation-resolved {
+  margin-top: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .notif-item:hover {

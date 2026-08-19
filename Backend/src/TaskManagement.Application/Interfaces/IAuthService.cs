@@ -15,5 +15,7 @@ namespace TaskManagement.Application.Interfaces
         Task AcceptInviteAsync(Guid userId);
         Task<InviteInfoDto> GetInviteInfoAsync(string token);
         Task<AcceptInviteResultDto> AcceptInviteTokenAsync(AcceptInviteTokenRequestDto request);
+        Task<AcceptInviteResultDto> AcceptProjectInvitationAsync(Guid invitationId, Guid userId);
+        Task DeclineProjectInvitationAsync(Guid invitationId, Guid userId);
     }
 }

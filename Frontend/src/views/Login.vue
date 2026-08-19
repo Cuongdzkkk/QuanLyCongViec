@@ -194,7 +194,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   BarChart3,
@@ -219,6 +219,7 @@ import googleIcon from '../assets/Icongoogle.png'
 import githubIcon from '../assets/Icongithub.png'
 
 const router = useRouter()
+const route = useRoute()
 const { t, language } = useI18n()
 const tr = (en, vi) => {
   const fallback = 'Google Sign-In chưa được cấu hình.'
@@ -247,7 +248,8 @@ let lastCredentialFingerprint = ''
 let lastCredentialHandledAt = 0
 
 const getSafeRedirect = () => {
-  return '/site-selection'
+  const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+  return redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/site-selection'
 }
 
 const handleLogin = async () => {

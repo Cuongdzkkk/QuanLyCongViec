@@ -7,6 +7,8 @@ namespace TaskManagement.Domain.Entities
         public Guid Id { get; set; }
         public Guid UserId { get; set; }
         public User User { get; set; } = null!;
+        public Guid? ProjectInvitationId { get; set; }
+        public ProjectInvitation? ProjectInvitation { get; set; }
         public string Token { get; set; } = string.Empty;
         public string? DeviceId { get; set; }
         public string? UserAgent { get; set; }
