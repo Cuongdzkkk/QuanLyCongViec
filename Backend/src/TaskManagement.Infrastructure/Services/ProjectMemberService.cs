@@ -17,15 +17,18 @@ namespace TaskManagement.Infrastructure.Services
         private readonly ApplicationDbContext _context;
         private readonly IEmailService _emailService;
         private readonly IConfiguration _configuration;
+        private readonly ICollaborationChannelService? _collaborationChannelService;
 
         public ProjectMemberService(
             ApplicationDbContext context,
             IEmailService emailService,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            ICollaborationChannelService? collaborationChannelService = null)
         {
             _context = context;
             _emailService = emailService;
             _configuration = configuration;
+            _collaborationChannelService = collaborationChannelService;
         }
 
         public async Task<ProjectInvitationOutcome> InviteMemberAsync(
@@ -506,6 +509,14 @@ namespace TaskManagement.Infrastructure.Services
                     membership.JoinedAt = now;
                     membership.LeftAt = null;
                     membership.Status = true;
+                }
+
+                if (_collaborationChannelService != null)
+                {
+                    await _collaborationChannelService.EnsureProjectMemberAccessAsync(
+                        projectId,
+                        request.UserId,
+                        assumeActiveProjectMember: true);
                 }
 
                 await _context.SaveChangesAsync();

@@ -51,6 +51,10 @@ public sealed class CollaborationChannelServiceTests
         membership.IsActive.Should().BeTrue();
         membership.CanSendMessages.Should().BeTrue();
         membership.LeftAt.Should().BeNull();
+
+        (await context.CollaborationChannelMembers.CountAsync(item =>
+                item.ChannelId == result.Channel.ChannelId))
+            .Should().Be(1);
     }
 
     [Fact]
@@ -85,7 +89,7 @@ public sealed class CollaborationChannelServiceTests
     }
 
     [Fact]
-    public async Task DiscoveryUsesRealMembershipAndExcludesOtherScopesAndDeletedChannels()
+    public async Task DiscoveryBackfillsActiveProjectMembersAndExcludesOtherScopesAndDeletedChannels()
     {
         await using var context = CreateContext();
         var seed = await DiscoverySeed.InsertAsync(context);
@@ -95,17 +99,70 @@ public sealed class CollaborationChannelServiceTests
         var member = await service.DiscoverAsync(seed.ProjectAId, seed.MemberId, 1, 20);
         var nonMember = await service.DiscoverAsync(seed.ProjectAId, seed.NonMemberId, 1, 20);
 
-        manager.Items.Select(item => item.ChannelId).Should().Equal(seed.ChannelPrivateId);
-        manager.Items.Single().CanManage.Should().BeTrue();
-        member.Items.Select(item => item.ChannelId).Should().Equal(seed.ChannelPrivateId);
-        member.Items.Single().CanManage.Should().BeFalse();
-        member.Items.Single().CanSend.Should().BeFalse();
-        nonMember.Items.Should().BeEmpty();
+        manager.Items.Select(item => item.ChannelId).Should().Contain(seed.ChannelPrivateId);
+        manager.Items.Should().ContainSingle(item =>
+            item.Visibility == CollaborationChannelService.PrivateVisibility &&
+            item.ChannelId != seed.ChannelPrivateId);
+        manager.Items.Single(item => item.ChannelId == seed.ChannelPrivateId)
+            .CanManage.Should().BeTrue();
+        member.Items.Should().Contain(item => item.ChannelId == seed.ChannelPrivateId);
+        member.Items.Should().Contain(item => item.ChannelId != seed.ChannelPrivateId);
+        member.Items.Where(item => item.ChannelId == seed.ChannelPrivateId)
+            .Single().CanManage.Should().BeFalse();
+        member.Items.Where(item => item.ChannelId == seed.ChannelPrivateId)
+            .Single().CanSend.Should().BeFalse();
+        nonMember.Items.Should().ContainSingle(item => item.ChannelId != seed.ChannelPrivateId);
         manager.Items.Should().NotContain(item =>
             item.ChannelId == seed.ChannelOtherProjectId ||
             item.ChannelId == seed.ChannelOtherWorkspaceId ||
             item.ChannelId == seed.ChannelDeletedId ||
             item.ChannelId == seed.ChannelArchivedId);
+    }
+
+    [Fact]
+    public async Task PrivateChannelDiscoveryDoesNotBackfillProjectMembers()
+    {
+        await using var context = CreateContext();
+        var seed = await DiscoverySeed.InsertAsync(context);
+        var existingMembership = await context.CollaborationChannelMembers
+            .SingleAsync(item => item.ChannelId == seed.ChannelPrivateId && item.UserId == seed.MemberId);
+        context.CollaborationChannelMembers.Remove(existingMembership);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+        (await service.DiscoverAsync(seed.ProjectAId, seed.MemberId, 1, 20))
+            .Items.Should().NotContain(item => item.ChannelId == seed.ChannelPrivateId);
+        await service.DiscoverAsync(seed.ProjectAId, seed.MemberId, 1, 20);
+
+        (await context.CollaborationChannelMembers.CountAsync(item =>
+                item.ChannelId == seed.ChannelPrivateId && item.UserId == seed.MemberId))
+            .Should().Be(0);
+    }
+
+    [Fact]
+    public async Task EnsureProjectDiscussionCreatesOneProjectWideChannelAndIsIdempotent()
+    {
+        await using var context = CreateContext();
+        var seed = await DiscoverySeed.InsertAsync(context);
+        var service = CreateService(context);
+
+        var first = await service.EnsureProjectDiscussionAsync(seed.ProjectAId, seed.ManagerId);
+        var second = await service.EnsureProjectDiscussionAsync(seed.ProjectAId, seed.MemberId);
+
+        first.Created.Should().BeTrue();
+        second.Created.Should().BeFalse();
+        second.Channel.ChannelId.Should().Be(first.Channel.ChannelId);
+        (await context.CollaborationChannels.CountAsync(item =>
+                item.ProjectId == seed.ProjectAId &&
+                item.ChannelScope == CollaborationChannelService.ProjectDiscussionScope &&
+                !item.IsDeleted && !item.IsArchived))
+            .Should().Be(1);
+        (await context.CollaborationChannelMembers.CountAsync(item =>
+                item.ChannelId == first.Channel.ChannelId))
+            .Should().Be(3);
+        (await context.CollaborationChannelMembers.AnyAsync(item =>
+                item.ChannelId == first.Channel.ChannelId && item.UserId == seed.InactiveId))
+            .Should().BeFalse();
     }
 
     [Fact]
@@ -251,15 +308,15 @@ public sealed class CollaborationChannelServiceTests
         };
         var ids = pages.SelectMany(page => page.Items).Select(item => item.ChannelId).ToList();
 
-        ids.Should().HaveCount(7);
+        ids.Should().HaveCount(8);
         ids.Should().OnlyHaveUniqueItems();
-        pages.Should().OnlyContain(page => page.TotalCount == 7);
+        pages.Should().OnlyContain(page => page.TotalCount == 8);
         pages.Should().OnlyContain(page =>
             page.Ordering == CollaborationChannelService.Ordering);
     }
 
     [Fact]
-    public async Task DiscoveryDoesNotCreateDefaultChannels()
+    public async Task DiscoveryEnsuresProjectDiscussionWithoutConvertingPrivateChannels()
     {
         await using var context = CreateContext();
         var seed = await DiscoverySeed.InsertAsync(context);
@@ -267,7 +324,11 @@ public sealed class CollaborationChannelServiceTests
 
         await CreateService(context).DiscoverAsync(seed.ProjectAId, seed.NonMemberId, 1, 20);
 
-        (await context.CollaborationChannels.CountAsync()).Should().Be(before);
+        (await context.CollaborationChannels.CountAsync()).Should().Be(before + 1);
+        (await context.CollaborationChannels.CountAsync(item =>
+                item.ProjectId == seed.ProjectAId &&
+                item.ChannelScope == CollaborationChannelService.ProjectDiscussionScope))
+            .Should().Be(1);
     }
 
     [Fact]
@@ -278,7 +339,7 @@ public sealed class CollaborationChannelServiceTests
         var discovery = CreateService(context);
         var messages = new ChannelTextService(context, new ResourceAuthorizationService(context));
         (await discovery.DiscoverAsync(seed.ProjectAId, seed.MemberId, 1, 20))
-            .Items.Should().ContainSingle();
+            .Items.Should().Contain(item => item.ChannelId == seed.ChannelPrivateId);
         var member = await context.CollaborationChannelMembers.FindAsync(
             seed.ChannelPrivateId,
             seed.MemberId);
@@ -286,7 +347,7 @@ public sealed class CollaborationChannelServiceTests
         await context.SaveChangesAsync();
 
         (await discovery.DiscoverAsync(seed.ProjectAId, seed.MemberId, 1, 20))
-            .Items.Should().BeEmpty();
+            .Items.Should().NotContain(item => item.ChannelId == seed.ChannelPrivateId);
         await messages.Invoking(item =>
                 item.GetHistoryAsync(seed.ChannelPrivateId, seed.MemberId, 1, 20))
             .Should().ThrowAsync<ChannelNotFoundException>();

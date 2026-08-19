@@ -1179,6 +1179,10 @@ namespace TaskManagement.Infrastructure.Data
 
             modelBuilder.Entity<CollaborationChannel>(entity =>
             {
+                entity.Property(channel => channel.ChannelScope)
+                    .HasMaxLength(32)
+                    .HasDefaultValue("Private")
+                    .IsRequired();
                 entity.Property(channel => channel.Name).HasMaxLength(100).IsRequired();
                 entity.Property(channel => channel.Description).HasMaxLength(500);
                 entity.Property(channel => channel.ProvisioningKey).HasMaxLength(100);
@@ -1192,6 +1196,9 @@ namespace TaskManagement.Infrastructure.Data
                     })
                     .IsUnique()
                     .HasFilter("[ProvisioningKey] IS NOT NULL");
+                entity.HasIndex(channel => new { channel.ProjectId, channel.ChannelScope })
+                    .IsUnique()
+                    .HasFilter("[ChannelScope] = 'ProjectDiscussion' AND [IsDeleted] = 0 AND [IsArchived] = 0");
                 entity.HasOne(channel => channel.Workspace)
                     .WithMany()
                     .HasForeignKey(channel => channel.WorkspaceId)

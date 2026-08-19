@@ -45,6 +45,70 @@ public sealed class ProjectMemberDirectAddTests
     }
 
     [Fact]
+    public async Task AddExistingMember_SyncsOnlyProjectDiscussionMembership()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var discussion = new CollaborationChannel
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = fixture.WorkspaceId,
+            ProjectId = fixture.ProjectId,
+            CreatedByUserId = fixture.OwnerId,
+            ChannelScope = CollaborationChannelService.ProjectDiscussionScope,
+            Name = "Project Discussion",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        var privateChannel = new CollaborationChannel
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = fixture.WorkspaceId,
+            ProjectId = fixture.ProjectId,
+            CreatedByUserId = fixture.OwnerId,
+            ChannelScope = CollaborationChannelService.PrivateScope,
+            Name = "Private",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        fixture.Context.CollaborationChannels.AddRange(discussion, privateChannel);
+        fixture.Context.CollaborationChannelMembers.AddRange(
+            new CollaborationChannelMember
+            {
+                ChannelId = discussion.Id,
+                UserId = fixture.OwnerId,
+                JoinedAt = DateTime.UtcNow,
+                IsActive = true,
+                CanSendMessages = true
+            },
+            new CollaborationChannelMember
+            {
+                ChannelId = privateChannel.Id,
+                UserId = fixture.OwnerId,
+                JoinedAt = DateTime.UtcNow,
+                IsActive = true,
+                CanSendMessages = true
+            });
+        await fixture.Context.SaveChangesAsync();
+        fixture.Service = new ProjectMemberService(
+            fixture.Context,
+            fixture.EmailService.Object,
+            new ConfigurationBuilder().Build(),
+            new CollaborationChannelService(
+                fixture.Context,
+                new ResourceAuthorizationService(fixture.Context)));
+
+        await fixture.Service.AddExistingMemberAsync(fixture.ProjectId,
+            new AddExistingProjectMemberRequestDto { UserId = fixture.CandidateId, Role = "Developer" });
+
+        (await fixture.Context.CollaborationChannelMembers.AnyAsync(item =>
+                item.ChannelId == discussion.Id && item.UserId == fixture.CandidateId))
+            .Should().BeTrue();
+        (await fixture.Context.CollaborationChannelMembers.AnyAsync(item =>
+                item.ChannelId == privateChannel.Id && item.UserId == fixture.CandidateId))
+            .Should().BeFalse();
+    }
+
+    [Fact]
     public async Task AddExistingMember_RejectsOutsideWorkspaceDuplicatePendingAndInactiveWorkspaceMember()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -87,7 +151,7 @@ public sealed class ProjectMemberDirectAddTests
 
         public ApplicationDbContext Context { get; }
         public Mock<IEmailService> EmailService { get; }
-        public ProjectMemberService Service { get; private set; }
+        public ProjectMemberService Service { get; set; } = null!;
         public Guid WorkspaceId { get; } = Guid.NewGuid();
         public Guid OtherWorkspaceId { get; } = Guid.NewGuid();
         public Guid ProjectId { get; } = Guid.NewGuid();
