@@ -29,13 +29,13 @@
                 <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="silver-grad-main" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#FFFFFF" />
-                      <stop offset="40%" stop-color="#CBD5E1" />
-                      <stop offset="100%" stop-color="#94A3B8" />
+                      <stop offset="0%" stop-color="#A1B0C4" />
+                      <stop offset="40%" stop-color="#64748B" />
+                      <stop offset="100%" stop-color="#475569" />
                     </linearGradient>
                     <linearGradient id="silver-grad-tail" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#94A3B8" />
-                      <stop offset="100%" stop-color="#475569" />
+                      <stop offset="0%" stop-color="#475569" />
+                      <stop offset="100%" stop-color="#334155" />
                     </linearGradient>
                   </defs>
                   <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
@@ -61,13 +61,13 @@
                 <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="silver-grad-main-empty" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#FFFFFF" />
-                      <stop offset="40%" stop-color="#CBD5E1" />
-                      <stop offset="100%" stop-color="#94A3B8" />
+                      <stop offset="0%" stop-color="#A1B0C4" />
+                      <stop offset="40%" stop-color="#64748B" />
+                      <stop offset="100%" stop-color="#475569" />
                     </linearGradient>
                     <linearGradient id="silver-grad-tail-empty" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#94A3B8" />
-                      <stop offset="100%" stop-color="#475569" />
+                      <stop offset="0%" stop-color="#475569" />
+                      <stop offset="100%" stop-color="#334155" />
                     </linearGradient>
                   </defs>
                   <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
@@ -94,13 +94,13 @@
                 <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="gold-grad-main" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#FFE57F" />
-                      <stop offset="40%" stop-color="#FFB300" />
-                      <stop offset="100%" stop-color="#FF8F00" />
+                      <stop offset="0%" stop-color="#D4AF37" />
+                      <stop offset="40%" stop-color="#AA7C11" />
+                      <stop offset="100%" stop-color="#7F5B00" />
                     </linearGradient>
                     <linearGradient id="gold-grad-tail" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#FF8F00" />
-                      <stop offset="100%" stop-color="#C36A00" />
+                      <stop offset="0%" stop-color="#7F5B00" />
+                      <stop offset="100%" stop-color="#503700" />
                     </linearGradient>
                   </defs>
                   <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
@@ -126,13 +126,13 @@
                 <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="gold-grad-main-empty" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#FFE57F" />
-                      <stop offset="40%" stop-color="#FFB300" />
-                      <stop offset="100%" stop-color="#FF8F00" />
+                      <stop offset="0%" stop-color="#D4AF37" />
+                      <stop offset="40%" stop-color="#AA7C11" />
+                      <stop offset="100%" stop-color="#7F5B00" />
                     </linearGradient>
                     <linearGradient id="gold-grad-tail-empty" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#FF8F00" />
-                      <stop offset="100%" stop-color="#C36A00" />
+                      <stop offset="0%" stop-color="#7F5B00" />
+                      <stop offset="100%" stop-color="#503700" />
                     </linearGradient>
                   </defs>
                   <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
@@ -159,13 +159,13 @@
                 <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="bronze-grad-main" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#FFD8B3" />
-                      <stop offset="40%" stop-color="#D27D2D" />
-                      <stop offset="100%" stop-color="#A0522D" />
+                      <stop offset="0%" stop-color="#B87333" />
+                      <stop offset="40%" stop-color="#8B4513" />
+                      <stop offset="100%" stop-color="#5C2E16" />
                     </linearGradient>
                     <linearGradient id="bronze-grad-tail" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#A0522D" />
-                      <stop offset="100%" stop-color="#5C2E16" />
+                      <stop offset="0%" stop-color="#5C2E16" />
+                      <stop offset="100%" stop-color="#3D1A00" />
                     </linearGradient>
                   </defs>
                   <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
@@ -191,13 +191,13 @@
                 <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="bronze-grad-main-empty" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#FFD8B3" />
-                      <stop offset="40%" stop-color="#D27D2D" />
-                      <stop offset="100%" stop-color="#A0522D" />
+                      <stop offset="0%" stop-color="#B87333" />
+                      <stop offset="40%" stop-color="#8B4513" />
+                      <stop offset="100%" stop-color="#5C2E16" />
                     </linearGradient>
                     <linearGradient id="bronze-grad-tail-empty" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stop-color="#A0522D" />
-                      <stop offset="100%" stop-color="#5C2E16" />
+                      <stop offset="0%" stop-color="#5C2E16" />
+                      <stop offset="100%" stop-color="#3D1A00" />
                     </linearGradient>
                   </defs>
                   <path d="M 14 24 L 18 24 L 18 29 Z" class="ribbon-shadow" />
@@ -868,35 +868,50 @@ onMounted(loadRewards)
 .gold-crown {
   font-size: 32px;
   color: #FFD700;
-  top: -20px;
+  top: -28px;
   text-shadow: 0 2px 0 #b38600, 0 4px 0 #806000;
 }
 
 .silver-crown {
   font-size: 26px;
-  color: #94A3B8;
-  top: -16px;
+  color: #A1B0C4;
+  top: -24px;
   text-shadow: 0 2px 0 #475569, 0 4px 0 #334155;
 }
 
 .bronze-crown {
   font-size: 24px;
   color: #CD7F32;
-  top: -14px;
+  top: -20px;
   text-shadow: 0 2px 0 #a0522d, 0 4px 0 #8b4513;
 }
 
 .rank-badge {
   position: absolute;
-  bottom: -14px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
-  width: 100px;
-  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.gold-badge {
+  width: 108px;
+  height: 38px;
+  bottom: -16px;
+}
+
+.silver-badge {
+  width: 92px;
+  height: 33px;
+  bottom: -14px;
+}
+
+.bronze-badge {
+  width: 78px;
+  height: 28px;
+  bottom: -12px;
 }
 
 .ribbon-svg {
@@ -905,7 +920,7 @@ onMounted(loadRewards)
   left: 0;
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 3px 5px rgba(0,0,0,0.2));
+  filter: drop-shadow(0 3px 5px rgba(0,0,0,0.25));
 }
 
 .ribbon-shadow {
@@ -916,25 +931,23 @@ onMounted(loadRewards)
 .rank-text {
   position: relative;
   z-index: 11;
-  font-size: 13px;
   font-weight: 900;
+  color: #ffffff;
   letter-spacing: 0.05em;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8), 0 0 3px rgba(0,0,0,0.8);
   margin-top: -3px;
 }
 
 .gold-badge .rank-text {
-  color: #4a2700;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  font-size: 14px;
 }
 
 .silver-badge .rank-text {
-  color: #1e293b;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  font-size: 12px;
 }
 
 .bronze-badge .rank-text {
-  color: #4a1c00;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  font-size: 10.5px;
 }
 
 .card-name {
