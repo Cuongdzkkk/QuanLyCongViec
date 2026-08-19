@@ -31,6 +31,10 @@ namespace TaskManagement.Domain.Entities
         public Guid? ChannelMessageId { get; set; }
         public ChannelMessage? ChannelMessage { get; set; }
 
+        public Guid? RelatedInvitationId { get; set; }
+        public ProjectInvitation? RelatedInvitation { get; set; }
+        public string? ActionState { get; set; }
+
         /// <summary>Who triggered this notification</summary>
         public Guid? TriggeredByUserId { get; set; }
         public User? TriggeredByUser { get; set; }

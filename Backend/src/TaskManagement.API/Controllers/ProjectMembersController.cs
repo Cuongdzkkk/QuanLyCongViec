@@ -102,7 +102,10 @@ namespace TaskManagement.API.Controllers
                     ?? User.FindFirstValue(ClaimTypes.Email)
                     ?? "SprintA admin";
 
-                var outcome = await _projectMemberService.InviteMemberAsync(projectId, request, inviterName);
+                var inviterId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var parsedInviterId)
+                    ? parsedInviterId
+                    : (Guid?)null;
+                var outcome = await _projectMemberService.InviteMemberAsync(projectId, request, inviterName, inviterId);
                 var message = outcome switch
                 {
                     ProjectInvitationOutcome.InvitationCreated => "Invitation email sent.",

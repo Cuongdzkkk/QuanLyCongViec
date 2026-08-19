@@ -7,5 +7,6 @@ namespace TaskManagement.Application.DTOs.Auth
         public string RedirectPath { get; set; } = "/dashboard";
         public AuthResponseDto? Response { get; set; }
         public string? RefreshToken { get; set; }
+        public Guid? ProjectId { get; set; }
     }
 }

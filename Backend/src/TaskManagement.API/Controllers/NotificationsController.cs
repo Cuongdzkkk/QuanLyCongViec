@@ -65,6 +65,8 @@ namespace TaskManagement.API.Controllers
                     n.IsRead,
                     n.RelatedTaskId,
                     n.RelatedProjectId,
+                    n.RelatedInvitationId,
+                    n.ActionState,
                     n.CollaborationChannelId,
                     n.ChannelMessageId,
                     n.TriggeredByUserId,

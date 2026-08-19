@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 
 namespace TaskManagement.API.Hubs
@@ -6,19 +8,39 @@ namespace TaskManagement.API.Hubs
     /// SignalR Hub for real-time notification push.
     /// Each user joins a personal group "user_{userId}" on connect.
     /// </summary>
+    [Authorize]
     public class NotificationHub : Hub
     {
+        private static string GetUserGroup(Guid userId) => $"user_{userId}";
+
+        public override async Task OnConnectedAsync()
+        {
+            var claim = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!Guid.TryParse(claim, out var userId))
+            {
+                Context.Abort();
+                return;
+            }
+
+            await Groups.AddToGroupAsync(Context.ConnectionId, GetUserGroup(userId));
+            await base.OnConnectedAsync();
+        }
+
         /// <summary>
         /// Client calls this after connecting to subscribe to their personal notification channel
         /// </summary>
-        public async Task JoinUserChannel(string userId)
+        public async Task JoinUserChannel()
         {
-            await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
+            var claim = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (Guid.TryParse(claim, out var userId))
+                await Groups.AddToGroupAsync(Context.ConnectionId, GetUserGroup(userId));
         }
 
-        public async Task LeaveUserChannel(string userId)
+        public async Task LeaveUserChannel()
         {
-            await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"user_{userId}");
+            var claim = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (Guid.TryParse(claim, out var userId))
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, GetUserGroup(userId));
         }
     }
 }

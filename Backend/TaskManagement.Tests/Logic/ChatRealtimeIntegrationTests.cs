@@ -19,6 +19,8 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using TaskManagement.API.Hubs;
 using TaskManagement.Application.DTOs.Collaboration;
+using TaskManagement.Application.Interfaces;
+using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Infrastructure.Services;
 
@@ -52,6 +54,35 @@ public sealed class ChatRealtimeIntegrationTests
         var apiQueryToken = await client.GetAsync(
             $"/api/users/me?access_token={validToken}");
         apiQueryToken.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task NotificationHubRequiresAuthAndOnlyDeliversToAuthenticatedUserGroup()
+    {
+        await using var factory = new ChatApplicationFactory();
+        var userA = Guid.NewGuid();
+        var userB = Guid.NewGuid();
+        await SeedUserAsync(factory, userA, active: true);
+        await SeedUserAsync(factory, userB, active: true);
+
+        await using var missing = CreateNotificationConnection(factory, null);
+        await missing.Invoking(connection => connection.StartAsync())
+            .Should().ThrowAsync<Exception>();
+
+        await using var connection = CreateNotificationConnection(factory, CreateToken(factory, userA));
+        var received = NewSignal<Notification>();
+        connection.On<Notification>("ReceiveNotification", notification => received.TrySetResult(notification));
+        await connection.StartAsync();
+        await connection.InvokeAsync("JoinUserChannel");
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var notifier = scope.ServiceProvider.GetRequiredService<ISignalRClientNotifier>();
+        var own = new Notification { Id = Guid.NewGuid(), UserId = userA, Title = "Own", Content = "Own" };
+        var other = new Notification { Id = Guid.NewGuid(), UserId = userB, Title = "Other", Content = "Other" };
+        await notifier.SendNotificationAsync(userA, own);
+        await notifier.SendNotificationAsync(userB, other);
+
+        (await received.Task.WaitAsync(TimeSpan.FromSeconds(5))).Id.Should().Be(own.Id);
     }
 
     [Fact]
@@ -337,6 +368,21 @@ public sealed class ChatRealtimeIntegrationTests
                     options.Transports = HttpTransportType.LongPolling;
                     options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
                     options.AccessTokenProvider = () => Task.FromResult(accessToken)!;
+                })
+            .Build();
+
+    private static HubConnection CreateNotificationConnection(
+        ChatApplicationFactory factory,
+        string? accessToken) =>
+        new HubConnectionBuilder()
+            .WithUrl(
+                new Uri(factory.Server.BaseAddress, "/notification-hub"),
+                options =>
+                {
+                    options.Transports = HttpTransportType.LongPolling;
+                    options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                    if (accessToken != null)
+                        options.AccessTokenProvider = () => Task.FromResult(accessToken)!;
                 })
             .Build();
 
