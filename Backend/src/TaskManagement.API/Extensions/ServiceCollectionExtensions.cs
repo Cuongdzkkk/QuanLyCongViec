@@ -88,7 +88,8 @@ namespace TaskManagement.API.Extensions
                     {
                         var requestPath = context.HttpContext.Request.Path;
                         if ((requestPath.StartsWithSegments(TaskManagement.API.Hubs.ChatHub.Route) ||
-                                requestPath.StartsWithSegments(TaskManagement.API.Hubs.KanbanHub.Route)) &&
+                                requestPath.StartsWithSegments(TaskManagement.API.Hubs.KanbanHub.Route) ||
+                                requestPath.StartsWithSegments(TaskManagement.API.Hubs.NotificationHub.Route)) &&
                             context.Request.Query.TryGetValue("access_token", out var accessToken) &&
                             !string.IsNullOrWhiteSpace(accessToken))
                         {

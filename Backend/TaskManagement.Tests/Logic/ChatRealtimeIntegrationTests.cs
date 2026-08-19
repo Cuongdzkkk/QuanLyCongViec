@@ -86,6 +86,32 @@ public sealed class ChatRealtimeIntegrationTests
     }
 
     [Fact]
+    public async Task NotificationHubQueryTokenIsAcceptedOnlyWithValidToken()
+    {
+        await using var factory = new ChatApplicationFactory();
+        var userId = Guid.NewGuid();
+        await SeedUserAsync(factory, userId, active: true);
+
+        using var client = factory.CreateClient();
+        var validToken = CreateToken(factory, userId);
+
+        var valid = await client.PostAsync(
+            $"{NotificationHub.Route}/negotiate?negotiateVersion=1&access_token={validToken}",
+            content: null);
+        valid.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var missing = await client.PostAsync(
+            $"{NotificationHub.Route}/negotiate?negotiateVersion=1",
+            content: null);
+        missing.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        var invalid = await client.PostAsync(
+            $"{NotificationHub.Route}/negotiate?negotiateVersion=1&access_token=invalid-token",
+            content: null);
+        invalid.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task KanbanHubQueryTokenIsAcceptedOnlyForKanbanHubRoute()
     {
         await using var factory = new ChatApplicationFactory();
@@ -376,7 +402,7 @@ public sealed class ChatRealtimeIntegrationTests
         string? accessToken) =>
         new HubConnectionBuilder()
             .WithUrl(
-                new Uri(factory.Server.BaseAddress, "/notification-hub"),
+                new Uri(factory.Server.BaseAddress, NotificationHub.Route),
                 options =>
                 {
                     options.Transports = HttpTransportType.LongPolling;

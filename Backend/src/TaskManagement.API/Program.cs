@@ -245,7 +245,7 @@ app.UseStaticFiles();
 
 app.MapControllers();
 app.MapHub<TaskManagement.API.Hubs.KanbanHub>(TaskManagement.API.Hubs.KanbanHub.Route);
-app.MapHub<TaskManagement.API.Hubs.NotificationHub>("/notification-hub");
+app.MapHub<TaskManagement.API.Hubs.NotificationHub>(TaskManagement.API.Hubs.NotificationHub.Route);
 app.MapHub<TaskManagement.API.Hubs.ChatHub>(TaskManagement.API.Hubs.ChatHub.Route);
 
 if (await app.Services.RunDatabaseDeploymentCommandAsync(args, app.Environment, builder.Configuration)) return;

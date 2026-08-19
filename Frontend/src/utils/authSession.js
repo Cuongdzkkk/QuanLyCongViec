@@ -2,6 +2,7 @@ import { clearLegacyGitHubCredentialStorage } from '@/utils/githubCredentials'
 
 const ACCESS_TOKEN_KEY = 'accessToken'
 const USER_KEY = 'user'
+export const AUTH_SESSION_CHANGED = 'sprinta:auth-session-changed'
 const ACCOUNT_CONTEXT_KEYS = [
   'recent_site_id',
   'currentProjectId',
@@ -14,6 +15,12 @@ const safeJsonParse = (value) => {
     return JSON.parse(value || '{}')
   } catch {
     return {}
+  }
+}
+
+const notifyAuthSessionChanged = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(AUTH_SESSION_CHANGED))
   }
 }
 
@@ -53,6 +60,7 @@ export const saveAuthSession = ({ accessToken, fullName, email, systemRoles, id,
   // Clean legacy global storage to avoid cross-tab account collisions.
   window.localStorage.removeItem(ACCESS_TOKEN_KEY)
   window.localStorage.removeItem(USER_KEY)
+  notifyAuthSessionChanged()
 }
 
 export const clearAuthSession = () => {
@@ -64,6 +72,7 @@ export const clearAuthSession = () => {
   window.sessionStorage.removeItem(USER_KEY)
   window.localStorage.removeItem(ACCESS_TOKEN_KEY)
   window.localStorage.removeItem(USER_KEY)
+  notifyAuthSessionChanged()
 }
 
 export const clearAccountContext = () => {
