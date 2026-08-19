@@ -15,6 +15,11 @@ export default [
         component: () => import('../views/Profile.vue')
       },
       {
+        path: 'profile/:id',
+        name: 'WorkspaceProfileDetail',
+        component: () => import('../views/HomeSite/People/ProfileDetail.vue')
+      },
+      {
         path: 'your-work',
         name: 'YourWork',
         component: () => import('../views/YourWorkView.vue')

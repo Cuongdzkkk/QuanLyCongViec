@@ -1,5 +1,5 @@
 <template>
-  <AppPageLayout>
+  <AppPageLayout class="goals-dashboard-layout">
     <template #header>
       <AppPageHeader :title="labels.title" :subtitle="labels.search">
         <template #actions>
@@ -39,6 +39,10 @@
 
       <!-- Tab: Tất cả mục tiêu & Đã lưu trữ -->
       <div v-else class="tab-all-archived">
+        <div class="section-header">
+          <h2>{{ currentTabHeader }}</h2>
+        </div>
+
         <ProjectPageToolbar
           v-model:searchQuery="searchQuery"
           show-search
@@ -67,72 +71,82 @@
           </template>
         </ProjectPageToolbar>
 
-        <AppCard v-if="!isLoading" :padding="false">
-          <table class="jira-table" v-if="filteredGoals.length > 0">
-            <thead>
-              <tr>
-                <th class="col-title">{{ labels.goal }}</th>
-                <th class="col-status">{{ labels.status }}</th>
-                <th class="col-progress">{{ labels.progress }}</th>
-                <th class="col-created">{{ labels.createdDate }}</th>
-                <th class="col-updated">{{ labels.updatedDate }}</th>
-                <th class="col-star">{{ labels.favorite }}</th>
-                <th class="col-watch">{{ labels.follow }}</th>
-                <th class="col-owner">{{ labels.owner }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="goal in filteredGoals" :key="goal.id" @click="goToGoal(goal.id)">
-                <td>
-                  <div class="goal-title-cell">
-                    <span class="goal-icon"><i class="fa-solid fa-bullseye"></i></span>
-                    <span class="goal-title">{{ goal.title }}</span>
-                  </div>
-                </td>
-                <td>
-                  <AppStatusBadge :status="translateStatus(goal.status)" :statusText="translateStatus(goal.status)" />
-                </td>
-                <td>
-                  <div class="progress-cell">
-                    <div class="progress-bar-bg">
-                      <div class="progress-bar-fill" :style="{ width: (goal.progress || 0) + '%' }"></div>
+        <div class="goals-list-container">
+          <AppCard v-if="!isLoading && filteredGoals.length > 0" :padding="false">
+            <table class="jira-table">
+              <thead>
+                <tr>
+                  <th class="col-title">{{ labels.goal }}</th>
+                  <th class="col-status">{{ labels.status }}</th>
+                  <th class="col-progress">{{ labels.progress }}</th>
+                  <th class="col-created">{{ labels.createdDate }}</th>
+                  <th class="col-updated">{{ labels.updatedDate }}</th>
+                  <th class="col-star">{{ labels.favorite }}</th>
+                  <th class="col-watch">{{ labels.follow }}</th>
+                  <th class="col-owner">{{ labels.owner }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="goal in filteredGoals" :key="goal.id" @click="goToGoal(goal.id)">
+                  <td>
+                    <div class="goal-title-cell">
+                      <span class="goal-icon"><i class="fa-solid fa-bullseye"></i></span>
+                      <span class="goal-title">{{ goal.title }}</span>
                     </div>
-                    <span class="progress-text">{{ goal.progress || 0 }}%</span>
-                  </div>
-                </td>
-                <td>{{ goal.createdAt ? new Date(goal.createdAt).toLocaleDateString('vi-VN') : '-' }}</td>
-                <td>{{ goal.updatedAt ? new Date(goal.updatedAt).toLocaleDateString('vi-VN') : '-' }}</td>
-                <td @click.stop>
-                  <button
-                    class="goal-star-btn"
-                    type="button"
-                    :class="{ starred: isGoalStarred(goal.id) }"
-                    :disabled="starredStore.isPending('Goal', goal.id)"
-                    :aria-pressed="isGoalStarred(goal.id)"
-                    :aria-label="isGoalStarred(goal.id) ? 'Bỏ gắn sao mục tiêu' : 'Gắn sao mục tiêu'"
-                    @click="toggleStar(goal)"
-                  >
-                    <i :class="isGoalStarred(goal.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
-                  </button>
-                </td>
-                <td @click.stop="toggleWatch(goal)">
-                  <span :class="goal.isFollowing ? 'text-blue-500' : 'text-gray-500'" style="cursor: pointer;">{{ goal.isFollowing ? labels.following : labels.follow }}</span>
-                </td>
-                <td>
-                  <div class="owner-cell">
-                    <AppAvatar :user="{ id: goal.ownerId, fullName: goal.ownerName, avatarColor: goal.ownerColor, avatarUrl: goal.ownerAvatarUrl }" :size="24" />
-                    <span class="owner-name">{{ goal.owner || labels.unassigned }}</span>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                  </td>
+                  <td>
+                    <AppStatusBadge :status="translateStatus(goal.status)" :statusText="translateStatus(goal.status)" />
+                  </td>
+                  <td>
+                    <div class="progress-cell">
+                      <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" :style="{ width: (goal.progress || 0) + '%' }"></div>
+                      </div>
+                      <span class="progress-text">{{ goal.progress || 0 }}%</span>
+                    </div>
+                  </td>
+                  <td>{{ goal.createdAt ? new Date(goal.createdAt).toLocaleDateString('vi-VN') : '-' }}</td>
+                  <td>{{ goal.updatedAt ? new Date(goal.updatedAt).toLocaleDateString('vi-VN') : '-' }}</td>
+                  <td @click.stop>
+                    <button
+                      class="goal-star-btn"
+                      type="button"
+                      :class="{ starred: isGoalStarred(goal.id) }"
+                      :disabled="starredStore.isPending('Goal', goal.id)"
+                      :aria-pressed="isGoalStarred(goal.id)"
+                      :aria-label="isGoalStarred(goal.id) ? 'Bỏ gắn sao mục tiêu' : 'Gắn sao mục tiêu'"
+                      @click="toggleStar(goal)"
+                    >
+                      <i :class="isGoalStarred(goal.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+                    </button>
+                  </td>
+                  <td @click.stop="toggleWatch(goal)">
+                    <span :class="goal.isFollowing ? 'text-blue-500' : 'text-gray-500'" style="cursor: pointer;">{{ goal.isFollowing ? labels.following : labels.follow }}</span>
+                  </td>
+                  <td>
+                    <div class="owner-cell">
+                      <AppAvatar :user="{ id: goal.ownerId, fullName: goal.ownerName, avatarColor: goal.ownerColor, avatarUrl: goal.ownerAvatarUrl }" :size="24" />
+                      <span class="owner-name">{{ goal.owner || labels.unassigned }}</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </AppCard>
+
+          <div v-else-if="!isLoading" class="goals-empty-state">
+            <div class="empty-spaces-icon" aria-hidden="true">
+              <i class="fa-solid fa-bullseye"></i>
+            </div>
+            <div class="empty-spaces-copy">
+              <h3>{{ labels.noGoals }}</h3>
+              <p>{{ labels.noGoalsDesc }}</p>
+            </div>
+          </div>
           
-          <AppEmptyState v-else icon="fa-solid fa-bullseye" :title="labels.noGoals" :description="labels.noGoalsDesc" />
-        </AppCard>
-        
-        <div class="loading-state" v-else>
-          <div class="loader-spinner"></div>
+          <div class="loading-state" v-else>
+            <div class="loader-spinner"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -234,6 +248,11 @@ const i18nStore = useI18nStore()
 
 const currentTab = ref('all')
 const searchQuery = ref('')
+const currentTabHeader = computed(() => {
+  if (currentTab.value === 'following') return labels.value.following
+  if (currentTab.value === 'archived') return labels.value.archived
+  return labels.value.goalDirectory
+})
 const isVi = computed(() => i18nStore.locale === 'vi')
 const labels = computed(() => isVi.value
   ? {
@@ -598,6 +617,23 @@ const toggleWatch = async (goal) => {
 </script>
 
 <style scoped>
+.section-header {
+  margin: -10px 0 16px;
+}
+
+.section-header h2 {
+  color: #172B4D;
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.goals-list-container {
+  margin-top: 30px;
+}
+
+
 .goals-wrapper {
   display: flex;
   flex-direction: column;
@@ -713,7 +749,7 @@ const toggleWatch = async (goal) => {
 }
 
 .module-content {
-  padding: 18px 0 0;
+  padding: 0;
   flex: 1;
 }
 

@@ -1,14 +1,14 @@
 <template>
   <el-dropdown trigger="click" popper-class="user-dropdown-popper" @command="handleCommand" :teleported="true">
     <div class="user-avatar-trigger" :class="{ 'has-text': true }">
-      <UserAvatar :user="currentUser" :size="28" :fontSize="11" />
+      <UserAvatar :user="currentUser" :size="28" :fontSize="11" :clickable="false" />
       <span class="user-trigger-text">{{ userEmailPrefix }}</span>
       <i class="fa-solid fa-chevron-down trigger-arrow"></i>
     </div>
     <template #dropdown>
       <el-dropdown-menu class="jira-user-menu">
         <div class="user-menu-header">
-          <UserAvatar :user="currentUser" :size="40" :fontSize="14" />
+          <UserAvatar :user="currentUser" :size="40" :fontSize="14" :clickable="false" />
           <div class="header-info">
             <div class="user-display-name">{{ userDisplayName }}</div>
             <div class="user-email">{{ userEmail }}</div>

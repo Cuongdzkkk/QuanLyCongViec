@@ -1,12 +1,13 @@
 <template>
   <AdminLayout>
-    <div class="admin-page-container">
+    <div class="admin-page">
       <div class="page-header">
         <div class="breadcrumb">
-          <i class="fa-solid fa-shield-halved"></i> Security / Two-Factor Auth
+          <i class="fa-solid fa-shield-halved"></i>
+          <span>SECURITY / TWO-FACTOR AUTH</span>
         </div>
-        <h1 class="page-title">{{ t('Two-Factor Authentication (2FA)', 'Xác thực 2 bước (2FA)') }}</h1>
-        <p class="page-subtitle">{{ t('Protect your account with an additional security layer.', 'Bảo vệ tài khoản với lớp bảo mật bổ sung phòng chống đánh cắp dữ liệu.') }}</p>
+        <h1 class="text-hero">{{ t('Two-Factor Authentication (2FA)', 'Xác thực 2 bước (2FA)') }}</h1>
+        <p class="text-desc">{{ t('Protect your account with an additional security layer.', 'Bảo vệ tài khoản với lớp bảo mật bổ sung phòng chống đánh cắp dữ liệu.') }}</p>
       </div>
 
       <div class="form-container">
@@ -118,30 +119,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 24px;
-}
 
-.breadcrumb {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 4px;
-}
-
-.page-subtitle {
-  font-size: 14px;
-  color: var(--color-text-muted);
-}
 
 .settings-card {
   background-color: var(--color-surface);

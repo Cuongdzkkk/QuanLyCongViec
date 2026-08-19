@@ -64,6 +64,7 @@ defineEmits(['update:searchQuery'])
     linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 86%, transparent), color-mix(in srgb, var(--color-surface-hover) 46%, transparent));
   box-shadow: 0 10px 24px color-mix(in srgb, #020617 6%, transparent);
   flex: 0 0 auto;
+  margin-bottom: 20px;
 }
 
 .ppt-left, .ppt-right {

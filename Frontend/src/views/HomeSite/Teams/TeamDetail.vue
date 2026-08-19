@@ -2,6 +2,11 @@
   <div class="team-detail-container" v-if="team">
     <!-- Cover Image -->
     <div class="team-cover" :style="{ backgroundImage: `url(${team.coverImage})` }">
+      <!-- Floating Back Button -->
+      <button class="back-floating-btn" @click="router.push(teamsBasePath)">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span>Quay lại</span>
+      </button>
       <div class="cover-overlay" v-if="!isArchived">
         <button class="upload-cover-btn"><i class="fa-solid fa-camera"></i> Change Cover</button>
       </div>
@@ -74,16 +79,12 @@
       <div v-if="currentTab === 'overview'" class="tab-pane">
         <section class="info-section">
           <h3>Việc chúng tôi đang thực hiện</h3>
-          <div class="bio-container" v-if="!isEditingBio" @click="startEditingBio" style="cursor: pointer; padding: 12px; border: 1px solid transparent; border-radius: 3px; min-height: 60px; transition: background 0.2s, border 0.2s;">
-            <p class="description-text" v-if="team.description" style="white-space: pre-wrap;">{{ team.description }}</p>
+          <div class="bio-container" v-if="!isEditingBio" @click="startEditingBio" style="cursor: pointer; padding: 12px; border: 1px solid transparent; border-radius: 3px; min-height: 60px; transition: background 0.2s, border 0.2s;" onmouseover="this.style.backgroundColor='#FAFBFC'" onmouseout="this.style.backgroundColor='transparent'">
+            <div v-if="team.description && team.description !== '<p></p>'" v-html="safeTeamDescription" class="tiptap-content"></div>
             <p class="description-text" style="color: #6b778c;" v-else>Chia sẻ những gì nhóm bạn đang thực hiện</p>
           </div>
           <div class="bio-editor" v-else>
-            <textarea v-model="tempBio" class="bio-textarea" placeholder="Chia sẻ những gì nhóm bạn đang thực hiện" style="width: 100%; min-height: 80px; padding: 8px; border: 2px solid #4c9aff; border-radius: 3px; resize: vertical; outline: none;"></textarea>
-            <div class="bio-actions" style="display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px;">
-              <button class="icon-btn small" style="background-color: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); border-radius: 3px; width: 32px; height: 32px; color: #172B4D;" @click="saveBio"><i class="fa-solid fa-check"></i></button>
-              <button class="icon-btn small" style="background-color: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); border-radius: 3px; width: 32px; height: 32px; color: #172B4D;" @click="cancelBio"><i class="fa-solid fa-xmark"></i></button>
-            </div>
+            <RichTextEditor v-model="tempBio" @save="saveBio" @cancel="cancelBio" placeholder="Chia sẻ những gì nhóm bạn đang thực hiện" />
           </div>
         </section>
         
@@ -93,11 +94,11 @@
             <button class="secondary-btn small" :disabled="isArchived" @click="isAddMemberOpen = true">Add</button>
           </div>
           <div class="member-list">
-            <div class="member-item" v-for="member in members" :key="member.id">
-              <UserAvatar :user="{ ...member, fullName: member.fullName || member.name, avatarColor: getAvatarColor(member.email || member.id) }" :size="32" :fontSize="14" />
+            <div class="member-item cursor-pointer flex items-center gap-3 p-2 rounded hover:bg-gray-50 transition-colors" v-for="member in members" :key="member.id" @click="goToMemberProfile(member.id)">
+              <UserAvatar :user="{ ...member, fullName: member.fullName || member.name, avatarColor: getAvatarColor(member.email || member.id) }" :size="32" :fontSize="14" :clickable="false" />
               <div class="member-info">
-                <span class="member-name">{{ member.fullName || member.name }}</span>
-                <span class="member-role">{{ member.role || 'Thành viên' }}</span>
+                <span class="member-name hover:underline" style="font-weight: 600; color: #172B4D; font-size: 13.5px;">{{ member.fullName || member.name }}</span>
+                <span class="member-role" style="font-size: 12px; color: #5E6C84; display: block; margin-top: 2px;">{{ member.role || 'Thành viên' }}</span>
               </div>
             </div>
           </div>
@@ -425,96 +426,99 @@
         
         <!-- Right Sidebar -->
         <div class="right-sidebar">
-      <div class="sidebar-section">
-        <h3>Liên kết đội ngũ <span class="badge" style="background-color: #DFE1E6; color: #172B4D; padding: 2px 6px; border-radius: 12px; font-size: 11px;">0</span></h3>
-        <div style="display: flex; justify-content: flex-end; margin-top: -28px; margin-bottom: 16px;">
-           <button class="icon-btn small" title="Add Link" style="width: 24px; height: 24px;"><i class="fa-solid fa-plus"></i></button>
-        </div>
-        <div class="link-items" style="display: flex; flex-direction: column; gap: 16px;">
-          <div class="link-item" style="display: flex; align-items: center; gap: 12px; color: #6B778C; cursor: pointer; position: relative;" @click="isSprintAProjectOpen = !isSprintAProjectOpen">
-            <div style="width: 24px; height: 24px; border-radius: 4px; background-color: #0052CC; color: white; display: flex; align-items: center; justify-content: center;"><i class="fa-solid fa-rocket" style="font-size: 14px;"></i></div>
-            <span style="font-size: 14px;">Thêm dự án SprintA</span>
-            <!-- SprintA Dropdown Menu -->
-            <div class="dropdown-menu search-dropdown" v-if="isSprintAProjectOpen" @click.stop style="position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 3px; border: 1px solid #DFE1E6; background: white; max-height: 200px; overflow-y: auto;">
-              <div style="padding: 4px 8px; font-size: 11px; font-weight: bold; color: #6B778C; text-transform: uppercase;">Dự án trong Space</div>
-              <div class="team-option" v-for="sp in siteProjects" :key="sp.id" @click="linkProject(sp)" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
-                 <i class="fa-solid fa-rocket" style="color: #6B778C; font-size: 14px;"></i>
-                 <span style="font-size: 13px; color: #172B4D;">{{ sp.name }}</span>
-              </div>
-              <div v-if="!siteProjects || siteProjects.length === 0" style="padding: 8px; font-size: 12px; color: #6B778C;">Không có dự án nào</div>
+          <!-- Card: Liên kết đội ngũ -->
+          <div class="sidebar-card">
+            <div class="sidebar-card-header">
+              <h3>Liên kết đội ngũ <span class="badge">0</span></h3>
+              <button class="icon-btn-micro" title="Add Link"><i class="fa-solid fa-plus"></i></button>
             </div>
-          </div>
-          <div class="link-item" style="display: flex; align-items: center; gap: 12px; color: #6B778C; cursor: pointer; position: relative;" @click="isSpaceDropdownOpen = !isSpaceDropdownOpen">
-            <div style="width: 24px; height: 24px; border-radius: 4px; background-color: #0052CC; color: white; display: flex; align-items: center; justify-content: center;"><i class="fa-brands fa-confluence" style="font-size: 14px;"></i></div>
-            <span style="font-size: 14px;">Thêm không gian</span>
-            <!-- Space Dropdown Menu -->
-            <div class="dropdown-menu search-dropdown" v-if="isSpaceDropdownOpen" @click.stop style="position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 3px; border: 1px solid #DFE1E6; background: white; max-height: 200px; overflow-y: auto;">
-              <div class="team-option" v-for="space in sites" :key="space.id" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
-                 <div style="width: 20px; height: 20px; background: #0052CC; color: white; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px;">{{ space.name.substring(0,1).toUpperCase() }}</div>
-                 <span style="font-size: 13px; color: #172B4D;">{{ space.name }}</span>
-              </div>
-            </div>
-          </div>
-          <div class="link-item" style="display: flex; align-items: center; gap: 12px; color: #6B778C; cursor: pointer;">
-            <div style="width: 24px; height: 24px; border-radius: 50%; background-color: #F4F5F7; color: #6B778C; display: flex; align-items: center; justify-content: center;"><i class="fa-solid fa-link" style="font-size: 12px;"></i></div>
-            <span style="font-size: 14px;">Thêm liên kết</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="sidebar-section mt-32" style="margin-top: 32px;">
-        <h3 style="margin-bottom: 20px;">Chi tiết</h3>
-        
-        <div class="meta-item-row" style="display: flex; align-items: center; margin-bottom: 16px;">
-           <span style="width: 120px; color: #6B778C; font-size: 13px;">Đội ngũ gốc</span>
-           <div class="hierarchy-card mini" v-if="hierarchy?.parent" style="flex: 1; margin: 0; padding: 4px 8px; border-radius: 3px; border: 1px solid #DFE1E6;">
-             <div class="team-identity-small" style="font-size: 13px; display: flex; align-items: center; gap: 8px;">
-               <div class="member-avatar-micro" style="width: 16px; height: 16px; font-size: 10px; background-color: #FFAB00; color: #172B4D;">{{ hierarchy.parent.name.substring(0,2).toUpperCase() }}</div>
-               <span>{{ hierarchy.parent.name }}</span>
-               <i class="fa-solid fa-circle-check" style="color: #0052cc;"></i>
-             </div>
-           </div>
-           <span v-else style="flex: 1; font-size: 13px; color: #172B4D;">Không có đội ngũ gốc</span>
-        </div>
-
-        <div class="meta-item-row" style="display: flex; align-items: flex-start; margin-bottom: 16px;">
-           <span style="width: 120px; color: #6B778C; font-size: 13px;">Đội ngũ phụ</span>
-           <div class="hierarchy-list" v-if="hierarchy?.children?.length" style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
-             <div class="hierarchy-card mini" v-for="child in hierarchy.children" :key="child.id" style="margin: 0; padding: 4px 8px; border-radius: 3px; border: 1px solid #DFE1E6;">
-               <div class="team-identity-small" style="font-size: 13px; display: flex; align-items: center; gap: 8px;">
-                 <div class="member-avatar-micro" style="width: 16px; height: 16px; font-size: 10px;">{{ child.name.substring(0,2).toUpperCase() }}</div>
-                 <span>{{ child.name }}</span>
-               </div>
-             </div>
-           </div>
-           <span v-else style="flex: 1; font-size: 13px; color: #172B4D;">Không có đội ngũ phụ</span>
-        </div>
-
-        <div class="meta-item-row" style="display: flex; align-items: center; margin-bottom: 16px;">
-           <span style="width: 120px; color: #6B778C; font-size: 13px;">Loại đội ngũ</span>
-           <span style="flex: 1; font-size: 13px; color: #172B4D; font-weight: 500;">Đội ngũ chính thức <i class="fa-solid fa-circle-check" style="color: #0052cc;"></i></span>
-        </div>
-
-        <div class="meta-item-row" style="display: flex; align-items: center; position: relative;">
-           <span style="width: 120px; color: #6B778C; font-size: 13px;">Người quản lý</span>
-           <div style="flex: 1; position: relative;">
-              <div class="add-node-box" @click="isManagerDropdownOpen = !isManagerDropdownOpen" style="border: 1px dashed #DFE1E6; border-radius: 3px; padding: 4px 8px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: #172B4D; font-size: 13px; background-color: #FAFBFC;">
-                 <UserAvatar v-if="team.manager" :user="{ ...team.manager, fullName: team.manager.name, avatarColor: getAvatarColor(team.manager.email || team.manager.id) }" :size="16" :fontSize="8" />
-                 <i class="fa-solid fa-user-plus" v-else></i>
-                 <span>{{ team.manager ? team.manager.name : 'Chọn người quản lý' }}</span>
-              </div>
-              <!-- Dropdown Menu -->
-              <div class="dropdown-menu" v-if="isManagerDropdownOpen" @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 3px; border: 1px solid #DFE1E6; background: white; max-height: 200px; overflow-y: auto;">
-                <div class="team-option" v-for="m in members" :key="m.id" @click="selectManager(m)" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
-                  <UserAvatar :user="{ ...m, fullName: m.fullName || m.name, avatarColor: getAvatarColor(m.email || m.id) }" :size="20" :fontSize="10" />
-                  <span style="font-size: 13px; color: #172B4D;">{{ m.fullName || m.name }}</span>
+            <div class="link-items">
+              <div class="link-item" @click="isSprintAProjectOpen = !isSprintAProjectOpen">
+                <div class="link-item-icon project"><i class="fa-solid fa-rocket"></i></div>
+                <span class="link-item-label">Thêm dự án SprintA</span>
+                <!-- SprintA Dropdown Menu -->
+                <div class="dropdown-menu search-dropdown" v-if="isSprintAProjectOpen" @click.stop style="position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: none !important; background: white; max-height: 200px; overflow-y: auto;">
+                  <div style="padding: 4px 8px; font-size: 11px; font-weight: bold; color: #6B778C; text-transform: uppercase;">Dự án trong Space</div>
+                  <div class="team-option" v-for="sp in siteProjects" :key="sp.id" @click="linkProject(sp)" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
+                     <i class="fa-solid fa-rocket" style="color: #6B778C; font-size: 14px;"></i>
+                     <span class="option-name" style="font-size: 13px; color: #172B4D;">{{ sp.name }}</span>
+                  </div>
+                  <div v-if="!siteProjects || siteProjects.length === 0" style="padding: 8px; font-size: 12px; color: #6B778C;">Không có dự án nào</div>
                 </div>
               </div>
-           </div>
-        </div>
+              
+              <div class="link-item" @click="isSpaceDropdownOpen = !isSpaceDropdownOpen">
+                <div class="link-item-icon space"><i class="fa-brands fa-confluence"></i></div>
+                <span class="link-item-label">Thêm không gian</span>
+                <!-- Space Dropdown Menu -->
+                <div class="dropdown-menu search-dropdown" v-if="isSpaceDropdownOpen" @click.stop style="position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: none !important; background: white; max-height: 200px; overflow-y: auto;">
+                  <div class="team-option" v-for="space in sites" :key="space.id" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
+                     <div class="space-avatar" style="width: 20px; height: 20px; background: #0052CC; color: white; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px;">{{ space.name.substring(0,1).toUpperCase() }}</div>
+                     <span class="option-name" style="font-size: 13px; color: #172B4D;">{{ space.name }}</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="link-item">
+                <div class="link-item-icon link"><i class="fa-solid fa-link"></i></div>
+                <span class="link-item-label">Thêm liên kết</span>
+              </div>
+            </div>
+          </div>
 
-      </div>
-    </div>
+          <!-- Card: Chi tiết -->
+          <div class="sidebar-card">
+            <h3>Chi tiết</h3>
+            
+            <div class="meta-item-row">
+               <span class="meta-label">Đội ngũ gốc</span>
+               <div class="hierarchy-card mini" v-if="hierarchy?.parent">
+                 <div class="team-identity-small">
+                   <div class="member-avatar-micro" style="background-color: #FFAB00; color: #172B4D;">{{ hierarchy.parent.name.substring(0,2).toUpperCase() }}</div>
+                   <span class="team-name">{{ hierarchy.parent.name }}</span>
+                   <i class="fa-solid fa-circle-check"></i>
+                 </div>
+               </div>
+               <span v-else class="meta-value-empty">Không có đội ngũ gốc</span>
+            </div>
+
+            <div class="meta-item-row align-start">
+               <span class="meta-label">Đội ngũ phụ</span>
+               <div class="hierarchy-list" v-if="hierarchy?.children?.length">
+                 <div class="hierarchy-card mini" v-for="child in hierarchy.children" :key="child.id">
+                   <div class="team-identity-small">
+                     <div class="member-avatar-micro">{{ child.name.substring(0,2).toUpperCase() }}</div>
+                     <span class="team-name">{{ child.name }}</span>
+                   </div>
+                 </div>
+               </div>
+               <span v-else class="meta-value-empty">Không có đội ngũ phụ</span>
+            </div>
+
+            <div class="meta-item-row">
+               <span class="meta-label">Loại đội ngũ</span>
+               <span class="meta-value bold">Đội ngũ chính thức <i class="fa-solid fa-circle-check"></i></span>
+            </div>
+
+            <div class="meta-item-row">
+               <span class="meta-label">Người quản lý</span>
+               <div class="manager-selector-wrapper">
+                  <div class="manager-trigger-btn" @click="isManagerDropdownOpen = !isManagerDropdownOpen">
+                     <UserAvatar v-if="team.manager" :user="{ ...team.manager, fullName: team.manager.name, avatarColor: getAvatarColor(team.manager.email || team.manager.id) }" :size="18" :fontSize="8" />
+                     <i class="fa-solid fa-user-plus" v-else></i>
+                     <span>{{ team.manager ? team.manager.name : 'Chọn người quản lý' }}</span>
+                  </div>
+                  <!-- Dropdown Menu -->
+                  <div class="dropdown-menu" v-if="isManagerDropdownOpen" @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.15); background: white; max-height: 200px; overflow-y: auto;">
+                    <div class="team-option" v-for="m in members" :key="m.id" @click="selectManager(m)" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
+                      <UserAvatar :user="{ ...m, fullName: m.fullName || m.name, avatarColor: getAvatarColor(m.email || m.id) }" :size="20" :fontSize="10" />
+                      <span class="option-name">{{ m.fullName || m.name }}</span>
+                    </div>
+                  </div>
+               </div>
+            </div>
+          </div>
+        </div>
   </div>
   <!-- End of Layout Wrapper -->
   </div>
@@ -824,6 +828,7 @@ import { getStoredUser } from '@/utils/permissions'
 import { getAvatarColor } from '@/utils/avatarHelper'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import RichTextEditor from '@/components/common/RichTextEditor.vue'
+import DOMPurify from 'dompurify'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
@@ -867,6 +872,8 @@ const teamTasks = computed(() => {
 })
 
 const team = computed(() => teamStore.currentTeam)
+const sanitizeHtml = (value) => DOMPurify.sanitize(value || '')
+const safeTeamDescription = computed(() => sanitizeHtml(team.value?.description || ''))
 const isArchived = computed(() => team.value?.status === 'Archived')
 const members = computed(() => teamStore.members || [])
 const hierarchy = computed(() => teamStore.hierarchy || { parent: null, children: [] })
@@ -994,12 +1001,28 @@ const linkProject = (proj) => {
   isProjectDropdownOpen.value = false
 }
 
+const goToMemberProfile = (memberId) => {
+  if (route.path.startsWith('/home/')) {
+    router.push(`/home/profile/${memberId}`)
+  } else {
+    router.push(`/profile/${memberId}`)
+  }
+}
+
 const goToProjects = () => {
-  router.push('/home/projects')
+  if (route.path.startsWith('/home/')) {
+    router.push('/home/projects')
+  } else {
+    router.push('/your-work')
+  }
 }
 
 const goToProjectDetail = (id) => {
-  router.push('/home/projects')
+  if (route.path.startsWith('/home/')) {
+    router.push(`/home/projects/${id}`)
+  } else {
+    router.push(`/space/project/${id}`)
+  }
 }
 
 // Kudos Logic
@@ -1221,7 +1244,9 @@ const submitAddMember = async () => {
   /* Shift up to bleed under the transparent topbar if we had one, but we have a solid header. 
      Instead, we use negative margin to override the padding of the parent layout if needed. 
      For now, just render cleanly. */
-  margin: -32px -40px; 
+  margin: -8px 0 0;
+  width: 100% !important;
+  max-width: none !important;
 }
 
 .team-cover {
@@ -1230,6 +1255,34 @@ const submitAddMember = async () => {
   background-size: cover;
   background-position: center;
   position: relative;
+}
+
+.back-floating-btn {
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 20px;
+  color: #172b4d;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+}
+
+.back-floating-btn:hover {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  color: #0052cc;
 }
 
 .cover-overlay {
@@ -1272,7 +1325,7 @@ const submitAddMember = async () => {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  padding: 0 40px;
+  padding: 0 18px;
   margin-top: -32px;
   margin-bottom: 24px;
 }
@@ -1462,36 +1515,55 @@ const submitAddMember = async () => {
 
 .tabs-nav {
   display: flex;
-  border-bottom: 2px solid #dfe1e6;
-  gap: 24px;
-  padding: 0 40px;
+  align-items: center;
+  gap: 6px !important;
+  width: max-content !important;
+  max-width: calc(100% - 36px);
+  min-height: 42px;
+  margin: 0 18px 12px !important;
+  padding: 4px !important;
+  border: 1px solid rgba(148, 163, 184, 0.2) !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow-x: auto;
+  flex-shrink: 0;
 }
 
 .tab-btn {
-  background: none;
-  border: none;
-  padding: 8px 0 12px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #5e6c84;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px !important;
+  min-width: max-content;
+  padding: 0 16px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: #475569 !important;
+  font-size: 12.5px !important;
+  font-weight: 800 !important;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.18s ease, color 0.18s ease;
   cursor: pointer;
-  position: relative;
-  margin-bottom: -2px;
-  border-bottom: 2px solid transparent;
-  transition: color 0.2s;
 }
 
 .tab-btn:hover {
-  color: #172b4d;
+  color: #0f172a !important;
+  background: rgba(14, 165, 233, 0.06) !important;
 }
 
 .tab-btn.active {
-  color: #0052cc;
-  border-bottom-color: #0052cc;
+  color: #0369a1 !important;
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.20), rgba(45, 212, 191, 0.14)) !important;
+  box-shadow: none !important;
 }
 
 .tab-content {
-  padding: 32px 40px;
+  padding: 8px 18px 32px;
   flex: 1;
 }
 
@@ -1510,21 +1582,277 @@ const submitAddMember = async () => {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
-.sidebar-section h3 {
-  font-size: 14px;
-  font-weight: 600;
-  color: #5e6c84;
+/* Sidebar Cards styling */
+.sidebar-card {
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebar-card h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
   text-transform: uppercase;
-  margin: 0 0 12px 0;
+  letter-spacing: 0.5px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.meta-item {
-  font-size: 14px;
-  color: #172b4d;
-  margin-bottom: 8px;
+.sidebar-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.sidebar-card h3 .badge {
+  background-color: #f1f5f9;
+  color: #475569;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.link-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.link-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.link-item:hover {
+  background: #f1f5f9;
+  border-color: rgba(148, 163, 184, 0.2);
+  transform: translateY(-1px);
+}
+
+.link-item-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.link-item-icon.project {
+  background-color: #0c66e4;
+}
+
+.link-item-icon.space {
+  background-color: #0052cc;
+}
+
+.link-item-icon.link {
+  background-color: #64748b;
+}
+
+.link-item-label {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #475569;
+}
+
+.link-item:hover .link-item-label {
+  color: #1e293b;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  width: 240px;
+  background: #ffffff;
+  border-radius: 8px !important;
+  border: none !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.03) !important;
+  padding: 6px 0;
+  z-index: 1000;
+}
+
+.dropdown-title {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  margin-bottom: 4px;
+}
+
+.team-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 0;
+  transition: background-color 0.15s ease;
+}
+
+.team-option:hover {
+  background-color: #f1f5f9;
+}
+
+.option-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+}
+
+.no-options {
+  padding: 12px;
+  font-size: 12px;
+  color: #64748b;
+  text-align: center;
+}
+
+.space-avatar {
+  width: 20px;
+  height: 20px;
+  background: #0052cc;
+  color: white;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.meta-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+}
+
+.meta-item-row.align-start {
+  align-items: flex-start;
+}
+
+.meta-label {
+  width: 110px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.meta-value {
+  font-size: 13px;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.meta-value.bold {
+  font-weight: 600;
+}
+
+.meta-value i {
+  color: #0c66e4;
+}
+
+.meta-value-empty {
+  font-size: 13px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.hierarchy-card.mini {
+  flex: 1;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  background: #f8fafc;
+}
+
+.hierarchy-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.team-identity-small {
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #334155;
+}
+
+.team-identity-small i {
+  color: #0c66e4;
+  margin-left: auto;
+}
+
+.manager-selector-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+.manager-trigger-btn {
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 6px;
+  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+  background-color: #f8fafc;
+  transition: all 0.2s ease;
+}
+
+.manager-trigger-btn:hover {
+  background-color: #f1f5f9;
+  border-color: rgba(148, 163, 184, 0.25);
+  color: #1e293b;
+}
+
+.manager-avatar-placeholder {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #e2e8f0;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
 }
 
 .status-badge.active {

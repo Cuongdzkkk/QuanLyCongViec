@@ -2,7 +2,10 @@
   <AdminLayout>
     <div class="admin-page">
       <div class="page-header">
-        <div class="breadcrumb">SYSTEM / AUDIT LOG</div>
+        <div class="breadcrumb">
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          <span>SYSTEM / AUDIT LOG</span>
+        </div>
         <h1 class="text-hero">{{ t('System Audit Log', 'Nhật ký Hệ thống') }}</h1>
         <p class="text-desc">Monitor and search important system activities, security events, and administrative changes.</p>
       </div>
@@ -184,14 +187,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.breadcrumb {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  color: var(--color-accent);
-  margin-bottom: 12px;
-  text-transform: uppercase;
-}
+
 
 .header-actions-row {
   display: flex;

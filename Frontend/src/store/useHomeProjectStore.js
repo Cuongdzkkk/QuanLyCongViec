@@ -16,6 +16,7 @@ export const useHomeProjectStore = defineStore('homeProject', {
     decisions: [],
     projects: [],
     currentProject: null,
+    members: [],
     linkedGoals: [],
     linkedTasks: [],
     relatedProjects: [],
@@ -154,6 +155,7 @@ export const useHomeProjectStore = defineStore('homeProject', {
       this.lessons = []
       this.risks = []
       this.decisions = []
+      this.members = []
       this.workspaceId = workspaceId
       this.isEmpty = false
       this.isSuccess = false
@@ -200,28 +202,35 @@ export const useHomeProjectStore = defineStore('homeProject', {
           this.updates = rawData.updates || []
           
           try {
-            const [risksRes, decisionsRes, lessonsRes, updatesRes] = await Promise.all([
+            const [risksRes, decisionsRes, lessonsRes, updatesRes, membersRes] = await Promise.all([
               axiosClient.get(`/projects/${projectId}/risks`),
               axiosClient.get(`/projects/${projectId}/decisions`),
               axiosClient.get(`/projects/${projectId}/lessons`),
-              axiosClient.get(`/projects/${projectId}/updates`)
+              axiosClient.get(`/projects/${projectId}/updates`),
+              axiosClient.get(`/projects/${projectId}/members`).catch(() => ({ data: { data: [] } }))
             ]);
             
           this.project.risks = risksRes.data?.data || [];
           this.project.decisions = decisionsRes.data?.data || [];
           this.project.lessons = lessonsRes.data?.data || [];
+          this.project.members = membersRes.data?.data || [];
           this.currentProject.risks = this.project.risks;
           this.currentProject.decisions = this.project.decisions;
           this.currentProject.lessons = this.project.lessons;
+          this.currentProject.members = this.project.members;
+          this.members = this.project.members;
           this.updates = updatesRes.data?.data || [];
           } catch (subErr) {
             console.error('Error fetching sub-resources:', subErr);
           this.project.risks = [];
           this.project.decisions = [];
           this.project.lessons = [];
+          this.project.members = [];
           this.currentProject.risks = [];
           this.currentProject.decisions = [];
           this.currentProject.lessons = [];
+          this.currentProject.members = [];
+          this.members = [];
           this.updates = [];
           }
           this.isSuccess = true

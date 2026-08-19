@@ -1,76 +1,66 @@
 <template>
   <div class="goal-detail-wrapper" v-if="goal">
-    <!-- Module Header (matching the list view) -->
-    <header class="module-header" style="padding-bottom: 0;">
-      <AppPageHeader title="Mục tiêu" @back="router.push(goalsBasePath)" :back="true">
-        <template #actions>
-          <button class="primary-btn">Tạo mục tiêu</button>
-        </template>
-        <template #bottom>
-          <div class="tabs-nav" style="margin-top: 16px;">
-            <router-link :to="goalsBasePath" class="tab-link">Thư mục mục tiêu</router-link>
-            <router-link :to="goalsBasePath" class="tab-link">Đang theo dõi</router-link>
-            <router-link :to="goalsBasePath" class="tab-link">Đã lưu trữ</router-link>
-          </div>
-        </template>
-      </AppPageHeader>
-    </header>
+    <!-- Cover Image -->
+    <div class="goal-cover">
+      <!-- Floating Back Button -->
+      <button class="back-floating-btn" @click="router.push(goalsBasePath)">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span>{{ isVi ? 'Quay lại' : 'Back' }}</span>
+      </button>
+    </div>
 
     <!-- Entity Header -->
-    <header class="goal-header">
-      <div class="goal-header-inner">
-        <!-- Entity Main info -->
-        <div class="header-main">
-          <div class="title-block">
-            <div class="goal-icon-large">
-              <i class="fa-solid fa-bullseye"></i>
-            </div>
-            <h1>{{ goal.title }}</h1>
-          </div>
-          
-          <div class="header-actions">
-            <button class="secondary-btn" @click="toggleFollow">
-              <i class="fa-solid fa-eye"></i> {{ goal.isFollowing ? 'Đang theo dõi' : 'Theo dõi' }}
-            </button>
-            <button
-              class="secondary-btn icon-only goal-star-button"
-              type="button"
-              :class="{ starred: isGoalStarred }"
-              :disabled="starredStore.isPending('Goal', goal.id)"
-              :aria-pressed="isGoalStarred"
-              :aria-label="isGoalStarred ? 'Bỏ gắn sao mục tiêu' : 'Gắn sao mục tiêu'"
-              @click="toggleStar"
-            >
-              <i :class="isGoalStarred ? 'fa-solid fa-star' : 'fa-regular fa-star'" aria-hidden="true"></i>
-            </button>
-            <button class="secondary-btn icon-only" @click="toggleShare">
-              <i class="fa-solid fa-share-nodes"></i>
-            </button>
-            <button class="secondary-btn icon-only" @click="toggleMenu">
-              <i class="fa-solid fa-ellipsis"></i>
-            </button>
-          </div>
+    <div class="goal-header-wrapper">
+      <div class="goal-identity">
+        <div class="goal-icon-large">
+          <i class="fa-solid fa-bullseye"></i>
         </div>
-        
-        <!-- Quick Status Row -->
-        <div class="quick-status-row">
-          <AppStatusBadge :status="goal.status" :statusText="goal.status" />
-          <span class="update-text" v-if="goal.lastUpdate">Cập nhật: {{ goal.lastUpdate }}</span>
+        <div class="goal-title-block">
+          <div class="title-row">
+            <h1>{{ goal.title }}</h1>
+            <AppStatusBadge :status="goal.status" :statusText="goal.status" />
+          </div>
+          <p class="goal-meta-subtitle">
+            Cập nhật: <strong class="text-dark">{{ goal.lastUpdate || 'Vừa xong' }}</strong>
+          </p>
         </div>
       </div>
-    </header>
+      
+      <div class="header-actions">
+        <button class="secondary-btn" @click="toggleFollow">
+          <i class="fa-solid fa-eye"></i> {{ goal.isFollowing ? 'Đang theo dõi' : 'Theo dõi' }}
+        </button>
+        <button
+          class="secondary-btn icon-only goal-star-button"
+          type="button"
+          :class="{ starred: isGoalStarred }"
+          :disabled="starredStore.isPending('Goal', goal.id)"
+          :aria-pressed="isGoalStarred"
+          :aria-label="isGoalStarred ? 'Bỏ gắn sao mục tiêu' : 'Gắn sao mục tiêu'"
+          @click="toggleStar"
+        >
+          <i :class="isGoalStarred ? 'fa-solid fa-star' : 'fa-regular fa-star'" aria-hidden="true"></i>
+        </button>
+        <button class="secondary-btn icon-only" @click="toggleShare">
+          <i class="fa-solid fa-share-nodes"></i>
+        </button>
+        <button class="secondary-btn icon-only" @click="toggleMenu">
+          <i class="fa-solid fa-ellipsis"></i>
+        </button>
+      </div>
+    </div>
 
     <!-- Navigation Tabs -->
-    <div style="border-bottom: 2px solid #DFE1E6; background: white;">
-      <div class="goal-tabs-nav" style="padding: 0 40px; display: flex; gap: 24px; max-width: 1000px; margin: 0 auto; width: 100%;">
-        <button class="tab-btn" :class="{ active: currentTab === 'overview' }" @click="currentTab = 'overview'">Tổng quan</button>
-        <button class="tab-btn" :class="{ active: currentTab === 'updates' }" @click="currentTab = 'updates'">Cập nhật <span v-if="updates.length" class="badge-count">{{ updates.length + 1 }}</span></button>
-        <button class="tab-btn" :class="{ active: currentTab === 'jira' }" @click="currentTab = 'jira'">SprintA</button>
-        <button class="tab-btn" :class="{ active: currentTab === 'projects' }" @click="currentTab = 'projects'">Dự án</button>
-        <button class="tab-btn" :class="{ active: currentTab === 'learnings' }" @click="currentTab = 'learnings'">Bài học rút ra</button>
-        <button class="tab-btn" :class="{ active: currentTab === 'risks' }" @click="currentTab = 'risks'">Rủi ro</button>
-        <button class="tab-btn" :class="{ active: currentTab === 'decisions' }" @click="currentTab = 'decisions'">Quyết định</button>
-      </div>
+    <div class="tabs-nav">
+      <button class="tab-btn" :class="{ active: currentTab === 'overview' }" @click="currentTab = 'overview'">Tổng quan</button>
+      <button class="tab-btn" :class="{ active: currentTab === 'updates' }" @click="currentTab = 'updates'">
+        Cập nhật <span v-if="updates.length" class="badge-count">{{ updates.length + 1 }}</span>
+      </button>
+      <button class="tab-btn" :class="{ active: currentTab === 'jira' }" @click="currentTab = 'jira'">SprintA</button>
+      <button class="tab-btn" :class="{ active: currentTab === 'projects' }" @click="currentTab = 'projects'">Dự án</button>
+      <button class="tab-btn" :class="{ active: currentTab === 'learnings' }" @click="currentTab = 'learnings'">Bài học rút ra</button>
+      <button class="tab-btn" :class="{ active: currentTab === 'risks' }" @click="currentTab = 'risks'">Rủi ro</button>
+      <button class="tab-btn" :class="{ active: currentTab === 'decisions' }" @click="currentTab = 'decisions'">Quyết định</button>
     </div>
 
     <!-- Main Content Grid -->
@@ -85,10 +75,10 @@
               <h3>Mô tả</h3>
             </div>
             <div class="section-body">
-              <RichTextEditor v-if="isEditingBio" v-model="tempBio" @save="saveBio" @cancel="isEditingBio = false" placeholder="Mô tả ngắn gọn lý do tại sao mục tiêu này lại quan trọng và cách đo lường thành công..." />
-              <div v-else @click="startEditingBio" style="cursor: pointer; color: #5E6C84; font-size: 14px; padding: 8px; border-radius: 3px; min-height: 40px;" onmouseover="this.style.backgroundColor='#FAFBFC'" onmouseout="this.style.backgroundColor='transparent'">
+              <RichTextEditor v-slot="isOwner" v-if="isEditingBio && isOwner" v-model="tempBio" @save="saveBio" @cancel="isEditingBio = false" placeholder="Mô tả ngắn gọn lý do tại sao mục tiêu này lại quan trọng và cách đo lường thành công..." />
+              <div v-else @click="isOwner && startEditingBio()" :style="{ cursor: isOwner ? 'pointer' : 'default', color: '#5E6C84', fontSize: '14px', padding: '8px', borderRadius: '3px', minHeight: '40px' }" onmouseover="if (isOwner) this.style.backgroundColor='#FAFBFC'" onmouseout="if (isOwner) this.style.backgroundColor='transparent'">
                 <div v-if="goal.description && goal.description !== '<p></p>'" v-html="safeGoalDescription" class="tiptap-content"></div>
-                <div v-else>Mô tả ngắn gọn lý do tại sao mục tiêu này lại quan trọng và cách đo lường thành công, để bạn có thể cung cấp hiểu biết chung cho người theo dõi.</div>
+                <div v-else>{{ isOwner ? 'Mô tả ngắn gọn lý do tại sao mục tiêu này lại quan trọng và cách đo lường thành công, để bạn có thể cung cấp hiểu biết chung cho người theo dõi.' : 'Chưa có mô tả' }}</div>
               </div>
             </div>
           </section>
@@ -158,7 +148,7 @@
             </div>
           </div>
 
-          <div class="update-editor-box">
+          <div v-if="isOwner" class="update-editor-box">
             <div class="update-editor-header">
               <div class="editor-field">
                 <label>Trạng thái hiện tại</label>
@@ -257,8 +247,8 @@
                 
                   <div style="display: flex; gap: 12px; color: #5E6C84; font-size: 13px; font-weight: 500;">
                     <span style="cursor: pointer;"><i class="fa-solid fa-share-nodes"></i> Chia sẻ</span>
-                    <span style="cursor: pointer;" @click="editUpdate(update)"><i class="fa-solid fa-pen"></i> Sửa</span>
-                    <el-popconfirm title="Bạn có chắc muốn xóa bản cập nhật này?" @confirm="deleteUpdate(update.id)" confirm-button-text="Xóa" cancel-button-text="Hủy" confirm-button-type="danger">
+                    <span v-if="isOwner || update.userId === authStore.userId" style="cursor: pointer;" @click="editUpdate(update)"><i class="fa-solid fa-pen"></i> Sửa</span>
+                    <el-popconfirm v-if="isOwner || update.userId === authStore.userId" title="Bạn có chắc muốn xóa bản cập nhật này?" @confirm="deleteUpdate(update.id)" confirm-button-text="Xóa" cancel-button-text="Hủy" confirm-button-type="danger">
                       <template #reference>
                         <span style="cursor: pointer; color: #DE350B;"><i class="fa-solid fa-trash"></i> Xóa</span>
                       </template>
@@ -292,10 +282,10 @@
                   </div>
                </div>
                <div>
-                 <h3 style="margin: 0 0 8px 0; font-size: 16px; color: #172B4D;">Thêm công việc trong SprintA góp phần vào mục tiêu này</h3>
-                 <p style="margin: 0 0 16px 0; font-size: 14px; color: #5E6C84; line-height: 1.5;">Kết nối công việc của đội ngũ để xem mục tiêu này trong SprintA và liên kết các nội dung cập nhật với công việc. <a href="#" style="color: #0052CC; text-decoration: none;">Thông tin khác về mục tiêu trong SprintA</a></p>
+                 <h3 style="margin: 0 0 8px 0; font-size: 16px; color: #172B4D;">{{ isOwner ? 'Thêm công việc trong SprintA góp phần vào mục tiêu này' : 'Công việc SprintA' }}</h3>
+                 <p style="margin: 0 0 16px 0; font-size: 14px; color: #5E6C84; line-height: 1.5;">{{ isOwner ? 'Kết nối công việc của đội ngũ để xem mục tiêu này trong SprintA và liên kết các nội dung cập nhật với công việc.' : 'Chưa có công việc SprintA nào liên kết với mục tiêu này.' }} <a href="#" style="color: #0052CC; text-decoration: none;">Thông tin khác về mục tiêu trong SprintA</a></p>
                  <div style="position: relative; display: inline-block;">
-                   <button class="secondary-btn" @click="isSprintAInputOpen = !isSprintAInputOpen" style="background: white; border: 1px solid #DFE1E6; font-weight: 600;">Thêm hạng mục công việc SprintA</button>
+                   <button v-if="isOwner" class="secondary-btn" @click="isSprintAInputOpen = !isSprintAInputOpen" style="background: white; border: 1px solid #DFE1E6; font-weight: 600;">Thêm hạng mục công việc SprintA</button>
                    
                    <!-- SprintA Input Dropdown -->
                    <div v-if="isSprintAInputOpen" class="dropdown-menu" style="position: absolute; top: 100%; left: 0; margin-top: 8px; background: white; border: 1px solid #DFE1E6; border-radius: 3px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); width: 320px; z-index: 1000; padding: 16px;">
@@ -322,10 +312,10 @@
                   </div>
                </div>
                <div>
-                 <h3 style="margin: 0 0 8px 0; font-size: 16px; color: #172B4D;">Thêm dự án để sắp xếp công việc của bạn với mục tiêu này</h3>
-                 <p style="margin: 0 0 16px 0; font-size: 14px; color: #5E6C84; line-height: 1.5;">Sử dụng không gian này để theo dõi bất kỳ dự án nào đóng góp vào mục tiêu này, vì vậy đội ngũ và các bên liên quan của bạn có thể có được bức tranh toàn cảnh.</p>
+                 <h3 style="margin: 0 0 8px 0; font-size: 16px; color: #172B4D;">{{ isOwner ? 'Thêm dự án để sắp xếp công việc của bạn với mục tiêu này' : 'Dự án đóng góp' }}</h3>
+                 <p style="margin: 0 0 16px 0; font-size: 14px; color: #5E6C84; line-height: 1.5;">{{ isOwner ? 'Sử dụng không gian này để theo dõi bất kỳ dự án nào đóng góp vào mục tiêu này, vì vậy đội ngũ và các bên liên quan của bạn có thể có được bức tranh toàn cảnh.' : 'Chưa có dự án nào liên kết với mục tiêu này.' }}</p>
                  <div style="position: relative; display: inline-block;">
-                   <button class="secondary-btn" @click="isProjectSearchOpen = !isProjectSearchOpen" style="background: white; border: 1px solid #DFE1E6; font-weight: 600;">Thêm dự án</button>
+                   <button v-if="isOwner" class="secondary-btn" @click="isProjectSearchOpen = !isProjectSearchOpen" style="background: white; border: 1px solid #DFE1E6; font-weight: 600;">Thêm dự án</button>
                    
                    <!-- Project Search Dropdown -->
                    <div v-if="isProjectSearchOpen" class="dropdown-menu" style="position: absolute; top: 100%; left: 0; margin-top: 8px; background: white; border: 1px solid #DFE1E6; border-radius: 3px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); width: 320px; z-index: 1000; padding: 12px 0;">
@@ -350,13 +340,13 @@
 
         <!-- BÀI HỌC RÚT RA TAB -->
         <template v-if="currentTab === 'learnings'">
-          <AppEmptyState v-if="!editing.learnings && !goalStore.lessons?.length" icon="fa-solid fa-lightbulb" title="Những bộ óc vĩ đại có tư duy giống nhau sẽ chia sẻ kiến thức của họ" description="Chia sẻ những gì bạn đã học được với công ty của bạn để giúp những người khác có một khởi đầu thuận lợi khi làm việc trên các mục tiêu tương tự.">
-            <template #actions>
+          <AppEmptyState v-if="!editing.learnings && !goalStore.lessons?.length" icon="fa-solid fa-lightbulb" title="Những bộ óc vĩ đại có tư duy giống nhau sẽ chia sẻ kiến thức của họ" :description="isOwner ? 'Chia sẻ những gì bạn đã học được với công ty của bạn để giúp những người khác có một khởi đầu thuận lợi khi làm việc trên các mục tiêu tương tự.' : 'Chưa có bài học rút ra nào được ghi nhận cho mục tiêu này.'">
+            <template #actions v-if="isOwner">
               <button class="secondary-btn" @click="editing.learnings = true">Thêm bài học rút ra mới</button>
             </template>
           </AppEmptyState>
           <div v-else>
-            <div v-if="editing.learnings" class="tab-item-editor" style="margin-bottom: 24px; padding-top: 16px;">
+            <div v-if="editing.learnings && isOwner" class="tab-item-editor" style="margin-bottom: 24px; padding-top: 16px;">
                 <RichTextEditor v-model="newItem.text" @save="saveLearning" @cancel="editing.learnings = false; newItem.title = ''; newItem.text = ''" placeholder="Dùng không gian này để chia sẻ bài học rút ra...">
                   <template #header>
                     <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #DFE1E6; background-color: #fff;">
@@ -367,7 +357,7 @@
                 </RichTextEditor>
                 
             </div>
-            <div v-if="!editing.learnings && goalStore.lessons?.length" style="margin-bottom: 24px; padding-top: 16px;">
+            <div v-if="!editing.learnings && goalStore.lessons?.length && isOwner" style="margin-bottom: 24px; padding-top: 16px;">
                 <button class="secondary-btn" @click="editing.learnings = true">Thêm bài học</button>
             </div>
             
@@ -391,13 +381,13 @@
 
         <!-- RỦI RO TAB -->
         <template v-if="currentTab === 'risks'">
-          <AppEmptyState v-if="!editing.risks && !goalStore.risks?.length" icon="fa-solid fa-triangle-exclamation" title="Nắm bắt các rủi ro đã biết" description="Theo dõi mọi rủi ro liên quan đến mục tiêu này để tránh những bất ngờ sau này.">
-            <template #actions>
+          <AppEmptyState v-if="!editing.risks && !goalStore.risks?.length" icon="fa-solid fa-triangle-exclamation" title="Nắm bắt các rủi ro đã biết" :description="isOwner ? 'Theo dõi mọi rủi ro liên quan đến mục tiêu này để tránh những bất ngờ sau này.' : 'Chưa ghi nhận rủi ro nào cho mục tiêu này.'">
+            <template #actions v-if="isOwner">
               <button class="secondary-btn" @click="editing.risks = true">Thêm rủi ro mới</button>
             </template>
           </AppEmptyState>
           <div v-else>
-            <div v-if="editing.risks" class="tab-item-editor" style="margin-bottom: 24px; padding-top: 16px;">
+            <div v-if="editing.risks && isOwner" class="tab-item-editor" style="margin-bottom: 24px; padding-top: 16px;">
                 <RichTextEditor v-model="newItem.text" @save="saveRisk" @cancel="editing.risks = false; newItem.title = ''; newItem.text = ''" placeholder="Mô tả rủi ro...">
                   <template #header>
                     <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #DFE1E6; background-color: #fff;">
@@ -408,7 +398,7 @@
                 </RichTextEditor>
                 
             </div>
-            <div v-if="!editing.risks && goalStore.risks?.length" style="margin-bottom: 24px; padding-top: 16px;">
+            <div v-if="!editing.risks && goalStore.risks?.length && isOwner" style="margin-bottom: 24px; padding-top: 16px;">
                 <button class="secondary-btn" @click="editing.risks = true">Thêm rủi ro</button>
             </div>
             
@@ -432,13 +422,13 @@
 
         <!-- QUYẾT ĐỊNH TAB -->
         <template v-if="currentTab === 'decisions'">
-          <AppEmptyState v-if="!editing.decisions && !goalStore.decisions?.length" icon="fa-solid fa-check-circle" title="Truyền đạt các quyết định lớn" description="Ghi lại các quyết định lớn cho mục tiêu này tại đây để chia sẻ trong bản cập nhật mới nhất của bạn.">
-            <template #actions>
+          <AppEmptyState v-if="!editing.decisions && !goalStore.decisions?.length" icon="fa-solid fa-check-circle" title="Truyền đạt các quyết định lớn" :description="isOwner ? 'Ghi lại các quyết định lớn cho mục tiêu này tại đây để chia sẻ trong bản cập nhật mới nhất của bạn.' : 'Chưa ghi nhận quyết định lớn nào cho mục tiêu này.'">
+            <template #actions v-if="isOwner">
               <button class="secondary-btn" @click="editing.decisions = true">Thêm quyết định mới</button>
             </template>
           </AppEmptyState>
           <div v-else>
-            <div v-if="editing.decisions" class="tab-item-editor" style="margin-bottom: 24px; padding-top: 16px;">
+            <div v-if="editing.decisions && isOwner" class="tab-item-editor" style="margin-bottom: 24px; padding-top: 16px;">
                 <RichTextEditor v-model="newItem.text" @save="saveDecision" @cancel="editing.decisions = false; newItem.title = ''; newItem.text = ''" placeholder="Mô tả quyết định...">
                   <template #header>
                     <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #DFE1E6; background-color: #fff;">
@@ -449,7 +439,7 @@
                 </RichTextEditor>
                 
             </div>
-            <div v-if="!editing.decisions && goalStore.decisions?.length" style="margin-bottom: 24px; padding-top: 16px;">
+            <div v-if="!editing.decisions && goalStore.decisions?.length && isOwner" style="margin-bottom: 24px; padding-top: 16px;">
                 <button class="secondary-btn" @click="editing.decisions = true">Thêm quyết định</button>
             </div>
             
@@ -474,8 +464,8 @@
 
       <!-- Right Column: Sidebar Details -->
       <div class="side-column">
-        <div class="details-card">
-          <div class="details-header">
+        <div class="sidebar-card">
+          <div class="sidebar-card-header">
             <h3>Chi tiết</h3>
           </div>
           <div class="details-body">
@@ -483,27 +473,17 @@
             <div class="detail-row">
               <div class="detail-label">Tiến độ</div>
               <div class="detail-value progress-value">
-                <div class="progress-bar-bg"><div class="progress-bar-fill" :style="{ width: (goal.progress || 0) + '%' }"></div></div>
-                <span>{{ goal.progress || 0 }}%</span>
-              </div>
-            </div>
-
-            <!-- Chủ sở hữu -->
-            <div class="detail-row">
-              <div class="detail-label">Chủ sở hữu</div>
-              <div class="detail-value">
-                <div class="owner-chip">
-                  <AppAvatar :user="{ id: goal.creatorId || goal.ownerId, avatarColor: goal.creatorColor || goal.ownerColor, fullName: goal.creatorName || goal.ownerName || goal.owner, avatarUrl: goal.creatorAvatarUrl || goal.ownerAvatarUrl, email: goal.creatorEmail || goal.ownerEmail }" :size="24" class="owner-avatar-micro" />
-                  <span>{{ goal.creatorName || goal.ownerName || goal.owner || 'Chưa có' }}</span>
-                </div>
+                <div class="progress-bar-bg"><div class="progress-bar-fill" :style="{ width: (goal?.progress || 0) + '%' }"></div></div>
+                <span>{{ goal?.progress || 0 }}%</span>
               </div>
             </div>
 
             <!-- Người theo dõi -->
             <div class="detail-row">
-              <div class="detail-label">Người theo dõi <button class="icon-btn-micro" @click="isShareModalOpen = true"><i class="fa-solid fa-plus"></i></button></div>
+              <div class="detail-label">Người theo dõi <button v-if="isOwner" class="icon-btn-micro" @click="isShareModalOpen = true"><i class="fa-solid fa-plus"></i></button></div>
               <div class="detail-value flex-between">
-                <span class="empty-value" style="cursor: pointer;" @click="isShareModalOpen = true">Thêm người theo dõi</span>
+                <span v-if="isOwner" class="empty-value" style="cursor: pointer;" @click="isShareModalOpen = true">Thêm người theo dõi</span>
+                <span v-else class="empty-value" style="cursor: default; color: #5e6c84;">Chưa có người theo dõi</span>
                 <div class="follower-icons">
                   <i class="fa-brands fa-slack ms-1"></i>
                   <i class="fa-brands fa-microsoft ms-1"></i>
@@ -513,14 +493,17 @@
 
             <!-- Mục tiêu chính -->
             <div class="detail-row relative-popover-container">
-              <div class="detail-label">Mục tiêu chính <button class="icon-btn-micro" v-if="!linkedParentGoal" @click.stop="togglePopover('parentGoal')"><i class="fa-solid fa-plus"></i></button></div>
+              <div class="detail-label">Mục tiêu chính <button class="icon-btn-micro" v-if="isOwner && !linkedParentGoal" @click.stop="togglePopover('parentGoal')"><i class="fa-solid fa-plus"></i></button></div>
               
               <div class="detail-value" v-if="linkedParentGoal">
                 <div class="linked-item">
                   <i class="fa-solid fa-bullseye item-icon"></i>
                   <span class="item-name">{{ linkedParentGoal.title }}</span>
-                  <button class="remove-btn" @click="linkedParentGoal = null"><i class="fa-solid fa-xmark"></i></button>
+                  <button v-if="isOwner" class="remove-btn" @click="linkedParentGoal = null"><i class="fa-solid fa-xmark"></i></button>
                 </div>
+              </div>
+              <div class="detail-value" v-else-if="!isOwner">
+                <span class="empty-value" style="cursor: default; color: #5e6c84;">Không có</span>
               </div>
 
               <!-- Parent Goal Popover -->
@@ -536,22 +519,25 @@
                     </div>
                   </div>
                 </div>
-                <div style="padding: 12px 12px 0; border-top: 1px solid #DFE1E6; margin-top: 8px;">
-                  <span style="font-size: 14px; color: #172B4D; cursor: pointer; display: flex; align-items: center; gap: 8px;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'"><i class="fa-solid fa-plus"></i> Tạo mục tiêu</span>
+                <div class="popover-footer-action">
+                  <span class="popover-create-btn" @click="createGoal"><i class="fa-solid fa-plus"></i> Tạo mục tiêu</span>
                 </div>
               </div>
             </div>
 
             <!-- Mục tiêu phụ -->
             <div class="detail-row relative-popover-container">
-              <div class="detail-label">Mục tiêu phụ <button class="icon-btn-micro" @click.stop="togglePopover('subGoals')"><i class="fa-solid fa-plus"></i></button></div>
+              <div class="detail-label">Mục tiêu phụ <button v-if="isOwner" class="icon-btn-micro" @click.stop="togglePopover('subGoals')"><i class="fa-solid fa-plus"></i></button></div>
               
               <div class="detail-value" v-if="linkedSubGoals.length > 0">
                 <div class="linked-item" v-for="g in linkedSubGoals" :key="g.id">
                   <i class="fa-solid fa-bullseye item-icon"></i>
                   <span class="item-name">{{ g.title }}</span>
-                  <button class="remove-btn" @click="removeSubGoal(g.id)"><i class="fa-solid fa-xmark"></i></button>
+                  <button v-if="isOwner" class="remove-btn" @click="removeSubGoal(g.id)"><i class="fa-solid fa-xmark"></i></button>
                 </div>
+              </div>
+              <div class="detail-value" v-else-if="!isOwner">
+                <span class="empty-value" style="cursor: default; color: #5e6c84;">Không có</span>
               </div>
 
               <!-- Sub Goals Popover -->
@@ -573,21 +559,24 @@
             <!-- Loại -->
             <div class="detail-row">
               <div class="detail-label">Loại</div>
-              <div class="detail-value" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #172B4D;">
-                <i class="fa-solid fa-bullseye"></i> Mục tiêu
+              <div class="detail-value" style="display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: #334155; font-weight: 500;">
+                <i class="fa-solid fa-bullseye" style="color: #0c66e4;"></i> Mục tiêu
               </div>
             </div>
 
             <!-- Nhóm -->
             <div class="detail-row relative-popover-container">
-              <div class="detail-label">Nhóm <button class="icon-btn-micro" @click.stop="togglePopover('teams')"><i class="fa-solid fa-plus"></i></button></div>
+              <div class="detail-label">Nhóm <button v-if="isOwner" class="icon-btn-micro" @click.stop="togglePopover('teams')"><i class="fa-solid fa-plus"></i></button></div>
               
               <div class="detail-value" v-if="linkedTeams.length > 0">
                 <div class="linked-item team-item-chip" v-for="t in linkedTeams" :key="t.id">
                   <div class="team-icon" :style="{ backgroundColor: t.color }"><i class="fa-solid fa-users"></i></div>
                   <span class="item-name">{{ t.name }} <i class="fa-solid fa-circle-check text-blue" style="font-size: 12px;" v-if="t.verified"></i></span>
-                  <button class="remove-btn" @click="removeTeam(t.id)"><i class="fa-solid fa-xmark"></i></button>
+                  <button v-if="isOwner" class="remove-btn" @click="removeTeam(t.id)"><i class="fa-solid fa-xmark"></i></button>
                 </div>
+              </div>
+              <div class="detail-value" v-else-if="!isOwner">
+                <span class="empty-value" style="cursor: default; color: #5e6c84;">Chưa liên kết</span>
               </div>
 
               <!-- Teams Popover -->
@@ -610,19 +599,27 @@
 
             <!-- Ngày bắt đầu -->
             <div class="detail-row relative-popover-container">
-              <div class="detail-label">Ngày bắt đầu <button class="icon-btn-micro" @click.stop="togglePopover('startDate')"><i class="fa-solid fa-plus"></i></button></div>
-              <div class="detail-value" v-if="startDate"><span class="item-name">{{ formattedStartDate }}</span></div>
+              <div class="detail-label">Ngày bắt đầu <button v-if="isOwner" class="icon-btn-micro" @click.stop="togglePopover('startDate')"><i class="fa-solid fa-plus"></i></button></div>
+              <div class="detail-value" v-if="startDate">
+                <div class="linked-item">
+                  <i class="fa-regular fa-calendar"></i>
+                  <span class="item-name">{{ formattedStartDate }}</span>
+                </div>
+              </div>
+              <div class="detail-value" v-else-if="!isOwner">
+                <span class="empty-value" style="cursor: default; color: #5e6c84;">Chưa bắt đầu</span>
+              </div>
 
               <!-- Start Date Popover -->
               <div class="custom-popover" v-if="popovers.startDate" @click.stop style="width: 300px; padding: 0;">
-                <div style="padding: 16px; border-bottom: 1px solid #DFE1E6;">
-                  <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #172B4D;">Ngày bắt đầu</h4>
+                <div style="padding: 16px; border-bottom: 1px solid rgba(148, 163, 184, 0.08);">
+                  <h4 style="margin: 0 0 8px 0; font-size: 13.5px; font-weight: 600; color: #334155;">Ngày bắt đầu</h4>
                   <div class="date-input-control">
                     <input type="date" v-model="startDateInput" />
                     <i class="fa-regular fa-calendar"></i>
                   </div>
                 </div>
-                <div class="popover-actions" style="padding: 12px 16px; border-top: 1px solid #DFE1E6; display: flex; justify-content: space-between;">
+                <div class="popover-actions" style="padding: 12px 16px; display: flex; justify-content: space-between; gap: 8px;">
                   <button class="secondary-btn" style="flex: 1;" @click="popovers.startDate = false">Hủy</button>
                   <button class="primary-btn" style="flex: 1;" @click="saveStartDate">Lưu</button>
                 </div>
@@ -656,6 +653,8 @@ import axiosClient from '@/api/axiosClient'
 import { signalRService } from '@/api/signalrService'
 import { useTeamStore } from '@/store/useTeamStore'
 import { useStarredStore } from '@/store/useStarredStore'
+import { useAuthStore } from '@/store/useAuthStore'
+import { hasSystemAdminAccess } from '@/utils/permissions'
 import RichTextEditor from '@/components/common/RichTextEditor.vue'
 import ShareModal from '@/components/common/ShareModal.vue'
 import CommentSection from '@/components/common/CommentSection.vue'
@@ -679,6 +678,15 @@ const projectStore = useHomeProjectStore()
 const teamStore = useTeamStore()
 const peopleStore = usePeopleStore()
 const starredStore = useStarredStore()
+const authStore = useAuthStore()
+
+const isOwner = computed(() => {
+  if (!goal.value) return false
+  const currentUserId = authStore.userId
+  const ownerId = goal.value.ownerId || goal.value.creatorId
+  return currentUserId === ownerId || hasSystemAdminAccess()
+})
+
 const isGoalStarred = computed(() => goal.value?.id && starredStore.isStarred('Goal', goal.value.id))
 const siteProjects = computed(() => projectStore.projects || [])
 
@@ -1073,140 +1081,106 @@ const postUpdate = () => {
 .goal-detail-wrapper {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  background-color: #FAFBFC;
-}
-
-/* Module Header Styles */
-.module-header {
-  padding: 32px 40px 0;
-  background-color: #FFFFFF;
-}
-
-.header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.header-content h1 {
-  font-size: 24px;
-  font-weight: 500;
-  color: #172B4D;
-  margin: 0;
-}
-
-.primary-btn {
-  background-color: #0052CC;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 3px;
-  font-weight: 500;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.primary-btn:hover {
-  background-color: #0047B3;
-}
-
-.tabs-nav {
-  display: flex;
-  border-bottom: 2px solid #DFE1E6;
-  gap: 24px;
-}
-
-.tab-link {
-  padding: 8px 0 12px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #5E6C84;
-  text-decoration: none;
   position: relative;
-  margin-bottom: -2px;
-  border-bottom: 2px solid transparent;
-  transition: color 0.2s;
+  margin: -8px 0 0;
+  background-color: #ffffff;
+  min-height: 100vh;
+  width: 100% !important;
+  max-width: none !important;
 }
 
-.tab-link:hover {
-  color: #172B4D;
+.goal-cover {
+  height: 200px;
+  background: linear-gradient(135deg, #0747a6 0%, #0052cc 50%, #2684ff 100%);
+  position: relative;
+  flex-shrink: 0;
 }
 
-.tab-link.active {
-  color: #0052CC;
-  border-bottom-color: #0052CC;
+.back-floating-btn {
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 20px;
+  color: #172b4d;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
 }
 
-/* Entity Header Styles */
-.goal-header {
-  padding: 32px 0 24px;
-  background-color: #FFFFFF;
+.back-floating-btn:hover {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  color: #0052cc;
 }
 
-.goal-header-inner {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 0 40px;
-  width: 100%;
-}
-
-.header-breadcrumbs {
-  font-size: 14px;
-  color: #5E6C84;
-  margin-bottom: 16px;
-}
-
-.header-breadcrumbs a {
-  color: #5E6C84;
-  text-decoration: none;
-}
-
-.header-breadcrumbs a:hover {
-  text-decoration: underline;
-  color: #0052CC;
-}
-
-.separator {
-  margin: 0 8px;
-}
-
-.current-crumb {
-  color: #172B4D;
-}
-
-.header-main {
+.goal-header-wrapper {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+  align-items: flex-end;
+  padding: 0 18px;
+  margin-top: -32px;
+  margin-bottom: 24px;
+  flex-shrink: 0;
 }
 
-.title-block {
+.goal-identity {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+}
+
+.goal-icon-large {
+  width: 96px;
+  height: 96px;
+  background-color: #0052cc;
+  color: white;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: bold;
+  border: 4px solid #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  z-index: 2;
+}
+
+.goal-title-block {
+  padding-bottom: 0;
+}
+
+.title-row {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.goal-icon-large {
-  width: 32px;
-  height: 32px;
-  background-color: #0052CC;
-  color: white;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
+.title-row h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: #172b4d;
 }
 
-.title-block h1 {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 500;
-  color: #172B4D;
+.goal-meta-subtitle {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: #5e6c84;
+}
+
+.goal-meta-subtitle strong {
+  color: #172b4d;
 }
 
 .header-actions {
@@ -1219,7 +1193,7 @@ const postUpdate = () => {
   color: #42526E;
   border: none;
   padding: 6px 12px;
-  border-radius: 3px;
+  border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -1321,19 +1295,22 @@ const postUpdate = () => {
 
 /* Content Grid */
 .goal-content-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) 300px;
-  gap: 40px;
-  padding: 32px 40px;
-  max-width: 1000px;
-  margin: 0 auto;
-  width: 100%;
+  display: flex;
+  gap: 32px;
+  padding: 8px 18px 32px;
 }
 
 .main-column {
+  flex: 1;
+  min-width: 0;
+}
+
+.side-column {
+  width: 320px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 20px;
 }
 
 .content-section {
@@ -1346,8 +1323,6 @@ const postUpdate = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #DFE1E6;
-  padding-bottom: 8px;
 }
 
 .section-header h3 {
@@ -1573,37 +1548,47 @@ const postUpdate = () => {
   font-style: italic;
 }
 
-/* Sidebar Details */
-.details-card {
-  border: 1px solid #DFE1E6;
-  border-radius: 3px;
-  background-color: #FFFFFF;
-}
-
-.details-header {
-  padding: 16px;
-  border-bottom: 1px solid #DFE1E6;
-}
-
-.details-header h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #172B4D;
-  text-transform: uppercase;
-}
-
-.details-body {
-  padding: 16px;
+/* Sidebar Card styling */
+.sidebar-card {
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
+.sidebar-card h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 .detail-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .detail-label {
@@ -1611,107 +1596,200 @@ const postUpdate = () => {
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  font-weight: 600;
-  color: #5E6C84;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .icon-btn-micro {
   background: transparent;
   border: none;
-  color: #5E6C84;
+  color: #64748b;
   cursor: pointer;
-  width: 24px;
-  height: 24px;
-  border-radius: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s, color 0.2s;
+  transition: all 0.2s;
 }
 
 .icon-btn-micro:hover {
-  background-color: rgba(9, 30, 66, 0.08);
-  color: #172B4D;
+  background-color: #f1f5f9;
+  color: #1e293b;
 }
 
 .detail-value {
-  font-size: 14px;
-  color: #172B4D;
+  font-size: 13.5px;
+  color: #334155;
 }
 
 .empty-value {
-  color: #5E6C84;
+  color: #94a3b8;
   font-style: italic;
   font-size: 13px;
 }
 
-/* Progress in sidebar */
 .progress-value {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .progress-bar-bg {
   flex: 1;
-  height: 6px;
-  background-color: #DFE1E6;
-  border-radius: 3px;
+  height: 8px;
+  background-color: #f1f5f9;
+  border-radius: 4px;
   overflow: hidden;
 }
 
 .progress-bar-fill {
   height: 100%;
-  background-color: #0052CC;
-  border-radius: 3px;
+  background: linear-gradient(90deg, #36b37e, #4cde9e);
+  border-radius: 4px;
 }
 
-/* Owner chip */
+.progress-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
 .owner-chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  padding: 6px 12px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 6px;
 }
 
 .owner-avatar-micro {
   width: 20px;
   height: 20px;
+}
+
+.owner-name {
+  font-weight: 500;
+  color: #334155;
+}
+
+.follower-icons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.follower-icons i {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.linked-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.linked-item .item-icon {
+  color: #0c66e4;
+}
+
+.linked-item .item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.linked-item .remove-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.linked-item .remove-btn:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.tabs-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px !important;
+  width: max-content !important;
+  max-width: calc(100% - 36px);
+  min-height: 42px;
+  margin: 0 18px 12px !important;
+  padding: 4px !important;
+  border: 1px solid rgba(148, 163, 184, 0.2) !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow-x: auto;
   flex-shrink: 0;
 }
 
 .tab-btn {
-  background: none;
-  border: none;
-  padding: 12px 0;
-  font-size: 14px;
-  font-weight: 500;
-  color: #5E6C84;
-  cursor: pointer;
-  position: relative;
-  margin-bottom: -2px;
-  border-bottom: 2px solid transparent;
-  transition: color 0.2s;
-  display: flex;
+  flex: 0 0 auto;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  min-height: 34px !important;
+  min-width: max-content;
+  padding: 0 16px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: #475569 !important;
+  font-size: 12.5px !important;
+  font-weight: 800 !important;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.18s ease, color 0.18s ease;
+  cursor: pointer;
 }
 
 .tab-btn:hover {
-  color: #172B4D;
+  color: #0f172a !important;
+  background: rgba(14, 165, 233, 0.06) !important;
 }
 
 .tab-btn.active {
-  color: #0052CC;
-  border-bottom-color: #0052CC;
+  color: #0369a1 !important;
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.20), rgba(45, 212, 191, 0.14)) !important;
+  box-shadow: none !important;
 }
 
 .badge-count {
-  background: #EBECF0;
-  color: #172B4D;
-  font-size: 11px;
+  background-color: #f1f5f9;
+  color: #475569;
   padding: 2px 6px;
   border-radius: 12px;
+  font-size: 11px;
   font-weight: 600;
+  margin-left: 6px;
 }
 
 .toggle-btn {
@@ -1763,31 +1841,53 @@ const postUpdate = () => {
   right: 0;
   width: 300px;
   background: white;
-  border-radius: 3px;
-  box-shadow: 0 4px 8px -2px rgba(9,30,66,0.25), 0 0 1px rgba(9,30,66,0.31);
+  border-radius: 8px;
+  border: none !important;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.08);
   padding: 12px;
   z-index: 100;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .custom-popover.popover-large {
-  width: 350px;
+  width: 320px;
   padding: 16px;
 }
 
 .popover-search {
   width: 100%;
-  padding: 6px 8px;
-  border: 2px solid #DFE1E6;
-  border-radius: 3px;
-  font-size: 14px;
+  padding: 8px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  font-size: 13.5px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.15s ease;
   box-sizing: border-box;
+  color: #334155;
 }
 
 .popover-search:focus {
-  border-color: #4C9AFF;
+  border-color: #0c66e4;
+}
+
+.popover-footer-action {
+  padding: 12px 12px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+  margin-top: 8px;
+}
+
+.popover-create-btn {
+  font-size: 13px;
+  color: #0c66e4;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.popover-create-btn:hover {
+  text-decoration: underline;
 }
 
 .search-input-with-icon {
@@ -1824,18 +1924,19 @@ const postUpdate = () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px;
-  border-radius: 3px;
+  padding: 8px 10px;
+  border-radius: 6px;
   cursor: pointer;
+  transition: background-color 0.15s ease;
 }
 
 .popover-item:hover {
-  background-color: #F4F5F7;
+  background-color: #f1f5f9;
 }
 
 .item-icon-muted {
-  color: #5E6C84;
-  font-size: 16px;
+  color: #64748b;
+  font-size: 14px;
   width: 16px;
   text-align: center;
 }
@@ -1846,13 +1947,14 @@ const postUpdate = () => {
 }
 
 .item-name {
-  font-size: 14px;
-  color: #172B4D;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
 }
 
 .item-meta {
-  font-size: 12px;
-  color: #5E6C84;
+  font-size: 11px;
+  color: #64748b;
 }
 
 /* Team Icons and Chips */
@@ -2113,9 +2215,9 @@ const postUpdate = () => {
   left: 0;
   margin-top: 4px;
   background: white;
-  border: 1px solid #DFE1E6;
-  border-radius: 3px;
-  box-shadow: 0 4px 8px -2px rgba(9,30,66,0.25);
+  border: none !important;
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.08);
   padding: 8px 0;
   z-index: 10;
   min-width: 180px;

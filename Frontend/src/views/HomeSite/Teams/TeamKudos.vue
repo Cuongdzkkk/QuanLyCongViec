@@ -1,31 +1,47 @@
 <template>
   <div class="team-kudos-container">
-    <section class="kudos-section">
+    <section class="kudos-section teams-content-panel">
       <div class="section-header">
-        <div>
-          <h2>Lời khen</h2>
-        </div>
-        <button class="primary-btn" @click="isGiveKudosOpen = true">Gửi lời khen</button>
+        <h2>Lời khen</h2>
       </div>
 
       <ProjectPageToolbar
         v-model:searchQuery="kudosSearch"
         show-search
         search-placeholder="Tìm kiếm lời khen"
-      />
+      >
+        <template #filters>
+          <ToolbarFilterMenu
+            label="Filters"
+            clear-label="Xóa lọc"
+            clear-all-label="Xóa tất cả"
+            empty-label="Chưa áp dụng filter"
+            :count="activeFilterCount"
+            :active-items="activeFilterItems"
+            @clear="clearFilters"
+            @remove="removeFilter"
+          >
+            <template #default="{ search }">
+              <DropdownFilter v-if="matchesFilterSearch('Người gửi', search)" label="Người gửi" :options="senderOptions" v-model="filters.sender" :searchable="false" />
+            </template>
+          </ToolbarFilterMenu>
+        </template>
+
+        <template #actions>
+          <button class="primary-btn" @click="isGiveKudosOpen = true">Gửi lời khen</button>
+        </template>
+      </ProjectPageToolbar>
 
       <div v-if="false" class="kudos-summary">{{ filteredKudos.length }} lời khen</div>
 
-      <div class="kudos-empty-state" v-if="filteredKudos.length === 0">
-        <div class="kudos-illustration">
-          <div class="star-medal-illustration">
-            <i class="fa-solid fa-star"></i>
-            <div class="ribbon ribbon-left"></div>
-            <div class="ribbon ribbon-right"></div>
-          </div>
+      <div class="goals-empty-state" v-if="filteredKudos.length === 0">
+        <div class="empty-spaces-icon" aria-hidden="true">
+          <i class="fa-solid fa-medal"></i>
         </div>
-        <h3>No praise found</h3>
-        <p>Use praise to thank a teammate, celebrate a small win, or recognize excellent work.</p>
+        <div class="empty-spaces-copy">
+          <h3>No praise found</h3>
+          <p>Use praise to thank a teammate, celebrate a small win, or recognize excellent work.</p>
+        </div>
       </div>
 
       <div class="kudos-feed" v-else>
@@ -219,6 +235,8 @@ import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { useSiteStore } from '@/store/useSiteStore'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ToolbarFilterMenu from '@/components/common/ToolbarFilterMenu.vue'
+import DropdownFilter from '@/components/common/DropdownFilter.vue'
 
 const peopleStore = usePeopleStore()
 const teamStore = useTeamStore()
@@ -265,6 +283,33 @@ const kudosLinkDisplay = ref('')
 const kudosLinkTab = ref('Home')
 const kudosEmojiSearch = ref('')
 const kudosSearch = ref('')
+const filters = ref({
+  sender: ''
+})
+
+const allKudos = computed(() => teamStore.kudos || [])
+const senderOptions = computed(() => {
+  return Array.from(new Set(allKudos.value.map(k => k.senderName || k.sender).filter(Boolean))).sort()
+})
+
+const activeFilterCount = computed(() => Object.values(filters.value).filter(Boolean).length)
+const activeFilterItems = computed(() => [
+  filters.value.sender ? { key: 'sender', label: 'Người gửi', icon: 'fa-regular fa-user', value: filters.value.sender } : null
+].filter(Boolean))
+
+const matchesFilterSearch = (label, search) => !search || String(label || '').toLowerCase().includes(search)
+
+const clearFilters = () => {
+  filters.value = {
+    sender: ''
+  }
+}
+
+const removeFilter = (key) => {
+  if (Object.prototype.hasOwnProperty.call(filters.value, key)) {
+    filters.value[key] = ''
+  }
+}
 
 const isKudosGraphicDropdownOpen = ref(false)
 const kudosGraphics = [
@@ -292,9 +337,17 @@ const filteredKudosEmojis = computed(() => {
 
 const filteredKudos = computed(() => {
   const query = kudosSearch.value.trim().toLowerCase()
-  const kudos = teamStore.kudos || []
-  if (!query) return kudos
-  return kudos.filter((kudo) => `${kudo.senderName || kudo.sender || ''} ${kudo.senderEmail || ''} ${kudo.message || ''}`.toLowerCase().includes(query))
+  let list = teamStore.kudos || []
+  
+  if (query) {
+    list = list.filter((kudo) => `${kudo.senderName || kudo.sender || ''} ${kudo.senderEmail || ''} ${kudo.message || ''}`.toLowerCase().includes(query))
+  }
+  
+  if (filters.value.sender) {
+    list = list.filter((kudo) => (kudo.senderName || kudo.sender) === filters.value.sender)
+  }
+  
+  return list
 })
 
 const isIconClass = (icon) => typeof icon === 'string' && icon.includes('fa-')
@@ -380,11 +433,15 @@ const submitKudos = async () => {
   width: 100%;
 }
 
+.teams-content-panel {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
 .section-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
   margin: 0 0 16px;
 }
 
@@ -411,6 +468,8 @@ const submitKudos = async () => {
 }
 
 .kudos-empty-state {
+  margin-top: 30px;
+  
   min-height: 280px;
   text-align: center;
   display: flex;

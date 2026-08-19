@@ -10,7 +10,22 @@
       show-search
       search-placeholder="Tìm kiếm các đội ngũ"
     >
-      <template #search>
+      <template #filters>
+        <ToolbarFilterMenu
+          label="Filters"
+          clear-label="Xóa lọc"
+          clear-all-label="Xóa tất cả"
+          empty-label="Chưa áp dụng filter"
+          :count="activeFilterCount"
+          :active-items="activeFilterItems"
+          @clear="clearFilters"
+          @remove="removeFilter"
+        >
+          <template #default="{ search }">
+            <DropdownFilter v-if="matchesFilterSearch('Loại đội ngũ', search)" label="Loại đội ngũ" :options="teamTypeOptions" v-model="filters.type" :searchable="false" />
+            <DropdownFilter v-if="matchesFilterSearch('Người quản lý', search)" label="Người quản lý" :options="managerOptions" v-model="filters.manager" :searchable="false" />
+          </template>
+        </ToolbarFilterMenu>
       </template>
       <template #toggles>
         <div class="view-toggles">
@@ -25,7 +40,7 @@
     </ProjectPageToolbar>
 
     <!-- Grid View -->
-    <div v-if="viewMode === 'grid'" class="team-cards-grid">
+    <div v-if="viewMode === 'grid' && filteredTeams.length > 0" class="team-cards-grid">
       <div class="team-card" v-for="team in filteredTeams" :key="team.id" @click="goToTeam(team.id)">
         <div class="team-card-cover"></div>
         <div class="team-card-content">
@@ -34,61 +49,55 @@
           <p class="team-meta">{{ team.memberCount }} thành viên</p>
         </div>
       </div>
-      <AppEmptyState 
-        v-if="filteredTeams.length === 0" 
-        icon="fa-solid fa-users"
-        title="Không tìm thấy đội ngũ nào" 
-        description="Thử tìm kiếm với tên khác."
-      />
     </div>
 
     <!-- Table View -->
-    <table v-if="viewMode === 'table'" class="jira-table">
-                  <thead>
-              <tr>
-                <th style="width: 25%">Đội ngũ</th>
-                <th style="width: 20%">Loại đội ngũ</th>
-                <th style="width: 20%">Người quản lý</th>
-                <th style="width: 10%">Thành viên</th>
-                <th style="width: 10%">Đội ngũ gốc</th>
-                <th style="width: 15%">Đội ngũ con <i class="fa-solid fa-arrow-down" style="font-size: 10px; margin-left: 4px;"></i></th>
-              </tr>
-            </thead>
-                  <tbody>
-              <tr v-for="team in (viewMode === 'table' && filteredTeams ? filteredTeams : teams)" :key="team.id" @click="goToTeam(team.id)">
-                <td>
-                  <div class="team-name-cell">
-                    <div class="team-avatar-small" :style="{ backgroundColor: '#0052cc' }">{{ team.avatarText }}</div>
-                    <span class="team-name-text">{{ team.name }}</span>
-                  </div>
-                </td>
-                <td style="white-space: nowrap;">{{ team.type }}</td>
-                <td>
-                  <div v-if="team.managerName !== 'Chưa có'" class="manager-cell" style="display: flex; align-items: center; gap: 8px;">
-                    <AppUserChip :name="team.managerName" :email="team.managerEmail" compact />
-                  </div>
-                  <div v-else style="color: #5E6C84; display: flex; align-items: center; gap: 6px;">
-                    <div style="width: 24px; height: 24px; border-radius: 50%; background: #DFE1E6; display: flex; align-items: center; justify-content: center; color: #172B4D; font-size: 10px; font-weight: bold;">?</div>
-                    <span>Chưa có</span>
-                  </div>
-                </td>
-                <td>{{ team.memberCount }}</td>
-                <td>{{ team.parentCount }}</td>
-                <td>{{ team.childrenCount }}</td>
-              </tr>
-            </tbody>
-      <tbody v-if="filteredTeams.length === 0">
+    <table v-else-if="viewMode === 'table' && filteredTeams.length > 0" class="jira-table">
+      <thead>
         <tr>
-          <td colspan="6">
-            <AppEmptyState 
-              icon="fa-solid fa-users"
-              title="Không tìm thấy đội ngũ nào" 
-              description="Thử tìm kiếm với tên khác."
-            />
+          <th style="width: 25%">Đội ngũ</th>
+          <th style="width: 20%">Loại đội ngũ</th>
+          <th style="width: 20%">Người quản lý</th>
+          <th style="width: 10%">Thành viên</th>
+          <th style="width: 10%">Đội ngũ gốc</th>
+          <th style="width: 15%">Đội ngũ con <i class="fa-solid fa-arrow-down" style="font-size: 10px; margin-left: 4px;"></i></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="team in filteredTeams" :key="team.id" @click="goToTeam(team.id)">
+          <td>
+            <div class="team-name-cell">
+              <div class="team-avatar-small" :style="{ backgroundColor: '#0052cc' }">{{ team.avatarText }}</div>
+              <span class="team-name-text">{{ team.name }}</span>
+            </div>
           </td>
+          <td style="white-space: nowrap;">{{ team.type }}</td>
+          <td>
+            <div v-if="team.managerName !== 'Chưa có'" class="manager-cell" style="display: flex; align-items: center; gap: 8px;">
+              <AppUserChip :name="team.managerName" :email="team.managerEmail" compact />
+            </div>
+            <div v-else style="color: #5E6C84; display: flex; align-items: center; gap: 6px;">
+              <div style="width: 24px; height: 24px; border-radius: 50%; background: #DFE1E6; display: flex; align-items: center; justify-content: center; color: #172B4D; font-size: 10px; font-weight: bold;">?</div>
+              <span>Chưa có</span>
+            </div>
+          </td>
+          <td>{{ team.memberCount }}</td>
+          <td>{{ team.parentCount }}</td>
+          <td>{{ team.childrenCount }}</td>
         </tr>
       </tbody>
     </table>
+
+    <!-- Empty State -->
+    <div v-else-if="filteredTeams.length === 0" class="goals-empty-state">
+      <div class="empty-spaces-icon" aria-hidden="true">
+        <i class="fa-solid fa-users"></i>
+      </div>
+      <div class="empty-spaces-copy">
+        <h3>Không tìm thấy đội ngũ nào</h3>
+        <p>Thử tìm kiếm với tên khác.</p>
+      </div>
+    </div>
     </section>
   </div>
 </template>
@@ -99,6 +108,50 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTeamStore } from '@/store/useTeamStore'
 import { AppEmptyState, AppUserChip } from '@/components/common/Foundation'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ToolbarFilterMenu from '@/components/common/ToolbarFilterMenu.vue'
+import DropdownFilter from '@/components/common/DropdownFilter.vue'
+
+const filters = ref({
+  type: '',
+  manager: ''
+})
+
+const allMappedTeams = computed(() => {
+  let list = teamStore.allTeams || []
+  return list.map(t => ({
+    ...t,
+    managerName: t.manager?.fullName || t.manager?.name || 'Chưa có',
+    type: t.type || 'Đội ngũ chính thức'
+  }))
+})
+
+const teamTypeOptions = computed(() => Array.from(new Set(allMappedTeams.value.map(team => team.type).filter(Boolean))).sort())
+const managerOptions = computed(() => Array.from(new Set(
+  allMappedTeams.value
+    .map(team => team.managerName)
+    .filter(name => name && name !== 'Chưa có')
+)).sort())
+
+const activeFilterCount = computed(() => Object.values(filters.value).filter(Boolean).length)
+const activeFilterItems = computed(() => [
+  filters.value.type ? { key: 'type', label: 'Loại đội ngũ', icon: 'fa-solid fa-layer-group', value: filters.value.type } : null,
+  filters.value.manager ? { key: 'manager', label: 'Người quản lý', icon: 'fa-regular fa-user', value: filters.value.manager } : null
+].filter(Boolean))
+
+const matchesFilterSearch = (label, search) => !search || String(label || '').toLowerCase().includes(search)
+
+const clearFilters = () => {
+  filters.value = {
+    type: '',
+    manager: ''
+  }
+}
+
+const removeFilter = (key) => {
+  if (Object.prototype.hasOwnProperty.call(filters.value, key)) {
+    filters.value[key] = ''
+  }
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -116,23 +169,33 @@ onMounted(() => {
 const filteredTeams = computed(() => {
   let list = teamStore.allTeams || []
 
-  if (searchQuery.value) {
-    const q = searchQuery.value.toLowerCase()
-    list = list.filter(t => t.name.toLowerCase().includes(q))
-  }
-
-  return list.map(t => ({
+  let mapped = list.map(t => ({
     ...t,
-    avatarText: t.name ? t.name.substring(0, 2).toUpperCase() : 'T',
+    avatarText: t.name ? t.name.substring(0, 2).toUpperCase() : "T",
     memberCount: t.memberCount ?? t.members?.length ?? t.users?.length ?? 0,
     childrenCount: t.children?.length || t.subDepartments?.length || 0,
     manager: t.manager || t.managerId,
-    managerName: t.manager?.fullName || t.manager?.name || 'Chưa có',
-    managerEmail: t.manager?.email || '',
-    parentTeamName: t.parentDepartment?.name || t.parent?.name || 'Không có đội ngũ gốc',
+    managerName: t.manager?.fullName || t.manager?.name || "Chưa có",
+    managerEmail: t.manager?.email || "",
+    parentTeamName: t.parentDepartment?.name || t.parent?.name || "Không có đội ngũ gốc",
     parentCount: (t.parentDepartment || t.parent || t.parentId) ? 1 : 0,
-    type: t.type || 'Đội ngũ chính thức'
+    type: t.type || "Đội ngũ chính thức"
   }))
+
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase()
+    mapped = mapped.filter(t => t.name.toLowerCase().includes(q))
+  }
+
+  if (filters.value.type) {
+    mapped = mapped.filter(t => t.type === filters.value.type)
+  }
+
+  if (filters.value.manager) {
+    mapped = mapped.filter(t => t.managerName === filters.value.manager)
+  }
+
+  return mapped
 })
 
 const goToTeam = (id) => {

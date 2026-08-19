@@ -9,7 +9,6 @@
 
     <!-- SWITCH SETTINGS Section -->
     <div class="sidebar-section">
-      <div class="section-title">{{ t('Switch settings', 'Switch settings') }}</div>
       <el-dropdown trigger="click" @command="handleCategorySwitch" class="switch-settings-dropdown" style="width: 100%;" popper-class="jira-switch-dropdown-popper">
         <div class="switch-trigger-btn">
           <div style="display: flex; align-items: center; gap: 8px;">
@@ -243,49 +242,69 @@ const handleCategorySwitch = (path) => {
 
 <style scoped>
 .admin-sidebar {
-  width: 240px;
-  background-color: var(--color-bg);
+  width: var(--sa-sidebar-width, 224px);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sa-sidebar) 88%, #ffffff 12%), var(--sa-sidebar)),
+    var(--sa-sidebar);
+  border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--color-border);
-  z-index: 10;
-  padding: 24px 16px;
-  font-family: 'Inter', sans-serif;
-  height: 100vh;
-  box-sizing: border-box;
   flex-shrink: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 999;
+  height: 100vh;
+  position: relative;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.55);
+  padding: 12px 10px;
+  box-sizing: border-box;
+  font-family: 'Inter', sans-serif;
 }
 
 .sidebar-header {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .back-link {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   text-decoration: none;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
-  transition: color 0.2s;
+  padding: 8px 10px;
+  border-radius: 8px;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.back-link i {
+  font-size: 13px;
+  color: color-mix(in srgb, var(--sa-primary) 42%, var(--color-text-secondary));
 }
 
 .back-link:hover {
+  background-color: color-mix(in srgb, var(--sa-surface-soft) 80%, var(--sa-surface));
   color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--sa-border) 70%, transparent);
+}
+
+.back-link:hover i {
+  color: var(--sa-primary);
 }
 
 .sidebar-section {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .section-title {
   font-size: 11px;
   font-weight: 700;
+  color: var(--color-text-primary);
+  opacity: 0.75;
   text-transform: uppercase;
-  color: var(--color-text-muted);
-  margin-bottom: 8px;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.08em;
+  margin: 0 8px 8px;
 }
 
 .switch-trigger-btn {
@@ -294,42 +313,50 @@ const handleCategorySwitch = (path) => {
   justify-content: space-between;
   width: 100%;
   cursor: pointer;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: transparent;
+  border: 1px solid transparent;
   color: var(--color-text-primary);
   padding: 8px 12px;
-  border-radius: 4px;
-  font-size: 13px;
+  border-radius: 8px;
+  font-size: 13.5px;
   font-weight: 600;
   transition: all 0.2s;
   box-sizing: border-box;
+  box-shadow: none;
 }
 
 .switch-trigger-btn:hover {
   background: var(--color-surface-hover);
+  border-color: transparent;
 }
 
 .switch-trigger-btn i {
-  color: var(--color-text-secondary);
+  color: var(--sa-primary);
+  font-size: 14px;
+}
+
+.switch-trigger-btn .fa-chevron-down {
+  color: var(--color-text-muted) !important;
+  font-size: 9px !important;
 }
 
 .sidebar-menu {
   list-style: none;
-  padding: 0 0 0 12px;
+  padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  border-left: 1px solid var(--color-border);
+  gap: 2px;
 }
 
 .menu-heading {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--color-text-muted);
-  margin: 12px 0 4px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+  opacity: 0.9;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.08em;
+  margin: 20px 8px 8px;
 }
 
 .menu-heading:first-child {
@@ -338,27 +365,33 @@ const handleCategorySwitch = (path) => {
 
 .menu-item {
   display: block;
-  padding: 6px 12px;
-  border-radius: 4px;
-  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--color-text-secondary);
   text-decoration: none;
   transition: all 0.2s;
+  border: 1px solid transparent;
 }
 
 .menu-item:hover {
-  background: var(--color-surface-hover);
+  background-color: color-mix(in srgb, var(--sa-surface-soft) 80%, var(--sa-surface));
   color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--sa-border) 70%, transparent);
 }
 
 .menu-item.active {
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-  color: var(--color-accent);
-  font-weight: 600;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--sa-primary-soft) 82%, var(--sa-surface)), color-mix(in srgb, var(--sa-primary-soft) 42%, var(--sa-surface)));
+  color: color-mix(in srgb, var(--sa-primary) 78%, #0f172a);
+  border-color: color-mix(in srgb, var(--sa-primary) 24%, var(--sa-border));
+  font-weight: 800;
+  box-shadow: inset 3px 0 0 var(--sa-primary);
 }
 
 .sidebar-footer {
-  padding-top: 16px;
+  padding-top: 12px;
   border-top: 1px solid var(--color-border);
 }
 
@@ -373,7 +406,7 @@ const handleCategorySwitch = (path) => {
   gap: 10px;
   padding: 8px 12px;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--color-surface);
   color: var(--color-text-secondary);
   font-size: 13px;
@@ -382,7 +415,8 @@ const handleCategorySwitch = (path) => {
 }
 
 .lang-current:hover {
-  background: var(--color-surface-hover);
+  background: color-mix(in srgb, var(--sa-primary-soft) 44%, var(--sa-surface));
+  border-color: color-mix(in srgb, var(--sa-primary) 38%, var(--sa-border));
   color: var(--color-text-primary);
 }
 
@@ -414,7 +448,7 @@ const handleCategorySwitch = (path) => {
   right: 0;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 4px;
   box-shadow: var(--shadow-md);
   z-index: 999;
@@ -427,7 +461,7 @@ const handleCategorySwitch = (path) => {
   width: 100%;
   padding: 8px 10px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
   color: var(--color-text-secondary);
   font-size: 12.5px;
@@ -442,34 +476,56 @@ const handleCategorySwitch = (path) => {
 }
 
 .lang-option.active {
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-  color: var(--color-accent);
+  background: color-mix(in srgb, var(--sa-primary-soft) 44%, var(--sa-surface));
+  color: var(--sa-primary);
   font-weight: 600;
 }
 
 .lang-check {
   margin-left: auto;
   font-size: 10px;
-  color: var(--color-accent);
+  color: var(--sa-primary);
 }
 </style>
 
 <style>
 .el-popper.jira-switch-dropdown-popper {
   background: var(--color-surface) !important;
-  border: 1px solid var(--color-border) !important;
-  padding: 4px 0 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  padding: 6px 4px !important;
   z-index: 100002 !important;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
+  box-shadow: var(--shadow-popover) !important;
+}
+
+.el-popper.jira-switch-dropdown-popper .el-popper__arrow::before {
+  border: none !important;
+  background: var(--color-surface) !important;
+}
+
+.jira-switch-dropdown-menu {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .jira-switch-dropdown-menu .el-dropdown-menu__item {
-  color: var(--color-text-primary) !important;
+  color: var(--color-text-secondary) !important;
   display: flex !important;
   align-items: center !important;
-  gap: 8px !important;
+  gap: 10px !important;
   font-size: 13px !important;
-  padding: 8px 16px !important;
+  padding: 8px 12px !important;
+  border-radius: 6px !important;
+  margin: 2px 0 !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease !important;
+}
+
+.jira-switch-dropdown-menu .el-dropdown-menu__item i {
+  color: var(--color-text-muted) !important;
+  font-size: 14px !important;
+  margin-right: 0 !important;
 }
 
 .jira-switch-dropdown-menu .el-dropdown-menu__item:hover {
@@ -477,10 +533,19 @@ const handleCategorySwitch = (path) => {
   color: var(--color-text-primary) !important;
 }
 
+.jira-switch-dropdown-menu .el-dropdown-menu__item:hover i {
+  color: var(--sa-primary) !important;
+}
+
 .jira-switch-dropdown-menu .el-dropdown-menu__item.is-disabled {
-  color: var(--color-accent) !important;
-  font-weight: 600 !important;
-  background: transparent !important;
+  color: var(--sa-primary) !important;
+  font-weight: 700 !important;
+  background: color-mix(in srgb, var(--sa-primary-soft) 42%, var(--sa-surface)) !important;
   cursor: default !important;
+  opacity: 1 !important;
+}
+
+.jira-switch-dropdown-menu .el-dropdown-menu__item.is-disabled i {
+  color: var(--sa-primary) !important;
 }
 </style>

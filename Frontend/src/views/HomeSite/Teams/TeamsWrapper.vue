@@ -1,6 +1,6 @@
 <template>
   <div class="teams-wrapper">
-    <header class="module-header">
+    <header class="module-header" v-if="!isDetailView">
       <div class="header-content">
         <div class="app-shell-title-wrap">
           <h1>{{ t('homeSite.teams.title') }}</h1>
@@ -37,7 +37,7 @@
       </div>
     </header>
 
-    <div class="module-content">
+    <div class="module-content" :class="{ 'detail-view': isDetailView }">
       <router-view></router-view>
     </div>
   </div>
@@ -52,6 +52,9 @@ const i18nStore = useI18nStore()
 const t = i18nStore.t
 const route = useRoute()
 const teamsBasePath = computed(() => route.path.startsWith('/teams') ? '/teams' : '/home/teams')
+const isDetailView = computed(() => {
+  return route.name === 'SpaceTeamDetail' || route.name === 'HomeTeamDetail' || !!route.params.id
+})
 
 const openCreateTeam = () => {
   window.dispatchEvent(new CustomEvent('global-create-click'))
@@ -156,5 +159,10 @@ const openCreateTeam = () => {
 .module-content {
   padding: 18px var(--app-shell-page-x, 18px) 28px;
   flex: 1;
+}
+
+.module-content.detail-view {
+  padding: 0 !important;
+  max-width: none !important;
 }
 </style>

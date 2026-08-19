@@ -1,41 +1,43 @@
 <template>
   <div class="profile-detail-container" v-if="user">
+    <!-- Cover Image -->
+    <div class="profile-cover">
+      <!-- Floating Back Button -->
+      <button class="back-floating-btn" @click="handleBack">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span>Quay lại</span>
+      </button>
+    </div>
+
     <!-- Header -->
-    <header class="profile-header">
-      <div class="header-breadcrumbs">
-        <router-link to="/home/people">People Directory</router-link>
-        <span class="separator">/</span>
-        <span class="current-crumb">{{ user.fullName }}</span>
-      </div>
-      <div class="header-main">
-        <div class="identity-block">
-          <UserAvatar :user="{ id: user.id, avatarUrl: user.avatarUrl, avatarColor: user.avatarColor, initials: user.initials, fullName: user.fullName, email: user.email }" :size="96" :fontSize="36" class="profile-avatar" :class="{ inactive: isInactive }" />
-          <div class="title-block">
-            <div class="title-row">
-              <h1>{{ user.fullName }}</h1>
-              <span v-if="isInactive" class="badge inactive">Inactive Account</span>
-            </div>
-            <div class="meta-row">
-              <div class="meta-item"><span class="value">{{ user.position }}</span></div>
-              <span class="dot">&bull;</span>
-              <div class="meta-item"><span class="label">Team:</span> <span class="value">{{ user.team }}</span></div>
-              <span class="dot">&bull;</span>
-              <div class="meta-item"><span class="label">Email:</span> <span class="value">{{ user.email }}</span></div>
-            </div>
+    <div class="profile-header-wrapper">
+      <div class="profile-identity">
+        <UserAvatar :user="{ id: user.id, avatarUrl: user.avatarUrl, avatarColor: user.avatarColor, initials: user.initials, fullName: user.fullName, email: user.email }" :size="96" :fontSize="36" class="profile-avatar" :class="{ inactive: isInactive }" />
+        <div class="profile-title-block">
+          <div class="title-row">
+            <h1 style="margin: 0; font-size: 28px;">{{ user.fullName }}</h1>
+            <span v-if="isInactive" class="badge inactive">Inactive Account</span>
           </div>
-        </div>
-        <div class="actions-block">
-          <button class="secondary-btn" :disabled="isInactive">Message</button>
-          <div class="dropdown-container">
-            <button class="icon-btn menu-btn" @click.stop="isMenuOpen = !isMenuOpen" title="More actions">⋮</button>
-            <div class="dropdown-menu" v-if="isMenuOpen">
-              <button class="menu-item" :disabled="isInactive" @click="openEditProfile"><i class="fa-solid fa-pen"></i> Edit Profile</button>
-              <button class="menu-item" :disabled="isInactive"><i class="fa-solid fa-gear"></i> Admin Settings</button>
-            </div>
+          <div class="profile-status-row" style="margin-top: 4px; font-size: 13px; color: #42526E; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span><span style="color: #5e6c84;">Chức vụ:</span> <strong>{{ user.position || 'N/A' }}</strong></span>
+            <span style="color: #dfe1e6;">|</span>
+            <span><span style="color: #5e6c84;">Email:</span> <strong>{{ user.email }}</strong></span>
           </div>
         </div>
       </div>
-    </header>
+      <div class="header-actions">
+        <button class="secondary-btn" :disabled="isInactive">Message</button>
+        <div class="dropdown-container">
+          <button class="icon-btn menu-btn" @click.stop="isMenuOpen = !isMenuOpen" title="More actions">
+            <i class="fa-solid fa-ellipsis-vertical"></i>
+          </button>
+          <div class="dropdown-menu" v-if="isMenuOpen">
+            <button class="menu-item" :disabled="isInactive" @click="openEditProfile"><i class="fa-solid fa-pen"></i> Edit Profile</button>
+            <button class="menu-item" :disabled="isInactive"><i class="fa-solid fa-gear"></i> Admin Settings</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Tabs Nav -->
     <div class="tabs-nav">
@@ -56,7 +58,7 @@
       <!-- Overview -->
       <div v-if="currentTab === 'overview'" class="tab-pane layout-grid">
         <div class="main-column">
-                    <section class="info-section">
+          <section class="info-section">
             <h3>Bio</h3>
             <div class="bio-content-wrapper" :class="{ 'is-editing': editingBio }">
               <RichTextEditor 
@@ -80,18 +82,6 @@
             </div>
           </section>
           <section class="info-section">
-            <h3>Teams & Departments</h3>
-            <div class="teams-list">
-              <div class="team-chip" v-for="t in user.teamsList" :key="t.id">
-                <i class="fa-solid fa-users team-icon"></i>
-                {{ t.name }}
-              </div>
-              <div class="empty-state-micro" v-if="!user.teamsList || user.teamsList.length === 0">
-                Not a member of any teams.
-              </div>
-            </div>
-          </section>
-                    <section class="info-section">
             <h3>Hobbies & Interests</h3>
             <div class="bio-content-wrapper" :class="{ 'is-editing': editingHobbies }">
               <RichTextEditor 
@@ -111,6 +101,18 @@
               >
                 <div v-if="user.hobbies && user.hobbies !== '<p></p>'" v-html="user.hobbies"></div>
                 <div v-else style="color: #5E6C84;">Has not shared any hobbies yet.</div>
+              </div>
+            </div>
+          </section>
+          <section class="info-section">
+            <h3>Teams & Departments</h3>
+            <div class="teams-list">
+              <div class="team-chip" v-for="t in user.teamsList" :key="t.id">
+                <i class="fa-solid fa-users team-icon"></i>
+                {{ t.name }}
+              </div>
+              <div class="empty-state-micro" v-if="!user.teamsList || user.teamsList.length === 0">
+                Not a member of any teams.
               </div>
             </div>
           </section>
@@ -161,9 +163,9 @@
             </tr>
           </tbody>
         </table>
-        <div class="empty-state" v-else>
-          <i class="fa-solid fa-file-signature empty-icon"></i>
-          <p>No tasks assigned.</p>
+        <div class="empty-state-card" v-else>
+          <i class="fa-solid fa-file-signature"></i>
+          <span>No tasks assigned.</span>
         </div>
       </div>
 
@@ -172,7 +174,7 @@
         <div class="section-header-row">
           <h3>Linked Goals</h3>
         </div>
-        <table class="jira-table mt-16">
+        <table class="jira-table mt-16" v-if="linkedGoals && linkedGoals.length">
           <thead>
             <tr><th>Goal Title</th><th>Status</th></tr>
           </thead>
@@ -183,6 +185,10 @@
             </tr>
           </tbody>
         </table>
+        <div class="empty-state-card" v-else>
+          <i class="fa-solid fa-bullseye"></i>
+          <span>No goals linked.</span>
+        </div>
       </div>
 
       <!-- Projects -->
@@ -190,7 +196,7 @@
         <div class="section-header-row">
           <h3>Linked Projects</h3>
         </div>
-        <table class="jira-table mt-16">
+        <table class="jira-table mt-16" v-if="linkedProjects && linkedProjects.length">
           <thead>
             <tr><th>Project Name</th><th>Status</th></tr>
           </thead>
@@ -201,15 +207,19 @@
             </tr>
           </tbody>
         </table>
+        <div class="empty-state-card" v-else>
+          <i class="fa-solid fa-chart-simple"></i>
+          <span>No projects linked.</span>
+        </div>
       </div>
 
       <!-- Kudos -->
       <div v-if="currentTab === 'kudos'" class="tab-pane">
         <div class="section-header-row">
           <h3>Kudos Received</h3>
-          <button class="secondary-btn" :disabled="isInactive" @click="router.push('/home/teams/kudos')">Give Kudos</button>
+          <button class="secondary-btn" :disabled="isInactive" @click="handleGiveKudos">Give Kudos</button>
         </div>
-        <div class="kudos-grid mt-16">
+        <div class="kudos-grid mt-16" v-if="kudos && kudos.length">
           <div class="kudos-card" v-for="k in kudos" :key="k.id">
             <div class="kudos-icon">{{ k.icon || 'Star' }}</div>
             <div class="kudos-content">
@@ -220,12 +230,16 @@
             </div>
           </div>
         </div>
+        <div class="empty-state-card" v-else>
+          <i class="fa-solid fa-star"></i>
+          <span>No kudos received yet.</span>
+        </div>
       </div>
 
       <!-- History -->
       <div v-if="currentTab === 'history'" class="tab-pane">
         <h3>Activity Timeline</h3>
-        <table class="jira-table mt-16">
+        <table class="jira-table mt-16" v-if="history && history.length">
           <thead>
             <tr><th>Time</th><th>Action</th></tr>
           </thead>
@@ -236,6 +250,10 @@
             </tr>
           </tbody>
         </table>
+        <div class="empty-state-card" v-else>
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          <span>No activity history yet.</span>
+        </div>
       </div>
     </div>
   </div>
@@ -396,12 +414,40 @@ const closeMenuOnOutsideClick = (e) => {
   }
 }
 
+const handleBack = () => {
+  if (route.path.startsWith('/space/')) {
+    const spaceSlug = route.params.spaceSlug || 'project'
+    const projectId = route.params.id || route.params.projectId
+    router.push(`/space/${spaceSlug}/${projectId}/members`)
+  } else if (route.path.startsWith('/home/')) {
+    router.push('/home/people')
+  } else {
+    router.push('/teams/people')
+  }
+}
+
 const goToGoal = (id) => {
-  router.push(`/home/goals/${id}`)
+  if (route.path.startsWith('/home/')) {
+    router.push(`/home/goals/${id}`)
+  } else {
+    router.push(`/goals/${id}`)
+  }
 }
 
 const goToProject = (id) => {
-  router.push(`/home/projects/${id}`)
+  if (route.path.startsWith('/home/')) {
+    router.push(`/home/projects/${id}`)
+  } else {
+    router.push(`/space/project/${id}`)
+  }
+}
+
+const handleGiveKudos = () => {
+  if (route.path.startsWith('/home/')) {
+    router.push('/home/teams/kudos')
+  } else {
+    router.push('/teams/kudos')
+  }
 }
 
 const statusClass = (status) => `${status || ''}`.toLowerCase().replace(/\s+/g, '-')
@@ -455,84 +501,70 @@ const goToTask = (task) => {
   display: flex;
   flex-direction: column;
   position: relative;
-  margin: -32px -40px; 
-}
-
-/* Header */
-.profile-header {
-  padding: 32px 40px 0;
+  margin: -8px 0 0;
   background-color: #ffffff;
+  min-height: 100vh;
+  width: 100% !important;
+  max-width: none !important;
 }
 
-.header-breadcrumbs {
-  font-size: 14px;
-  color: #5e6c84;
-  margin-bottom: 16px;
+.profile-cover {
+  height: 200px;
+  background: linear-gradient(135deg, #0747a6 0%, #0052cc 50%, #2684ff 100%);
+  position: relative;
+  flex-shrink: 0;
 }
 
-.header-breadcrumbs a {
-  color: #0052cc;
-  text-decoration: none;
-}
-
-.header-breadcrumbs a:hover {
-  text-decoration: underline;
-}
-
-.separator {
-  margin: 0 8px;
-}
-
-.current-crumb {
+.back-floating-btn {
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 20px;
   color: #172b4d;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
 }
 
-.header-main {
+.back-floating-btn:hover {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  color: #0052cc;
+}
+
+.profile-header-wrapper {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: flex-end;
+  padding: 0 18px;
+  margin-top: -16px; /* Lowered from -32px to give more space from cover banner */
   margin-bottom: 24px;
 }
 
-.identity-block {
+.profile-identity {
   display: flex;
-  gap: 24px;
-  align-items: center;
+  align-items: flex-end;
+  gap: 20px;
 }
 
 .profile-avatar {
-  width: 96px;
-  height: 96px;
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 36px;
-  font-weight: bold;
+  border: 4px solid #ffffff;
+  z-index: 2;
 }
 
-.profile-avatar.inactive {
-  background-color: #6b778c;
-}
-
-.title-block {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.title-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.title-row h1 {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 600;
-  color: #172b4d;
+.profile-title-block {
+  padding-bottom: 4px;
 }
 
 .badge {
@@ -553,29 +585,11 @@ const goToTask = (task) => {
   color: #172b4d;
 }
 
-.meta-row {
+.header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
-}
-
-.meta-item {
-  color: #172b4d;
-}
-
-.meta-item .label {
-  color: #5e6c84;
-}
-
-.dot {
-  color: #dfe1e6;
-}
-
-.actions-block {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  padding-bottom: 8px;
 }
 
 .secondary-btn {
@@ -650,37 +664,56 @@ const goToTask = (task) => {
 /* Tabs Nav */
 .tabs-nav {
   display: flex;
-  border-bottom: 2px solid #dfe1e6;
-  gap: 24px;
-  padding: 0 40px;
-  background-color: #ffffff;
+  align-items: center;
+  gap: 6px !important;
+  width: max-content !important;
+  max-width: calc(100% - 36px);
+  min-height: 42px;
+  margin: 0 18px 12px !important;
+  padding: 4px !important;
+  border: 1px solid rgba(148, 163, 184, 0.2) !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow-x: auto;
+  flex-shrink: 0;
 }
 
 .tab-btn {
-  background: none;
-  border: none;
-  padding: 8px 0 12px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #5e6c84;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px !important;
+  min-width: max-content;
+  padding: 0 16px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: #475569 !important;
+  font-size: 12.5px !important;
+  font-weight: 800 !important;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.18s ease, color 0.18s ease;
   cursor: pointer;
-  position: relative;
-  margin-bottom: -2px;
-  border-bottom: 2px solid transparent;
 }
 
 .tab-btn:hover {
-  color: #172b4d;
+  color: #0f172a !important;
+  background: rgba(14, 165, 233, 0.06) !important;
 }
 
 .tab-btn.active {
-  color: #0052cc;
-  border-bottom-color: #0052cc;
+  color: #0369a1 !important;
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.20), rgba(45, 212, 191, 0.14)) !important;
+  box-shadow: none !important;
 }
 
 /* Tab Content */
 .tab-content {
-  padding: 32px 40px;
+  padding: 8px 18px 32px;
   flex: 1;
 }
 
@@ -703,33 +736,29 @@ const goToTask = (task) => {
 }
 
 .layout-grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
+  display: flex;
   gap: 32px;
 }
 
-.info-section {
-  margin-bottom: 32px;
+.main-column {
+  flex: 1;
+  min-width: 0;
 }
 
-.info-section h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #172b4d;
-  margin: 0 0 12px 0;
-}
-
-.info-section p {
-  color: #172b4d;
-  line-height: 1.6;
-  margin: 0;
+.side-column {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .side-card {
   border: 1px solid #dfe1e6;
-  border-radius: 3px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 20px;
   background-color: #ffffff;
+  box-shadow: var(--sp-shadow-xs);
 }
 
 .side-card h3 {
@@ -941,14 +970,61 @@ const goToTask = (task) => {
   margin-bottom: 16px;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 40px;
-  color: #5e6c84;
-  background-color: #fafbfc;
-  border: 1px dashed #dfe1e6;
-  border-radius: 3px;
+.empty-state-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-secondary) !important;
+  font-weight: 600;
+  box-shadow: var(--sp-shadow-xs);
+  box-sizing: border-box;
   margin-top: 16px;
+}
+
+.empty-state-card i {
+  font-size: 16px;
+  color: var(--color-text-secondary);
+}
+
+/* Light / Dark Mode Overrides */
+[data-theme='dark'] .profile-detail-container {
+  background-color: #0b0f19 !important;
+}
+[data-theme='dark'] .profile-header-wrapper h1,
+[data-theme='dark'] .side-card h3,
+[data-theme='dark'] .detail-row .value {
+  color: #f1f5f9 !important;
+}
+[data-theme='dark'] .tab-btn {
+  color: #94a3b8 !important;
+}
+[data-theme='dark'] .tab-btn:hover {
+  color: #f1f5f9 !important;
+  background: rgba(14, 165, 233, 0.1) !important;
+}
+[data-theme='dark'] .tab-btn.active {
+  color: #38bdf8 !important;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(45, 212, 191, 0.14)) !important;
+}
+[data-theme='dark'] .side-card {
+  background-color: #1e293b !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+[data-theme='dark'] .empty-state-card {
+  background: rgba(30, 41, 59, 0.72) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+[data-theme='light'] .empty-state-card {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.97), rgba(248, 250, 252, 0.88)),
+    #ffffff !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
 }
 
 /* Modal Styles */

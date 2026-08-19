@@ -2,7 +2,10 @@
   <AdminLayout>
     <div class="admin-page">
       <div class="page-header">
-        <div class="breadcrumb">SYSTEM / CONFIGURATION</div>
+        <div class="breadcrumb">
+          <i class="fa-solid fa-gears"></i>
+          <span>SYSTEM / CONFIGURATION</span>
+        </div>
         <h1 class="text-hero">{{ t('System Configuration', 'Cấu hình hệ thống') }}</h1>
         <p class="text-desc">
           Manage workflow defaults, project lifecycle states, and application aesthetics. 
@@ -377,42 +380,10 @@ onUnmounted(() => {
 
 <style scoped>
 .admin-page {
-  min-height: 100vh;
-  max-width: 1180px;
-  padding: 34px clamp(20px, 4vw, 48px) 56px;
-  background:
-    linear-gradient(180deg, #f8fbff, #eef5fb 54%, #f8fafc);
 }
 
-.page-header {
-  padding: 24px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 22px 58px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(14px);
-}
-
-.text-hero {
-  color: #0f172a;
-  font-size: clamp(28px, 3vw, 40px);
-  font-weight: 950;
-  letter-spacing: 0;
-}
-
-.text-desc,
 .section-head p {
-  color: #64748b;
-  font-weight: 600;
-}
-
-.breadcrumb {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-  margin-bottom: 8px;
+  color: var(--color-text-secondary);
 }
 
 .config-grid {
@@ -550,25 +521,17 @@ onUnmounted(() => {
   background: rgba(248, 250, 252, 0.7);
 }
 
-[data-theme='dark'] .admin-page {
-  background:
-    linear-gradient(180deg, #07111f, #0f172a 54%, #101827);
-}
-
-[data-theme='dark'] .page-header,
 [data-theme='dark'] .settings-card {
   border-color: rgba(148, 163, 184, 0.18);
   background: rgba(15, 23, 42, 0.78);
   box-shadow: 0 22px 58px rgba(0, 0, 0, 0.24);
 }
 
-[data-theme='dark'] .text-hero,
 [data-theme='dark'] .section-head h2,
 [data-theme='dark'] .section-head .text-section {
   color: #f8fafc;
 }
 
-[data-theme='dark'] .text-desc,
 [data-theme='dark'] .section-head p {
   color: #94a3b8;
 }

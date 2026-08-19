@@ -30,6 +30,11 @@ const spaceChildren = [
     redirect: to => buildSpacePath({ id: to.params.id, name: to.params.spaceSlug }, 'work-items')
   },
   {
+    path: 'profile/:profileId',
+    name: 'SpaceProfileDetail',
+    component: () => import('../views/HomeSite/People/ProfileDetail.vue')
+  },
+  {
     path: 'work-items',
     name: 'SpaceSummary',
     component: () => import('../views/SpaceSummary.vue')

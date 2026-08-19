@@ -1,13 +1,13 @@
 <template>
   <AdminLayout>
-    <div class="admin-page-container">
+    <div class="admin-page">
       <div class="page-header">
         <div class="breadcrumb">
           <i class="fa-solid fa-building"></i>
-          Admin / Organization
+          <span>ORGANIZATION / PROFILE</span>
         </div>
-        <h1 class="page-title">{{ t('Organization & Security Profile', 'Hồ sơ Tổ chức & Bảo mật (Tenant Settings)') }}</h1>
-        <p class="page-subtitle">{{ t('Manage organization settings, IP Whitelist, and 2FA policies.', 'Quản lý cấu hình toàn tổ chức, IP Whitelist và chính sách 2FA.') }}</p>
+        <h1 class="text-hero">{{ t('Organization & Security Profile', 'Hồ sơ Tổ chức & Bảo mật (Tenant Settings)') }}</h1>
+        <p class="text-desc">{{ t('Manage organization settings, IP Whitelist, and 2FA policies.', 'Quản lý cấu hình toàn tổ chức, IP Whitelist và chính sách 2FA.') }}</p>
       </div>
 
       <div class="admin-form-card" v-loading="isLoading">
@@ -162,34 +162,7 @@ onMounted(fetchConfig)
 </script>
 
 <style scoped>
-.admin-page-container {
-  max-width: 900px;
-}
-
-.page-header {
-  margin-bottom: 24px;
-}
-
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-}
-
-.page-title {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: 24px;
-  font-weight: 600;
-}
-
-.page-subtitle {
-  margin-top: 4px;
-  color: var(--color-text-muted);
-  font-size: 14px;
+.admin-page {
 }
 
 .admin-form-card {

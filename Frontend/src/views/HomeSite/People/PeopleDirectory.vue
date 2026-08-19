@@ -396,7 +396,11 @@ const removeFilter = (key) => {
 }
 
 const goToProfile = (id) => {
-  router.push(`/home/profile/${id}`)
+  if (route.path.startsWith('/home/') || route.path.startsWith('/sites')) {
+    router.push(`/home/profile/${id}`)
+  } else {
+    router.push(`/profile/${id}`)
+  }
 }
 </script>
 

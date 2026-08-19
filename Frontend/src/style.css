@@ -454,9 +454,25 @@ label, .el-form-item__label, .field-label {
 
 /* Admin & Settings Layout Helpers - Visual Hierarchy Overhaul */
 .admin-page {
-  padding: 32px;
-  max-width: 1200px;
-  margin: 0 auto;
+  padding: 0;
+  width: 100%;
+}
+
+.breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.breadcrumb i {
+  font-size: 10px;
+  color: var(--color-text-muted);
 }
 
 .page-header {
@@ -2538,19 +2554,24 @@ textarea {
   display: none !important;
 }
 
-.teams-wrapper > .module-header {
+.teams-wrapper > .module-header,
+.goals-wrapper > .module-header {
   padding: 18px 18px 0 !important;
 }
 
-.teams-wrapper > .module-content {
-  padding: 18px 18px 0 !important;
+.teams-wrapper > .module-content,
+.goals-wrapper > .module-content {
+  padding: 8px 18px 0 !important;
 }
 
-.teams-wrapper .header-content {
+.teams-wrapper .header-content,
+.goals-wrapper .header-content {
   margin-bottom: 18px !important;
 }
 
-.teams-wrapper .tab-link {
+.teams-wrapper .tab-link,
+.goals-wrapper .tab-link,
+.goals-wrapper .tab-btn {
   padding-top: 6px !important;
   padding-bottom: 10px !important;
 }
@@ -2574,6 +2595,20 @@ textarea {
 .sprinta-layout-content .module-content {
   padding-left: 0 !important;
   padding-right: 0 !important;
+}
+
+.goals-dashboard-layout .sprinta-layout-content {
+  margin-top: 0 !important;
+}
+
+.goals-dashboard-layout .module-content {
+  padding-top: 0px !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.goals-dashboard-layout .section-header {
+  margin: 0 0 16px !important;
 }
 
 .app-shell-title-wrap h1,
@@ -2617,6 +2652,56 @@ textarea {
 .sprinta-layout-content {
   margin-top: 0 !important;
 }
+
+/* Center empty states for Goals and Teams tabs */
+.goals-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-align: center;
+  min-height: 350px;
+}
+
+.goals-empty-state .empty-spaces-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--home-accent, #38bdf8) 18%, transparent) !important;
+  border-radius: 14px !important;
+  background: color-mix(in srgb, var(--home-accent, #38bdf8) 10%, rgba(255,255,255,0.05)) !important;
+  color: var(--home-accent, #38bdf8) !important;
+  font-size: 23px !important;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12) !important;
+}
+
+.goals-empty-state .empty-spaces-copy {
+  max-width: 380px;
+}
+
+.goals-empty-state .empty-spaces-copy h3 {
+  margin: 0 !important;
+  color: var(--home-text, #172B4D) !important;
+  font-size: 15px !important;
+  font-weight: 800 !important;
+  line-height: 1.35 !important;
+}
+
+.goals-empty-state .empty-spaces-copy p {
+  margin: 3px 0 0 !important;
+  color: var(--home-muted, #5E6C84) !important;
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+}
+
 
 .app-shell-header-help {
   position: relative !important;

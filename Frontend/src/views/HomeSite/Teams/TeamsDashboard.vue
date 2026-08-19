@@ -1,12 +1,56 @@
 <template>
   <div class="teams-dashboard">
     <div class="dashboard-content">
-      <div v-if="teams.length === 0" class="empty-state-banner">
-        <div class="empty-banner-content">
-          <div class="empty-banner-text">
-            <h2>{{ t('homeSite.teams.yourTeams') }}</h2>
+      <section class="dashboard-section teams-content-panel">
+        <div class="section-header">
+          <h2>
+            {{ t('homeSite.teams.yourTeams') }}
+          </h2>
+        </div>
+
+        <ProjectPageToolbar
+          v-model:searchQuery="teamSearch"
+          show-search
+          :search-placeholder="t('homeSite.teams.searchTeams')"
+        >
+          <template #filters>
+            <ToolbarFilterMenu
+              label="Filters"
+              :clear-label="t('common.clear') || 'Clear'"
+              :clear-all-label="t('common.clear') || 'Clear all'"
+              empty-label="No filters applied"
+              :count="activeFilterCount"
+              :active-items="activeFilterItems"
+              @clear="clearFilters"
+              @remove="removeFilter"
+            >
+              <template #default="{ search }">
+                <DropdownFilter v-if="matchesFilterSearch(t('homeSite.teams.teamType'), search)" :label="t('homeSite.teams.teamType')" :options="teamTypeOptions" v-model="filters.type" :searchable="false" />
+                <DropdownFilter v-if="matchesFilterSearch(t('homeSite.teams.manager'), search)" :label="t('homeSite.teams.manager')" :options="managerOptions" v-model="filters.manager" :searchable="false" />
+              </template>
+            </ToolbarFilterMenu>
+          </template>
+          <template #toggles>
+            <div class="view-toggles">
+              <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" :title="t('homeSite.teams.gridView')">
+                <i class="fa-solid fa-table-cells-large"></i>
+              </button>
+              <button class="toggle-btn" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'" :title="t('homeSite.teams.tableView')">
+                <i class="fa-solid fa-list"></i>
+              </button>
+            </div>
+          </template>
+        </ProjectPageToolbar>
+
+        <!-- Empty State (No teams at all) -->
+        <div v-if="teams.length === 0" class="goals-empty-state">
+          <div class="empty-spaces-icon" aria-hidden="true">
+            <i class="fa-solid fa-users"></i>
+          </div>
+          <div class="empty-spaces-copy">
+            <h3>{{ t('homeSite.teams.yourTeams') }}</h3>
             <p>{{ t('homeSite.teams.emptyDescription') }}</p>
-            <div class="empty-banner-actions">
+            <div class="empty-banner-actions" style="margin-top: 16px; display: flex; gap: 8px; justify-content: center;">
               <button class="primary-btn" @click="openCreateTeamModal">
                 {{ t('homeSite.teams.startTeam') }}
               </button>
@@ -15,112 +59,69 @@
               </router-link>
             </div>
           </div>
-          <div class="empty-banner-illustration">
-            <div class="mock-illustration">
-              <i class="fa-solid fa-users-viewfinder"></i>
+        </div>
+
+        <!-- Empty State (No search results) -->
+        <div v-else-if="filteredTeams.length === 0" class="goals-empty-state">
+          <div class="empty-spaces-icon" aria-hidden="true">
+            <i class="fa-solid fa-users"></i>
+          </div>
+          <div class="empty-spaces-copy">
+            <h3>{{ t('homeSite.teams.noTeamsFound') || 'Không tìm thấy đội ngũ nào' }}</h3>
+            <p>Thử tìm kiếm với tên khác.</p>
+          </div>
+        </div>
+
+        <!-- Grid View -->
+        <div class="team-cards-grid" v-else-if="viewMode === 'grid'">
+          <div class="team-card" v-for="team in filteredTeams" :key="team.id" @click="goToTeam(team.id)">
+            <div class="team-card-cover"></div>
+            <div class="team-card-content">
+              <div class="team-avatar">{{ team.avatarText }}</div>
+              <h3 class="team-name">{{ team.name }}</h3>
+              <p class="team-meta">{{ t('homeSite.teams.membersCount', { count: team.memberCount }) }}</p>
             </div>
           </div>
         </div>
-      </div>
 
-      <div v-else class="teams-sections">
-        <section class="dashboard-section teams-content-panel">
-          <div class="section-header">
-            <h2>
-              {{ t('homeSite.teams.yourTeams') }}
-            </h2>
-
-            <ProjectPageToolbar
-              v-model:searchQuery="teamSearch"
-              show-search
-              :search-placeholder="t('homeSite.teams.searchTeams')"
-            >
-              <template #filters>
-                <ToolbarFilterMenu
-                  label="Filters"
-                  :clear-label="t('common.clear') || 'Clear'"
-                  :clear-all-label="t('common.clear') || 'Clear all'"
-                  empty-label="No filters applied"
-                  :count="activeFilterCount"
-                  :active-items="activeFilterItems"
-                  @clear="clearFilters"
-                  @remove="removeFilter"
-                >
-                  <template #default="{ search }">
-                    <DropdownFilter v-if="matchesFilterSearch(t('homeSite.teams.teamType'), search)" :label="t('homeSite.teams.teamType')" :options="teamTypeOptions" v-model="filters.type" :searchable="false" />
-                    <DropdownFilter v-if="matchesFilterSearch(t('homeSite.teams.manager'), search)" :label="t('homeSite.teams.manager')" :options="managerOptions" v-model="filters.manager" :searchable="false" />
-                  </template>
-                </ToolbarFilterMenu>
-              </template>
-              <template #toggles>
-                <div class="view-toggles">
-                  <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" :title="t('homeSite.teams.gridView')">
-                    <i class="fa-solid fa-table-cells-large"></i>
-                  </button>
-                  <button class="toggle-btn" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'" :title="t('homeSite.teams.tableView')">
-                    <i class="fa-solid fa-list"></i>
-                  </button>
+        <!-- Table View -->
+        <table v-else-if="viewMode === 'table'" class="jira-table">
+          <thead>
+            <tr>
+              <th style="width: 25%">{{ t('homeSite.teams.team') }}</th>
+              <th style="width: 20%">{{ t('homeSite.teams.teamType') }}</th>
+              <th style="width: 20%">{{ t('homeSite.teams.manager') }}</th>
+              <th style="width: 10%">{{ t('homeSite.teams.members') }}</th>
+              <th style="width: 10%">{{ t('homeSite.teams.parentTeam') }}</th>
+              <th style="width: 15%">{{ t('homeSite.teams.childTeams') }} <i class="fa-solid fa-arrow-down" style="font-size: 10px; margin-left: 4px;"></i></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="team in filteredTeams" :key="team.id" @click="goToTeam(team.id)">
+              <td>
+                <div class="team-name-cell">
+                  <div class="team-avatar-small" :style="{ backgroundColor: '#0052cc' }">{{ team.avatarText }}</div>
+                  <span class="team-name-text">{{ team.name }}</span>
                 </div>
-              </template>
-            </ProjectPageToolbar>
-          </div>
-
-          <div class="team-cards-grid" v-if="viewMode === 'grid'">
-            <div class="team-card" v-for="team in filteredTeams" :key="team.id" @click="goToTeam(team.id)">
-              <div class="team-card-cover"></div>
-              <div class="team-card-content">
-                <div class="team-avatar">{{ team.avatarText }}</div>
-                <h3 class="team-name">{{ team.name }}</h3>
-                <p class="team-meta">{{ t('homeSite.teams.membersCount', { count: team.memberCount }) }}</p>
-              </div>
-            </div>
-          </div>
-
-          <table v-if="viewMode === 'table'" class="jira-table">
-            <thead>
-              <tr>
-                <th style="width: 25%">{{ t('homeSite.teams.team') }}</th>
-                <th style="width: 20%">{{ t('homeSite.teams.teamType') }}</th>
-                <th style="width: 20%">{{ t('homeSite.teams.manager') }}</th>
-                <th style="width: 10%">{{ t('homeSite.teams.members') }}</th>
-                <th style="width: 10%">{{ t('homeSite.teams.parentTeam') }}</th>
-                <th style="width: 15%">{{ t('homeSite.teams.childTeams') }} <i class="fa-solid fa-arrow-down" style="font-size: 10px; margin-left: 4px;"></i></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="team in filteredTeams" :key="team.id" @click="goToTeam(team.id)">
-                <td>
-                  <div class="team-name-cell">
-                    <div class="team-avatar-small" :style="{ backgroundColor: '#0052cc' }">{{ team.avatarText }}</div>
-                    <span class="team-name-text">{{ team.name }}</span>
-                  </div>
-                </td>
-                <td style="white-space: nowrap;">{{ team.typeLabel }}</td>
-                <td>
-                  <div v-if="team.managerName !== noManagerLabel" class="manager-cell" style="display: flex; align-items: center; gap: 8px;">
-                    <UserAvatar :user="{ fullName: team.managerName, email: team.managerEmail }" :size="24" :fontSize="10" />
-                    <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;">{{ team.managerName }}</span>
-                  </div>
-                  <div v-else style="color: #5E6C84; display: flex; align-items: center; gap: 6px;">
-                    <div style="width: 24px; height: 24px; border-radius: 50%; background: #DFE1E6; display: flex; align-items: center; justify-content: center; color: #172B4D; font-size: 10px; font-weight: bold;">?</div>
-                    <span>{{ noManagerLabel }}</span>
-                  </div>
-                </td>
-                <td>{{ team.memberCount }}</td>
-                <td>{{ team.parentCount }}</td>
-                <td>{{ team.childrenCount }}</td>
-              </tr>
-            </tbody>
-            <tbody v-if="filteredTeams.length === 0">
-              <tr>
-                <td colspan="6" class="empty-table-state">
-                  {{ t('homeSite.teams.noTeamsFound') }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-      </div>
+              </td>
+              <td style="white-space: nowrap;">{{ team.typeLabel }}</td>
+              <td>
+                <div v-if="team.managerName !== noManagerLabel" class="manager-cell" style="display: flex; align-items: center; gap: 8px;">
+                  <UserAvatar :user="{ fullName: team.managerName, email: team.managerEmail }" :size="24" :fontSize="10" />
+                  <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;">{{ team.managerName }}</span>
+                </div>
+                <div v-else style="color: #5E6C84; display: flex; align-items: center; gap: 6px;">
+                  <div style="width: 24px; height: 24px; border-radius: 50%; background: #DFE1E6; display: flex; align-items: center; justify-content: center; color: #172B4D; font-size: 10px; font-weight: bold;">?</div>
+                  <span>{{ noManagerLabel }}</span>
+                </div>
+              </td>
+              <td>{{ team.memberCount }}</td>
+              <td>{{ team.parentCount }}</td>
+              <td>{{ team.childrenCount }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
     </div>
 
     <AppModal

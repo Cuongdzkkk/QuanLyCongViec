@@ -65,7 +65,7 @@
                        @click="toggleAssignee(user.userId)"
                        :class="getAssigneeIds().includes(user.userId) ? 'assignee-option-selected' : 'hover:bg-gray-100'">
                     <div class="flex items-center truncate max-w-[75%] pl-2 py-1">
-                      <UserAvatar :user="{ avatarColor: user.avatarColor, initials: user.initials, fullName: user.fullName, email: user.email, id: user.userId }" :size="20" :fontSize="9" class="mr-2" />
+                      <UserAvatar :user="{ avatarColor: user.avatarColor, initials: user.initials, fullName: user.fullName, email: user.email, id: user.userId }" :size="20" :fontSize="9" class="mr-2" :clickable="false" />
                       <span class="truncate" :class="getAssigneeIds().includes(user.userId) ? 'font-semibold' : ''">{{ user.fullName || user.email }}</span>
                     </div>
                     <div class="flex items-center flex-shrink-0 pr-2">
@@ -73,44 +73,6 @@
                     </div>
                   </div>
                   <div v-if="!filteredMembers.length" class="text-xs text-center text-muted py-2">{{ tr('No assignees found.', 'Không tìm thấy người thực hiện.') }}</div>
-                </div>
-                <div class="assignee-progress-list" v-if="selectedAssigneeRows.length">
-                  <div class="assignee-progress-title">{{ tr('Progress by assignee', 'Tiến độ theo người thực hiện') }}</div>
-                  <div class="assignee-progress-row" v-for="assignee in selectedAssigneeRows" :key="assignee.userId">
-                    <span class="assignee-progress-name">{{ assignee.fullName || assignee.email || tr('Member', 'Thành viên') }}</span>
-                    <input
-                      class="assignee-progress-input"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      :disabled="!canManageTaskAssignees"
-                      :value="assignee.progressPercent || 0"
-                      @change="event => updateAssigneeProgress(assignee.userId, event.target.value)"
-                    />
-                    <span class="assignee-progress-suffix">%</span>
-                    <input
-                      v-if="showEstimateFeatures"
-                      class="assignee-progress-input"
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      :disabled="!canManageTaskAssignees"
-                      :value="assignee.estimatedHours || 0"
-                      @change="event => updateAssigneeEstimatedHours(assignee.userId, event.target.value)"
-                    />
-                    <span v-if="showEstimateFeatures" class="assignee-progress-suffix">h</span>
-                    <input
-                      class="assignee-progress-input"
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      :disabled="!canManageTaskAssignees"
-                      :value="assignee.contributionWeight || 1"
-                      @change="event => updateAssigneeContributionWeight(assignee.userId, event.target.value)"
-                    />
-                    <span class="assignee-progress-suffix">w</span>
-                  </div>
                 </div>
               </div>
             </el-popover>
@@ -679,7 +641,7 @@
                            <i class="fa-regular fa-user"></i>
                            <span>{{ tr('Assignee', 'Người thực hiện') }}</span>
                            <span class="property-value" style="display: flex; align-items: center; gap: 4px;">
-                             <UserAvatar v-if="selectedAssigneeRows.length === 1" :user="selectedAssigneeRows[0]" :size="16" :fontSize="8" />
+                             <UserAvatar v-if="selectedAssigneeRows.length === 1" :user="selectedAssigneeRows[0]" :size="16" :fontSize="8" :clickable="false" />
                              {{ getAssigneeSummary() }}
                            </span>
                          </button>
@@ -693,7 +655,7 @@
                                 @click="toggleAssignee(member.userId)"
                                 :class="getAssigneeIds().includes(member.userId) ? 'assignee-option-selected' : 'hover:bg-gray-100'">
                              <div class="flex items-center truncate max-w-[75%] pl-2 py-1">
-                               <UserAvatar :user="{ avatarColor: member.avatarColor, initials: member.initials, fullName: member.fullName, email: member.email, id: member.userId }" :size="20" :fontSize="9" class="mr-2" />
+                               <UserAvatar :user="{ avatarColor: member.avatarColor, initials: member.initials, fullName: member.fullName, email: member.email, id: member.userId }" :size="20" :fontSize="9" class="mr-2" :clickable="false" />
                                <span class="truncate" :class="getAssigneeIds().includes(member.userId) ? 'font-semibold' : ''">{{ member.fullName || member.email }}</span>
                              </div>
                              <div class="flex items-center flex-shrink-0 pr-2">
