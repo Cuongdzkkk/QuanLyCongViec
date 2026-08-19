@@ -16,7 +16,7 @@
 
       <NexusSidebar v-if="!hideSidebar" :isVisible="sidebarVisible" @close-mobile="sidebarVisible = false" />
 
-      <main class="content-area">
+      <main class="content-area" :class="{ 'is-project-context': route.path.startsWith('/space/') }">
         <div class="content-wrapper">
           <slot></slot>
         </div>
@@ -97,27 +97,15 @@
                 <span class="ai-credit-label">AI CREDITS</span>
                 <strong>{{ aiPlanLabel }}</strong>
               </div>
-
               <strong>{{ aiRemainingCredits }} / {{ aiIncludedCredits }}</strong>
             </div>
-
             <div class="ai-credit-progress" aria-hidden="true">
               <span :style="{ width: `${aiCreditPercent}%` }"></span>
             </div>
-
-            <p v-if="aiCreditsExhausted" class="ai-credit-message">
-              Bạn đã sử dụng hết AI Credits trong tháng này.
-            </p>
-
-            <p v-else-if="aiCreditsLow" class="ai-credit-message">
-              AI Credits sắp hết. Bạn còn {{ aiRemainingCredits }} credits.
-            </p>
-
-            <p v-else class="ai-credit-message">
-              Còn {{ aiRemainingCredits }} AI Credits trong tháng này.
-            </p>
+            <p v-if="aiCreditsExhausted" class="ai-credit-message">Bạn đã sử dụng hết AI Credits trong tháng này.</p>
+            <p v-else-if="aiCreditsLow" class="ai-credit-message">AI Credits sắp hết. Bạn còn {{ aiRemainingCredits }} credits.</p>
+            <p v-else class="ai-credit-message">Còn {{ aiRemainingCredits }} AI Credits trong tháng này.</p>
           </div>
-
           <button class="ai-pin-toggle" type="button" @click="togglePetPinned">
             <i :class="petPinned ? 'fa-solid fa-thumbtack' : 'fa-solid fa-location-dot'"></i>
             {{ petPinned ? 'Đã ghim vị trí' : 'Thả cho pet di chuyển' }}
@@ -582,6 +570,7 @@ import { useGoalStore } from '@/store/useGoalStore'
 import { useSprintStore } from '@/store/useSprintStore'
 import { getStoredUserSession } from '@/utils/authSession'
 import { getDefaultPermissionMatrix, hasPermission } from '@/utils/permissionGuard'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const props = defineProps({
   hideSidebar: {
@@ -609,59 +598,25 @@ const aiSending = ref(false)
 const aiUsage = ref(null)
 const aiContentRef = ref(null)
 
-const aiIncludedCredits = computed(() =>
-  Math.max(0, Number(aiUsage.value?.includedCredits || 0))
-)
-
-const aiUsedCredits = computed(() =>
-  Math.max(0, Number(aiUsage.value?.usedCredits || 0))
-)
-
-const aiRemainingCredits = computed(() =>
-  Math.max(
-    0,
-    Number(
-      aiUsage.value?.remainingCredits
-      ?? aiUsage.value?.remainingIncludedCredits
-      ?? (aiIncludedCredits.value - aiUsedCredits.value)
-    )
-  )
-)
-
-const aiCreditPercent = computed(() => {
-  if (aiIncludedCredits.value <= 0) return 0
-
-  return Math.max(
-    0,
-    Math.min(
-      100,
-      Math.round((aiRemainingCredits.value / aiIncludedCredits.value) * 100)
-    )
-  )
-})
-
-const aiCreditsExhausted = computed(() =>
-  Boolean(
-    aiUsage.value
-    && aiIncludedCredits.value > 0
-    && aiRemainingCredits.value <= 0
-  )
-)
-
-const aiCreditsLow = computed(() =>
-  Boolean(
-    aiUsage.value
-    && !aiCreditsExhausted.value
-    && aiIncludedCredits.value > 0
-    && aiCreditPercent.value <= 20
-  )
-)
-
+const aiIncludedCredits = computed(() => Math.max(0, Number(aiUsage.value?.includedCredits || 0)))
+const aiUsedCredits = computed(() => Math.max(0, Number(aiUsage.value?.usedCredits || 0)))
+const aiRemainingCredits = computed(() => Math.max(0, Number(
+  aiUsage.value?.remainingCredits
+  ?? aiUsage.value?.remainingIncludedCredits
+  ?? (aiIncludedCredits.value - aiUsedCredits.value)
+)))
+const aiCreditPercent = computed(() => aiIncludedCredits.value <= 0
+  ? 0
+  : Math.max(0, Math.min(100, Math.round((aiRemainingCredits.value / aiIncludedCredits.value) * 100))))
+const aiCreditsExhausted = computed(() => Boolean(
+  aiUsage.value && aiIncludedCredits.value > 0 && aiRemainingCredits.value <= 0
+))
+const aiCreditsLow = computed(() => Boolean(
+  aiUsage.value && !aiCreditsExhausted.value && aiIncludedCredits.value > 0 && aiCreditPercent.value <= 20
+))
 const aiPlanLabel = computed(() => {
   const plan = String(aiUsage.value?.planCode || 'free').trim()
-  return plan
-    ? plan.charAt(0).toUpperCase() + plan.slice(1)
-    : 'Free'
+  return plan ? plan.charAt(0).toUpperCase() + plan.slice(1) : 'Free'
 })
 const selectedText = ref('')
 const selectionPopover = ref({ visible: false, left: 0, top: 0 })
@@ -1931,17 +1886,19 @@ const refreshAfterAiAction = async (action, result) => {
 
 const navigateToAiEntity = async ({ entityId, entityType, projectId }) => {
   if (!entityId) return
-  if (entityType === 'project') return router.push(`/space/${entityId}/dashboard`)
+  const project = projectStore.allProjects.find(item => `${item.id}` === `${projectId || entityId || currentProjectId.value}`)
+  const projectTarget = project || projectId || entityId || currentProjectId.value
+  if (entityType === 'project') return router.push(buildSpacePath(projectTarget, 'work-items'))
   if (entityType === 'worktask' || entityType === 'task') {
-    return router.push({ path: `/space/${projectId || currentProjectId.value}/work-items`, query: { task: entityId } })
+    return router.push({ path: buildSpacePath(projectTarget, 'work-items'), query: { task: entityId } })
   }
   if (entityType === 'goal') return router.push(`/home/goals/${entityId}`)
-  if (['cycle', 'sprint'].includes(entityType)) return router.push(`/space/${projectId || currentProjectId.value}/cycles`)
-  if (entityType === 'module') return router.push(`/space/${projectId || currentProjectId.value}/modules`)
-  if (entityType === 'page') return router.push(`/space/${projectId || currentProjectId.value}/pages`)
-  if (entityType === 'view') return router.push(`/space/${projectId || currentProjectId.value}/views`)
-  if (entityType === 'intake' || entityType === 'intake_request') return router.push(`/space/${projectId || currentProjectId.value}/intakes`)
-  if (entityType === 'report') return router.push(`/space/${projectId || currentProjectId.value}/reports`)
+  if (['cycle', 'sprint'].includes(entityType)) return router.push(buildSpacePath(projectTarget, 'cycles'))
+  if (entityType === 'module') return router.push(buildSpacePath(projectTarget, 'modules'))
+  if (entityType === 'page') return router.push(buildSpacePath(projectTarget, 'pages'))
+  if (entityType === 'view') return router.push(buildSpacePath(projectTarget, 'views'))
+  if (entityType === 'intake' || entityType === 'intake_request') return router.push(buildSpacePath(projectTarget, 'intakes'))
+  if (entityType === 'report') return router.push(buildSpacePath(projectTarget, 'reports'))
 }
 
 const normalizeTaskTitle = (title = '') => `${title}`.trim().replace(/\s+/g, ' ').toLocaleUpperCase('vi-VN')
@@ -1993,8 +1950,9 @@ const closeNotes = () => {
 const openDuplicateTask = (action, edit) => {
   const task = action.duplicateCandidate
   if (!task?.id) return
+  const project = projectStore.allProjects.find(item => `${item.id}` === `${currentProjectId.value}`) || currentProjectId.value
   return router.push({
-    path: `/space/${currentProjectId.value}/work-items`,
+    path: buildSpacePath(project, 'work-items'),
     query: { task: task.id, ...(edit ? { edit: '1' } : {}) }
   })
 }
@@ -2014,7 +1972,6 @@ const confirmDuplicateCreation = async (action) => {
     if (error !== 'cancel' && error !== 'close') ElMessage.error('Không thể xác nhận thao tác.')
   }
 }
-
 const executeAiAction = async (action) => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
   const duplicate = await findDuplicateTask(action)
@@ -2038,7 +1995,7 @@ const executeAiAction = async (action) => {
         payload: actionPayload(action)
       })
       action.serverActionId = previewResponse.data?.data?.actionId
-      if (!action.serverActionId) throw new Error('Backend không tạo được action preview.')
+      if (!action.serverActionId) throw new Error('Backend khÃ´ng táº¡o Ä‘Æ°á»£c action preview.')
       await persistConversation()
     }
     const response = await axiosClient.post(`/ai/actions/${action.serverActionId}/confirm`)
@@ -2607,12 +2564,10 @@ const uploadPendingAttachments = async (conversationId) => {
 const sendAiMessage = async () => {
   const outgoing = aiInput.value.trim()
   const hasAttachments = pendingAttachments.value.length > 0
-
   if (aiCreditsExhausted.value) {
     ElMessage.warning('Bạn đã sử dụng hết AI Credits trong tháng này.')
     return
   }
-
   if ((!outgoing && !hasAttachments) || aiSending.value) return
 
   aiSending.value = true
@@ -2651,7 +2606,6 @@ const sendAiMessage = async () => {
         content: responseData?.answer || aiCopy.value.emptyResponse,
         citations: responseData?.citations || []
       })
-
       await loadAiUsage()
       return
     }
@@ -2694,7 +2648,6 @@ const sendAiMessage = async () => {
       })),
       suggestedActions: responseData?.suggestedActions || []
     })
-
     await loadAiUsage()
   } catch (error) {
     if (loadingAdded && chatHistory.value.at(-1)?.loading) chatHistory.value.pop()
@@ -2743,7 +2696,7 @@ const sendAiMessage = async () => {
 
 const handleSpaceCreated = (newSpace) => {
   if (newSpace && newSpace.id) {
-    window.location.href = `/space/${newSpace.id}`
+    window.location.href = buildSpacePath(newSpace, 'work-items')
   } else {
     window.location.reload()
   }
@@ -2757,10 +2710,12 @@ const handleProjectCreated = (newProject) => {
 <style scoped>
 .dashboard-layout {
   height: 100dvh;
-  max-height: 100vh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--sa-bg);
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--sa-primary) 8%, transparent), transparent 34%),
+    var(--sa-bg);
   color: var(--color-text-primary);
   overflow: hidden;
   font-family: 'Be Vietnam Pro', 'Inter', system-ui, sans-serif;
@@ -2771,6 +2726,7 @@ const handleProjectCreated = (newProject) => {
   flex: 1;
   overflow: hidden;
   position: relative;
+  min-height: 0;
   background: var(--sa-bg);
 }
 
@@ -2802,13 +2758,66 @@ const handleProjectCreated = (newProject) => {
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2);
 }
 
+.content-area.is-project-context {
+  overflow: hidden;
+}
+
 .content-wrapper {
+  --app-shell-page-x: 18px;
+  --app-shell-header-top: 18px;
+  --app-shell-header-bottom: 18px;
   width: 100%;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
   background: transparent;
+}
+
+.content-wrapper :deep(.app-shell-page-header) {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 20px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: var(--app-shell-header-top) var(--app-shell-page-x) var(--app-shell-header-bottom) !important;
+  background: transparent !important;
+  border-top: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-left: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.content-wrapper :deep(.app-shell-page-header > div:first-child) {
+  min-width: 0;
+}
+
+.content-wrapper :deep(.app-shell-page-header .eyebrow) {
+  display: block;
+}
+
+.content-wrapper :deep(.app-shell-page-header h1) {
+  margin: 0 !important;
+  font-size: 26px !important;
+  line-height: 1.15 !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+}
+
+.content-wrapper :deep(.app-shell-page-header p) {
+  margin: 0 !important;
+  font-size: 12px !important;
+}
+
+.content-wrapper :deep(.app-shell-page-header + .page-content) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 18px !important;
+  box-sizing: border-box !important;
 }
 
 @media (max-width: 1024px) {
@@ -2967,7 +2976,7 @@ const handleProjectCreated = (newProject) => {
 .ai-sidebar {
   position: fixed;
   right: 16px;
-  top: 68px;
+  top: calc(var(--sa-topbar-height, 52px) + 16px);
   bottom: 16px;
   width: min(456px, calc(100vw - 32px));
   background: var(--color-surface);
@@ -3104,6 +3113,7 @@ const handleProjectCreated = (newProject) => {
 
 .ai-action-controls { justify-content: flex-end; }
 .ai-action-controls button {
+  min-width: 72px;
   min-height: 30px;
   padding: 6px 11px;
   border-radius: 8px;
@@ -3829,7 +3839,7 @@ const handleProjectCreated = (newProject) => {
 
 .ai-input-wrapper {
   align-items: flex-end;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid color-mix(in srgb, var(--color-border) 84%, var(--sa-primary));
   border-radius: 16px;
   background: var(--color-surface);
@@ -4018,15 +4028,13 @@ const handleProjectCreated = (newProject) => {
     animation: none;
   }
 }
-</style>
 
-<style scoped>
 .ai-credit-card {
   margin-top: 12px;
   padding: 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: var(--bg-secondary);
+  background: var(--color-surface-hover);
 }
 
 .ai-credit-head {
@@ -4043,48 +4051,39 @@ const handleProjectCreated = (newProject) => {
 }
 
 .ai-credit-label {
+  color: var(--color-text-muted);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: .08em;
-  opacity: .7;
 }
 
-.ai-credit-head strong {
-  font-size: 12px;
-}
+.ai-credit-head strong { font-size: 12px; }
 
 .ai-credit-progress {
   height: 6px;
   margin-top: 10px;
   overflow: hidden;
   border-radius: 999px;
-  background: var(--bg-tertiary);
+  background: color-mix(in srgb, var(--color-border) 78%, transparent);
 }
 
 .ai-credit-progress > span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--accent-color);
+  background: var(--color-accent);
   transition: width .25s ease;
 }
 
 .ai-credit-message {
   margin: 8px 0 0;
+  color: var(--color-text-secondary);
   font-size: 11px;
   line-height: 1.4;
-  opacity: .8;
 }
 
-.ai-credit-card.is-low {
-  border-color: #d9a441;
-}
-
-.ai-credit-card.is-empty {
-  border-color: #d25b5b;
-}
-
-.ai-credit-card.is-empty .ai-credit-progress > span {
-  width: 0 !important;
-}
+.ai-credit-card.is-low { border-color: #d9a441; }
+.ai-credit-card.is-low .ai-credit-progress > span { background: #d9a441; }
+.ai-credit-card.is-empty { border-color: #d25b5b; }
+.ai-credit-card.is-empty .ai-credit-progress > span { width: 0 !important; background: #d25b5b; }
 </style>

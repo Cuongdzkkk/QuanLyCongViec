@@ -379,6 +379,12 @@ label, .el-form-item__label, .field-label {
   box-shadow: 0 22px 58px rgba(15, 23, 42, 0.18) !important;
 }
 
+/* Recent is a tall, independently scrollable panel. Keep Starred on the shared compact popover rules. */
+.sidebar-quick-popover.recent-quick-popover.el-popover.el-popper {
+  max-height: calc(100dvh - 24px) !important;
+  overflow: visible !important;
+}
+
 [data-theme='dark'] .sidebar-quick-popover.el-popover.el-popper {
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.42) !important;
 }
@@ -448,9 +454,25 @@ label, .el-form-item__label, .field-label {
 
 /* Admin & Settings Layout Helpers - Visual Hierarchy Overhaul */
 .admin-page {
-  padding: 32px;
-  max-width: 1200px;
-  margin: 0 auto;
+  padding: 0;
+  width: 100%;
+}
+
+.breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.breadcrumb i {
+  font-size: 10px;
+  color: var(--color-text-muted);
 }
 
 .page-header {
@@ -666,13 +688,15 @@ input:not(.el-range-input), select, textarea,
 
 .popover-search {
   width: 100%;
-  min-height: 36px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-input-bg);
+  height: 34px !important;
+  min-height: 34px !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 9px !important;
+  background-color: var(--color-surface) !important;
   color: var(--color-text-primary);
-  padding: 7px 10px;
+  padding: 0 11px !important;
   font-size: 13px;
+  line-height: 34px !important;
   outline: none;
 }
 
@@ -687,7 +711,7 @@ input:not(.el-range-input), select, textarea,
   gap: 4px;
   max-height: 260px;
   overflow-y: auto;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 .popover-item {
@@ -2511,10 +2535,256 @@ textarea {
 .page-header h1,
 .module-header h1,
 .header-main h1 {
-  font-size: clamp(24px, 2.1vw, 34px) !important;
-  line-height: 1.08 !important;
+  font-size: 26px !important;
+  line-height: 1.15 !important;
   font-weight: 900 !important;
   letter-spacing: 0 !important;
+}
+
+.app-shell-title-wrap {
+  display: inline-flex !important;
+  align-items: flex-start !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+
+.app-shell-title-wrap > .eyebrow,
+.app-shell-title-wrap > p,
+.app-shell-header-subtitle {
+  display: none !important;
+}
+
+.teams-wrapper > .module-header,
+.goals-wrapper > .module-header {
+  padding: 18px 18px 0 !important;
+}
+
+.teams-wrapper > .module-content,
+.goals-wrapper > .module-content {
+  padding: 8px 18px 0 !important;
+}
+
+.teams-wrapper .header-content,
+.goals-wrapper .header-content {
+  margin-bottom: 18px !important;
+}
+
+.teams-wrapper .tab-link,
+.goals-wrapper .tab-link,
+.goals-wrapper .tab-btn {
+  padding-top: 6px !important;
+  padding-bottom: 10px !important;
+}
+
+.sprinta-layout-container,
+.sprinta-layout-surface,
+.sprinta-layout-boxed,
+.sprinta-layout-fluid {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+}
+
+.sprinta-layout-header .sprinta-page-header-block.app-shell-page-header,
+.sprinta-layout-toolbar,
+.sprinta-layout-content {
+  padding-left: 18px !important;
+  padding-right: 18px !important;
+}
+
+.sprinta-layout-content .module-content {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.goals-dashboard-layout .sprinta-layout-content {
+  margin-top: 0 !important;
+}
+
+.goals-dashboard-layout .module-content {
+  padding-top: 0px !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.goals-dashboard-layout .section-header {
+  margin: 0 0 16px !important;
+}
+
+.app-shell-title-wrap h1,
+.sprinta-page-header-block .app-shell-title-wrap h1 {
+  margin: 0 !important;
+  color: var(--color-text-primary, var(--home-text, var(--sp-text-primary))) !important;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-size: 26px !important;
+  font-weight: 900 !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0 !important;
+}
+
+.sprinta-layout-surface {
+  --app-shell-page-x: 18px;
+  --app-shell-header-top: 18px;
+  --app-shell-header-bottom: 18px;
+  padding: 0 !important;
+}
+
+.sprinta-layout-header .sprinta-page-header-block.app-shell-page-header {
+  margin: 0 !important;
+  padding: var(--app-shell-header-top, 18px) var(--app-shell-page-x, 18px) var(--app-shell-header-bottom, 18px) !important;
+}
+
+.sprinta-page-header-block.app-shell-page-header {
+  flex-wrap: wrap !important;
+}
+
+.sprinta-page-header-block .app-page-header-bottom {
+  flex: 0 0 100% !important;
+  width: 100% !important;
+}
+
+.sprinta-layout-toolbar,
+.sprinta-layout-content {
+  padding-left: var(--app-shell-page-x, 18px) !important;
+  padding-right: var(--app-shell-page-x, 18px) !important;
+}
+
+.sprinta-layout-content {
+  margin-top: 0 !important;
+}
+
+/* Center empty states for Goals and Teams tabs */
+.goals-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-align: center;
+  min-height: 350px;
+}
+
+.goals-empty-state .empty-spaces-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--home-accent, #38bdf8) 18%, transparent) !important;
+  border-radius: 14px !important;
+  background: color-mix(in srgb, var(--home-accent, #38bdf8) 10%, rgba(255,255,255,0.05)) !important;
+  color: var(--home-accent, #38bdf8) !important;
+  font-size: 23px !important;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12) !important;
+}
+
+.goals-empty-state .empty-spaces-copy {
+  max-width: 380px;
+}
+
+.goals-empty-state .empty-spaces-copy h3 {
+  margin: 0 !important;
+  color: var(--home-text, #172B4D) !important;
+  font-size: 15px !important;
+  font-weight: 800 !important;
+  line-height: 1.35 !important;
+}
+
+.goals-empty-state .empty-spaces-copy p {
+  margin: 3px 0 0 !important;
+  color: var(--home-muted, #5E6C84) !important;
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+}
+
+
+.app-shell-header-help {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  margin-top: 1px !important;
+  flex: 0 0 auto !important;
+}
+
+.app-shell-header-help-btn {
+  width: 16px !important;
+  height: 16px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid color-mix(in srgb, var(--color-border, var(--home-border)) 80%, var(--color-accent, var(--home-accent)) 20%) !important;
+  border-radius: 50% !important;
+  background: color-mix(in srgb, var(--color-surface, #fff) 92%, var(--color-accent, var(--home-accent)) 8%) !important;
+  color: var(--color-text-muted, var(--home-muted)) !important;
+  font-size: 8px !important;
+  cursor: help !important;
+  transition: all 0.18s ease !important;
+}
+
+.app-shell-header-help:hover .app-shell-header-help-btn {
+  border-color: var(--color-accent, var(--home-accent)) !important;
+  background: color-mix(in srgb, var(--color-accent, var(--home-accent)) 14%, var(--color-surface, #fff)) !important;
+  color: var(--color-accent, var(--home-accent)) !important;
+  box-shadow: 0 6px 12px rgba(14, 165, 233, 0.14) !important;
+}
+
+.app-shell-header-help-popover {
+  position: absolute !important;
+  left: -8px !important;
+  top: calc(100% + 9px) !important;
+  z-index: 50 !important;
+  width: min(360px, calc(100vw - 56px)) !important;
+  padding: 12px 14px !important;
+  border: 1px solid var(--color-border, var(--home-border)) !important;
+  border-radius: 12px !important;
+  background: var(--color-surface, #fff) !important;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16) !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transform: translate(0, -4px) !important;
+  pointer-events: none !important;
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s ease !important;
+}
+
+.app-shell-header-help-popover::before {
+  content: '' !important;
+  position: absolute !important;
+  top: -6px !important;
+  left: 13px !important;
+  width: 10px !important;
+  height: 10px !important;
+  border-left: 1px solid var(--color-border, var(--home-border)) !important;
+  border-top: 1px solid var(--color-border, var(--home-border)) !important;
+  background: var(--color-surface, #fff) !important;
+  transform: rotate(45deg) !important;
+}
+
+.app-shell-header-help:hover .app-shell-header-help-popover {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: translate(0, 0) !important;
+  pointer-events: auto !important;
+}
+
+.app-shell-header-help-popover span {
+  display: block !important;
+  color: var(--color-accent, var(--home-accent)) !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+  text-transform: uppercase !important;
+}
+
+.app-shell-header-help-popover p {
+  margin: 5px 0 0 !important;
+  color: var(--color-text-muted, var(--home-muted)) !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
 }
 
 .page-content,
@@ -3235,4 +3505,23 @@ body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-low > i {
 body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-none,
 body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-none > i {
   color: #64748b !important;
+}
+
+.app-shell-title-wrap h1,
+.header-content .app-shell-title-wrap h1,
+.page-header .app-shell-title-wrap h1,
+.sprinta-page-header-block .app-shell-title-wrap h1 {
+  margin: 0 !important;
+  color: var(--color-text-primary, var(--home-text, var(--sp-text-primary))) !important;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-size: 26px !important;
+  font-weight: 900 !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0 !important;
+}
+
+.app-shell-title-wrap > .eyebrow,
+.app-shell-title-wrap > p,
+.app-shell-header-subtitle {
+  display: none !important;
 }

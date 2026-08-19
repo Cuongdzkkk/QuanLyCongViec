@@ -11,6 +11,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 HostingConfigurationExtensions.ValidateEnvironmentConfiguration(builder.Configuration, builder.Environment);
+ProjectAccessPolicy.Configure(
+    builder.Configuration.GetValue("Features:ProjectAccessRestrictionsEnabled", true));
 
 builder.Services.AddControllers();
 builder.Services.AddSignalR();

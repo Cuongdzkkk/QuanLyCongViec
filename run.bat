@@ -2,8 +2,15 @@
 title Start Task Management System
 cd /d "%~dp0"
 
-if not defined DEV_SQL_SERVER set "DEV_SQL_SERVER=Quan"
 if not defined DEV_SQL_DATABASE set "DEV_SQL_DATABASE=TaskManagementDB_V4"
+for /f "usebackq delims=" %%s in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\resolve-sql-server.ps1" -PreferredServer "%DEV_SQL_SERVER%"`) do set "DEV_SQL_SERVER=%%s"
+if not defined DEV_SQL_SERVER (
+    echo Khong tim thay SQL Server local dang ket noi duoc.
+    echo Hay start SQL Server hoac set DEV_SQL_SERVER, vi du: set DEV_SQL_SERVER=.\SQL2022
+    pause
+    exit /b 1
+)
+set "ConnectionStrings__DefaultConnection=Server=%DEV_SQL_SERVER%;Database=%DEV_SQL_DATABASE%;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=False;Connection Timeout=60;"
 set "DOTNET_EF_VERSION=10.0.9"
 set "RUN_LOCK=%TEMP%\sprinta-task-management-startup.lock"
 set "RUN_LOCK_OWNER=%RUN_LOCK%\owner.pid"
@@ -44,7 +51,7 @@ set /p resetDB="Ban co muon reset Database va chay Db Migrations + Seed Data kho
 if /I "%resetDB%"=="Y" (
     echo.
     echo --- DANG RESET DATABASE ---
-    cd Backend\src\TaskManagement.API
+    cd /d "%~dp0Backend\src\TaskManagement.API"
     
     echo Restoring NuGet packages...
     dotnet restore
@@ -90,13 +97,13 @@ if /I "%resetDB%"=="Y" (
     ) else (
         echo Khong tim thay scripts\seed-demo-data.sql, bo qua demo seed.
     )
-    cd ..\..\..
+    cd /d "%~dp0"
     echo --- RESET DATABASE THANH CONG ---
     echo.
 ) else (
     echo.
     echo --- KIEM TRA VA TAO DATABASE NẾU CHƯA CÓ ---
-    cd Backend\src\TaskManagement.API
+    cd /d "%~dp0Backend\src\TaskManagement.API"
     
     echo Restoring NuGet packages...
     dotnet restore
@@ -139,16 +146,16 @@ if /I "%resetDB%"=="Y" (
     ) else (
         echo Khong tim thay scripts\seed-demo-data.sql, bo qua demo seed.
     )
-    cd ..\..\..
+    cd /d "%~dp0"
     echo --- HOAN TAT KIEM TRA ---
     echo.
 )
 
 echo 1. Khởi động Backend (.NET Web API)...
-start "Backend API" cmd /k "cd Backend\src\TaskManagement.API && title Backend API && dotnet run --no-build --launch-profile https"
+start "Backend API" cmd /k "pushd ""%~dp0Backend\src\TaskManagement.API"" && title Backend API && dotnet run --no-build --launch-profile http"
 
 echo 2. Khởi động Frontend (Vue 3)...
-start "Frontend Vue" cmd /k "cd Frontend && title Frontend Vue && if not exist node_modules (echo Cai dat dependencies bang npm... && npm install) && npm run dev"
+start "Frontend Vue" cmd /k "pushd ""%~dp0Frontend"" && title Frontend Vue && if not exist node_modules (echo Cai dat dependencies bang npm... && npm install) && npm run dev"
 
 echo Da gui lenh khoi dong cho ca Backend va Frontend o cac cua so rieng biet!
 echo =======================================

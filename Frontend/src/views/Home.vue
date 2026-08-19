@@ -28,6 +28,7 @@ import {
 import { useRouter } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
 import ProductVideoSection from '@/components/landing/ProductVideoSection.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import { currentTheme, toggleTheme } from '@/utils/theme'
 import { clearAuthSession, getStoredAccessToken, getStoredUserSession } from '@/utils/authSession'
 import { language, setLanguage } from '@/i18n'
@@ -267,7 +268,10 @@ const loadContext = async () => {
 const loadPricing = async () => {
   pricingError.value = false
   try {
-    pricing.value = (await axiosClient.get('/public/pricing')).data?.data || null
+    pricing.value = (await axiosClient.get('/public/pricing', {
+      params: { refresh: Date.now() },
+      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' }
+    })).data?.data || null
   } catch {
     pricingError.value = true
   }
@@ -289,7 +293,16 @@ const priceLabel = (plan) => {
 }
 
 const planCode = (plan) => String(plan.id || plan.code || 'plan').toLowerCase()
-const isFeaturedPlan = (plan) => plan.isFeatured === true || planCode(plan) === 'plus'
+const planOrder = ['free', 'plus', 'pro', 'starter', 'team', 'enterprise']
+const displayedPlans = computed(() => {
+  const plans = Array.isArray(pricing.value?.plans) ? pricing.value.plans : []
+  return [...plans].sort((left, right) => {
+    const leftIndex = planOrder.indexOf(planCode(left))
+    const rightIndex = planOrder.indexOf(planCode(right))
+    return (leftIndex < 0 ? planOrder.length : leftIndex) - (rightIndex < 0 ? planOrder.length : rightIndex)
+  })
+})
+const isFeaturedPlan = (plan) => plan.isRecommended === true || plan.isFeatured === true || planCode(plan) === 'plus'
 const planIcon = (plan) => planCode(plan) === 'business' ? ShieldCheck : planCode(plan) === 'team' ? Users : Sparkles
 
 const planFeatures = (plan) => {
@@ -395,7 +408,7 @@ onBeforeUnmount(() => {
           </button>
 
           <button v-if="authenticated" type="button" class="user-chip desktop-only" @click="go('/dashboard')">
-            <span class="avatar">{{ initials }}</span>
+            <UserAvatar :user="user" :size="28" :font-size="10" />
             <span class="user-meta"><b>{{ displayName }}</b><small>{{ workspaceName }}</small></span>
           </button>
           <button v-if="authenticated" type="button" class="text-btn desktop-only" @click="logout">{{ copy.logout }}</button>
@@ -651,9 +664,9 @@ onBeforeUnmount(() => {
           </div>
           <div v-else-if="authenticated && usageError" class="api-state">{{ copy.usageFail }}</div>
 
-          <div v-if="pricing?.plans?.length" class="pricing-grid">
+          <div v-if="displayedPlans.length" class="pricing-grid">
             <article
-              v-for="plan in pricing.plans"
+              v-for="plan in displayedPlans"
               :key="plan.id || plan.code || plan.name"
               class="price-card spotlight-card"
               :class="{ featured: isFeaturedPlan(plan) }"
@@ -924,6 +937,31 @@ button { font: inherit; }
   color: var(--ink-2);
   background: rgba(2, 12, 25, .36);
 }
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px 4px 5px;
+  cursor: pointer;
+  text-align: left;
+}
+.user-chip > :first-child { flex: 0 0 auto; }
+.user-meta {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+  line-height: 1.1;
+}
+.user-meta b,
+.user-meta small {
+  display: block;
+  max-width: 116px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-meta b { color: var(--ink); font-size: 11px; font-weight: 850; }
+.user-meta small { color: var(--muted); font-size: 9px; font-weight: 700; }
 .icon-btn {
   width: 38px;
   display: inline-grid;
@@ -1178,11 +1216,14 @@ button { font: inherit; }
 .product-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0,1fr));
-  gap: 18px;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 14px;
+  margin-top: 32px;
 }
 .product-card {
   position: relative;
-  min-height: 300px;
+  grid-column: span 1;
+  min-height: 238px;
   border: 1px solid var(--line);
   border-radius: 18px;
   overflow: hidden;
@@ -1210,7 +1251,7 @@ button { font: inherit; }
   z-index:2;
   width:100%;
   height:100%;
-  padding: 26px 25px 24px;
+  padding: 16px 17px 15px;
   border:0;
   color:inherit;
   background:transparent;
@@ -1219,7 +1260,7 @@ button { font: inherit; }
 }
 .product-visual {
   position: relative;
-  height: 185px;
+  height: 112px;
   display: grid;
   place-items: center;
   perspective: 900px;
@@ -1228,14 +1269,14 @@ button { font: inherit; }
 .iso-shadow {
   position:absolute;
   width:150px; height:42px;
-  top:116px;
+  top:70px;
   border-radius:50%;
   background:radial-gradient(ellipse, rgba(43,154,255,.38), transparent 66%);
   filter:blur(5px);
 }
 .iso-platform {
   position:absolute;
-  width:145px; height:96px;
+  width:112px; height:70px;
   border:1px solid rgba(100,218,255,.45);
   border-radius:16px;
   transform:rotateX(63deg) rotateZ(-1deg);
@@ -1247,7 +1288,7 @@ button { font: inherit; }
 .iso-object {
   position:relative;
   z-index:4;
-  width:94px; height:94px;
+  width:68px; height:68px;
   display:grid; place-items:center;
   border:1px solid rgba(102,221,255,.44);
   border-radius:18px;
@@ -1265,8 +1306,8 @@ button { font: inherit; }
 .chip-one { left:calc(50% - 70px); top:46px; transform:rotate(-16deg); }
 .chip-two { right:calc(50% - 70px); top:76px; transform:rotate(15deg); }
 .product-copy { display:block; position:relative; padding-right:30px; }
-.product-copy strong { display:block; font-size:18px; }
-.product-copy small { display:block; min-height:48px; margin-top:8px; color:var(--ink-2); line-height:1.55; }
+.product-copy strong { display:block; font-size:15px; }
+.product-copy small { display:block; min-height:38px; margin-top:5px; color:var(--ink-2); line-height:1.42; font-size:12px; }
 .product-arrow { position:absolute; right:0; top:2px; color:var(--cyan); }
 
 .ai-section {
@@ -1785,6 +1826,13 @@ button { font: inherit; }
 }
 .landing-page.is-light .flow-line { opacity:.58; }
 .landing-page.is-light .final-cta { background:linear-gradient(110deg,#ffffff,#edf7fd 48%,#f5f9fd); }
+.landing-page.is-light .final-cta h2 { color:var(--ink) !important; }
+.landing-page.is-light .final-cta h2 .tone-cyan {
+  color:var(--blue);
+  background:none;
+  -webkit-text-fill-color:currentColor;
+  text-shadow:0 8px 24px rgba(40,89,216,.16);
+}
 .landing-page.is-light .faq-item { border-color:rgba(29,78,121,.14); }
 .landing-page.is-light .footer-panel { background:linear-gradient(180deg,#ffffff,#f1f7fb); }
 
@@ -1903,14 +1951,16 @@ button { font: inherit; }
 .text-btn:hover::after { transform: scaleX(1); }
 
 .landing-page.is-light .icon-btn,
-.landing-page.is-light .lang-btn {
+.landing-page.is-light .lang-btn,
+.landing-page.is-light .user-chip {
   color: #1764d7;
   border-color: rgba(23,100,215,.24);
   background: rgba(255,255,255,.92);
   box-shadow: inset 0 1px rgba(255,255,255,.98), 0 8px 18px rgba(38,76,112,.07);
 }
 .landing-page.is-light .icon-btn:hover,
-.landing-page.is-light .lang-btn:hover {
+.landing-page.is-light .lang-btn:hover,
+.landing-page.is-light .user-chip:hover {
   color: #075fbd;
   border-color: rgba(11,130,189,.38);
   background: #eef7ff;

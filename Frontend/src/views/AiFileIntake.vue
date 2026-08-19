@@ -327,6 +327,7 @@ import { useProjectStore } from '@/store/useProjectStore'
 import { useI18n } from '@/composables/useI18n'
 import axiosClient from '@/api/axiosClient'
 import { ElMessage } from 'element-plus'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const route = useRoute()
 const router = useRouter()
@@ -564,7 +565,8 @@ async function createSelectedTasks() {
   if (successCount > 0) {
     ElMessage.success(`Tạo thành công ${successCount} công việc thực tế trong SprintA.`)
     // Redirect to task list
-    router.push({ name: 'SpaceSummary', params: { id: projectId.value } })
+    const project = projectStore.currentProject || projectStore.allProjects.find(item => `${item.id}` === `${projectId.value}`) || projectId.value
+    router.push(buildSpacePath(project, 'work-items'))
   }
   if (errorCount > 0) {
     ElMessage.error(`Có ${errorCount} công việc gặp lỗi không thể khởi tạo.`)

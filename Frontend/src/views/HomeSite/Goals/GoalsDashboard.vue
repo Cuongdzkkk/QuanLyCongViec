@@ -1,12 +1,12 @@
 <template>
-  <AppPageLayout>
+  <AppPageLayout class="goals-dashboard-layout">
     <template #header>
-      <AppPageHeader :title="labels.title">
+      <AppPageHeader :title="labels.title" :subtitle="labels.search">
         <template #actions>
           <button class="primary-btn" @click="openCreateModal">{{ labels.createGoal }}</button>
         </template>
         <template #bottom>
-          <div class="tabs-nav" style="padding: 0 40px; margin-top: 16px;">
+          <div class="tabs-nav goals-tabs-nav">
             <button class="tab-btn" :class="{ active: currentTab === 'all' }" @click="currentTab = 'all'">{{ labels.goalDirectory }}</button>
             <button class="tab-btn" :class="{ active: currentTab === 'following' }" @click="currentTab = 'following'">{{ labels.following }}</button>
             <button class="tab-btn" :class="{ active: currentTab === 'archived' }" @click="currentTab = 'archived'">{{ labels.archived }}</button>
@@ -39,91 +39,114 @@
 
       <!-- Tab: Tất cả mục tiêu & Đã lưu trữ -->
       <div v-else class="tab-all-archived">
-        <AppToolbar>
-          <template #search>
-            <AppSearchInput v-model="searchQuery" :placeholder="labels.search" width="250px" />
-            <div class="filter-actions">
-              <button class="active-filter-pill" v-if="currentTab === 'following'">{{ labels.following }} <i class="fa-solid fa-xmark"></i></button>
-            </div>
-          </template>
-          <template #filters>
-            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-              <DropdownFilter :label="labels.status" :options="statusOptions" v-model="filters.status" />
-              <DropdownFilter :label="labels.owner" :options="ownerOptions" v-model="filters.owner" />
-              <DropdownFilter :label="labels.progress" :options="progressOptions" v-model="filters.progress" />
-              <DropdownFilter :label="labels.favorite" :options="booleanOptions" v-model="filters.favorite" />
-              <DropdownFilter :label="labels.follow" :options="booleanOptions" v-model="filters.following" />
-              <button v-if="hasActiveFilters" class="clear-filters-btn" @click="clearFilters">{{ labels.clearFilters }}</button>
-            </div>
-          </template>
-        </AppToolbar>
+        <div class="section-header">
+          <h2>{{ currentTabHeader }}</h2>
+        </div>
 
-        <AppCard v-if="!isLoading" :padding="false">
-          <table class="jira-table" v-if="filteredGoals.length > 0">
-            <thead>
-              <tr>
-                <th class="col-title">{{ labels.goal }}</th>
-                <th class="col-status">{{ labels.status }}</th>
-                <th class="col-progress">{{ labels.progress }}</th>
-                <th class="col-created">{{ labels.createdDate }}</th>
-                <th class="col-updated">{{ labels.updatedDate }}</th>
-                <th class="col-star">{{ labels.favorite }}</th>
-                <th class="col-watch">{{ labels.follow }}</th>
-                <th class="col-owner">{{ labels.owner }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="goal in filteredGoals" :key="goal.id" @click="goToGoal(goal.id)">
-                <td>
-                  <div class="goal-title-cell">
-                    <span class="goal-icon"><i class="fa-solid fa-bullseye"></i></span>
-                    <span class="goal-title">{{ goal.title }}</span>
-                  </div>
-                </td>
-                <td>
-                  <AppStatusBadge :status="translateStatus(goal.status)" :statusText="translateStatus(goal.status)" />
-                </td>
-                <td>
-                  <div class="progress-cell">
-                    <div class="progress-bar-bg">
-                      <div class="progress-bar-fill" :style="{ width: (goal.progress || 0) + '%' }"></div>
+        <ProjectPageToolbar
+          v-model:searchQuery="searchQuery"
+          show-search
+          :search-placeholder="labels.search"
+        >
+          <template #filters>
+            <ToolbarFilterMenu
+              label="Filters"
+              :clear-label="labels.clearFilters"
+              :clear-all-label="labels.clearFilters"
+              :empty-label="isVi ? 'Chưa áp dụng filter' : 'No filters applied'"
+              :count="activeFilterCount"
+              :active-items="activeFilterItems"
+              @clear="clearFilters"
+              @remove="removeFilter"
+            >
+              <template #default="{ search }">
+                <button class="active-filter-pill" v-if="currentTab === 'following' && matchesFilterSearch(labels.following, search)">{{ labels.following }} <i class="fa-solid fa-xmark"></i></button>
+                <DropdownFilter v-if="matchesFilterSearch(labels.status, search)" :label="labels.status" :options="statusOptions" v-model="filters.status" :searchable="false" />
+                <DropdownFilter v-if="matchesFilterSearch(labels.owner, search)" :label="labels.owner" :options="ownerOptions" v-model="filters.owner" :searchable="false" />
+                <DropdownFilter v-if="matchesFilterSearch(labels.progress, search)" :label="labels.progress" :options="progressOptions" v-model="filters.progress" :searchable="false" />
+                <DropdownFilter v-if="matchesFilterSearch(labels.favorite, search)" :label="labels.favorite" :options="booleanOptions" v-model="filters.favorite" :searchable="false" />
+                <DropdownFilter v-if="matchesFilterSearch(labels.follow, search)" :label="labels.follow" :options="booleanOptions" v-model="filters.following" :searchable="false" />
+              </template>
+            </ToolbarFilterMenu>
+          </template>
+        </ProjectPageToolbar>
+
+        <div class="goals-list-container">
+          <AppCard v-if="!isLoading && filteredGoals.length > 0" :padding="false">
+            <table class="jira-table">
+              <thead>
+                <tr>
+                  <th class="col-title">{{ labels.goal }}</th>
+                  <th class="col-status">{{ labels.status }}</th>
+                  <th class="col-progress">{{ labels.progress }}</th>
+                  <th class="col-created">{{ labels.createdDate }}</th>
+                  <th class="col-updated">{{ labels.updatedDate }}</th>
+                  <th class="col-star">{{ labels.favorite }}</th>
+                  <th class="col-watch">{{ labels.follow }}</th>
+                  <th class="col-owner">{{ labels.owner }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="goal in filteredGoals" :key="goal.id" @click="goToGoal(goal.id)">
+                  <td>
+                    <div class="goal-title-cell">
+                      <span class="goal-icon"><i class="fa-solid fa-bullseye"></i></span>
+                      <span class="goal-title">{{ goal.title }}</span>
                     </div>
-                    <span class="progress-text">{{ goal.progress || 0 }}%</span>
-                  </div>
-                </td>
-                <td>{{ goal.createdAt ? new Date(goal.createdAt).toLocaleDateString('vi-VN') : '-' }}</td>
-                <td>{{ goal.updatedAt ? new Date(goal.updatedAt).toLocaleDateString('vi-VN') : '-' }}</td>
-                <td @click.stop>
-                  <button
-                    class="goal-star-btn"
-                    type="button"
-                    :class="{ starred: isGoalStarred(goal.id) }"
-                    :disabled="starredStore.isPending('Goal', goal.id)"
-                    :aria-pressed="isGoalStarred(goal.id)"
-                    :aria-label="isGoalStarred(goal.id) ? 'Bỏ gắn sao mục tiêu' : 'Gắn sao mục tiêu'"
-                    @click="toggleStar(goal)"
-                  >
-                    <i :class="isGoalStarred(goal.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
-                  </button>
-                </td>
-                <td @click.stop="toggleWatch(goal)">
-                  <span :class="goal.isFollowing ? 'text-blue-500' : 'text-gray-500'" style="cursor: pointer;">{{ goal.isFollowing ? labels.following : labels.follow }}</span>
-                </td>
-                <td>
-                  <div class="owner-cell">
-                    <AppAvatar :user="{ id: goal.ownerId, fullName: goal.ownerName, avatarColor: goal.ownerColor, avatarUrl: goal.ownerAvatarUrl }" :size="24" />
-                    <span class="owner-name">{{ goal.owner || labels.unassigned }}</span>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                  </td>
+                  <td>
+                    <AppStatusBadge :status="translateStatus(goal.status)" :statusText="translateStatus(goal.status)" />
+                  </td>
+                  <td>
+                    <div class="progress-cell">
+                      <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" :style="{ width: (goal.progress || 0) + '%' }"></div>
+                      </div>
+                      <span class="progress-text">{{ goal.progress || 0 }}%</span>
+                    </div>
+                  </td>
+                  <td>{{ goal.createdAt ? new Date(goal.createdAt).toLocaleDateString('vi-VN') : '-' }}</td>
+                  <td>{{ goal.updatedAt ? new Date(goal.updatedAt).toLocaleDateString('vi-VN') : '-' }}</td>
+                  <td @click.stop>
+                    <button
+                      class="goal-star-btn"
+                      type="button"
+                      :class="{ starred: isGoalStarred(goal.id) }"
+                      :disabled="starredStore.isPending('Goal', goal.id)"
+                      :aria-pressed="isGoalStarred(goal.id)"
+                      :aria-label="isGoalStarred(goal.id) ? 'Bỏ gắn sao mục tiêu' : 'Gắn sao mục tiêu'"
+                      @click="toggleStar(goal)"
+                    >
+                      <i :class="isGoalStarred(goal.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+                    </button>
+                  </td>
+                  <td @click.stop="toggleWatch(goal)">
+                    <span :class="goal.isFollowing ? 'text-blue-500' : 'text-gray-500'" style="cursor: pointer;">{{ goal.isFollowing ? labels.following : labels.follow }}</span>
+                  </td>
+                  <td>
+                    <div class="owner-cell">
+                      <AppAvatar :user="{ id: goal.ownerId, fullName: goal.ownerName, avatarColor: goal.ownerColor, avatarUrl: goal.ownerAvatarUrl }" :size="24" />
+                      <span class="owner-name">{{ goal.owner || labels.unassigned }}</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </AppCard>
+
+          <div v-else-if="!isLoading" class="goals-empty-state">
+            <div class="empty-spaces-icon" aria-hidden="true">
+              <i class="fa-solid fa-bullseye"></i>
+            </div>
+            <div class="empty-spaces-copy">
+              <h3>{{ labels.noGoals }}</h3>
+              <p>{{ labels.noGoalsDesc }}</p>
+            </div>
+          </div>
           
-          <AppEmptyState v-else icon="fa-solid fa-bullseye" :title="labels.noGoals" :description="labels.noGoalsDesc" />
-        </AppCard>
-        
-        <div class="loading-state" v-else>
-          <div class="loader-spinner"></div>
+          <div class="loading-state" v-else>
+            <div class="loader-spinner"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -189,7 +212,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useGoalStore } from '@/store/useGoalStore'
 import { useStarredStore } from '@/store/useStarredStore'
@@ -201,8 +224,7 @@ import { signalRService } from '@/api/signalrService'
 
 import AppPageLayout from '@/components/common/Foundation/AppPageLayout.vue'
 import AppPageHeader from '@/components/common/Foundation/AppPageHeader.vue'
-import AppToolbar from '@/components/common/Foundation/AppToolbar.vue'
-import AppSearchInput from '@/components/common/Foundation/AppSearchInput.vue'
+import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
 import AppCard from '@/components/common/Foundation/AppCard.vue'
 import AppEmptyState from '@/components/common/Foundation/AppEmptyState.vue'
 import AppStatusBadge from '@/components/common/Foundation/AppStatusBadge.vue'
@@ -211,10 +233,13 @@ import AppModal from '@/components/common/Foundation/AppModal.vue'
 import AppFormField from '@/components/common/Foundation/AppFormField.vue'
 
 import DropdownFilter from '@/components/common/DropdownFilter.vue'
+import ToolbarFilterMenu from '@/components/common/ToolbarFilterMenu.vue'
 import { getStoredUser } from '@/utils/permissions'
 import { getInitials, getAvatarColor } from '@/utils/avatarHelper'
 
 const router = useRouter()
+const route = useRoute()
+const goalsBasePath = computed(() => route.path.startsWith('/goals') ? '/goals' : '/home/goals')
 const goalStore = useGoalStore()
 const starredStore = useStarredStore()
 const followerStore = useFollowerStore()
@@ -223,6 +248,11 @@ const i18nStore = useI18nStore()
 
 const currentTab = ref('all')
 const searchQuery = ref('')
+const currentTabHeader = computed(() => {
+  if (currentTab.value === 'following') return labels.value.following
+  if (currentTab.value === 'archived') return labels.value.archived
+  return labels.value.goalDirectory
+})
 const isVi = computed(() => i18nStore.locale === 'vi')
 const labels = computed(() => isVi.value
   ? {
@@ -343,6 +373,34 @@ const clearFilters = () => {
   }
 }
 const hasActiveFilters = computed(() => Object.values(filters.value).some(val => val !== ''))
+const activeFilterCount = computed(() => Object.values(filters.value).filter(val => val !== '').length)
+
+const getOptionLabel = (options, value) => {
+  const selected = (options || []).find((option) => {
+    const optionValue = typeof option === 'object' ? (option.value ?? option.id ?? option) : option
+    return optionValue === value
+  })
+  if (!selected) return value
+  return typeof selected === 'object'
+    ? String(selected.label || selected.name || selected.title || selected.value || selected.id || value)
+    : String(selected)
+}
+
+const activeFilterItems = computed(() => [
+  filters.value.status ? { key: 'status', label: labels.value.status, icon: 'fa-regular fa-circle-dot', value: filters.value.status } : null,
+  filters.value.owner ? { key: 'owner', label: labels.value.owner, icon: 'fa-regular fa-user', value: filters.value.owner } : null,
+  filters.value.progress ? { key: 'progress', label: labels.value.progress, icon: 'fa-solid fa-chart-line', value: getOptionLabel(progressOptions.value, filters.value.progress) } : null,
+  filters.value.favorite ? { key: 'favorite', label: labels.value.favorite, icon: 'fa-regular fa-star', value: getOptionLabel(booleanOptions.value, filters.value.favorite) } : null,
+  filters.value.following ? { key: 'following', label: labels.value.follow, icon: 'fa-regular fa-eye', value: getOptionLabel(booleanOptions.value, filters.value.following) } : null
+].filter(Boolean))
+
+const matchesFilterSearch = (label, search) => !search || String(label || '').toLowerCase().includes(search)
+
+const removeFilter = (key) => {
+  if (Object.prototype.hasOwnProperty.call(filters.value, key)) {
+    filters.value[key] = ''
+  }
+}
 
 const isCreateModalOpen = ref(false)
 const isTitleTouched = ref(false)
@@ -537,7 +595,7 @@ const submitCreateGoal = async () => {
 }
 
 const goToGoal = (id) => {
-  router.push(`/home/goals/${id}`)
+  router.push(`${goalsBasePath.value}/${id}`)
 }
 
 const isGoalStarred = (id) => starredStore.isStarred('Goal', id)
@@ -559,6 +617,23 @@ const toggleWatch = async (goal) => {
 </script>
 
 <style scoped>
+.section-header {
+  margin: -10px 0 16px;
+}
+
+.section-header h2 {
+  color: #172B4D;
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.goals-list-container {
+  margin-top: 30px;
+}
+
+
 .goals-wrapper {
   display: flex;
   flex-direction: column;
@@ -628,36 +703,65 @@ const toggleWatch = async (goal) => {
 
 .tabs-nav {
   display: flex;
-  border-bottom: 2px solid #DFE1E6;
-  gap: 24px;
+  align-items: center;
+  gap: 6px !important;
+  width: max-content !important;
+  max-width: 100%;
+  min-height: 42px;
+  margin: 0 !important;
+  padding: 4px !important;
+  border: 1px solid rgba(148, 163, 184, 0.2) !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow-x: auto;
 }
 
 .tab-btn {
-  background: none;
-  border: none;
-  padding: 8px 0 12px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #5E6C84;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px !important;
+  min-width: max-content;
+  padding: 0 16px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: #475569 !important;
+  font-size: 12.5px !important;
+  font-weight: 800 !important;
+  line-height: 1;
   cursor: pointer;
-  position: relative;
-  margin-bottom: -2px;
-  border-bottom: 2px solid transparent;
-  transition: color 0.2s;
+  white-space: nowrap;
+  transition: background 0.18s ease, color 0.18s ease;
 }
 
 .tab-btn:hover {
-  color: #172B4D;
+  color: #0f172a !important;
+  background: rgba(14, 165, 233, 0.06) !important;
 }
 
 .tab-btn.active {
-  color: #0052CC;
-  border-bottom-color: #0052CC;
+  color: #0369a1 !important;
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.20), rgba(45, 212, 191, 0.14)) !important;
+  box-shadow: none !important;
 }
 
 .module-content {
-  padding: 32px 40px;
+  padding: 0;
   flex: 1;
+}
+
+.goals-tabs-nav {
+  margin-top: 18px;
+}
+
+.goals-toolbar-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 /* Empty State Dành cho bạn */
@@ -1155,4 +1259,3 @@ const toggleWatch = async (goal) => {
   height: auto !important;
 }
 </style>
-

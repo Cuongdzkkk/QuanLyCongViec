@@ -17,6 +17,7 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import TaskDetailModal from '@/components/TaskDetailModal.vue'
 import { DEFAULT_PROJECT_BACKGROUND, DEFAULT_PROJECT_ICON } from '@/config/projectAppearance'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const router = useRouter()
 const i18nStore = useI18nStore()
@@ -65,8 +66,15 @@ const fetchSpaces = async () => {
       cover: p.cover || DEFAULT_PROJECT_BACKGROUND,
       icon: p.icon || DEFAULT_PROJECT_ICON,
       taskCount: p.taskCount ?? p.TotalTasks ?? p.totalTasks ?? p.activeMemberCount ?? p.ActiveMemberCount ?? 0,
-      networkType: p.networkType || 'Public',
+      memberCount: p.memberCount ?? p.MemberCount ?? p.activeMemberCount ?? p.ActiveMemberCount ?? null,
+      networkType: p.networkType || p.NetworkType || p.visibility || p.Visibility || 'Public',
       createdAt: p.createdAt || null,
+      leader: {
+        id: p.leadUserId || p.creatorId || p.ownerId || p.originalRow?.leadUserId || p.originalRow?.creatorId || p.originalRow?.ownerId,
+        fullName: p.leadName || p.creatorName || p.ownerName || p.owner || p.originalRow?.leadName || p.originalRow?.creatorName || p.originalRow?.ownerName || p.originalRow?.owner || 'Project',
+        avatarUrl: p.leadAvatarUrl || p.creatorAvatarUrl || p.ownerAvatarUrl || p.originalRow?.leadAvatarUrl || p.originalRow?.creatorAvatarUrl || p.originalRow?.ownerAvatarUrl,
+        avatarColor: p.leadColor || p.creatorColor || p.ownerColor || p.originalRow?.leadColor || p.originalRow?.creatorColor || p.originalRow?.ownerColor
+      },
       originalRow: p
     }))
   } catch (error) {
@@ -113,6 +121,24 @@ const sortedSpaces = computed(() => {
   })
 })
 
+const formatSpaceCreatedDate = (value) => {
+  if (!value) return '--'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '--'
+  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+const getSpaceVisibilityLabel = (space) => {
+  const value = `${space?.networkType || ''}`.trim().toLowerCase()
+  return value === 'private' || value === 'privated' ? 'Private' : 'Public'
+}
+
+const getSpaceMemberCountLabel = (space) => {
+  const count = Number(space?.memberCount)
+  if (!Number.isFinite(count)) return '-- members'
+  return `${count} members`
+}
+
 const {
   items: myTasks,
   totalCount,
@@ -138,10 +164,14 @@ const tabScopes = {
   Worked: PERSONAL_WORK_SCOPES.worked
 }
 const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
+const activeWorkspaceId = computed(() => siteStore.activeSite?.id || siteStore.activeSite?.Id || '')
+const activeWorkspaceProjectIds = computed(() => (
+  projectStore.sidebarProjects || []
+).map(project => project.id || project.Id).filter(Boolean))
 const contextKey = computed(() => [
   authStore.userId || '',
   authStore.token || '',
-  siteStore.activeSite?.id || siteStore.activeSite?.Id || ''
+  activeWorkspaceId.value
 ].join(':'))
 
 const userProfile = ref({
@@ -220,9 +250,22 @@ const fetchMyTasks = async () => {
   return fetchPage({
     scope,
     page: currentPage.value,
-    pageSize: pageSize.value
+    pageSize: pageSize.value,
+    workspaceId: activeWorkspaceId.value,
+    projectIds: activeWorkspaceProjectIds.value
   }).catch(() => null)
 }
+
+const fetchScopedSummary = () => fetchSummary({
+  workspaceId: activeWorkspaceId.value,
+  projectIds: activeWorkspaceProjectIds.value
+})
+
+const fetchScopedActivity = (options = {}) => fetchActivity({
+  ...options,
+  workspaceId: activeWorkspaceId.value,
+  projectIds: activeWorkspaceProjectIds.value
+})
 
 let timeInterval = null
 onMounted(async () => {
@@ -276,7 +319,7 @@ const workload = computed(() => {
 })
 
 const recentActivity = computed(() => {
-  return pageActivities.value.slice(0, 5).map(activity => ({
+  return pageActivities.value.slice(0, 10).map(activity => ({
     id: activity.id,
     text: activity.text,
     time: activity.time
@@ -443,14 +486,14 @@ const updateTaskProperty = async (task, field, value) => {
         await axiosClient.patch(`/projects/${task.projectId}/WorkTasks/${task.id}`, updatePayload)
       }
 
-      await fetchActivity({ limit: 50 }).catch(() => null)
+      await fetchScopedActivity({ limit: 10 }).catch(() => null)
     }
   } catch (error) {
     console.error('Failed to update task:', error)
   }
 }
 
-const pageActivities = computed(() => activities.value.map(activity => ({
+const pageActivities = computed(() => activities.value.slice(0, 10).map(activity => ({
   id: activity.id,
   icon: 'fa-solid fa-clock-rotate-left',
   text: activity.summary || `${activity.action || ''} ${activity.resource || ''}`.trim(),
@@ -460,12 +503,12 @@ const pageActivities = computed(() => activities.value.map(activity => ({
 
 const retryCurrentView = () => {
   if (activeTab.value === 'Summary') {
-    fetchSummary().catch(() => null)
-    fetchActivity({ limit: 50 }).catch(() => null)
+    fetchScopedSummary().catch(() => null)
+    fetchScopedActivity({ limit: 10 }).catch(() => null)
     return
   }
   if (activeTab.value === 'Activity') {
-    fetchActivity({ limit: 50 }).catch(() => null)
+    fetchScopedActivity({ limit: 10 }).catch(() => null)
     return
   }
   fetchMyTasks()
@@ -477,12 +520,12 @@ watch(activeTab, () => {
   totalCount.value = 0
 
   if (activeTab.value === 'Summary') {
-    fetchSummary().catch(() => null)
-    fetchActivity({ limit: 50 }).catch(() => null)
+    fetchScopedSummary().catch(() => null)
+    fetchScopedActivity({ limit: 10 }).catch(() => null)
     return
   }
   if (activeTab.value === 'Activity') {
-    fetchActivity({ limit: 50 }).catch(() => null)
+    fetchScopedActivity({ limit: 10 }).catch(() => null)
     return
   }
   fetchMyTasks()
@@ -498,8 +541,8 @@ watch(contextKey, () => {
   currentPage.value = 1
   if (!authStore.token || !authStore.userId) return
 
-  fetchSummary().catch(() => null)
-  fetchActivity({ limit: 50 }).catch(() => null)
+  fetchScopedSummary().catch(() => null)
+  fetchScopedActivity({ limit: 10 }).catch(() => null)
   fetchMyTasks()
 }, { immediate: true })
 
@@ -556,17 +599,33 @@ const getInitials = (name) => {
 </script>
 
 <template>
-  <div>
+  <section class="your-work-page">
+    <header class="page-header app-shell-page-header your-work-page-header">
+      <div class="your-work-title-wrap">
+        <h1>Your work</h1>
+        <div class="header-help">
+          <span
+            class="header-help-btn"
+            aria-label="About Your work"
+          >
+            <i class="fa-solid fa-question"></i>
+          </span>
+          <div class="header-help-popover" role="tooltip">
+            <span>PERSONAL PRODUCTIVITY</span>
+            <p>Theo dõi công việc được giao, đã tạo, đánh dấu sao và hoạt động gần đây của bạn.</p>
+          </div>
+        </div>
+        <p>Theo dõi công việc được giao, đã tạo, đánh dấu sao và hoạt động gần đây của bạn.</p>
+      </div>
+    </header>
+
     <div class="jira-dashboard">
       <div class="yw-grid">
       <div class="main-content-column">
         <!-- Recommended Spaces Section (Integrated from For You) -->
-        <section class="mb-6 sprinta-section-panel sprinta-section-panel-blue">
+        <section class="recommended-spaces-section mb-6 sprinta-section-panel sprinta-section-panel-blue your-work-flat-section">
           <div class="section-header flex-between mb-4 items-center">
             <h2 class="section-title">
-              <div class="icon-glass">
-                <i class="bi bi-stars"></i>
-              </div>
               {{ t('forYou.recommendedSpaces') }}
             </h2>
             <router-link to="/spaces" class="view-all-link">{{ t('forYou.viewAllSpaces') }}</router-link>
@@ -576,15 +635,13 @@ const getInitials = (name) => {
             <i class="fa-solid fa-spinner fa-spin"></i> {{ t('forYou.loadingSpaces') }}
           </div>
           
-          <div v-else-if="sortedSpaces.length === 0" class="empty-spaces-card">
-            <div class="esc-icon">
-              <svg class="h-10 w-10 text-blue-500/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-              </svg>
+          <div v-else-if="sortedSpaces.length === 0" class="empty-spaces-flat">
+            <div class="empty-spaces-icon" aria-hidden="true">
+              <i class="fa-regular fa-folder-open"></i>
             </div>
-            <div class="esc-text">
-              <h3 class="text-sm font-semibold text-gray-700 dark:text-neutral-300">{{ t('forYou.noActiveSpaces') }}</h3>
-              <p class="text-xs text-gray-500 dark:text-neutral-500 mt-0.5">{{ t('forYou.noActiveSpacesDesc') }}</p>
+            <div class="empty-spaces-copy">
+              <h3>{{ t('forYou.noActiveSpaces') }}</h3>
+              <p>{{ t('forYou.noActiveSpacesDesc') }}</p>
             </div>
           </div>
           
@@ -593,13 +650,22 @@ const getInitials = (name) => {
               v-for="space in sortedSpaces.slice(0, 4)" 
               :key="space.id" 
               class="space-card"
-              @click="router.push(`/space/${space.id}`)"
+              @click="router.push(buildSpacePath(space, 'work-items'))"
             >
               <ProjectAvatar class="recommended-project-avatar" :icon="space.icon" :background="space.cover" size="sm" />
               <div class="sc-info">
                 <h3 class="sc-name" :title="demoText(space.name)">{{ demoText(space.name) }}</h3>
                 <p class="sc-desc">{{ demoText(space.description) }} - {{ space.displayTaskCount }} {{ t('common.tasks') }}</p>
+                <div class="sc-meta">
+                  <span class="sc-visibility" :class="getSpaceVisibilityLabel(space).toLowerCase()">
+                    <i :class="getSpaceVisibilityLabel(space) === 'Private' ? 'fa-solid fa-lock' : 'fa-solid fa-globe'"></i>
+                    {{ getSpaceVisibilityLabel(space) }}
+                  </span>
+                  <span><i class="fa-regular fa-calendar"></i>{{ formatSpaceCreatedDate(space.createdAt) }}</span>
+                  <span><i class="fa-solid fa-users"></i>{{ getSpaceMemberCountLabel(space) }}</span>
+                </div>
               </div>
+              <UserAvatar class="sc-leader-avatar" :user="space.leader" :size="28" :fontSize="11" :title="space.leader?.fullName || 'Project lead'" />
               <button 
                 class="sc-star-btn"
                 type="button"
@@ -615,16 +681,7 @@ const getInitials = (name) => {
           </div>
         </section>
 
-        <section class="yw-content-card sprinta-section-panel sprinta-section-panel-blue">
-          <header class="yw-header flex-between items-center mb-6">
-            <h2 class="section-title">
-              <div class="icon-glass">
-                <i class="bi bi-person"></i>
-              </div>
-              Your work
-            </h2>
-          </header>
-
+        <section class="yw-content-card sprinta-section-panel sprinta-section-panel-blue your-work-flat-section">
           <div class="yw-tabs">
             <button
               v-for="tab in tabs"
@@ -676,7 +733,6 @@ const getInitials = (name) => {
 
           <section class="yw-section">
             <h3 class="yw-section-title">
-              <span class="yw-section-icon"><i class="fa-solid fa-layer-group"></i></span>
               {{ t('yourWork.workload') }}
             </h3>
             <div class="yw-workload-row">
@@ -699,8 +755,8 @@ const getInitials = (name) => {
           </div>
           </section>
 
-          <h3 class="section-title mt-4">{{ t('yourWork.recentActivity') }}</h3>
-          <div class="list-body">
+          <h3 class="section-title mt-4 recent-section-title">{{ t('yourWork.recentActivity') }}</h3>
+          <div class="list-body recent-list-body">
             <div v-if="activityLoading" class="personal-state">
               <i class="fa-solid fa-spinner fa-spin"></i>
               <span>{{ t('yourWork.loadingActivity') }}</span>
@@ -709,8 +765,11 @@ const getInitials = (name) => {
               <span>{{ t('yourWork.activityFailed') }}</span>
               <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
             </div>
-            <div v-else-if="recentActivity.length === 0" class="personal-state">
-              {{ t('yourWork.noActivity') }}
+            <div v-else-if="recentActivity.length === 0" class="personal-state recent-empty-state">
+              <div class="recent-empty-icon" aria-hidden="true">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+              </div>
+              <span>{{ t('yourWork.noActivity') }}</span>
             </div>
             <div class="list-row" style="cursor: default;" v-for="activity in recentActivity" :key="activity.id">
               <div class="lr-left">
@@ -830,7 +889,7 @@ const getInitials = (name) => {
             <button class="plane-primary-btn" @click="downloadWordActivity">{{ t('yourWork.downloadActivity') }}</button>
           </div>
 
-          <div class="list-body mt-4">
+          <div class="list-body mt-4 recent-list-body">
             <div v-if="activityLoading" class="personal-state">
               <i class="fa-solid fa-spinner fa-spin"></i>
               <span>{{ t('yourWork.loadingActivity') }}</span>
@@ -839,8 +898,11 @@ const getInitials = (name) => {
               <span>{{ t('yourWork.activityFailed') }}</span>
               <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
             </div>
-            <div v-else-if="pageActivities.length === 0" class="personal-state">
-              {{ t('yourWork.noActivity') }}
+            <div v-else-if="pageActivities.length === 0" class="personal-state recent-empty-state">
+              <div class="recent-empty-icon" aria-hidden="true">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+              </div>
+              <span>{{ t('yourWork.noActivity') }}</span>
             </div>
             <div class="list-row" style="cursor: default;" v-for="activity in pageActivities" :key="activity.id">
               <div class="lr-left">
@@ -928,31 +990,7 @@ const getInitials = (name) => {
 
             <div class="ps-divider"></div>
 
-            <!-- Section 4: Task Statistics -->
-            <div class="ps-section">
-              <div class="stats-grid">
-                <div class="stat-box">
-                  <span class="stat-lbl">Created</span>
-                  <span class="stat-val">{{ overview.created }}</span>
-                </div>
-                <div class="stat-box">
-                  <span class="stat-lbl">Assigned</span>
-                  <span class="stat-val">{{ overview.assigned }}</span>
-                </div>
-                <div class="stat-box">
-                  <span class="stat-lbl">Completed</span>
-                  <span class="stat-val">{{ workload.completed }}</span>
-                </div>
-                <div class="stat-box">
-                  <span class="stat-lbl">Following</span>
-                  <span class="stat-val">{{ overview.subscribed }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="ps-divider"></div>
-
-            <!-- Section 5: Performance -->
+            <!-- Section 4: Performance -->
             <div class="ps-section">
               <div class="info-row">
                 <span class="info-lbl">Completion Rate</span>
@@ -965,7 +1003,7 @@ const getInitials = (name) => {
 
             <div class="ps-divider"></div>
 
-            <!-- Section 6: Workspace -->
+            <!-- Section 5: Workspace -->
             <div class="ps-section">
               <div class="ws-card">
                 <div class="ws-card-icon">
@@ -993,15 +1031,6 @@ const getInitials = (name) => {
               </div>
             </div>
 
-            <!-- Section 8: Bio -->
-            <template v-if="userProfile.bio">
-              <div class="ps-divider"></div>
-              <div class="ps-section bio-section">
-                <h4 class="bio-title">Working Principle</h4>
-                <p class="bio-text">"{{ userProfile.bio }}"</p>
-              </div>
-            </template>
-            
           </div>
         </div>
       </div>
@@ -1022,25 +1051,157 @@ const getInitials = (name) => {
       @updateTask="updateTask"
       @refresh-tasks="fetchMyTasks"
     />
-  </div>
+  </section>
 </template>
 
 <style scoped>
+.your-work-page {
+  --sa-page-x: 18px;
+  min-height: 100%;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 26px var(--sa-page-x, 24px) 22px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  overflow: visible;
+}
+
+.your-work-page-header {
+  padding-bottom: 0 !important;
+}
+
+.your-work-title-wrap {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.your-work-title-wrap > .eyebrow,
+.your-work-title-wrap > p {
+  display: none;
+}
+
+.eyebrow {
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.page-header h1 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+.header-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-top: -1px;
+}
+
+.header-help-btn {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-border) 80%, var(--color-accent) 20%);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-surface) 92%, var(--color-accent) 8%);
+  color: var(--color-text-muted);
+  font-size: 8px;
+  cursor: help;
+  transition: all 0.18s ease;
+}
+
+.header-help:hover .header-help-btn {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
+  color: var(--color-accent);
+  box-shadow: 0 6px 12px rgba(14, 165, 233, 0.14);
+}
+
+.header-help-popover {
+  position: absolute;
+  left: -8px;
+  top: calc(100% + 9px);
+  z-index: 30;
+  width: min(360px, calc(100vw - 56px));
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(0, -4px);
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s ease;
+}
+
+.header-help-popover::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 13px;
+  width: 10px;
+  height: 10px;
+  border-left: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  transform: rotate(45deg);
+}
+
+.header-help:hover .header-help-popover {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(0, 0);
+  pointer-events: auto;
+}
+
+.header-help-popover span {
+  display: block;
+  color: var(--color-accent);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.header-help-popover p {
+  margin: 0;
+  margin-top: 5px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
 
 /* Spaces Row */
 .spaces-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
 }
 
 .space-card {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   background: var(--color-surface, #ffffff);
   border: 1px solid var(--color-border);
   border-radius: 16px;
-  padding: 16px 20px;
+  padding: 14px 52px 14px 20px;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -1049,7 +1210,7 @@ const getInitials = (name) => {
 }
 
 .recommended-project-avatar {
-  margin-right: 11px;
+  margin: 2px 11px 0 0;
 }
 
 .space-card:hover {
@@ -1062,7 +1223,7 @@ const getInitials = (name) => {
 .sc-info {
   flex: 1;
   min-width: 0;
-  padding-right: 24px;
+  padding-right: 0;
 }
 
 .sc-name {
@@ -1086,6 +1247,60 @@ const getInitials = (name) => {
   text-overflow: ellipsis;
 }
 
+.sc-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--color-text-muted, #6b778c);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.sc-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  padding: 4px 6px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--color-surface-hover, #f4f5f7) 72%, transparent);
+  white-space: nowrap;
+}
+
+.sc-meta i {
+  color: var(--color-accent);
+  font-size: 10px;
+}
+
+.sc-visibility.public {
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.1);
+  border-color: rgba(20, 184, 166, 0.22);
+}
+
+.sc-visibility.private {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.1);
+  border-color: rgba(124, 58, 237, 0.22);
+}
+
+.sc-visibility.public i,
+.sc-visibility.private i {
+  color: currentColor;
+}
+
+.sc-leader-avatar {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  border: 2px solid var(--color-surface, #ffffff);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+}
+
 .sc-star-btn {
   appearance: none;
   background: transparent;
@@ -1101,8 +1316,8 @@ const getInitials = (name) => {
   transition: all 0.2s ease;
   position: absolute;
   right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 10px;
+  transform: none;
 }
 .space-card:hover .sc-star-btn {
   opacity: 1;
@@ -1116,29 +1331,52 @@ const getInitials = (name) => {
   background: rgba(9, 30, 66, 0.08);
 }
 
-.empty-spaces-card {
+.empty-spaces-flat {
+  min-height: 204px;
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 20px;
-  background: var(--color-surface);
-  border: 1px dashed var(--color-border);
-  border-radius: 12px;
-}
-.esc-icon {
-  background: var(--color-surface-hover);
-  padding: 10px;
-  border-radius: 10px;
-  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 12px;
+  padding: 24px 26px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-align: center;
 }
-.esc-text h3 {
-  margin: 0;
-  font-size: 14px;
+
+.empty-spaces-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  color: var(--color-accent);
+  font-size: 23px;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12);
 }
-.esc-text p {
+
+.empty-spaces-copy {
+  max-width: 380px;
+}
+
+.empty-spaces-copy h3 {
   margin: 0;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.empty-spaces-copy p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
 }
 .view-all-link {
   font-size: 13px;
@@ -1302,6 +1540,14 @@ const getInitials = (name) => {
 .lh-count { font-size: 12px; font-weight: 400; color: var(--color-text-muted); }
 
 .list-body { border-top: none; }
+.recent-list-body {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+.recent-section-title {
+  margin-bottom: 16px !important;
+}
 .personal-state {
   min-height: 96px;
   padding: 20px;
@@ -1315,6 +1561,34 @@ const getInitials = (name) => {
 .personal-state-error {
   flex-direction: column;
   color: var(--color-danger);
+}
+.recent-empty-state {
+  min-height: 204px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px 26px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--color-text-muted);
+}
+.recent-empty-icon {
+  width: 54px;
+  height: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  color: var(--color-accent);
+  font-size: 23px;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12);
+}
+.recent-empty-state span {
+  max-width: 380px;
+  font-size: 13px;
+  line-height: 1.4;
 }
 .personal-pagination {
   min-height: 44px;
@@ -1965,6 +2239,7 @@ const getInitials = (name) => {
   gap: 24px;
   align-items: start;
   width: 100%;
+  position: relative;
 }
 
 .main-content-column {
@@ -1973,11 +2248,18 @@ const getInitials = (name) => {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  padding-bottom: 100px;
+  padding-bottom: 18px;
 }
 
 .main-content-column > section {
   margin: 0 !important;
+}
+
+/* Keep the inner cards visible while removing the large outer panels. */
+.your-work-flat-section {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 .yw-content-card {
@@ -1986,11 +2268,11 @@ const getInitials = (name) => {
   gap: 32px;
   min-width: 0;
   margin: 0 !important;
-  padding: 36px 32px 32px !important;
-  border-radius: 16px !important;
-  border: 1px solid rgba(12, 102, 228, 0.15) !important;
-  background: var(--color-surface, #ffffff) !important;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.07) !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .yw-header {
@@ -2128,7 +2410,7 @@ const getInitials = (name) => {
   }
 
   .yw-content-card {
-    padding: 28px 20px !important;
+    padding: 0 !important;
   }
 
   .yw-cards-row,
@@ -2150,11 +2432,11 @@ const getInitials = (name) => {
 
 .yw-content-card {
   gap: 24px !important;
-  padding: 36px 32px 32px !important;
-  border-radius: 16px !important;
-  border: 1px solid rgba(12, 102, 228, 0.15) !important;
-  background: var(--color-surface, #ffffff) !important;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.07) !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .yw-header {
@@ -2186,8 +2468,8 @@ const getInitials = (name) => {
   overflow-x: auto;
   border: 1px solid rgba(148, 163, 184, 0.2) !important;
   border-radius: 9px !important;
-  background: rgba(255, 255, 255, 0.82) !important;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08) !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .tab-btn {
@@ -2336,6 +2618,12 @@ const getInitials = (name) => {
   background: rgba(255, 255, 255, 0.78) !important;
 }
 
+.recent-list-body {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
 .list-row {
   min-height: 52px !important;
   margin: 0 !important;
@@ -2421,9 +2709,29 @@ const getInitials = (name) => {
   border-color: rgba(148, 163, 184, 0.16) !important;
 }
 
+.yw-content-card,
+[data-theme='dark'] .yw-content-card {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.recommended-spaces-section,
+[data-theme='dark'] .recommended-spaces-section {
+  padding: 0 !important;
+}
+
+.yw-tabs,
+[data-theme='dark'] .yw-tabs {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 @media (max-width: 720px) {
   .yw-content-card {
-    padding: 28px 20px !important;
+    padding: 0 !important;
   }
 
   .yw-tabs {
@@ -2435,7 +2743,8 @@ const getInitials = (name) => {
 .jira-dashboard {
   max-width: none !important;
   margin: 0 !important;
-  padding: 18px !important;
+  padding: 0 18px 18px !important;
+  background: transparent !important;
 }
 
 .yw-grid {
@@ -2447,6 +2756,19 @@ const getInitials = (name) => {
   width: 280px !important;
   min-width: 280px;
   max-width: 280px;
+}
+
+@media (min-width: 861px) {
+  .yw-grid {
+    display: block !important;
+    padding-right: 296px;
+  }
+
+  .yw-sidebar {
+    position: absolute !important;
+    top: 0;
+    right: 0;
+  }
 }
 
 .yw-section-title,
@@ -2467,6 +2789,48 @@ const getInitials = (name) => {
   height: 30px !important;
   border-radius: 7px !important;
   font-size: 13px !important;
+}
+
+.main-content-column {
+  gap: 18px !important;
+}
+
+.yw-content-card {
+  gap: 18px !important;
+}
+
+.yw-tabs {
+  margin-top: 18px !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-content: flex-start;
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: 82px;
+  overflow: hidden !important;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+}
+
+.yw-tabs .tab-btn {
+  flex: 0 1 auto !important;
+}
+
+.yw-scrollable {
+  gap: 18px !important;
+}
+
+.yw-scrollable .yw-section {
+  gap: 18px !important;
+}
+
+.yw-scrollable .section-title,
+.yw-scrollable .yw-section-title {
+  margin: 0 !important;
+}
+
+.yw-scrollable .mt-4 {
+  margin-top: 0 !important;
 }
 
 @media (max-width: 860px) {

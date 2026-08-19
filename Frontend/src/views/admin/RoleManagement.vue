@@ -1,21 +1,33 @@
 <template>
   <AdminLayout>
-    <el-container style="height: calc(100vh - 80px);">
-      <!-- Sidebar -->
-      <el-aside width="320px" style="border-right: 1px solid var(--el-border-color-light); background: var(--el-bg-color);">
-        <RoleSidebar 
-          :roles="roles" 
-          :selectedRoleId="selectedRoleId"
-          @select-role="selectRole" 
-          @create-role="openCreateRole"
-          @duplicate-role="duplicateRole"
-          @edit-role="editRole"
-          @delete-role="deleteRole"
-        />
-      </el-aside>
-      
-      <!-- Main Content -->
-      <el-main class="role-management-main" style="padding: 0; background: var(--el-bg-color-page); display: flex; flex-direction: column;">
+    <div class="admin-page" style="display: flex; flex-direction: column; height: 100%;">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <i class="fa-solid fa-user-shield"></i>
+          <span>ADMIN / ROLE MANAGEMENT</span>
+        </div>
+        <h1 class="text-hero">{{ t('Role Management', 'Quản lý vai trò') }}</h1>
+        <p class="text-desc">
+          {{ t('Create and manage roles, assign permissions, and control user access levels across the system.', 'Tạo và quản lý vai trò, gán quyền hạn và kiểm soát quyền truy cập của người dùng trên toàn hệ thống.') }}
+        </p>
+      </div>
+
+      <el-container style="flex: 1; min-height: 0; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden;">
+        <!-- Sidebar -->
+        <el-aside width="320px" style="border-right: 1px solid var(--color-border); background: var(--color-surface);">
+          <RoleSidebar 
+            :roles="roles" 
+            :selectedRoleId="selectedRoleId"
+            @select-role="selectRole" 
+            @create-role="openCreateRole"
+            @duplicate-role="duplicateRole"
+            @edit-role="editRole"
+            @delete-role="deleteRole"
+          />
+        </el-aside>
+        
+        <!-- Main Content -->
+        <el-main class="role-management-main" style="padding: 0; background: var(--color-bg); display: flex; flex-direction: column;">
         <template v-if="selectedRole">
           <div class="role-content-panel" style="flex: 1; padding: 0; overflow: hidden; display: flex; flex-direction: column;">
             <el-card shadow="never" style="flex: 1; display: flex; flex-direction: column; border: none; border-radius: 8px;" body-style="padding: 0; display: flex; flex-direction: column; height: 100%; overflow: hidden;">
@@ -62,6 +74,7 @@
         </div>
       </el-main>
     </el-container>
+    </div>
 
     <!-- Create/Edit Dialog -->
     <el-dialog
@@ -115,7 +128,9 @@ import RoleHeader from '@/components/RoleManagement/RoleHeader.vue'
 import PermissionsTab from '@/components/RoleManagement/PermissionsTab.vue'
 import MembersTab from '@/components/RoleManagement/MembersTab.vue'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import { useLocale } from '@/composables/useLocale'
 
+const { t } = useLocale()
 const adminUserStore = useAdminUserStore()
 const { users, roles, permissions } = storeToRefs(adminUserStore)
 

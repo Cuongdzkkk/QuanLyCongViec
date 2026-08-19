@@ -563,7 +563,7 @@ Object.assign(dictionary.en, {
   'yourWork.loadingActivity': 'Loading activity...', 'yourWork.activityFailed': 'Could not load personal activity.', 'yourWork.noActivity': 'No matching activity yet.',
   'yourWork.empty.assigned': 'No work items are assigned to you.', 'yourWork.empty.created': 'You have not created any work items.', 'yourWork.empty.following': 'You are not following any work items.', 'yourWork.empty.worked': 'No worked-on items yet.',
   'checkin.title': 'Daily virtual check-in', 'checkin.subtitle': 'Quickly share progress, daily goals, and blockers with your team.', 'checkin.report': 'Report check-in', 'checkin.aiTitle': 'AI meeting summary & check-in', 'checkin.aiAction': 'Extract with AI', 'checkin.aiHint': 'Use AI to analyze and summarize today\'s team check-ins.', 'checkin.doneCount': '3/5 members checked in', 'checkin.blockerCount': '1 blocker (Khoi)',
-  'rewards.eyebrow': 'Points system', 'rewards.title': 'Rewards', 'rewards.subtitle': 'Track points, career level, contribution, and early-completion rewards.', 'rewards.refresh': 'Refresh', 'rewards.refreshing': 'Updating...', 'rewards.balance': 'Current balance', 'rewards.level': 'Career level', 'rewards.progress': 'Level progress', 'rewards.pointsToNext': 'points to next level', 'rewards.formula': 'Points formula', 'rewards.difficulty': 'Difficulty', 'rewards.duration': 'Duration', 'rewards.share': 'Share', 'rewards.finalPoints': 'Final points', 'rewards.summary': 'Summary', 'rewards.thisSprint': 'This sprint',
+  'rewards.eyebrow': 'Points system', 'rewards.title': 'Rewards', 'rewards.subtitle': 'Track points, career level, contribution, and early-completion rewards.', 'rewards.refresh': 'Refresh', 'rewards.refreshing': 'Updating...', 'rewards.balance': 'Current balance', 'rewards.level': 'Career level', 'rewards.progress': 'Level progress', 'rewards.pointsToNext': 'points to next level', 'rewards.formula': 'Points formula', 'rewards.difficulty': 'Story / Priority', 'rewards.duration': 'Duration', 'rewards.share': 'Contribution', 'rewards.finalPoints': 'Final points', 'rewards.summary': 'Summary', 'rewards.thisSprint': 'This sprint',
   'projects.noProjectsDesc': 'It looks like there are no projects here. Let\'s create your first one!',
   'projects.createdDate': 'Created date',
   'projects.filters': 'Filters',
@@ -607,7 +607,7 @@ Object.assign(dictionary.vi, {
   'yourWork.loadingActivity': 'Đang tải hoạt động...', 'yourWork.activityFailed': 'Không thể tải hoạt động cá nhân.', 'yourWork.noActivity': 'Chưa có hoạt động phù hợp.',
   'yourWork.empty.assigned': 'Chưa có công việc được giao cho bạn.', 'yourWork.empty.created': 'Bạn chưa tạo công việc nào.', 'yourWork.empty.following': 'Bạn chưa theo dõi công việc nào.', 'yourWork.empty.worked': 'Chưa có công việc đã làm.',
   'checkin.title': 'Check-in hằng ngày', 'checkin.subtitle': 'Cập nhật nhanh tiến độ, mục tiêu trong ngày và khó khăn với đồng đội.', 'checkin.report': 'Báo cáo check-in', 'checkin.aiTitle': 'AI tóm tắt cuộc họp & check-in', 'checkin.aiAction': 'Trích xuất bằng AI', 'checkin.aiHint': 'Dùng AI để phân tích và tóm tắt check-in của cả đội hôm nay.', 'checkin.doneCount': '3/5 thành viên đã check-in', 'checkin.blockerCount': 'Có 1 blocker (Khôi)',
-  'rewards.eyebrow': 'Hệ thống điểm', 'rewards.title': 'Phần thưởng', 'rewards.subtitle': 'Theo dõi điểm thưởng, cấp độ nghề nghiệp, đóng góp và thưởng hoàn thành sớm.', 'rewards.refresh': 'Làm mới', 'rewards.refreshing': 'Đang cập nhật...', 'rewards.balance': 'Số dư hiện tại', 'rewards.level': 'Cấp độ nghề nghiệp', 'rewards.progress': 'Tiến độ cấp độ', 'rewards.pointsToNext': 'điểm đến cấp tiếp theo', 'rewards.formula': 'Công thức tính điểm', 'rewards.difficulty': 'Độ khó', 'rewards.duration': 'Thời lượng', 'rewards.share': 'Tỷ lệ', 'rewards.finalPoints': 'Điểm cuối cùng', 'rewards.summary': 'Tổng kết', 'rewards.thisSprint': 'Sprint này',
+  'rewards.eyebrow': 'Hệ thống điểm', 'rewards.title': 'Phần thưởng', 'rewards.subtitle': 'Theo dõi điểm thưởng, cấp độ nghề nghiệp, đóng góp và thưởng hoàn thành sớm.', 'rewards.refresh': 'Làm mới', 'rewards.refreshing': 'Đang cập nhật...', 'rewards.balance': 'Số dư hiện tại', 'rewards.level': 'Cấp độ nghề nghiệp', 'rewards.progress': 'Tiến độ cấp độ', 'rewards.pointsToNext': 'điểm đến cấp tiếp theo', 'rewards.formula': 'Công thức tính điểm', 'rewards.difficulty': 'Story / Độ ưu tiên', 'rewards.duration': 'Thời lượng', 'rewards.share': 'Tỷ lệ đóng góp', 'rewards.finalPoints': 'Điểm thực nhận', 'rewards.summary': 'Tổng kết', 'rewards.thisSprint': 'Sprint này',
   'projects.noProjectsDesc': 'Có vẻ chưa có dự án nào ở đây. Hãy tạo dự án đầu tiên!',
   'projects.createdDate': 'Ngày tạo',
   'projects.filters': 'Lọc',
@@ -648,8 +648,8 @@ Object.assign(dictionary.en, {
   'Base points = Difficulty x Standard duration. Final points = Share + Bonus - Penalty': 'Base points = Difficulty x Standard duration. Final points = Share + Bonus - Penalty',
   'Task mau se xuat hien sau khi co du lieu that.': 'A sample task will appear when real data is available.',
   'Actual hours luon uu tien lay tu time log. Assignment actual hours va task actual hours duoc roll-up tu time log.': 'Actual hours prioritize time logs. Assignment and task actual hours are rolled up from time logs.',
-  'Estimate cua task khong bi nhan doi; effort duoc chia theo assignee estimate truoc, roi moi fallback sang contribution weight.': 'Task estimates are not duplicated; effort is split by assignee estimates first, then falls back to contribution weight.',
-  'Task qua cycle van giu estimate/actual; bonus va penalty duoc xet tai thoi diem hoan thanh.': 'Tasks carried across cycles retain estimate and actual hours; bonuses and penalties are evaluated on completion.'
+  'Estimate cua task khong bi nhan doi; effort duoc chia theo assignee estimate truoc, roi moi fallback sang contribution weight.': 'Task points are not duplicated; they are split based on the contribution weight of each assignee (or split equally by default).',
+  'Task qua cycle van giu estimate/actual; bonus va penalty duoc xet tai thoi diem hoan thanh.': 'Tasks carried across cycles retain their story points and priority; rewards and penalties are evaluated on completion.'
 })
 
 Object.assign(dictionary.vi, {
@@ -660,8 +660,8 @@ Object.assign(dictionary.vi, {
   'Base points = Difficulty x Standard duration. Final points = Share + Bonus - Penalty': 'Điểm cơ bản = Độ khó x Thời lượng chuẩn. Điểm cuối cùng = Điểm chia sẻ + Thưởng - Phạt',
   'Task mau se xuat hien sau khi co du lieu that.': 'Công việc mẫu sẽ xuất hiện khi có dữ liệu thực tế.',
   'Actual hours luon uu tien lay tu time log. Assignment actual hours va task actual hours duoc roll-up tu time log.': 'Giờ thực tế luôn ưu tiên dữ liệu từ nhật ký thời gian. Giờ thực tế của phân công và công việc được tổng hợp từ nhật ký thời gian.',
-  'Estimate cua task khong bi nhan doi; effort duoc chia theo assignee estimate truoc, roi moi fallback sang contribution weight.': 'Ước tính của công việc không bị nhân đôi; khối lượng được chia theo ước tính của từng người trước, sau đó mới dùng tỷ trọng đóng góp.',
-  'Task qua cycle van giu estimate/actual; bonus va penalty duoc xet tai thoi diem hoan thanh.': 'Công việc chuyển chu kỳ vẫn giữ giờ ước tính và thực tế; thưởng và phạt được xét tại thời điểm hoàn thành.'
+  'Estimate cua task khong bi nhan doi; effort duoc chia theo assignee estimate truoc, roi moi fallback sang contribution weight.': 'Điểm của công việc không bị nhân đôi; điểm được chia theo trọng số đóng góp của từng người thực hiện (hoặc chia đều theo mặc định).',
+  'Task qua cycle van giu estimate/actual; bonus va penalty duoc xet tai thoi diem hoan thanh.': 'Công việc chuyển chu kỳ vẫn giữ nguyên điểm story và độ ưu tiên; thưởng và phạt được xét tại thời điểm hoàn thành.'
 })
 
 export const useI18nStore = defineStore('i18n', {

@@ -645,6 +645,7 @@ namespace TaskManagement.Infrastructure.Data
                 new { Module = "space.work_items", Code = "space.work_items.delete", Description = "Delete space work_items" },
                 new { Module = "space.work_items", Code = "space.work_items.assign", Description = "Assign space work_items" },
                 new { Module = "space.work_items", Code = "space.work_items.change_status", Description = "Change status space work_items" },
+                new { Module = "space.work_items", Code = "space.work_items.assignee_only", Description = "Restrict edit and status changes to assigned work_items" },
                 new { Module = "space.work_items", Code = "space.work_items.comment", Description = "Comment space work_items" },
                 new { Module = "space.work_items", Code = "space.work_items.attachment", Description = "Attachment space work_items" },
 

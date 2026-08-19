@@ -8,6 +8,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.Tasks;
 using TaskManagement.Application.DTOs.Project;
+using TaskManagement.Application.Common;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Domain.Entities;
@@ -118,11 +119,18 @@ namespace TaskManagement.Infrastructure.Services
                 return new List<ProjectResponseDto>();
             }
 
-            var projects = await _context.Projects
+            var query = _context.Projects
                 .AsNoTracking()
                 .Include(p => p.Creator)
                 .Include(p => p.Department)
-                .Where(p => !p.IsDeleted && p.ProjectMembers.Any(pm => pm.UserId == userId && pm.Status))
+                .Where(p => !p.IsDeleted);
+
+            if (ProjectAccessPolicy.RestrictionsEnabled)
+            {
+                query = query.Where(p => p.ProjectMembers.Any(pm => pm.UserId == userId && pm.Status));
+            }
+
+            var projects = await query
                 .Select(p => new ProjectResponseDto
                 {
                     Id = p.Id,
@@ -186,7 +194,8 @@ namespace TaskManagement.Infrastructure.Services
                 .Select(ur => ur.Role.Name.Trim().ToLower())
                 .ToListAsync();
 
-            var canAccessAllProjects = normalizedRoles.Any(role => FullAccessRoles.Contains(role));
+            var canAccessAllProjects = ProjectAccessPolicy.IsUnrestricted ||
+                normalizedRoles.Any(role => FullAccessRoles.Contains(role));
 
             var query = _context.Projects
                 .AsNoTracking()
@@ -270,7 +279,8 @@ namespace TaskManagement.Infrastructure.Services
                 .Select(ur => ur.Role.Name.Trim().ToLower())
                 .ToListAsync();
 
-            var canAccessAllProjects = normalizedRoles.Any(role => FullAccessRoles.Contains(role));
+            var canAccessAllProjects = ProjectAccessPolicy.IsUnrestricted ||
+                normalizedRoles.Any(role => FullAccessRoles.Contains(role));
 
             var query = _context.Projects
                 .AsNoTracking()
@@ -398,37 +408,52 @@ namespace TaskManagement.Infrastructure.Services
                     throw new ArgumentException("PhĂ²ng ban khĂ´ng tá»“n táº¡i.");
             }
 
-            // Resolve WorkspaceId: user pháº£i thuá»™c Ă­t nháº¥t 1 workspace
-            var workspaceMembership = await _context.WorkspaceMembers
-                .FirstOrDefaultAsync(wm => wm.UserId == creatorId && wm.IsActive);
-            
             Guid workspaceId;
-            if (workspaceMembership != null)
+            if (dto.WorkspaceId.HasValue && dto.WorkspaceId.Value != Guid.Empty)
             {
-                workspaceId = workspaceMembership.WorkspaceId;
+                var requestedMembership = await _context.WorkspaceMembers
+                    .FirstOrDefaultAsync(wm =>
+                        wm.WorkspaceId == dto.WorkspaceId.Value &&
+                        wm.UserId == creatorId &&
+                        wm.IsActive);
+
+                if (requestedMembership == null)
+                    throw new ArgumentException("Bạn không có quyền tạo dự án trong workspace này.");
+
+                workspaceId = requestedMembership.WorkspaceId;
             }
             else
             {
-                // Auto-create a default workspace for the user if none exists
-                var defaultWorkspace = new Workspace
+                var workspaceMembership = await _context.WorkspaceMembers
+                    .FirstOrDefaultAsync(wm => wm.UserId == creatorId && wm.IsActive);
+
+                if (workspaceMembership != null)
                 {
-                    Id = Guid.NewGuid(),
-                    Slug = "workspace-" + Guid.NewGuid().ToString("N").Substring(0, 8),
-                    Name = "Default Workspace",
-                    OwnerId = creatorId,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                };
-                _context.Workspaces.Add(defaultWorkspace);
-                _context.WorkspaceMembers.Add(new WorkspaceMember
+                    workspaceId = workspaceMembership.WorkspaceId;
+                }
+                else
                 {
-                    WorkspaceId = defaultWorkspace.Id,
-                    UserId = creatorId,
-                    WorkspaceRole = "OWNER",
-                    JoinedAt = DateTime.UtcNow,
-                    IsActive = true
-                });
-                workspaceId = defaultWorkspace.Id;
+                    // Auto-create a default workspace for the user if none exists
+                    var defaultWorkspace = new Workspace
+                    {
+                        Id = Guid.NewGuid(),
+                        Slug = "workspace-" + Guid.NewGuid().ToString("N").Substring(0, 8),
+                        Name = "Default Workspace",
+                        OwnerId = creatorId,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    _context.Workspaces.Add(defaultWorkspace);
+                    _context.WorkspaceMembers.Add(new WorkspaceMember
+                    {
+                        WorkspaceId = defaultWorkspace.Id,
+                        UserId = creatorId,
+                        WorkspaceRole = "OWNER",
+                        JoinedAt = DateTime.UtcNow,
+                        IsActive = true
+                    });
+                    workspaceId = defaultWorkspace.Id;
+                }
             }
 
             // Generate Identifier: láº¥y 3-4 kĂ½ tá»± Ä‘áº§u viáº¿t hoa tá»« tĂªn project
@@ -720,7 +745,8 @@ namespace TaskManagement.Infrastructure.Services
                 .Select(ur => ur.Role.Name.Trim().ToLower())
                 .ToListAsync();
 
-            var canAccessAllProjects = normalizedRoles.Any(role => FullAccessRoles.Contains(role));
+            var canAccessAllProjects = ProjectAccessPolicy.IsUnrestricted ||
+                normalizedRoles.Any(role => FullAccessRoles.Contains(role));
 
             var query = _context.Projects
                 .IgnoreQueryFilters()

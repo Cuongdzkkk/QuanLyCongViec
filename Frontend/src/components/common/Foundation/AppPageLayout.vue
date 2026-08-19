@@ -1,6 +1,6 @@
 <template>
   <div class="sprinta-layout-container">
-    <div :class="fluid ? 'sprinta-layout-fluid' : 'sprinta-layout-boxed'" :style="{ padding: 'var(--sp-page-padding)' }">
+    <div :class="fluid ? 'sprinta-layout-fluid' : 'sprinta-layout-boxed'" class="sprinta-layout-surface">
       <div v-if="$slots.header" class="sprinta-layout-header">
         <slot name="header" />
       </div>

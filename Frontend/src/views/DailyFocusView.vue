@@ -217,6 +217,7 @@ import axiosClient from '@/api/axiosClient'
 import { ElMessage } from 'element-plus'
 
 import { useI18n } from '@/composables/useI18n'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -369,7 +370,7 @@ const handleStart = (task) => {
     ElMessage.warning('Công việc này chưa thuộc project nào.')
     return
   }
-  router.push(`/space/${task.projectId}`)
+  router.push(buildSpacePath(task.projectId, 'work-items'))
 }
 
 const handlePostpone = (task) => {

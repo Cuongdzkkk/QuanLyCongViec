@@ -57,7 +57,9 @@ export const useSiteStore = defineStore('site', {
         this.sites = (response.data?.data || []).map(site => ({
           ...site,
           id: site.id || site.Id,
-          name: site.name || site.Name
+          name: site.name || site.Name,
+          ownerName: site.ownerName || site.OwnerName || '',
+          workspaceRole: site.workspaceRole || site.WorkspaceRole || ''
         }))
         
         // Find recent site based on most recently created or some local storage logic
@@ -66,6 +68,9 @@ export const useSiteStore = defineStore('site', {
           this.recentSite = isValidEntityId(recentId)
             ? (this.sites.find(s => s.id === recentId || s.Id === recentId) || this.sites[0])
             : this.sites[0]
+        } else {
+          this.recentSite = null
+          localStorage.removeItem('recent_site_id')
         }
       } catch (err) {
         this.error = err.message || 'Failed to fetch sites'
@@ -97,8 +102,14 @@ export const useSiteStore = defineStore('site', {
     setRecentSite(site) {
       const siteId = site?.id || site?.Id
       if (!site || !isValidEntityId(siteId)) return
+      const previousSiteId = this.recentSite?.id || this.recentSite?.Id || null
       this.recentSite = site
       localStorage.setItem('recent_site_id', siteId)
+      if (`${previousSiteId || ''}` !== `${siteId}`) {
+        window.dispatchEvent(new CustomEvent('sprinta-workspace-changed', {
+          detail: { workspaceId: siteId, previousWorkspaceId: previousSiteId }
+        }))
+      }
     }
   }
 })

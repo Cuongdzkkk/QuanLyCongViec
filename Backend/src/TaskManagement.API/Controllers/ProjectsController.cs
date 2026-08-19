@@ -1110,7 +1110,7 @@ namespace TaskManagement.API.Controllers
                 return Unauthorized(ApiResponse<object>.Error("Unauthorized.", 401));
 
             var isMember = await _context.ProjectMembers.AnyAsync(pm => pm.ProjectId == id && pm.UserId == userId && pm.Status);
-            if (!isMember)
+            if (!isMember && ProjectAccessPolicy.RestrictionsEnabled)
                 return StatusCode(403, ApiResponse<object>.Error("Forbidden.", 403));
 
             var query = _context.WorkTasks

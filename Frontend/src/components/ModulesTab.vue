@@ -9,6 +9,7 @@ import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
 import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const props = defineProps({
   projectId: { type: String, required: true }
@@ -249,8 +250,7 @@ const loadMoreModules = async () => {
 
 const openModuleTaskView = (module) => {
   router.push({
-    name: 'SpaceSummary',
-    params: { id: props.projectId },
+    path: buildSpacePath(props.projectId, 'work-items'),
     query: {
       tab: 'spreadsheet',
       moduleId: module.id,

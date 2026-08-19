@@ -52,7 +52,7 @@
            </el-dropdown>
 
            <!-- ASSIGNEES -->
-           <el-popover  placement="bottom-start" trigger="click" popper-class="plane-popover" :width="220" :disabled="!canManageTaskAssignees" @show="assigneeSearch = ''">
+           <el-popover :visible="activePopoverKey === 'new-assignee'" @update:visible="setTaskPopoverVisible('new-assignee', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="220" :disabled="!canManageTaskAssignees" @show="assigneeSearch = ''">
              <template #reference>
            <div class="t-btn" :class="{ disabled: !canManageTaskAssignees }"><i class="fa-regular fa-user"></i> <span>{{ tr('Assignee', 'Người thực hiện') }}</span> {{ getAssigneeSummary() }}</div>
              </template>
@@ -63,9 +63,9 @@
                        v-for="user in filteredMembers"
                        :key="user.userId"
                        @click="toggleAssignee(user.userId)"
-                       :class="getAssigneeIds().includes(user.userId) ? 'bg-green-100 hover:bg-green-200 text-green-900 border-l-4 border-green-500 rounded-sm' : 'hover:bg-gray-100'">
+                       :class="getAssigneeIds().includes(user.userId) ? 'assignee-option-selected' : 'hover:bg-gray-100'">
                     <div class="flex items-center truncate max-w-[75%] pl-2 py-1">
-                      <UserAvatar :user="{ avatarColor: user.avatarColor, initials: user.initials, fullName: user.fullName, email: user.email, id: user.userId }" :size="20" :fontSize="9" class="mr-2" />
+                      <UserAvatar :user="{ avatarColor: user.avatarColor, initials: user.initials, fullName: user.fullName, email: user.email, id: user.userId }" :size="20" :fontSize="9" class="mr-2" :clickable="false" />
                       <span class="truncate" :class="getAssigneeIds().includes(user.userId) ? 'font-semibold' : ''">{{ user.fullName || user.email }}</span>
                     </div>
                     <div class="flex items-center flex-shrink-0 pr-2">
@@ -74,49 +74,11 @@
                   </div>
                   <div v-if="!filteredMembers.length" class="text-xs text-center text-muted py-2">{{ tr('No assignees found.', 'Không tìm thấy người thực hiện.') }}</div>
                 </div>
-                <div class="assignee-progress-list" v-if="selectedAssigneeRows.length">
-                  <div class="assignee-progress-title">{{ tr('Progress by assignee', 'Tiến độ theo người thực hiện') }}</div>
-                  <div class="assignee-progress-row" v-for="assignee in selectedAssigneeRows" :key="assignee.userId">
-                    <span class="assignee-progress-name">{{ assignee.fullName || assignee.email || tr('Member', 'Thành viên') }}</span>
-                    <input
-                      class="assignee-progress-input"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      :disabled="!canManageTaskAssignees"
-                      :value="assignee.progressPercent || 0"
-                      @change="event => updateAssigneeProgress(assignee.userId, event.target.value)"
-                    />
-                    <span class="assignee-progress-suffix">%</span>
-                    <input
-                      v-if="showEstimateFeatures"
-                      class="assignee-progress-input"
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      :disabled="!canManageTaskAssignees"
-                      :value="assignee.estimatedHours || 0"
-                      @change="event => updateAssigneeEstimatedHours(assignee.userId, event.target.value)"
-                    />
-                    <span v-if="showEstimateFeatures" class="assignee-progress-suffix">h</span>
-                    <input
-                      class="assignee-progress-input"
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      :disabled="!canManageTaskAssignees"
-                      :value="assignee.contributionWeight || 1"
-                      @change="event => updateAssigneeContributionWeight(assignee.userId, event.target.value)"
-                    />
-                    <span class="assignee-progress-suffix">w</span>
-                  </div>
-                </div>
               </div>
             </el-popover>
 
            <!-- LABELS -->
-           <el-popover  placement="bottom-start" trigger="click" popper-class="plane-popover" :width="220" @show="labelSearch = ''">
+           <el-popover :visible="activePopoverKey === 'new-label'" @update:visible="setTaskPopoverVisible('new-label', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="220" @show="labelSearch = ''">
              <template #reference>
                <div class="t-btn"><i class="fa-solid fa-tag"></i> {{ selectedTask?.labelIds?.length ? selectedTask.labelIds.length + ' ' + tr('Labels', 'Nhãn') : tr('Labels', 'Nhãn') }}</div>
              </template>
@@ -176,7 +138,7 @@
               </template>
             </el-dropdown>
 
-            <el-popover v-if="isRoleVisibilityEnabled && selectedTask?.visibilityMode === 'role'" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" :disabled="!canEditTaskVisibility">
+            <el-popover v-if="isRoleVisibilityEnabled && selectedTask?.visibilityMode === 'role'" :visible="activePopoverKey === 'new-roles'" @update:visible="setTaskPopoverVisible('new-roles', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" :disabled="!canEditTaskVisibility">
               <template #reference>
                 <div class="t-btn" :class="{ disabled: !canEditTaskVisibility }">
                   <i class="fa-solid fa-user-shield"></i>
@@ -195,7 +157,7 @@
             </el-popover>
 
             <!-- CYCLE -->
-            <el-popover  placement="bottom-start" trigger="click" popper-class="plane-popover" :width="280" @show="cycleSearch = ''">
+            <el-popover :visible="activePopoverKey === 'new-cycle'" @update:visible="setTaskPopoverVisible('new-cycle', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="280" @show="cycleSearch = ''">
               <template #reference>
                 <div class="t-btn"><i class="fa-solid fa-circle-half-stroke"></i> {{ getCycleLabel(selectedTask?.sprintId) }}</div>
               </template>
@@ -217,7 +179,7 @@
             </el-popover>
 
             <!-- MODULES -->
-            <el-popover  placement="bottom-start" trigger="click" popper-class="plane-popover" :width="280" @show="moduleSearch = ''">
+            <el-popover :visible="activePopoverKey === 'new-module'" @update:visible="setTaskPopoverVisible('new-module', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="280" @show="moduleSearch = ''">
               <template #reference>
                 <div class="t-btn"><i class="fa-solid fa-cube"></i> {{ getModuleLabel(selectedTask?.moduleId) }}</div>
               </template>
@@ -236,7 +198,7 @@
             </el-popover>
 
             <!-- PARENT -->
-            <el-popover  placement="bottom-start" trigger="click" popper-class="plane-popover" :width="350" @show="parentSearch = ''">
+            <el-popover :visible="activePopoverKey === 'new-parent'" @update:visible="setTaskPopoverVisible('new-parent', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="350" @show="parentSearch = ''">
               <template #reference>
                 <div class="t-btn parent-task-trigger"><i class="fa-solid fa-arrow-turn-up fa-rotate-90"></i> {{ getParentId(selectedTask) ? tr('Parent selected', 'Đã chọn công việc cha') : tr('Add parent', 'Thêm công việc cha') }}</div>
               </template>
@@ -482,7 +444,7 @@
                       </template>
                     </el-dropdown>
 
-                    <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="240" @show="assigneeSearch = ''">
+                    <el-popover :visible="activePopoverKey === `subtask-assignee-${subtask.id}`" @update:visible="setTaskPopoverVisible(`subtask-assignee-${subtask.id}`, $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="240" @show="assigneeSearch = ''">
                       <template #reference>
                         <button class="subtask-chip" type="button" style="padding: 2px 8px;">
                           <UserAvatar v-if="buildTaskAssigneeRows(subtask).length === 1" :user="buildTaskAssigneeRows(subtask)[0]" :size="16" :fontSize="8" />
@@ -497,7 +459,7 @@
                                v-for="member in filteredMembers"
                                :key="`${subtask.id}-${member.userId}`"
                                @click="toggleInlineTaskAssignee(subtask, member.userId)"
-                               :class="getAssigneeIds(subtask).includes(member.userId) ? 'bg-green-100 hover:bg-green-200 text-green-900 border-l-4 border-green-500 rounded-sm' : 'hover:bg-gray-100'">
+                               :class="getAssigneeIds(subtask).includes(member.userId) ? 'assignee-option-selected' : 'hover:bg-gray-100'">
                             <div class="flex items-center truncate max-w-[75%] pl-2 py-1">
                               <UserAvatar :user="{ avatarColor: member.avatarColor, initials: member.initials, fullName: member.fullName, email: member.email, id: member.userId }" :size="20" :fontSize="9" class="mr-2" />
                               <span class="truncate" :class="getAssigneeIds(subtask).includes(member.userId) ? 'font-semibold' : ''">{{ member.fullName || member.email }}</span>
@@ -542,9 +504,9 @@
                  <div class="p-row">
                    <div class="p-label"><i class="fa-regular fa-circle-dot"></i> {{ tr('Status', 'Trạng thái') }}</div>
                    <div class="p-val">
-                     <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" :disabled="!canEditTaskDetails" @show="statusSearch = ''">
+                     <el-popover :visible="activePopoverKey === 'detail-status'" @update:visible="setTaskPopoverVisible('detail-status', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" :disabled="!canMoveTaskStatus" @show="statusSearch = ''">
                        <template #reference>
-                         <button class="property-trigger status-property-trigger" :disabled="!canEditTaskDetails" :style="{ '--status-color': getStatusColor(selectedTask?.statusName) }">
+                         <button class="property-trigger status-property-trigger" :disabled="!canMoveTaskStatus" :style="{ '--status-color': getStatusColor(selectedTask?.statusName) }">
                             <span>{{ tr('Status', 'Trạng thái') }}</span>
                             <span class="property-value" :style="{ color: getStatusColor(selectedTask?.statusName), padding: '2px 8px', borderRadius: '4px', background: `color-mix(in srgb, ${getStatusColor(selectedTask?.statusName)} 15%, transparent)`, display: 'inline-flex', alignItems: 'center', gap: '5px' }">
                               <i :class="getStatusIcon(selectedTask?.statusName)"></i>
@@ -673,13 +635,13 @@
                  <div class="p-row">
                    <div class="p-label"><i class="fa-regular fa-user"></i> {{ tr('Assignee', 'Người thực hiện') }}</div>
                    <div class="p-val">
-                     <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" :disabled="!canManageTaskAssignees || !canEditTaskDetails" @show="assigneeSearch = ''">
+                    <el-popover :visible="activePopoverKey === 'detail-assignee'" @update:visible="setTaskPopoverVisible('detail-assignee', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" :disabled="!canManageTaskAssignees || !canAssignTaskMember" @show="assigneeSearch = ''">
                        <template #reference>
-                         <button class="property-trigger" :class="{ 'muted-val': !getAssigneeIds().length }" :disabled="!canManageTaskAssignees || !canEditTaskDetails">
+                         <button class="property-trigger" :class="{ 'muted-val': !getAssigneeIds().length }" :disabled="!canManageTaskAssignees || !canAssignTaskMember">
                            <i class="fa-regular fa-user"></i>
                            <span>{{ tr('Assignee', 'Người thực hiện') }}</span>
                            <span class="property-value" style="display: flex; align-items: center; gap: 4px;">
-                             <UserAvatar v-if="selectedAssigneeRows.length === 1" :user="selectedAssigneeRows[0]" :size="16" :fontSize="8" />
+                             <UserAvatar v-if="selectedAssigneeRows.length === 1" :user="selectedAssigneeRows[0]" :size="16" :fontSize="8" :clickable="false" />
                              {{ getAssigneeSummary() }}
                            </span>
                          </button>
@@ -691,9 +653,9 @@
                                 v-for="member in filteredMembers"
                                 :key="member.userId"
                                 @click="toggleAssignee(member.userId)"
-                                :class="getAssigneeIds().includes(member.userId) ? 'bg-green-100 hover:bg-green-200 text-green-900 border-l-4 border-green-500 rounded-sm' : 'hover:bg-gray-100'">
+                                :class="getAssigneeIds().includes(member.userId) ? 'assignee-option-selected' : 'hover:bg-gray-100'">
                              <div class="flex items-center truncate max-w-[75%] pl-2 py-1">
-                               <UserAvatar :user="{ avatarColor: member.avatarColor, initials: member.initials, fullName: member.fullName, email: member.email, id: member.userId }" :size="20" :fontSize="9" class="mr-2" />
+                               <UserAvatar :user="{ avatarColor: member.avatarColor, initials: member.initials, fullName: member.fullName, email: member.email, id: member.userId }" :size="20" :fontSize="9" class="mr-2" :clickable="false" />
                                <span class="truncate" :class="getAssigneeIds().includes(member.userId) ? 'font-semibold' : ''">{{ member.fullName || member.email }}</span>
                              </div>
                              <div class="flex items-center flex-shrink-0 pr-2">
@@ -1050,7 +1012,7 @@
                <div class="p-row">
                   <div class="p-label"><i class="fa-solid fa-cube"></i> Module</div>
                  <div class="p-val">
-                   <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="280" @show="moduleSearch = ''">
+                   <el-popover :visible="activePopoverKey === 'detail-module'" @update:visible="setTaskPopoverVisible('detail-module', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="280" @show="moduleSearch = ''">
                      <template #reference>
                        <button class="property-trigger" :class="{ 'muted-val': !selectedTask?.moduleId }">
                          <i class="fa-solid fa-cube"></i>
@@ -1079,7 +1041,7 @@
                <div class="p-row">
                   <div class="p-label"><i class="fa-solid fa-circle-half-stroke"></i> Chu kỳ</div>
                   <div class="p-val">
-                    <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="280" @show="cycleSearch = ''">
+                    <el-popover :visible="activePopoverKey === 'detail-cycle'" @update:visible="setTaskPopoverVisible('detail-cycle', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="280" @show="cycleSearch = ''">
                       <template #reference>
                         <button class="property-trigger" :class="{ 'muted-val': !selectedTask?.sprintId }">
                           <i class="fa-solid fa-circle-half-stroke"></i>
@@ -1108,7 +1070,7 @@
                <div class="p-row">
                   <div class="p-label"><i class="fa-solid fa-arrow-turn-up fa-rotate-90"></i> Công việc cha</div>
                   <div class="p-val">
-                    <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="340" @show="parentSearch = ''">
+                    <el-popover :visible="activePopoverKey === 'detail-parent'" @update:visible="setTaskPopoverVisible('detail-parent', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="340" @show="parentSearch = ''">
                       <template #reference>
                         <button class="property-trigger" :class="{ 'muted-val': !currentParentId }">
                           <i class="fa-solid fa-arrow-turn-up fa-rotate-90"></i>
@@ -1137,7 +1099,7 @@
                <div class="p-row">
                   <div class="p-label"><i class="fa-solid fa-tags"></i> Nhãn</div>
                   <div class="p-val flex flex-wrap gap-2 items-center">
-                     <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="280" @show="labelSearch = ''">
+                     <el-popover :visible="activePopoverKey === 'detail-labels'" @update:visible="setTaskPopoverVisible('detail-labels', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="280" @show="labelSearch = ''">
                        <template #reference>
                          <button class="property-trigger" :class="{ 'muted-val': !(selectedTask?.labelIds || []).length }">
                            <i class="fa-solid fa-tags"></i>
@@ -1618,7 +1580,7 @@
           <section class="contingency-task-section">
             <div class="contingency-field">
               <label>{{ tr('Assignment', 'Phân công') }}</label>
-              <el-popover placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" @show="assigneeSearch = ''">
+              <el-popover :visible="activePopoverKey === 'contingency-assignee'" @update:visible="setTaskPopoverVisible('contingency-assignee', $event)" placement="bottom-start" trigger="click" popper-class="plane-popover" :width="260" @show="assigneeSearch = ''">
                 <template #reference>
                   <div class="contingency-task-select">
                     <span><i class="bi bi-person" aria-hidden="true"></i>{{ projectMembers.find(m => m.userId === taskForm.assigneeId)?.fullName || tr('Select an assignee', 'Chọn người thực hiện') }}</span>
@@ -1713,6 +1675,8 @@ import { usePeopleStore } from '@/store/usePeopleStore';
 import { useI18nStore } from '@/store/useI18nStore';
 import UserAvatar from '@/components/common/UserAvatar.vue';
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue';
+import { projectAccessRestrictionsEnabled } from '@/config/projectAccess';
+import { buildSpacePath } from '@/utils/spaceRoute';
 import {
   buildFreshWorkSession,
   calculateWorkSessionHours,
@@ -1729,10 +1693,13 @@ const props = defineProps({
   projectMembers: { type: Array, default: () => [] },
   currentUser: { type: Object, default: () => ({}) },
   currentProjectRole: { type: String, default: '' },
+  canEditTaskDetails: { type: Boolean, default: true },
+  canMoveTaskStatus: { type: Boolean, default: true },
+  canAssignTaskMember: { type: Boolean, default: true },
   canGoBack: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['updateTask', 'close', 'back', 'open-task', 'create-subtask', 'refresh-tasks']);
+const emit = defineEmits(['updateTask', 'close', 'back', 'open-task', 'create-subtask', 'refresh-tasks', 'created']);
 const projectStore = useProjectStore();
 const i18nStore = useI18nStore();
 const tr = (en, vi) => i18nStore.locale === 'vi' ? vi : en;
@@ -1765,6 +1732,18 @@ const cycleSearch = ref('');
 const moduleSearch = ref('');
 const parentSearch = ref('');
 const statusSearch = ref('');
+const activePopoverKey = ref(null);
+
+const setTaskPopoverVisible = (key, visible) => {
+  if (visible) {
+    activePopoverKey.value = key;
+    return;
+  }
+
+  if (activePopoverKey.value === key) {
+    activePopoverKey.value = null;
+  }
+};
 
 const currentProjectRole = computed(() => {
   if (props.currentProjectRole) {
@@ -1881,7 +1860,7 @@ const canUseAiAssigneeSuggestion = computed(() => {
   return Boolean(currentProjectRole.value && aiManagerProjectRoles.includes(currentProjectRole.value));
 });
 
-const canManageTaskAssignees = computed(() => canUseAiAssigneeSuggestion.value);
+const canManageTaskAssignees = computed(() => !projectAccessRestrictionsEnabled || props.canAssignTaskMember);
 const isRoleVisibilityEnabled = computed(() => Boolean(projectExecutionRules.value?.enableRoleBasedTaskVisibility));
 const canEditTaskVisibility = computed(() => canUseAiAssigneeSuggestion.value && isRoleVisibilityEnabled.value);
 
@@ -2164,6 +2143,7 @@ const getAssigneeIds = (task = props.selectedTask) => {
 };
 
 const isTaskEditableByAssignee = (task = props.selectedTask) => {
+  if (!projectAccessRestrictionsEnabled) return true;
   if (!task || task.isNew) return true;
 
   const assigneeIds = getAssigneeIds(task);
@@ -2181,12 +2161,26 @@ const notifyAssignmentLock = () => {
 };
 
 const ensureTaskAssignmentEdit = (task = props.selectedTask) => {
-  if (isTaskEditableByAssignee(task)) return true;
+  if (canEditTaskDetails.value) return true;
   notifyAssignmentLock();
   return false;
 };
 
-const canEditTaskDetails = computed(() => isTaskEditableByAssignee());
+const ensureTaskStatusMove = () => {
+  if (canMoveTaskStatus.value) return true;
+  notifyAssignmentLock();
+  return false;
+};
+
+const ensureTaskAssigneeManage = () => {
+  if (canAssignTaskMember.value) return true;
+  ElMessage.warning('Ban khong co quyen giao cong viec.');
+  return false;
+};
+
+const canEditTaskDetails = computed(() => props.canEditTaskDetails);
+const canMoveTaskStatus = computed(() => props.canMoveTaskStatus);
+const canAssignTaskMember = computed(() => props.canAssignTaskMember);
 
 const setTaskProperty = (task, field, value) => {
   if (!task || !ensureTaskAssignmentEdit(task)) return;
@@ -2820,7 +2814,7 @@ const copyCommentLink = (cId) => {
     ElMessage.success("Đã copy link bình luận");
 };
 const copyTaskLink = async () => {
-    const url = `${window.location.origin}/space/${props.projectId}?task=${props.selectedTask.id}`;
+    const url = `${window.location.origin}${buildSpacePath(props.projectId, 'work-items')}?task=${props.selectedTask.id}`;
     await navigator.clipboard.writeText(url);
     ElMessage.success("Đã copy link công việc");
 };
@@ -3299,15 +3293,27 @@ const lastEditedBy = computed(() => {
 const lastEditedRelative = computed(() => formatRelativeTime(props.selectedTask?.updatedAt || props.selectedTask?.createdAt));
 
 const updateTaskField = (task, field, value) => {
-  if (!ensureTaskAssignmentEdit(task)) return;
+  if (field === 'statusName' || field === 'taskStatusId') {
+    if (!ensureTaskStatusMove()) return;
+  } else if (['assigneeId', 'assigneeIds', 'assignedUserId'].includes(field)) {
+    if (!ensureTaskAssigneeManage()) return;
+  } else if (!ensureTaskAssignmentEdit(task)) {
+    return;
+  }
   recordTaskFieldActivity(field, value);
   emit('updateTask', task, field, value);
   window.setTimeout(fetchAuditTimeline, 700);
 };
 
 const updateTaskFields = (task, payload) => {
-  if (!ensureTaskAssignmentEdit(task)) return;
   const fields = Object.keys(payload || {});
+  if (fields.length > 0 && fields.every(field => field === 'statusName' || field === 'taskStatusId')) {
+    if (!ensureTaskStatusMove()) return;
+  } else if (fields.length > 0 && fields.every(field => ['assigneeId', 'assigneeIds', 'assignedUserId'].includes(field))) {
+    if (!ensureTaskAssigneeManage()) return;
+  } else if (!ensureTaskAssignmentEdit(task)) {
+    return;
+  }
   if (fields.length === 1) {
     recordTaskFieldActivity(fields[0], payload[fields[0]]);
   } else if (fields.length > 1) {
@@ -3633,20 +3639,12 @@ const syncTaskAssignees = (task, assigneeIds) => {
 
 const applySelectedAssignees = async (assigneeIds, task = props.selectedTask) => {
   if (!task) return;
-  if (!ensureTaskAssignmentEdit(task)) return;
+  if (!ensureTaskAssigneeManage()) return;
   const normalizedIds = Array.from(new Set(assigneeIds.filter(Boolean)));
   syncTaskAssignees(task, normalizedIds);
 
   if (!task.isNew) {
-    updateTaskFields(task, {
-      assigneeIds: normalizedIds,
-      assigneeProgress: (task.assignees || []).map(assignee => ({
-        userId: assignee.userId || assignee.id,
-        progressPercent: assignee.progressPercent || 0,
-        contributionWeight: assignee.contributionWeight || 1,
-        estimatedHours: assignee.estimatedHours || 0
-      }))
-    });
+    updateTaskFields(task, { assigneeIds: normalizedIds });
   }
 };
 
@@ -3655,7 +3653,7 @@ const toggleAssignee = async (memberId, task = props.selectedTask) => {
     ElMessage.warning('You do not have permission to manage assignees for this work item.');
     return;
   }
-  if (!ensureTaskAssignmentEdit(task)) return;
+  if (!ensureTaskAssigneeManage()) return;
 
   const currentIds = getAssigneeIds(task);
   const nextIds = currentIds.includes(memberId)
@@ -3939,7 +3937,7 @@ const handleTaskDateChange = (field, rawValue, task = props.selectedTask) => {
 
 const selectStatus = (status, task = props.selectedTask) => {
   if (!task) return;
-  if (!ensureTaskAssignmentEdit(task)) return;
+  if (!ensureTaskStatusMove()) return;
   const nextStatus = typeof status === 'string' ? status : status.name;
   task.statusName = nextStatus;
   if (!task.isNew) {
@@ -4118,7 +4116,7 @@ const submitNewTask = async () => {
         return;
     }
     try {
-        await axiosClient.post(`/projects/${props.projectId}/WorkTasks`, {
+        const response = await axiosClient.post(`/projects/${props.projectId}/WorkTasks`, {
             title: props.selectedTask.title,
             description: props.selectedTask.description,
             statusName: props.selectedTask.statusName || 'Todo',
@@ -4136,6 +4134,7 @@ const submitNewTask = async () => {
             visibleToRoles: props.selectedTask.visibleToRoles || []
         });
         ElMessage.success('Đã tạo thành công');
+        emit('created', response.data?.data || response.data);
         emit('refresh-tasks');
         if (!createMore.value) {
             emit('close');
@@ -6654,17 +6653,38 @@ const parseOptions = (json) => {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: calc(100% - 8px);
   min-height: 34px;
+  margin: 0 4px;
   padding: 7px 9px;
+  border-left: 4px solid transparent;
   border-radius: 8px;
   color: var(--color-text-secondary);
   font-size: 13px;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .popover-item:hover {
   background: var(--color-surface-hover);
   color: var(--color-text-primary);
+}
+
+.popover-item.assignee-option-selected {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+  border-left-color: var(--color-accent);
+  border-radius: 8px;
+  color: var(--color-accent);
+}
+
+.popover-item.assignee-option-selected:hover {
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface));
+  color: var(--color-accent);
+}
+
+.popover-item.assignee-option-selected .bg-green-200 {
+  background: color-mix(in srgb, var(--color-accent) 18%, #ffffff) !important;
+  color: var(--color-accent) !important;
 }
 
 .popover-item .fa-check {
