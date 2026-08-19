@@ -24,8 +24,13 @@
               <div class="crown-badge silver-crown">
                 <i class="fa-solid fa-crown"></i>
               </div>
-              <UserAvatar :user="{ ...top2, fullName: top2.userName, id: top2.userId }" :size="52" :fontSize="18" class="card-avatar" />
-              <div class="rank-badge silver-badge">#2</div>
+              <UserAvatar :user="{ ...top2, fullName: top2.userName, id: top2.userId }" :size="68" :fontSize="20" class="card-avatar" />
+              <div class="rank-badge silver-badge">
+                <svg viewBox="0 0 100 24" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M 10 2 L 90 2 L 82 12 L 90 22 L 10 22 L 18 12 Z" />
+                </svg>
+                <span class="rank-text">#2</span>
+              </div>
             </div>
             <strong class="card-name">{{ top2.userName }}</strong>
             <span class="card-points">{{ top2.totalPoints }} pts</span>
@@ -37,7 +42,12 @@
                 <i class="fa-solid fa-crown"></i>
               </div>
               <div class="card-avatar avatar-empty">-</div>
-              <div class="rank-badge silver-badge">#2</div>
+              <div class="rank-badge silver-badge">
+                <svg viewBox="0 0 100 24" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M 10 2 L 90 2 L 82 12 L 90 22 L 10 22 L 18 12 Z" />
+                </svg>
+                <span class="rank-text">#2</span>
+              </div>
             </div>
             <strong class="card-name">Trống</strong>
             <span class="card-points">-</span>
@@ -49,8 +59,13 @@
               <div class="crown-badge gold-crown">
                 <i class="fa-solid fa-crown"></i>
               </div>
-              <UserAvatar :user="{ ...top1, fullName: top1.userName, id: top1.userId }" :size="68" :fontSize="22" class="card-avatar" />
-              <div class="rank-badge gold-badge">#1</div>
+              <UserAvatar :user="{ ...top1, fullName: top1.userName, id: top1.userId }" :size="80" :fontSize="24" class="card-avatar" />
+              <div class="rank-badge gold-badge">
+                <svg viewBox="0 0 100 24" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M 10 2 L 90 2 L 82 12 L 90 22 L 10 22 L 18 12 Z" />
+                </svg>
+                <span class="rank-text">#1</span>
+              </div>
             </div>
             <strong class="card-name">{{ top1.userName }}</strong>
             <span class="card-points">{{ top1.totalPoints }} pts</span>
@@ -62,7 +77,12 @@
                 <i class="fa-solid fa-crown"></i>
               </div>
               <div class="card-avatar avatar-empty">-</div>
-              <div class="rank-badge gold-badge">#1</div>
+              <div class="rank-badge gold-badge">
+                <svg viewBox="0 0 100 24" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M 10 2 L 90 2 L 82 12 L 90 22 L 10 22 L 18 12 Z" />
+                </svg>
+                <span class="rank-text">#1</span>
+              </div>
             </div>
             <strong class="card-name">Trống</strong>
             <span class="card-points">-</span>
@@ -74,8 +94,13 @@
               <div class="crown-badge bronze-crown">
                 <i class="fa-solid fa-crown"></i>
               </div>
-              <UserAvatar :user="{ ...top3, fullName: top3.userName, id: top3.userId }" :size="52" :fontSize="18" class="card-avatar" />
-              <div class="rank-badge bronze-badge">#3</div>
+              <UserAvatar :user="{ ...top3, fullName: top3.userName, id: top3.userId }" :size="56" :fontSize="16" class="card-avatar" />
+              <div class="rank-badge bronze-badge">
+                <svg viewBox="0 0 100 24" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M 10 2 L 90 2 L 82 12 L 90 22 L 10 22 L 18 12 Z" />
+                </svg>
+                <span class="rank-text">#3</span>
+              </div>
             </div>
             <strong class="card-name">{{ top3.userName }}</strong>
             <span class="card-points">{{ top3.totalPoints }} pts</span>
@@ -87,7 +112,12 @@
                 <i class="fa-solid fa-crown"></i>
               </div>
               <div class="card-avatar avatar-empty">-</div>
-              <div class="rank-badge bronze-badge">#3</div>
+              <div class="rank-badge bronze-badge">
+                <svg viewBox="0 0 100 24" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M 10 2 L 90 2 L 82 12 L 90 22 L 10 22 L 18 12 Z" />
+                </svg>
+                <span class="rank-text">#3</span>
+              </div>
             </div>
             <strong class="card-name">Trống</strong>
             <span class="card-points">-</span>
@@ -689,46 +719,21 @@ onMounted(loadRewards)
   align-items: center;
   text-align: center;
   cursor: pointer;
-  padding: 24px 16px;
-  border-radius: 12px;
-  transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 16px 8px;
   min-height: 160px;
   justify-content: center;
-  background: var(--reward-surface);
-  border: 1px solid var(--reward-border);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.02);
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
-.top-three-col:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+.top-three-col.active .card-avatar {
+  outline: 3px solid var(--reward-accent);
+  outline-offset: 2px;
 }
 
-.top-three-col.active {
-  background: rgba(15, 98, 254, 0.03);
-  border-color: var(--reward-accent) !important;
-}
-
-/* Standout Gold Card styling */
 .top-three-col.gold-col {
-  transform: scale(1.05);
   z-index: 2;
-  border: 1px solid rgba(250, 204, 21, 0.3) !important;
-  background: linear-gradient(180deg, rgba(250, 204, 21, 0.04), var(--reward-surface));
-  box-shadow: 0 6px 18px rgba(250, 204, 21, 0.06);
-}
-
-.top-three-col.gold-col:hover {
-  transform: scale(1.05) translateY(-6px);
-  box-shadow: 0 16px 36px rgba(250, 204, 21, 0.14);
-}
-
-.top-three-col.silver-col {
-  background: linear-gradient(180deg, rgba(148, 163, 184, 0.03), var(--reward-surface));
-}
-
-.top-three-col.bronze-col {
-  background: linear-gradient(180deg, rgba(184, 115, 51, 0.03), var(--reward-surface));
 }
 
 /* Crown & Badge Avatar Wrapper styling */
@@ -767,49 +772,53 @@ onMounted(loadRewards)
   transform: translateX(-50%) rotate(-5deg);
   z-index: 10;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
-  animation: crown-float 3s ease-in-out infinite alternate;
 }
 
-.gold-crown { font-size: 24px; color: #FFD700; }
-.silver-crown { font-size: 20px; color: #C0C0C0; }
-.bronze-crown { font-size: 20px; color: #CD7F32; }
+.gold-crown { font-size: 26px; color: #FFD700; }
+.silver-crown { font-size: 22px; color: #C0C0C0; }
+.bronze-crown { font-size: 22px; color: #CD7F32; }
 
 .rank-badge {
   position: absolute;
-  bottom: -8px;
+  bottom: -10px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
-  padding: 2px 12px;
-  border-radius: 99px;
+  width: 72px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ribbon-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+}
+
+.gold-badge .ribbon-svg path {
+  fill: #F5A623;
+}
+
+.silver-badge .ribbon-svg path {
+  fill: #94A3B8;
+}
+
+.bronze-badge .ribbon-svg path {
+  fill: #CD7F32;
+}
+
+.rank-text {
+  position: relative;
+  z-index: 11;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 900;
   color: #fff;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-  white-space: nowrap;
-  border: 1.5px solid var(--reward-surface);
-}
-
-.gold-badge {
-  background: linear-gradient(135deg, #FFE066, #F5A623);
-}
-
-.silver-badge {
-  background: linear-gradient(135deg, #E2E8F0, #94A3B8);
-}
-
-.bronze-badge {
-  background: linear-gradient(135deg, #FFB347, #F09819);
-}
-
-@keyframes crown-float {
-  0% {
-    transform: translateX(-50%) rotate(-5deg) translateY(0);
-  }
-  100% {
-    transform: translateX(-50%) rotate(-5deg) translateY(-2px);
-  }
+  text-shadow: 0 1px 1px rgba(0,0,0,0.2);
 }
 
 .card-name {
@@ -862,17 +871,22 @@ onMounted(loadRewards)
   flex: 0 0 auto;
 }
 
-.silver-col.empty-col .card-avatar.avatar-empty,
+.silver-col.empty-col .card-avatar.avatar-empty {
+  width: 68px;
+  height: 68px;
+  font-size: 20px;
+}
+
 .bronze-col.empty-col .card-avatar.avatar-empty {
-  width: 48px;
-  height: 48px;
-  font-size: 14px;
+  width: 56px;
+  height: 56px;
+  font-size: 16px;
 }
 
 .gold-col.empty-col .card-avatar.avatar-empty {
-  width: 64px;
-  height: 64px;
-  font-size: 18px;
+  width: 80px;
+  height: 80px;
+  font-size: 24px;
 }
 
 /* Rankings Table */
