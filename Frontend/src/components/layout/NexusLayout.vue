@@ -39,17 +39,43 @@
       <img class="ai-pet-image" :src="petAsset" alt="" aria-hidden="true" draggable="false" />
     </button>
 
-    <div class="global-utility-rail" aria-label="Công cụ nhanh">
+    <div
+      ref="stickyLauncherRef"
+      class="global-utility-rail"
+      :class="{ 'is-dragging': stickyLauncherDragging }"
+      :style="stickyLauncherStyle"
+      aria-label="Công cụ nhanh"
+    >
       <button
+        class="sticky-launcher-handle"
+        type="button"
+        title="Kéo để di chuyển ghi chú"
+        aria-label="Kéo để di chuyển launcher ghi chú theo chiều dọc"
+        @pointerdown="beginStickyLauncherDrag"
+      >
+        <i class="fa-solid fa-grip-lines-vertical" aria-hidden="true"></i>
+      </button>
+      <button
+        class="sticky-launcher-main"
         type="button"
         :class="{ active: notesVisible }"
         title="Mở ghi chú nhanh"
         aria-controls="global-stickies-drawer"
         :aria-expanded="notesVisible"
-        @click="toggleNotes"
+        @click="openNotesFromLauncher"
       >
-        <i class="fa-solid fa-note-sticky"></i>
-        <span>Notes</span>
+        <i class="fa-solid fa-note-sticky" aria-hidden="true"></i>
+        <span>Ghi chú</span>
+      </button>
+      <button
+        class="sticky-launcher-add"
+        type="button"
+        title="Tạo ghi chú mới"
+        aria-label="Tạo ghi chú mới"
+        :disabled="stickyLauncherCreating"
+        @click="quickCreateSticky"
+      >
+        <i :class="stickyLauncherCreating ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-plus'" aria-hidden="true"></i>
       </button>
     </div>
 
@@ -568,9 +594,20 @@ import { useWorkTaskStore } from '@/store/useWorkTaskStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useGoalStore } from '@/store/useGoalStore'
 import { useSprintStore } from '@/store/useSprintStore'
-import { getStoredUserSession } from '@/utils/authSession'
+import { AUTH_SESSION_CHANGED, getStoredUserSession } from '@/utils/authSession'
 import { getDefaultPermissionMatrix, hasPermission } from '@/utils/permissionGuard'
 import { buildSpacePath } from '@/utils/spaceRoute'
+import { MAX_FLOATING_STICKIES, useStickyStore } from '@/store/useStickyStore'
+import { getRandomPaletteColor } from '@/utils/colors'
+import { getStickyAccountId } from '@/utils/stickyAccountIsolation'
+import {
+  STICKY_LAUNCHER_DRAG_THRESHOLD,
+  clampStickyLauncherY,
+  getStickyLauncherDragY,
+  hasStickyLauncherDragged,
+  readStickyLauncherY,
+  writeStickyLauncherY
+} from '@/utils/stickyLauncher'
 
 const props = defineProps({
   hideSidebar: {
@@ -586,10 +623,16 @@ const workTaskStore = useWorkTaskStore()
 const projectStore = useProjectStore()
 const goalStore = useGoalStore()
 const sprintStore = useSprintStore()
+const stickyStore = useStickyStore()
 const sidebarVisible = ref(window.innerWidth > 1024)
 const aiPetStore = useAiPetStore()
 const aiVisible = computed({ get: () => aiPetStore.isPanelOpen, set: value => aiPetStore.setPanelOpen(value) })
 const notesVisible = ref(false)
+const stickyLauncherRef = ref(null)
+const stickyLauncherY = ref(null)
+const stickyLauncherDragging = ref(false)
+const stickyLauncherCreating = ref(false)
+let stickyLauncherDragState = null
 const createVisible = ref(false)
 const createSpaceVisible = ref(false)
 const isMobile = ref(window.innerWidth <= 1024)
@@ -622,6 +665,105 @@ const selectedText = ref('')
 const selectionPopover = ref({ visible: false, left: 0, top: 0 })
 const petPinned = computed({ get: () => aiPetStore.isPinned, set: value => aiPetStore.setPinned(value) })
 const petPosition = computed({ get: () => aiPetStore.position, set: value => aiPetStore.setPosition(value) })
+const stickyLauncherStyle = computed(() => ({ top: `${stickyLauncherY.value ?? Math.round(window.innerHeight * 0.5)}px` }))
+const stickyLauncherAccountId = () => getStickyAccountId(getStoredUserSession())
+const getStickyLauncherBounds = () => {
+  const launcherHeight = stickyLauncherRef.value?.offsetHeight || 42
+  const topInset = Math.max(12, Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sa-topbar-height')) || 52) + 12
+  return { launcherHeight, topInset }
+}
+const clampStickyLauncherPosition = y => {
+  const { launcherHeight, topInset } = getStickyLauncherBounds()
+  return clampStickyLauncherY(y, window.innerHeight, launcherHeight, topInset)
+}
+const restoreStickyLauncherPosition = () => {
+  const { launcherHeight, topInset } = getStickyLauncherBounds()
+  const accountId = stickyLauncherAccountId()
+  const stored = readStickyLauncherY(window.localStorage, accountId, window.innerHeight, launcherHeight, topInset)
+  stickyLauncherY.value = stored ?? clampStickyLauncherY((window.innerHeight - launcherHeight) / 2, window.innerHeight, launcherHeight, topInset)
+}
+const persistStickyLauncherPosition = () => {
+  stickyLauncherY.value = clampStickyLauncherPosition(stickyLauncherY.value)
+  writeStickyLauncherY(window.localStorage, stickyLauncherAccountId(), stickyLauncherY.value)
+}
+const beginStickyLauncherDrag = event => {
+  if (event.button !== undefined && event.button !== 0) return
+  event.preventDefault()
+  event.stopPropagation()
+  stickyLauncherDragState = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    originY: stickyLauncherY.value ?? clampStickyLauncherPosition(window.innerHeight / 2),
+    moved: false
+  }
+  event.currentTarget?.setPointerCapture?.(event.pointerId)
+  window.addEventListener('pointermove', moveStickyLauncher)
+  window.addEventListener('pointerup', endStickyLauncherDrag)
+  window.addEventListener('pointercancel', cancelStickyLauncherDrag)
+}
+const moveStickyLauncher = event => {
+  const state = stickyLauncherDragState
+  if (!state || event.pointerId !== state.pointerId) return
+  if (!state.moved && !hasStickyLauncherDragged(state.startX, state.startY, event.clientX, event.clientY, STICKY_LAUNCHER_DRAG_THRESHOLD)) return
+  state.moved = true
+  stickyLauncherDragging.value = true
+  const { launcherHeight, topInset } = getStickyLauncherBounds()
+  stickyLauncherY.value = getStickyLauncherDragY(state.originY, event.clientY - state.startY, window.innerHeight, launcherHeight, topInset)
+}
+const clearStickyLauncherDrag = () => {
+  window.removeEventListener('pointermove', moveStickyLauncher)
+  window.removeEventListener('pointerup', endStickyLauncherDrag)
+  window.removeEventListener('pointercancel', cancelStickyLauncherDrag)
+  stickyLauncherDragging.value = false
+  stickyLauncherDragState = null
+}
+const endStickyLauncherDrag = event => {
+  const state = stickyLauncherDragState
+  if (!state || event.pointerId !== state.pointerId) return
+  if (state.moved) persistStickyLauncherPosition()
+  clearStickyLauncherDrag()
+}
+const cancelStickyLauncherDrag = event => {
+  const state = stickyLauncherDragState
+  if (!state || event.pointerId !== state.pointerId) return
+  stickyLauncherY.value = state.originY
+  clearStickyLauncherDrag()
+}
+const focusCreatedSticky = async note => {
+  await nextTick()
+  const floatingTitle = document.querySelector(`[data-floating-note-id="${note.id}"] input[aria-label="Tiêu đề ghi chú"]`)
+  const drawerTitle = document.querySelector('#global-stickies-drawer input[aria-label="Tiêu đề ghi chú"]')
+  ;(floatingTitle || drawerTitle)?.focus()
+  ;(floatingTitle || drawerTitle)?.select?.()
+}
+const quickCreateSticky = async () => {
+  if (stickyLauncherCreating.value) return
+  if (!stickyStore.canAddFloating) {
+    ElMessage.warning(`Bạn chỉ có thể dán tối đa ${MAX_FLOATING_STICKIES} ghi chú. Hãy gỡ một ghi chú khỏi màn hình trước.`)
+    openNotesFromLauncher()
+    return
+  }
+  stickyLauncherCreating.value = true
+  try {
+    const created = await stickyStore.createNote({
+      ...stickyContext.value,
+      title: 'Ghi chú mới',
+      content: '',
+      color: getRandomPaletteColor(stickyStore.notes[0]?.color),
+      isPinned: false
+    })
+    const launcherX = Math.max(12, window.innerWidth - 324)
+    const launcherY = clampStickyLauncherPosition(stickyLauncherY.value - 92)
+    await stickyStore.setFloatingState(created, { isFloating: true, positionX: launcherX, positionY: launcherY })
+    closeNotes()
+    await focusCreatedSticky(created)
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Không thể tạo ghi chú.')
+  } finally {
+    stickyLauncherCreating.value = false
+  }
+}
 const petDragging = ref(false)
 const petMoved = ref(false)
 const petDragOffset = ref({ x: 0, y: 0 })
@@ -1651,6 +1793,8 @@ const closeUtilitiesForIntegrationDetail = () => {
 
 onMounted(() => {
   window.addEventListener('resize', updateSize)
+  window.addEventListener('resize', restoreStickyLauncherPosition)
+  window.addEventListener(AUTH_SESSION_CHANGED, restoreStickyLauncherPosition)
   window.addEventListener('online', updateOnlineStatus)
   window.addEventListener('offline', updateOnlineStatus)
   document.addEventListener('mouseup', captureSelectedText)
@@ -1659,12 +1803,17 @@ onMounted(() => {
   window.addEventListener('integration-detail-opened', closeUtilitiesForIntegrationDetail)
   window.addEventListener('pointermove', movePet)
   window.addEventListener('pointerup', endPetDrag)
-  nextTick(() => window.setTimeout(normalizePetPosition, 120))
+  nextTick(() => {
+    restoreStickyLauncherPosition()
+    window.setTimeout(normalizePetPosition, 120)
+  })
   startPetWandering()
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateSize)
+  window.removeEventListener('resize', restoreStickyLauncherPosition)
+  window.removeEventListener(AUTH_SESSION_CHANGED, restoreStickyLauncherPosition)
   window.removeEventListener('online', updateOnlineStatus)
   window.removeEventListener('offline', updateOnlineStatus)
   document.removeEventListener('mouseup', captureSelectedText)
@@ -1673,6 +1822,7 @@ onUnmounted(() => {
   window.removeEventListener('integration-detail-opened', closeUtilitiesForIntegrationDetail)
   window.removeEventListener('pointermove', movePet)
   window.removeEventListener('pointerup', endPetDrag)
+  clearStickyLauncherDrag()
   stopPetWandering()
   cancelVoiceInput()
   clearPendingAttachments()
@@ -1940,6 +2090,14 @@ const toggleNotes = () => {
   } else if (!aiVisible.value) {
     startPetWandering()
   }
+}
+
+const openNotesFromLauncher = event => {
+  if (stickyLauncherDragState?.moved) {
+    event?.preventDefault?.()
+    return
+  }
+  toggleNotes()
 }
 
 const closeNotes = () => {
@@ -2881,34 +3039,76 @@ const handleProjectCreated = (newProject) => {
 .global-utility-rail {
   position: fixed;
   z-index: 1510;
-  top: 50%;
   right: 10px;
-  transform: translateY(-50%);
+  display: flex;
+  align-items: stretch;
+  min-height: 42px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  user-select: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.global-utility-rail.is-dragging {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-lg, var(--shadow-md));
 }
 
 .global-utility-rail button {
-  width: 46px;
-  min-height: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 3px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface);
+  min-height: 40px;
+  border: 0;
+  background: transparent;
   color: var(--color-text-muted);
-  box-shadow: var(--shadow-md);
   cursor: pointer;
 }
 
-.global-utility-rail button:hover,
-.global-utility-rail button.active {
-  border-color: var(--color-accent);
+.sticky-launcher-handle {
+  width: 24px;
+  display: grid;
+  place-items: center;
+  border-right: 1px solid var(--color-border) !important;
+  cursor: ns-resize !important;
+  touch-action: none;
+}
+
+.sticky-launcher-handle i { font-size: 12px; }
+.sticky-launcher-main {
+  min-width: 78px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sticky-launcher-add {
+  width: 30px;
+  display: grid;
+  place-items: center;
+  border-left: 1px solid var(--color-border) !important;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.sticky-launcher-main:hover,
+.sticky-launcher-main.active,
+.sticky-launcher-add:hover:not(:disabled),
+.sticky-launcher-handle:hover,
+.sticky-launcher-handle:focus-visible,
+.sticky-launcher-add:focus-visible,
+.sticky-launcher-main:focus-visible {
+  background: var(--color-surface-hover);
   color: var(--color-accent);
 }
 
-.global-utility-rail span { font-size: 9px; font-weight: 700; }
+.global-utility-rail button:active:not(:disabled) { transform: scale(.97); }
+.global-utility-rail button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.global-utility-rail button:disabled { cursor: wait; opacity: .7; }
 
 .ai-floating-btn.is-dragging { cursor: grabbing; filter: brightness(1.08); }
 .ai-floating-btn.is-dragging .ai-pet-image { animation: none; }
@@ -3965,13 +4165,10 @@ const handleProjectCreated = (newProject) => {
   }
 
   .global-utility-rail {
-    top: auto;
     right: 8px;
-    bottom: 82px;
-    transform: none;
   }
 
-  .global-utility-rail button { width: 42px; min-height: 44px; }
+  .sticky-launcher-main { min-width: 72px; padding: 0 8px; }
 
   .ai-pet-image {
     width: 58px;
