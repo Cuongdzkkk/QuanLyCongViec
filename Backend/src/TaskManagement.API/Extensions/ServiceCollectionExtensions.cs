@@ -56,7 +56,13 @@ namespace TaskManagement.API.Extensions
             
             services.AddMemoryCache();
             services.AddHttpContextAccessor();
+            services.AddHttpClient("GoogleCalendar", client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("IntegrationOAuth:GoogleCalendar:TimeoutSeconds", 30), 5, 120));
+            });
             services.AddHttpClient();
+            services.AddSingleton<IOAuthStateStore, OAuthStateStore>();
+            services.AddScoped<IGoogleCalendarIntegrationService, GoogleCalendarIntegrationService>();
 
             // Cấu hình JWT Authentication
             var jwtConfig = configuration.GetSection("Jwt");

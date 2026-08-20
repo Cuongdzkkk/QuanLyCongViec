@@ -1,13 +1,17 @@
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.Infrastructure.Services;
 
 namespace TaskManagement.API.Controllers
 {
@@ -16,6 +20,7 @@ namespace TaskManagement.API.Controllers
     [Authorize]
     public class IntegrationsController : ControllerBase
     {
+        private const string OAuthBindingCookieName = "sprinta_google_oauth_nonce";
         private const string GoogleCalendarProvider = "google-calendar";
         private const string GmailProvider = "gmail";
         private const string SlackProvider = "slack";
@@ -24,18 +29,24 @@ namespace TaskManagement.API.Controllers
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IDataProtector _protector;
         private readonly IDataProtector _oauthStateProtector;
+        private readonly IGoogleCalendarIntegrationService _googleCalendar;
+        private readonly IOAuthStateStore _oauthStateStore;
 
         public IntegrationsController(
             ApplicationDbContext context,
             IConfiguration configuration,
             IHttpClientFactory httpClientFactory,
-            IDataProtectionProvider dataProtectionProvider)
+            IDataProtectionProvider dataProtectionProvider,
+            IGoogleCalendarIntegrationService googleCalendar,
+            IOAuthStateStore oauthStateStore)
         {
             _context = context;
             _configuration = configuration;
             _httpClientFactory = httpClientFactory;
             _protector = dataProtectionProvider.CreateProtector("SprintA.IntegrationTokens");
             _oauthStateProtector = dataProtectionProvider.CreateProtector("SprintA.IntegrationOAuthState.v1");
+            _googleCalendar = googleCalendar;
+            _oauthStateStore = oauthStateStore;
         }
 
         [HttpGet]
@@ -135,22 +146,18 @@ namespace TaskManagement.API.Controllers
             var clientSecret = config.ClientSecret;
             var redirectUri = _configuration["IntegrationOAuth:GoogleCalendar:RedirectUri"];
 
-            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret) || string.IsNullOrWhiteSpace(redirectUri))
+            if (!config.IsConfigured || string.IsNullOrWhiteSpace(redirectUri))
             {
                 return BadRequest(new { message = "Google Calendar OAuth chưa được cấu hình đầy đủ" });
             }
 
-            var state = BuildOAuthState(userId.Value, GoogleCalendarProvider);
-            var scope = Uri.EscapeDataString("openid email profile https://www.googleapis.com/auth/calendar.readonly");
-            var url =
-                "https://accounts.google.com/o/oauth2/v2/auth" +
-                $"?client_id={Uri.EscapeDataString(clientId)}" +
-                $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
-                "&response_type=code" +
-                $"&scope={scope}" +
-                "&access_type=offline" +
-                "&prompt=consent" +
-                $"&state={Uri.EscapeDataString(state)}";
+            var nonce = CreateNonce();
+            var codeVerifier = GoogleCalendarIntegrationService.CreateCodeVerifier();
+            var codeChallenge = GoogleCalendarIntegrationService.CreateCodeChallenge(codeVerifier);
+            var state = BuildOAuthState(userId.Value, GoogleCalendarProvider, nonce);
+            _oauthStateStore.Store(nonce, userId.Value, GoogleCalendarProvider, codeVerifier, DateTime.UtcNow.AddMinutes(5));
+            SetOAuthBindingCookie(nonce);
+            var url = _googleCalendar.BuildAuthorizationUrl(clientId, redirectUri, state, codeChallenge);
 
             return Ok(new { statusCode = 200, data = new { authorizationUrl = url } });
         }
@@ -221,11 +228,25 @@ namespace TaskManagement.API.Controllers
                 return Redirect(BuildFrontendRedirect(frontendUrl, "error", "Thiếu mã xác thực từ Google"));
             }
 
+            var googleConfig = GetOAuthConfig(GoogleCalendarProvider);
+            if (!googleConfig.IsConfigured)
+            {
+                return Redirect(BuildFrontendRedirect(frontendUrl, "error", "Google Calendar OAuth hiện chưa khả dụng"));
+            }
+
             var statePayload = DecodeState(state);
             if (statePayload == null || statePayload.UserId == Guid.Empty || statePayload.Provider != GoogleCalendarProvider)
             {
                 return Redirect(BuildFrontendRedirect(frontendUrl, "error", "OAuth state không hợp lệ"));
             }
+
+            if (!Request.Cookies.TryGetValue(OAuthBindingCookieName, out var bindingNonce)
+                || !string.Equals(bindingNonce, statePayload.Nonce, StringComparison.Ordinal)
+                || !_oauthStateStore.TryConsume(statePayload.Nonce, statePayload.UserId, GoogleCalendarProvider, out var codeVerifier))
+            {
+                return Redirect(BuildFrontendRedirect(frontendUrl, "error", "OAuth flow không hợp lệ hoặc đã hết hạn"));
+            }
+            DeleteOAuthBindingCookie();
 
             var userId = statePayload.UserId;
             if (!await IsActiveUserAsync(userId))
@@ -233,7 +254,6 @@ namespace TaskManagement.API.Controllers
                 return Redirect(BuildFrontendRedirect(frontendUrl, "error", "OAuth user is no longer active"));
             }
 
-            var googleConfig = GetOAuthConfig(GoogleCalendarProvider);
             var clientId = googleConfig.ClientId;
             var clientSecret = googleConfig.ClientSecret;
             var redirectUri = googleConfig.RedirectUri;
@@ -243,34 +263,17 @@ namespace TaskManagement.API.Controllers
                 return Redirect(BuildFrontendRedirect(frontendUrl, "error", "Google Calendar OAuth chưa được cấu hình đầy đủ"));
             }
 
-            var client = _httpClientFactory.CreateClient();
-            var tokenResponse = await client.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(new Dictionary<string, string>
+            GoogleTokenResult token;
+            GoogleAccountIdentity userInfo;
+            try
             {
-                ["code"] = code,
-                ["client_id"] = clientId,
-                ["client_secret"] = clientSecret,
-                ["redirect_uri"] = redirectUri,
-                ["grant_type"] = "authorization_code"
-            }));
-
-            var tokenJson = await tokenResponse.Content.ReadAsStringAsync();
-            if (!tokenResponse.IsSuccessStatusCode)
-            {
-                return Redirect(BuildFrontendRedirect(frontendUrl, "error", "Không đổi được Google OAuth token"));
+                token = await _googleCalendar.ExchangeCodeAsync(code, clientId, clientSecret, redirectUri, codeVerifier, HttpContext.RequestAborted);
+                userInfo = await _googleCalendar.GetAccountIdentityAsync(token.AccessToken, HttpContext.RequestAborted);
             }
-
-            var token = JsonSerializer.Deserialize<GoogleTokenResponse>(tokenJson);
-            if (token == null || string.IsNullOrWhiteSpace(token.AccessToken))
+            catch (GoogleProviderException)
             {
-                return Redirect(BuildFrontendRedirect(frontendUrl, "error", "Google không trả access token hợp lệ"));
+                return Redirect(BuildFrontendRedirect(frontendUrl, "error", "Không thể hoàn tất Google OAuth"));
             }
-
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
-            var userInfoResponse = await client.GetAsync("https://openidconnect.googleapis.com/v1/userinfo");
-            var userInfoJson = await userInfoResponse.Content.ReadAsStringAsync();
-            var userInfo = userInfoResponse.IsSuccessStatusCode
-                ? JsonSerializer.Deserialize<GoogleUserInfoResponse>(userInfoJson)
-                : null;
 
             var account = await _context.IntegrationAccounts
                 .FirstOrDefaultAsync(item => item.UserId == userId && item.Provider == GoogleCalendarProvider);
@@ -287,8 +290,8 @@ namespace TaskManagement.API.Controllers
                 _context.IntegrationAccounts.Add(account);
             }
 
-            account.AccountEmail = userInfo?.Email ?? account.AccountEmail;
-            account.ExternalAccountId = userInfo?.Sub ?? account.ExternalAccountId;
+            account.AccountEmail = userInfo.Email ?? account.AccountEmail;
+            account.ExternalAccountId = userInfo.Subject ?? account.ExternalAccountId;
             account.AccessToken = ProtectToken(token.AccessToken);
             if (!string.IsNullOrWhiteSpace(token.RefreshToken))
             {
@@ -408,22 +411,13 @@ namespace TaskManagement.API.Controllers
             {
                 await EnsureGoogleAccessTokenAsync(account);
 
-                var client = _httpClientFactory.CreateClient();
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", DecryptToken(account.AccessToken));
-                var timeMin = Uri.EscapeDataString(DateTime.UtcNow.AddDays(-7).ToString("O"));
-                var timeMax = Uri.EscapeDataString(DateTime.UtcNow.AddDays(30).ToString("O"));
-                var eventsResponse = await client.GetAsync(
-                    $"https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&timeMin={timeMin}&timeMax={timeMax}");
-
-                var eventsJson = await eventsResponse.Content.ReadAsStringAsync();
-                if (!eventsResponse.IsSuccessStatusCode)
-                {
-                    throw new InvalidOperationException(eventsJson);
-                }
-
-                var calendarEvents = JsonSerializer.Deserialize<GoogleCalendarEventsResponse>(eventsJson);
+                var calendarEvents = await _googleCalendar.GetEventsAsync(
+                    DecryptToken(account.AccessToken),
+                    DateTime.UtcNow.AddDays(-7),
+                    DateTime.UtcNow.AddDays(30),
+                    HttpContext.RequestAborted);
                 var imported = 0;
-                foreach (var calendarEvent in calendarEvents?.Items ?? new List<GoogleCalendarEvent>())
+                foreach (var calendarEvent in calendarEvents)
                 {
                     if (string.IsNullOrWhiteSpace(calendarEvent.Id)) continue;
 
@@ -453,8 +447,8 @@ namespace TaskManagement.API.Controllers
                         : calendarEvent.Summary;
                     item.Content = calendarEvent.Description;
                     item.Location = calendarEvent.Location;
-                    item.StartsAt = ParseGoogleDate(calendarEvent.Start);
-                    item.EndsAt = ParseGoogleDate(calendarEvent.End);
+                    item.StartsAt = calendarEvent.StartsAt;
+                    item.EndsAt = calendarEvent.EndsAt;
                     item.UpdatedAt = DateTime.UtcNow;
                     imported += 1;
                 }
@@ -473,10 +467,14 @@ namespace TaskManagement.API.Controllers
             catch (Exception ex)
             {
                 history.Status = "error";
-                history.Message = ex.Message;
+                history.Message = ex is GoogleProviderException { ReconnectRequired: true }
+                    ? "Google Calendar requires reconnect."
+                    : "Google Calendar sync failed.";
                 history.CompletedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
-                return StatusCode(502, new { message = "Không đồng bộ được Google Calendar", detail = ex.Message });
+                return StatusCode(502, new { message = ex is GoogleProviderException { ReconnectRequired: true }
+                    ? "Google Calendar cần kết nối lại"
+                    : "Không đồng bộ được Google Calendar" });
             }
         }
 
@@ -658,6 +656,22 @@ namespace TaskManagement.API.Controllers
 
             if (account == null) return NotFound(new { message = "Không tìm thấy kết nối" });
 
+            if (account.Provider == GoogleCalendarProvider && !string.IsNullOrWhiteSpace(account.AccessToken))
+            {
+                try
+                {
+                    await _googleCalendar.RevokeTokenAsync(DecryptToken(account.AccessToken), HttpContext.RequestAborted);
+                }
+                catch (GoogleProviderException)
+                {
+                    // Local disconnect remains authoritative if provider revocation fails.
+                }
+                catch (CryptographicException)
+                {
+                    // Local disconnect remains authoritative if provider revocation fails.
+                }
+            }
+
             account.IsActive = false;
             account.AccessToken = string.Empty;
             account.RefreshToken = null;
@@ -705,21 +719,58 @@ namespace TaskManagement.API.Controllers
                 redirectUri = $"{Request.Scheme}://{Request.Host}/api/integrations/{provider}/callback";
             }
 
-            return new OAuthProviderConfig(clientId ?? string.Empty, clientSecret ?? string.Empty, redirectUri);
+            var enabled = provider == GoogleCalendarProvider
+                ? _configuration.GetValue($"IntegrationOAuth:{sectionName}:Enabled", false)
+                : _configuration.GetValue($"IntegrationOAuth:{sectionName}:Enabled", true);
+
+            return new OAuthProviderConfig(enabled, clientId ?? string.Empty, clientSecret ?? string.Empty, redirectUri);
         }
 
         private static string? FirstConfigured(params string?[] values)
             => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
-        private string BuildOAuthState(Guid userId, string provider)
+        private const int OAuthStateLifetimeMinutes = 5;
+
+        private string BuildOAuthState(Guid userId, string provider, string nonce)
         {
             return _oauthStateProtector.Protect(JsonSerializer.Serialize(new
             {
                 userId,
                 provider,
-                nonce = Guid.NewGuid(),
-                createdAt = DateTime.UtcNow
+                nonce,
+                createdAt = DateTime.UtcNow,
+                expiresAt = DateTime.UtcNow.AddMinutes(OAuthStateLifetimeMinutes)
             }));
+        }
+
+        // Preserves the existing Gmail/Slack flow until their provider-specific hardening phase.
+        private string BuildOAuthState(Guid userId, string provider)
+            => BuildOAuthState(userId, provider, CreateNonce());
+
+        private static string CreateNonce()
+            => WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
+
+        private void SetOAuthBindingCookie(string nonce)
+        {
+            Response.Cookies.Append(OAuthBindingCookieName, nonce, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                IsEssential = true,
+                MaxAge = TimeSpan.FromMinutes(OAuthStateLifetimeMinutes),
+                Path = "/api/integrations/google-calendar/callback"
+            });
+        }
+
+        private void DeleteOAuthBindingCookie()
+        {
+            Response.Cookies.Delete(OAuthBindingCookieName, new CookieOptions
+            {
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                Path = "/api/integrations/google-calendar/callback"
+            });
         }
 
         private async Task<IActionResult> GoogleOAuthCallback(string provider, string displayName, string code, string state, string? error, string? errorDescription)
@@ -863,13 +914,33 @@ namespace TaskManagement.API.Controllers
 
         private async Task EnsureGoogleAccessTokenAsync(IntegrationAccount account, string provider = GoogleCalendarProvider, string displayName = "Google Calendar")
         {
-            if (!string.IsNullOrWhiteSpace(DecryptToken(account.AccessToken))
+            string accessToken;
+            try
+            {
+                accessToken = DecryptToken(account.AccessToken);
+            }
+            catch (CryptographicException)
+            {
+                await MarkReconnectRequiredAsync(account);
+                throw new GoogleProviderException("Google authorization requires reconnect.", reconnectRequired: true);
+            }
+
+            if (!string.IsNullOrWhiteSpace(accessToken)
                 && (!account.AccessTokenExpiresAt.HasValue || account.AccessTokenExpiresAt.Value > DateTime.UtcNow))
             {
                 return;
             }
 
-            var decRefreshToken = DecryptToken(account.RefreshToken);
+            string decRefreshToken;
+            try
+            {
+                decRefreshToken = DecryptToken(account.RefreshToken);
+            }
+            catch (CryptographicException)
+            {
+                await MarkReconnectRequiredAsync(account);
+                throw new GoogleProviderException("Google authorization requires reconnect.", reconnectRequired: true);
+            }
             if (string.IsNullOrWhiteSpace(decRefreshToken))
             {
                 throw new InvalidOperationException("Google token đã hết hạn, vui lòng kết nối lại");
@@ -882,29 +953,34 @@ namespace TaskManagement.API.Controllers
                 throw new InvalidOperationException("Google Calendar OAuth chưa được cấu hình đầy đủ");
             }
 
-            var client = _httpClientFactory.CreateClient();
-            var tokenResponse = await client.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(new Dictionary<string, string>
+            try
             {
-                ["client_id"] = clientId,
-                ["client_secret"] = clientSecret,
-                ["refresh_token"] = decRefreshToken,
-                ["grant_type"] = "refresh_token"
-            }));
-
-            var tokenJson = await tokenResponse.Content.ReadAsStringAsync();
-            if (!tokenResponse.IsSuccessStatusCode)
-            {
-                throw new InvalidOperationException(tokenJson);
+                var token = await _googleCalendar.RefreshAccessTokenAsync(clientId, clientSecret, decRefreshToken, HttpContext.RequestAborted);
+                account.AccessToken = ProtectToken(token.AccessToken);
+                account.AccessTokenExpiresAt = token.ExpiresIn > 0 ? DateTime.UtcNow.AddSeconds(token.ExpiresIn - 60) : null;
+                if (!string.IsNullOrWhiteSpace(token.RefreshToken))
+                    account.RefreshToken = ProtectToken(token.RefreshToken);
+                account.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
             }
-
-            var token = JsonSerializer.Deserialize<GoogleTokenResponse>(tokenJson);
-            if (token == null || string.IsNullOrWhiteSpace(token.AccessToken))
+            catch (GoogleProviderException ex) when (ex.ReconnectRequired)
             {
-                throw new InvalidOperationException("Google không trả access token hợp lệ");
+                account.IsActive = false;
+                account.AccessToken = string.Empty;
+                account.RefreshToken = null;
+                account.AccessTokenExpiresAt = null;
+                account.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                throw;
             }
+        }
 
-            account.AccessToken = ProtectToken(token.AccessToken);
-            account.AccessTokenExpiresAt = token.ExpiresIn > 0 ? DateTime.UtcNow.AddSeconds(token.ExpiresIn - 60) : null;
+        private async Task MarkReconnectRequiredAsync(IntegrationAccount account)
+        {
+            account.IsActive = false;
+            account.AccessToken = string.Empty;
+            account.RefreshToken = null;
+            account.AccessTokenExpiresAt = null;
             account.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
@@ -963,15 +1039,7 @@ namespace TaskManagement.API.Controllers
         private string DecryptToken(string? protectedToken)
         {
             if (string.IsNullOrEmpty(protectedToken)) return string.Empty;
-            try
-            {
-                return _protector.Unprotect(protectedToken);
-            }
-            catch
-            {
-                // Fallback cho token cũ dạng plaintext
-                return protectedToken;
-            }
+            return _protector.Unprotect(protectedToken);
         }
 
         private static string BuildFrontendRedirect(string frontendUrl, string status, string? message)
@@ -1000,8 +1068,9 @@ namespace TaskManagement.API.Controllers
                 var payload = JsonSerializer.Deserialize<OAuthState>(_oauthStateProtector.Unprotect(state));
                 if (payload == null ||
                     payload.CreatedAt == default ||
-                    payload.CreatedAt < DateTime.UtcNow.AddMinutes(-10) ||
-                    payload.CreatedAt > DateTime.UtcNow.AddMinutes(1))
+                    payload.CreatedAt < DateTime.UtcNow.AddMinutes(-OAuthStateLifetimeMinutes) ||
+                    payload.CreatedAt > DateTime.UtcNow.AddMinutes(1) ||
+                    payload.ExpiresAt < DateTime.UtcNow)
                 {
                     return null;
                 }
@@ -1020,9 +1089,9 @@ namespace TaskManagement.API.Controllers
                 user.IsActive &&
                 !user.IsDeleted);
 
-        private sealed record OAuthProviderConfig(string ClientId, string ClientSecret, string RedirectUri)
+        private sealed record OAuthProviderConfig(bool Enabled, string ClientId, string ClientSecret, string RedirectUri)
         {
-            public bool IsConfigured => !string.IsNullOrWhiteSpace(ClientId)
+            public bool IsConfigured => Enabled && !string.IsNullOrWhiteSpace(ClientId)
                 && !string.IsNullOrWhiteSpace(ClientSecret)
                 && !string.IsNullOrWhiteSpace(RedirectUri);
         }
@@ -1035,8 +1104,14 @@ namespace TaskManagement.API.Controllers
             [JsonPropertyName("provider")]
             public string Provider { get; set; } = string.Empty;
 
+            [JsonPropertyName("nonce")]
+            public string Nonce { get; set; } = string.Empty;
+
             [JsonPropertyName("createdAt")]
             public DateTime CreatedAt { get; set; }
+
+            [JsonPropertyName("expiresAt")]
+            public DateTime ExpiresAt { get; set; }
         }
 
         private sealed class GoogleTokenResponse

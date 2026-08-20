@@ -24,6 +24,11 @@ services:
       Cors__AllowedOrigins__1: "https://www.sprinta.id.vn"
       Frontend__BaseUrl: "${FRONTEND_URL}"
 
+      IntegrationOAuth__GoogleCalendar__Enabled: "${GOOGLE_CALENDAR_OAUTH_ENABLED:-false}"
+      IntegrationOAuth__GoogleCalendar__ClientId: "${GOOGLE_CALENDAR_OAUTH_CLIENT_ID}"
+      IntegrationOAuth__GoogleCalendar__ClientSecret: "${GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET}"
+      IntegrationOAuth__GoogleCalendar__RedirectUri: "${GOOGLE_CALENDAR_OAUTH_REDIRECT_URI}"
+
       Features__AIEnabled: "true"
       Google__Enabled: "true"
       Google__ClientId: "${GOOGLE_CLIENT_ID}"
