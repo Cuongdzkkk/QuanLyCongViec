@@ -75,10 +75,7 @@
         </button>
       </div>
 
-      <NotificationsDropdown v-if="isSpaceContext" />
-      <button class="icon-btn" @click="goToNotifications" v-else>
-        <i class="fa-regular fa-bell"></i>
-      </button>
+      <NotificationsDropdown />
 
       <button
         class="icon-btn theme-toggle-btn hidden-mobile"
@@ -136,13 +133,6 @@ const demoText = (value) => translateDemoText(value, i18nStore.locale)
 const isHomeContext = computed(() => route.path.startsWith('/home') || route.path.startsWith('/sites'))
 const isSpaceContext = computed(() => route.path.startsWith('/space/'))
 
-const isModule = (moduleName) => {
-  if (moduleName === 'people') {
-    return route.path.includes('/home/people') || route.path.includes('/home/profile')
-  }
-  return route.path.includes(`/home/${moduleName}`)
-}
-
 const searchQuery = ref('')
 const searchResults = ref([])
 const searching = ref(false)
@@ -161,7 +151,6 @@ const activeProject = computed(() => (
     : null
 ))
 const workspaceName = computed(() => demoText(activeProject.value?.name) || 'SprintA')
-const workspaceBadge = computed(() => activeProject.value?.icon || workspaceName.value.charAt(0).toUpperCase())
 const showSearchDropdown = computed(() => searchQuery.value.trim().length > 0 && (searching.value || searchResults.value.length > 0))
 
 const runSearch = async () => {
@@ -245,12 +234,6 @@ const handleEscKey = (e) => {
   if (e.key === 'Escape') {
     searchResults.value = []
     searchQuery.value = ''
-  }
-}
-
-const goToNotifications = () => {
-  if (isHomeContext.value) {
-    router.push('/home/notifications')
   }
 }
 
