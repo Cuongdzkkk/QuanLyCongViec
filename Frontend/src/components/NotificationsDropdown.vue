@@ -97,7 +97,12 @@ import { isExpectedNetworkError } from '@/utils/errorTelemetry'
 import { getStoredAccessToken } from '@/utils/authSession'
 import { useAuthStore } from '@/store/useAuthStore'
 import { collaborationRealtime } from '@/services/collaborationRealtime'
-import { buildSpacePath } from '@/utils/spaceRoute'
+import {
+  isPendingInvitation,
+  isResolvedInvitation,
+  navigateNotification,
+  normalizeNotification
+} from '@/utils/notificationNavigation'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -155,33 +160,12 @@ const getTypeClass = (type) => {
   }
 }
 
-const isPendingInvitation = (notification) =>
-  notification.notificationType?.toUpperCase() === 'PROJECT_INVITATION' &&
-  notification.actionState?.toLowerCase() === 'pending' &&
-  Boolean(notification.relatedInvitationId)
-
-const isResolvedInvitation = (notification) =>
-  notification.notificationType?.toUpperCase() === 'PROJECT_INVITATION' &&
-  ['accepted', 'declined'].includes(notification.actionState?.toLowerCase())
-
 const notificationRows = (payload) => {
   const data = payload?.data
   if (Array.isArray(data)) return data
   if (Array.isArray(data?.items)) return data.items
   if (Array.isArray(payload)) return payload
   return []
-}
-
-const normalizeLink = (notification) => {
-  if (notification.linkUrl?.startsWith('/chat')) return notification.linkUrl
-  if (notification.linkUrl?.startsWith('/space/')) return notification.linkUrl
-  if (notification.relatedProjectId && notification.relatedTaskId) return `${buildSpacePath(notification.relatedProjectId, 'work-items')}?task=${notification.relatedTaskId}`
-  if (notification.relatedProjectId) return buildSpacePath(notification.relatedProjectId, 'work-items')
-  if (notification.linkUrl?.startsWith('/projects/')) {
-    const parts = notification.linkUrl.split('/').filter(Boolean)
-    if (parts[1]) return buildSpacePath(parts[1], 'work-items')
-  }
-  return notification.linkUrl || null
 }
 
 const fetchNotifications = async () => {
@@ -198,10 +182,7 @@ const fetchNotifications = async () => {
       signal: controller.signal
     })
     if (requestId !== notificationRequestId || authStore.token !== requestToken) return
-    notifications.value = notificationRows(response.data).map(item => ({
-      ...item,
-      linkUrl: normalizeLink(item)
-    }))
+    notifications.value = notificationRows(response.data).map(normalizeNotification)
   } catch (error) {
     if (error?.code !== 'ERR_CANCELED') errorMessage.value = 'Không thể tải thông báo. Vui lòng thử lại.'
   } finally {
@@ -244,7 +225,14 @@ const openNotification = async (notification) => {
     if (!notification.isRead) {
       await markAsRead(notification)
     }
-    if (notification.linkUrl) router.push(notification.linkUrl)
+    await navigateNotification(router, notification, {
+      fetchProject: async projectId => {
+        const response = await axiosClient.get(`/projects/${projectId}`)
+        return response.data?.data || response.data
+      },
+      onDenied: () => ElMessage.warning('Bạn không còn quyền truy cập dự án này.'),
+      onInvalid: () => ElMessage.info('Thông báo này không còn liên kết hợp lệ.')
+    })
   } catch (error) {
     // Error handled in markAsRead
   }
@@ -271,12 +259,18 @@ const acceptInvitation = async (notification) => {
   if (!isPendingInvitation(notification) || invitationActionId.value) return
   invitationActionId.value = notification.id
   try {
-    const response = await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/accept`)
+    await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/accept`)
     notification.actionState = 'Accepted'
     notification.isRead = true
     await fetchUnreadCount()
-    const redirectPath = response.data?.data?.redirectPath || notification.linkUrl || '/dashboard'
-    await router.push(redirectPath)
+    await navigateNotification(router, notification, {
+      fetchProject: async projectId => {
+        const projectResponse = await axiosClient.get(`/projects/${projectId}`)
+        return projectResponse.data?.data || projectResponse.data
+      },
+      onDenied: () => ElMessage.warning('Bạn không còn quyền truy cập dự án này.'),
+      onInvalid: () => ElMessage.info('Lời mời đã được xử lý.')
+    })
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Không thể chấp nhận lời mời.')
   } finally {
@@ -320,7 +314,7 @@ const initSignalR = () => {
     const normalized = {
       ...notification,
       isRead: false,
-      linkUrl: normalizeLink(notification)
+      linkUrl: normalizeNotification(notification).linkUrl
     }
     const index = notifications.value.findIndex(item => item.id === normalized.id)
     if (index >= 0) {
