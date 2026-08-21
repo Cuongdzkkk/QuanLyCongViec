@@ -707,12 +707,6 @@ namespace TaskManagement.API.Controllers
             var clientId = _configuration[$"IntegrationOAuth:{sectionName}:ClientId"];
             var clientSecret = _configuration[$"IntegrationOAuth:{sectionName}:ClientSecret"];
 
-            if (provider == GmailProvider)
-            {
-                clientId = FirstConfigured(clientId, _configuration["IntegrationOAuth:GoogleCalendar:ClientId"], _configuration["Google:ClientId"]);
-                clientSecret = FirstConfigured(clientSecret, _configuration["IntegrationOAuth:GoogleCalendar:ClientSecret"]);
-            }
-
             var redirectUri = _configuration[$"IntegrationOAuth:{sectionName}:RedirectUri"];
             if (string.IsNullOrWhiteSpace(redirectUri))
             {
@@ -725,9 +719,6 @@ namespace TaskManagement.API.Controllers
 
             return new OAuthProviderConfig(enabled, clientId ?? string.Empty, clientSecret ?? string.Empty, redirectUri);
         }
-
-        private static string? FirstConfigured(params string?[] values)
-            => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
         private const int OAuthStateLifetimeMinutes = 5;
 
@@ -946,16 +937,15 @@ namespace TaskManagement.API.Controllers
                 throw new InvalidOperationException("Google token đã hết hạn, vui lòng kết nối lại");
             }
 
-            var clientId = _configuration["IntegrationOAuth:GoogleCalendar:ClientId"];
-            var clientSecret = _configuration["IntegrationOAuth:GoogleCalendar:ClientSecret"];
-            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+            var config = GetOAuthConfig(provider);
+            if (!config.IsConfigured)
             {
-                throw new InvalidOperationException("Google Calendar OAuth chưa được cấu hình đầy đủ");
+                throw new InvalidOperationException($"{displayName} OAuth chưa được cấu hình đầy đủ");
             }
 
             try
             {
-                var token = await _googleCalendar.RefreshAccessTokenAsync(clientId, clientSecret, decRefreshToken, HttpContext.RequestAborted);
+                var token = await _googleCalendar.RefreshAccessTokenAsync(config.ClientId, config.ClientSecret, decRefreshToken, HttpContext.RequestAborted);
                 account.AccessToken = ProtectToken(token.AccessToken);
                 account.AccessTokenExpiresAt = token.ExpiresIn > 0 ? DateTime.UtcNow.AddSeconds(token.ExpiresIn - 60) : null;
                 if (!string.IsNullOrWhiteSpace(token.RefreshToken))
