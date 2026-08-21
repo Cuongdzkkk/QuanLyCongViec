@@ -29,6 +29,16 @@ services:
       IntegrationOAuth__GoogleCalendar__ClientSecret: "${GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET}"
       IntegrationOAuth__GoogleCalendar__RedirectUri: "${GOOGLE_CALENDAR_OAUTH_REDIRECT_URI}"
 
+      IntegrationOAuth__Gmail__Enabled: "${GMAIL_OAUTH_ENABLED:-false}"
+      IntegrationOAuth__Gmail__ClientId: "${GMAIL_OAUTH_CLIENT_ID}"
+      IntegrationOAuth__Gmail__ClientSecret: "${GMAIL_OAUTH_CLIENT_SECRET}"
+      IntegrationOAuth__Gmail__RedirectUri: "${GMAIL_OAUTH_REDIRECT_URI}"
+
+      IntegrationOAuth__Slack__Enabled: "${SLACK_OAUTH_ENABLED:-false}"
+      IntegrationOAuth__Slack__ClientId: "${SLACK_OAUTH_CLIENT_ID}"
+      IntegrationOAuth__Slack__ClientSecret: "${SLACK_OAUTH_CLIENT_SECRET}"
+      IntegrationOAuth__Slack__RedirectUri: "${SLACK_OAUTH_REDIRECT_URI}"
+
       Features__AIEnabled: "true"
       Google__Enabled: "true"
       Google__ClientId: "${GOOGLE_CLIENT_ID}"
