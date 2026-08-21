@@ -48,7 +48,7 @@
               <QrCode :size="24" />
             </div>
             <div class="qr-frame">
-              <img v-if="hasQr" :src="qrImagePath" :alt="t('QR thanh toán SprintA', 'SprintA payment QR')" @error="hasQr = false" />
+              <img v-if="qrImagePath" :src="qrImagePath" :alt="t('QR thanh toán SprintA', 'SprintA payment QR')" @error="qrFailed = true" />
               <div v-else class="qr-placeholder"><QrCode :size="38" /><span>{{ t('Chưa cấu hình QR thanh toán.', 'Payment QR is not configured.') }}</span></div>
             </div>
             <p class="payment-note">{{ t('Chuyển đúng số tiền và ghi đúng mã thanh toán. Gói sẽ được kích hoạt sau khi quản trị viên xác nhận.', 'Transfer the exact amount with the correct payment code. Your plan is activated after administrator approval.') }}</p>
@@ -105,14 +105,14 @@ const error = ref('')
 const plan = ref(null)
 const billing = ref(null)
 const orders = ref([])
-const hasQr = ref(true)
-const qrImagePath = '/payment/sprinta-vietinbank-qr.png'
+const qrFailed = ref(false)
 const isVi = computed(() => language.value === 'vi')
 const t = (vi, en) => isVi.value ? vi : en
 const planCode = computed(() => String(route.params.planCode || '').toLowerCase())
 const isFree = computed(() => planCode.value === 'free' || Number(plan.value?.monthlyPriceVnd) === 0)
 const isEnterprise = computed(() => planCode.value === 'enterprise' || plan.value?.monthlyPriceVnd == null)
 const activeOrder = computed(() => orders.value.find(order => order.planCode === planCode.value && order.status === 'Pending'))
+const qrImagePath = computed(() => qrFailed.value ? '' : (activeOrder.value?.paymentInstructions?.qrUrl || ''))
 
 const loadData = async () => {
   loading.value = true

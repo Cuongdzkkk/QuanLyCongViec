@@ -106,7 +106,7 @@ public sealed class BillingMvpTests
     }
 
     [Fact]
-    public async Task AutoRenew_AdvancesMonthlyPeriod_WithoutDeletingOldUsage()
+    public async Task AutoRenew_DoesNotGrantPaidPeriodWithoutVerifiedPayment()
     {
         await using var context = CreateContext();
         var user = AddUser(context);
@@ -119,9 +119,8 @@ public sealed class BillingMvpTests
 
         var usage = await CreditService(context).GetUsageAsync(user.Id, DateTime.MinValue, DateTime.MaxValue);
 
-        usage.PlanCode.Should().Be("starter");
-        usage.CurrentPeriodEnd.Should().BeAfter(DateTime.UtcNow);
-        usage.UsedCredits.Should().Be(0);
+        usage.PlanCode.Should().Be("free");
+        usage.SubscriptionStatus.Should().Be("Expired");
         (await context.AITokenUsages.CountAsync()).Should().Be(1);
     }
 

@@ -1349,6 +1349,9 @@ namespace TaskManagement.Infrastructure.Services
             string? systemInstruction = null,
             int? maxCompletionTokens = null)
         {
+            var reservationId = await _aiCreditUsageService.ReserveAsync(userId, 1, $"ai-gemini:{Guid.NewGuid():N}", cancellationToken);
+            try
+            {
             prompt = AiSafetyGuard.RedactSecrets(prompt);
             var effectiveSystemInstruction = systemInstruction ?? "You must follow the user requested output format exactly.";
             var result = await _zenMuxAiClient.GenerateTextAsync(
@@ -1372,7 +1375,15 @@ namespace TaskManagement.Infrastructure.Services
             });
             await _context.SaveChangesAsync(cancellationToken);
 
+            await _aiCreditUsageService.FinalizeReservationAsync(reservationId, cancellationToken);
+
             return new GeminiResult(result.Text, result.TotalTokens);
+            }
+            catch
+            {
+                await _aiCreditUsageService.ReleaseReservationAsync(reservationId, cancellationToken);
+                throw;
+            }
         }
 
         public async Task<string> ChatWithAttachmentsAsync(
@@ -1424,6 +1435,9 @@ namespace TaskManagement.Infrastructure.Services
                 throw new InvalidOperationException("Chưa cấu hình Gemini API key. Hãy nhập key vào appsettings.json tại Gemini:ApiKey.");
             }
 
+            var reservationId = await _aiCreditUsageService.ReserveAsync(userId, 1, $"ai-attachment-image:{Guid.NewGuid():N}");
+            try
+            {
             var model = _configuration["Gemini:Model"] ?? "gemini-1.5-flash";
             var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={Uri.EscapeDataString(apiKey)}";
             var parts = new List<object> { new { text = prompt.ToString() } };
@@ -1477,7 +1491,15 @@ namespace TaskManagement.Infrastructure.Services
             });
             await _context.SaveChangesAsync();
 
+            await _aiCreditUsageService.FinalizeReservationAsync(reservationId);
+
             return result.Text;
+            }
+            catch
+            {
+                await _aiCreditUsageService.ReleaseReservationAsync(reservationId);
+                throw;
+            }
         }
 
         public async Task<string> TranscribeAudioAsync(
@@ -1495,6 +1517,9 @@ namespace TaskManagement.Infrastructure.Services
                 throw new InvalidOperationException("Chưa cấu hình Gemini API key.");
             }
 
+            var reservationId = await _aiCreditUsageService.ReserveAsync(userId, 1, $"ai-transcription:{Guid.NewGuid():N}", cancellationToken);
+            try
+            {
             var languageRule = languageMode switch
             {
                 "vi" => "The speech is Vietnamese. Transcribe it in Vietnamese and preserve Vietnamese diacritics.",
@@ -1555,7 +1580,15 @@ namespace TaskManagement.Infrastructure.Services
             });
             await _context.SaveChangesAsync(cancellationToken);
 
+            await _aiCreditUsageService.FinalizeReservationAsync(reservationId, cancellationToken);
+
             return transcript;
+            }
+            catch
+            {
+                await _aiCreditUsageService.ReleaseReservationAsync(reservationId, cancellationToken);
+                throw;
+            }
         }
 
         private GeminiResult ParseGeminiResponse(string responseBody)
@@ -2432,6 +2465,9 @@ namespace TaskManagement.Infrastructure.Services
 
         private async Task<GeminiResult> GenerateMultimodalTextAsync(Guid userId, string featureCode, string prompt, string mimeType, byte[] fileBytes)
         {
+            var reservationId = await _aiCreditUsageService.ReserveAsync(userId, 1, $"ai-gemini-multimodal:{Guid.NewGuid():N}");
+            try
+            {
             var apiKey = _configuration["Gemini:ApiKey"];
             if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Contains("PASTE_YOUR_GEMINI_API_KEY_HERE", StringComparison.OrdinalIgnoreCase))
             {
@@ -2489,7 +2525,15 @@ namespace TaskManagement.Infrastructure.Services
             });
             await _context.SaveChangesAsync();
 
+            await _aiCreditUsageService.FinalizeReservationAsync(reservationId);
+
             return result;
+            }
+            catch
+            {
+                await _aiCreditUsageService.ReleaseReservationAsync(reservationId);
+                throw;
+            }
         }
 
         private string ExtractTextFromDocx(byte[] bytes)

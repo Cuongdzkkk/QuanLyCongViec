@@ -16,4 +16,5 @@ public interface IBillingService
     Task<BillingSummaryDto> ResetCurrentPeriodUsageAsync(Guid userId, Guid adminUserId, string reason, CancellationToken cancellationToken = default);
     Task<PaymentOrderDto> ApproveOrderAsync(Guid orderId, Guid adminUserId, string? note, CancellationToken cancellationToken = default);
     Task<PaymentOrderDto> RejectOrderAsync(Guid orderId, Guid adminUserId, string reason, CancellationToken cancellationToken = default);
+    Task<PaymentOrderDto?> ProcessProviderPaymentAsync(string provider, PaymentWebhookVerificationResult webhook, string rawPayload, CancellationToken cancellationToken = default);
 }

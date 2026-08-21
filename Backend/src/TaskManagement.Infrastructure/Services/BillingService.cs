@@ -12,11 +12,13 @@ public sealed class BillingService : IBillingService
 {
     private readonly ApplicationDbContext _context;
     private readonly IAiCreditUsageService _creditUsageService;
+    private readonly IPaymentProvider? _paymentProvider;
 
-    public BillingService(ApplicationDbContext context, IAiCreditUsageService creditUsageService)
+    public BillingService(ApplicationDbContext context, IAiCreditUsageService creditUsageService, IPaymentProvider? paymentProvider = null)
     {
         _context = context;
         _creditUsageService = creditUsageService;
+        _paymentProvider = paymentProvider;
     }
 
     public async Task<BillingSummaryDto> GetSummaryAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -87,14 +89,19 @@ public sealed class BillingService : IBillingService
             UserId = userId,
             User = user,
             PlanCode = normalizedCode,
+            PlanNameSnapshot = plan.Name,
+            IncludedAiCreditsSnapshot = plan.IncludedAiCredits,
             AmountVnd = plan.MonthlyPriceVnd.Value,
+            Currency = "VND",
+            Provider = _paymentProvider?.IsConfigured == true ? _paymentProvider.Code : "manual_bank_transfer",
             Status = "Pending",
             TransferCode = await CreateTransferCodeAsync(cancellationToken),
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(30)
         };
         _context.PaymentOrders.Add(order);
         await _context.SaveChangesAsync(cancellationToken);
-        return ToOrderDto(order, plan.Name);
+        return ToOrderDto(order, plan.Name, _paymentProvider);
     }
 
     public async Task<BillingSummaryDto> ActivateFreeAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -263,12 +270,19 @@ public sealed class BillingService : IBillingService
 
         if (order.Status == "Paid") return ToOrderDto(order, plan.Name);
         if (order.Status != "Pending") throw new InvalidOperationException("Chỉ có thể duyệt đơn đang chờ.");
+        if (order.ExpiresAt <= DateTime.UtcNow) throw new InvalidOperationException("Đơn thanh toán đã hết hạn.");
 
         var now = DateTime.UtcNow;
         order.Status = "Paid";
         order.PaidAt = now;
         order.ApprovedByUserId = adminUserId;
         order.AdminNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        _context.PaymentTransactions.Add(new PaymentTransaction
+        {
+            Id = Guid.NewGuid(), PaymentOrderId = order.Id, Provider = "manual_bank_transfer",
+            ProviderTransactionId = $"manual:{order.Id:N}", Amount = order.AmountVnd, Currency = order.Currency,
+            Status = "Paid", PaidAt = now, ProviderReference = order.TransferCode, CreatedAt = now
+        });
         var subscription = await GetOrCreateSubscriptionAsync(order.UserId, now, cancellationToken);
         subscription.PlanCode = order.PlanCode;
         subscription.Status = "Active";
@@ -281,7 +295,7 @@ public sealed class BillingService : IBillingService
         AddAudit(adminUserId, "PAYMENT_ORDER_APPROVE", order.UserId, new { orderId, order.PlanCode, order.AmountVnd, note });
         await _context.SaveChangesAsync(cancellationToken);
         if (transaction != null) await transaction.CommitAsync(cancellationToken);
-        return ToOrderDto(order, plan.Name);
+        return ToOrderDto(order, plan.Name, _paymentProvider);
     }
 
     public async Task<PaymentOrderDto> RejectOrderAsync(
@@ -298,6 +312,58 @@ public sealed class BillingService : IBillingService
         AddAudit(adminUserId, "PAYMENT_ORDER_REJECT", order.UserId, new { orderId, reason });
         await _context.SaveChangesAsync(cancellationToken);
         return await ToOrderDtoAsync(order, cancellationToken);
+    }
+
+    public async Task<PaymentOrderDto?> ProcessProviderPaymentAsync(string provider, PaymentWebhookVerificationResult webhook, string rawPayload, CancellationToken cancellationToken = default)
+    {
+        if (!webhook.IsValid || string.IsNullOrWhiteSpace(webhook.ProviderEventId))
+            throw new ArgumentException("Webhook không hợp lệ.");
+        await using IDbContextTransaction? transaction = _context.Database.IsRelational()
+            ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+        var existingEvent = await _context.PaymentWebhookEvents.SingleOrDefaultAsync(x => x.Provider == provider && x.ProviderEventId == webhook.ProviderEventId, cancellationToken);
+        if (existingEvent != null)
+            return null;
+        _context.PaymentWebhookEvents.Add(new PaymentWebhookEvent
+        {
+            Id = Guid.NewGuid(), Provider = provider, ProviderEventId = webhook.ProviderEventId,
+            EventType = webhook.EventType, RawPayload = rawPayload, ReceivedAt = DateTime.UtcNow,
+            Status = "Received"
+        });
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // A concurrent delivery inserted the same provider event first.
+            return null;
+        }
+        if (!string.Equals(webhook.TransactionType, "in", StringComparison.OrdinalIgnoreCase) || webhook.Amount <= 0)
+            return null;
+        var order = await _context.PaymentOrders.Include(x => x.User)
+            .SingleOrDefaultAsync(x => x.Provider == provider && x.Status == "Pending" && x.TransferCode != "" && webhook.TransferContent.Contains(x.TransferCode), cancellationToken);
+        if (order == null || order.ExpiresAt <= DateTime.UtcNow || order.AmountVnd != webhook.Amount)
+            return null;
+        var plan = await _context.AiPricingPlans.SingleOrDefaultAsync(x => x.Code == order.PlanCode, cancellationToken)
+            ?? throw new InvalidOperationException("Gói của đơn thanh toán không còn tồn tại.");
+        var now = webhook.TransactionAt ?? DateTime.UtcNow;
+        order.Status = "Paid";
+        order.PaidAt = now;
+        _context.PaymentTransactions.Add(new PaymentTransaction
+        {
+            Id = Guid.NewGuid(), PaymentOrderId = order.Id, Provider = provider,
+            ProviderTransactionId = webhook.ProviderEventId, Amount = webhook.Amount, Currency = order.Currency,
+            Status = "Paid", PaidAt = now, ProviderReference = webhook.ProviderReference, CreatedAt = DateTime.UtcNow
+        });
+        var subscription = await GetOrCreateSubscriptionAsync(order.UserId, now, cancellationToken);
+        subscription.PlanCode = order.PlanCode; subscription.Status = "Active";
+        subscription.CurrentPeriodStart = now; subscription.CurrentPeriodEnd = now.AddMonths(1);
+        subscription.ActivatedAt = now; subscription.CancelledAt = null; subscription.AutoRenew = false; subscription.UpdatedAt = now;
+        var evt = await _context.PaymentWebhookEvents.SingleAsync(x => x.Provider == provider && x.ProviderEventId == webhook.ProviderEventId, cancellationToken);
+        evt.Status = "Processed"; evt.ProcessedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
+        if (transaction != null) await transaction.CommitAsync(cancellationToken);
+        return ToOrderDto(order, plan.Name, _paymentProvider);
     }
 
     private async Task<AiSubscription> GetOrCreateSubscriptionAsync(Guid userId, DateTime now, CancellationToken cancellationToken)
@@ -320,7 +386,7 @@ public sealed class BillingService : IBillingService
     {
         for (var attempt = 0; attempt < 5; attempt++)
         {
-            var code = $"SA{DateTime.UtcNow:yyMMdd}{Guid.NewGuid():N}"[..16].ToUpperInvariant();
+            var code = $"SEVQR SPA{Guid.NewGuid():N}"[..18].ToUpperInvariant();
             if (!await _context.PaymentOrders.AnyAsync(order => order.TransferCode == code, cancellationToken)) return code;
         }
         throw new InvalidOperationException("Không thể tạo mã thanh toán duy nhất.");
@@ -332,10 +398,10 @@ public sealed class BillingService : IBillingService
             .Where(plan => plan.Code == order.PlanCode)
             .Select(plan => plan.Name)
             .SingleOrDefaultAsync(cancellationToken) ?? order.PlanCode;
-        return ToOrderDto(order, planName);
+        return ToOrderDto(order, planName, _paymentProvider);
     }
 
-    private static PaymentOrderDto ToOrderDto(PaymentOrder order, string planName) => new()
+    private static PaymentOrderDto ToOrderDto(PaymentOrder order, string planName, IPaymentProvider? provider = null) => new()
     {
         Id = order.Id,
         UserId = order.UserId,
@@ -346,6 +412,10 @@ public sealed class BillingService : IBillingService
         AmountVnd = order.AmountVnd,
         Status = order.Status,
         TransferCode = order.TransferCode,
+        Currency = order.Currency,
+        Provider = order.Provider,
+        ExpiresAt = order.ExpiresAt,
+        PaymentInstructions = provider?.Code == order.Provider ? provider.BuildInstructions(order) : null,
         CreatedAt = order.CreatedAt,
         PaidAt = order.PaidAt,
         ApprovedByUserId = order.ApprovedByUserId,

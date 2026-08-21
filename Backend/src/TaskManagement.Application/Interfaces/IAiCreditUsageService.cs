@@ -11,4 +11,7 @@ public interface IAiCreditUsageService
         CancellationToken cancellationToken = default);
 
     Task EnsureWithinQuotaAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<Guid> ReserveAsync(Guid userId, int credits, string idempotencyKey, CancellationToken cancellationToken = default);
+    Task FinalizeReservationAsync(Guid reservationId, CancellationToken cancellationToken = default);
+    Task ReleaseReservationAsync(Guid reservationId, CancellationToken cancellationToken = default);
 }

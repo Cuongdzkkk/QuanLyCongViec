@@ -10,6 +10,7 @@ using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.AI;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Infrastructure.Services;
+using TaskManagement.Infrastructure.Payments;
 
 namespace TaskManagement.API.Extensions
 {
@@ -36,6 +37,7 @@ namespace TaskManagement.API.Extensions
             });
             services.AddScoped<IAiCreditUsageService, AiCreditUsageService>();
             services.AddScoped<IBillingService, BillingService>();
+            services.AddScoped<IPaymentProvider, SePayPaymentProvider>();
             services.AddScoped<IAiIntegrationService, AiIntegrationService>();
             services.AddHttpClient<IAiService, GeminiAiService>(client =>
             {
