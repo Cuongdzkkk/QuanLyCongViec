@@ -78,6 +78,9 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<AiSubscription> AiSubscriptions { get; set; }
         public DbSet<AiCreditAdjustment> AiCreditAdjustments { get; set; }
         public DbSet<PaymentOrder> PaymentOrders { get; set; }
+        public DbSet<PaymentTransaction> PaymentTransactions { get; set; }
+        public DbSet<PaymentWebhookEvent> PaymentWebhookEvents { get; set; }
+        public DbSet<AiCreditReservation> AiCreditReservations { get; set; }
         public DbSet<AIFeedback> AIFeedbacks { get; set; }
         public DbSet<AITrainingDataset> AITrainingDatasets { get; set; }
         public DbSet<TaskVectorEmbedding> TaskVectorEmbeddings { get; set; }
@@ -788,6 +791,28 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<PaymentOrder>().Property(x => x.TransferCode).HasMaxLength(64);
             modelBuilder.Entity<PaymentOrder>().Property(x => x.AmountVnd).HasPrecision(18, 2);
             modelBuilder.Entity<PaymentOrder>().Property(x => x.AdminNote).HasMaxLength(1000);
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.PlanNameSnapshot).HasMaxLength(128);
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.Currency).HasMaxLength(8).HasDefaultValue("VND");
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.Provider).HasMaxLength(64).HasDefaultValue("manual_bank_transfer");
+            modelBuilder.Entity<PaymentOrder>().HasIndex(x => new { x.UserId, x.PlanCode, x.Status });
+            modelBuilder.Entity<PaymentTransaction>().HasIndex(x => new { x.Provider, x.ProviderTransactionId }).IsUnique();
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.Provider).HasMaxLength(64);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.ProviderTransactionId).HasMaxLength(128);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.Currency).HasMaxLength(8);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.Status).HasMaxLength(32);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.ProviderReference).HasMaxLength(256);
+            modelBuilder.Entity<PaymentTransaction>().HasOne(x => x.PaymentOrder).WithMany(x => x.Transactions).HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PaymentWebhookEvent>().HasIndex(x => new { x.Provider, x.ProviderEventId }).IsUnique();
+            modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.Provider).HasMaxLength(64);
+            modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.ProviderEventId).HasMaxLength(128);
+            modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.EventType).HasMaxLength(64);
+            modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.Status).HasMaxLength(32);
+            modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.RawPayload).HasColumnType("nvarchar(max)");
+            modelBuilder.Entity<AiCreditReservation>().HasIndex(x => x.IdempotencyKey).IsUnique();
+            modelBuilder.Entity<AiCreditReservation>().HasIndex(x => new { x.UserId, x.Status, x.ExpiresAt });
+            modelBuilder.Entity<AiCreditReservation>().Property(x => x.IdempotencyKey).HasMaxLength(200);
+            modelBuilder.Entity<AiCreditReservation>().Property(x => x.Status).HasMaxLength(32);
+            modelBuilder.Entity<AiCreditReservation>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<PaymentOrder>()
                 .HasOne(x => x.User).WithMany(x => x.PaymentOrders).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<PaymentOrder>()

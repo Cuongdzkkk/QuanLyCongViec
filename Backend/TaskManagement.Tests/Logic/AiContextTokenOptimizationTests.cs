@@ -37,6 +37,13 @@ public sealed class AiContextTokenOptimizationTests
     public async Task GreetingWithOverdueTaskIntent_DoesNotUseGreetingFastPath()
     {
         await using var context = CreateContext();
+        context.AiPricingPlans.Add(new AiPricingPlan
+        {
+            Id = Guid.NewGuid(), Code = "free", Name = "Free", IncludedAiCredits = 100,
+            MonthlyPriceVnd = 0, IsPublished = true, PricingStatus = "Published",
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
         var handler = new RecordingResponseHandler(SuccessResponse());
         var service = CreateService(context, handler);
 
@@ -544,6 +551,12 @@ public sealed class AiContextTokenOptimizationTests
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
+        });
+        context.AiPricingPlans.Add(new AiPricingPlan
+        {
+            Id = Guid.NewGuid(), Code = "free", Name = "Free", IncludedAiCredits = 100,
+            MonthlyPriceVnd = 0, IsPublished = true, PricingStatus = "Published",
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
         });
         context.SaveChanges();
         return context;

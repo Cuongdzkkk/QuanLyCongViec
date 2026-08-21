@@ -32,10 +32,25 @@ public sealed class PaymentOrderDto
     public decimal AmountVnd { get; set; }
     public string Status { get; set; } = string.Empty;
     public string TransferCode { get; set; } = string.Empty;
+    public string Currency { get; set; } = "VND";
+    public string Provider { get; set; } = string.Empty;
+    public DateTime? ExpiresAt { get; set; }
+    public PaymentInstructionsDto? PaymentInstructions { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? PaidAt { get; set; }
     public Guid? ApprovedByUserId { get; set; }
     public string? AdminNote { get; set; }
+}
+
+public sealed class PaymentInstructionsDto
+{
+    public string Provider { get; set; } = string.Empty;
+    public string BankCode { get; set; } = string.Empty;
+    public string AccountName { get; set; } = string.Empty;
+    public string AccountNumber { get; set; } = string.Empty;
+    public decimal AmountVnd { get; set; }
+    public string TransferContent { get; set; } = string.Empty;
+    public string? QrUrl { get; set; }
 }
 
 public sealed class CreatePaymentOrderRequest
