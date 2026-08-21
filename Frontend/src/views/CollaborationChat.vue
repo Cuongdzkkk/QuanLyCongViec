@@ -1,34 +1,39 @@
 <template>
-  <div class="chat-container">
+  <main class="chat-container chat-workspace" :class="{ 'has-context-panel': showMembersSidebar }" aria-label="Không gian cộng tác SprintA">
     <!-- Project scope sidebar for real collaboration channels -->
-    <div class="server-bar" v-if="currentTab === 'channel'">
+    <nav class="server-bar" aria-label="Project spaces">
+      <div class="rail-caption">PROJECTS</div>
       <div 
         v-for="project in projectOptions"
         :key="project.id"
         class="server-icon-wrapper"
         :class="{ active: activeProjectId === project.id }"
         @click="selectProject(project.id)"
+        :aria-label="`Mở project ${project.name}`"
+        :aria-current="activeProjectId === project.id ? 'page' : undefined"
         :title="project.name"
       >
         <div class="server-icon">
           {{ project.name.charAt(0).toUpperCase() }}
         </div>
         <div class="active-indicator"></div>
-      </div>
-      
-    </div>
+       </div>
+    </nav>
 
     <!-- Chat Sidebar (Channels & Direct Messages) -->
     <div class="chat-sidebar">
 
       <div class="sidebar-header" style="display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); margin-bottom: 14px;">
-        <span class="eyebrow" style="font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: var(--color-accent); text-transform: uppercase;">TEAM COLLABORATION</span>
+          <span class="eyebrow">SPRINTA / COLLABORATION</span>
         <div class="flex items-center justify-between" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
           <h3 class="font-bold" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0; white-space: normal; line-height: 1.3;">
-            <i class="fa-solid fa-comments text-primary text-lg" style="margin-right: 4px; flex-shrink: 0;"></i>
-            <span>{{ activeProject?.name || 'Chọn Project' }}</span>
+            <span class="workspace-mark" aria-hidden="true">S</span>
+            <span>{{ activeProject?.name || 'Chọn project' }}</span>
           </h3>
-        </div>
+          <button v-if="currentTab === 'dm'" type="button" class="workspace-back-button" @click="switchTab('channel')">
+            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>Channels</span>
+          </button>
+      </div>
       </div>
 
       <!-- Sidebar lists wrap in scrollable container to pin voice panel at bottom -->
@@ -36,7 +41,7 @@
         <!-- Channels List -->
         <div class="sidebar-section" v-if="currentTab === 'channel'">
           <div class="flex items-center justify-between section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <span class="section-title" style="margin-bottom: 0;">CHANNELS</span>
+            <span class="section-title" style="margin-bottom: 0;">TEXT CHANNELS</span>
             <button
               class="add-btn-small"
               title="Tạo Channel"
@@ -64,7 +69,7 @@
               Chọn Project để xem Channel.
             </div>
             <div v-else-if="channels.length === 0" class="channel-state">
-              chưa có tạo #channel
+              Chưa có channel trong project này.
             </div>
             <button 
               v-for="ch in visibleChannels" 
@@ -133,6 +138,39 @@
             </div>
           </div>
         </div>
+
+        <div class="sidebar-section direct-section" v-if="activeProjectId">
+          <div class="section-header">
+            <span class="section-title">DIRECT MESSAGES</span>
+            <button class="add-btn-small" type="button" title="Tìm thành viên" aria-label="Tìm thành viên" @click="toggleContextPanel">
+              <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+            </button>
+          </div>
+          <div class="section-list">
+            <button
+              v-for="conversation in directConversations"
+              :key="conversation.id"
+              type="button"
+              class="list-item direct-item"
+              :class="{ active: activeChat?.id === conversation.id && activeChat?.type === 'dm' }"
+              @click="selectChat(conversation, 'dm')"
+            >
+              <span class="presence-dot" aria-hidden="true"></span>
+              <span class="item-name truncate">{{ conversation.name }}</span>
+            </button>
+            <button
+              v-for="member in members.slice(0, 5)"
+              :key="`member-${member.id}`"
+              type="button"
+              class="list-item direct-item direct-member-item"
+              @click="selectDirectRecipient(member.id)"
+            >
+              <span class="presence-dot is-idle" aria-hidden="true"></span>
+              <span class="item-name truncate">{{ member.name || member.fullName || member.email }}</span>
+            </button>
+            <div v-if="!directConversations.length && !members.length" class="channel-state">Chưa có cuộc trò chuyện riêng.</div>
+          </div>
+        </div>
       </div>
 
       <!-- Connected Voice Control Panel (Discord style) -->
@@ -141,7 +179,7 @@
           <div class="flex items-center gap-2" style="display: flex; align-items: center; gap: 8px;">
             <span class="status-indicator-ping"><i class="fa-solid fa-signal text-success text-xs" style="color: var(--color-success);"></i></span>
             <div class="flex flex-col text-left" style="display: flex; flex-direction: column;">
-              <span class="text-xs font-semibold text-success" style="font-size: 12px; color: var(--color-success);">Đã kết nối thoại</span>
+               <span class="text-xs font-semibold text-success" style="font-size: 12px; color: var(--color-success);">Voice connected</span>
               <span class="text-xxs text-muted truncate" style="font-size: 10px; color: var(--color-text-muted); max-width: 130px; display: inline-block;">{{ activeVoiceChannel.name }}</span>
             </div>
           </div>
@@ -175,17 +213,25 @@
       
       <!-- Embedded Voice Call View (Discord Style) -->
       <template v-if="showVoiceCallMain && activeVoiceChannel">
-        <div class="chat-header">
+        <header class="chat-header call-header">
           <div class="active-info">
             <span class="active-icon"><i class="fa-solid fa-volume-high"></i></span>
             <div>
               <h4 class="font-semibold text-primary leading-tight">Kênh thoại: {{ activeVoiceChannel.name }}</h4>
               <p class="text-xs text-muted leading-none">
-                Đang kết nối thoại • {{ activeVoiceChannel.users.length }} người tham gia
+                Đã kết nối · {{ activeVoiceChannel.users.length }} người tham gia · Chất lượng tốt
               </p>
             </div>
           </div>
           <div class="header-actions">
+            <button type="button" class="ai-entry-button" :class="{ 'is-open': aiAnalysisOpen }" @click="openAiAnalysis('call')">
+              <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+              <span>AI phân tích cuộc gọi</span>
+              <span class="ai-off-state">OFF</span>
+            </button>
+            <button type="button" class="action-btn" aria-label="Mở panel cuộc gọi" title="Mở panel cuộc gọi" @click="toggleContextPanel">
+              <i class="fa-solid fa-layout-sidebar" aria-hidden="true"></i>
+            </button>
             <button 
               class="action-btn" 
               title="Mở kênh chat"
@@ -195,7 +241,7 @@
               <i class="fa-solid fa-message text-lg"></i>
             </button>
           </div>
-        </div>
+        </header>
 
         <div style="flex: 1; padding: 24px; background-color: #0f172a; display: flex; flex-direction: column; justify-content: space-between; position: relative; min-height: 0; overflow-y: auto;">
           <div class="video-grid group-video-grid" style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; align-items: center; align-content: center; flex: 1; min-height: 240px;">
@@ -306,7 +352,7 @@
 
       <!-- Standard Text Chat View -->
       <template v-else>
-        <div class="chat-header">
+        <header class="chat-header text-chat-header">
           <div class="active-info">
             <span class="active-icon">{{ activeChat?.type === 'channel' ? '#' : '@' }}</span>
             <div>
@@ -326,6 +372,13 @@
           </div>
 
           <div class="header-actions" v-if="activeProjectId">
+            <button type="button" class="ai-entry-button" :class="{ 'is-open': aiAnalysisOpen }" @click="openAiAnalysis('text')">
+              <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+              <span>AI phân tích</span>
+            </button>
+            <button type="button" class="action-btn" aria-label="Mở panel channel" title="Mở panel channel" @click="toggleContextPanel">
+              <i class="fa-solid fa-layout-sidebar" aria-hidden="true"></i>
+            </button>
             <button 
               v-if="activeChannel?.desc?.startsWith('__voice_chat_channel__') && activeVoiceChannel?.id === activeChannel.desc.split(':')[1]"
               class="action-btn"
@@ -376,7 +429,7 @@
               </div>
             </el-popover>
           </div>
-        </div>
+        </header>
 
         <div
           v-if="connectionNotice"
@@ -407,8 +460,10 @@
               <div v-else-if="currentTab === 'channel' && !activeChannel" class="history-state">
                 Chọn một Channel để xem tin nhắn.
               </div>
-              <div v-else-if="currentTab === 'channel' && activeMessages.length === 0" class="history-state">
-                chưa có tạo #channel
+                <div v-else-if="currentTab === 'channel' && activeMessages.length === 0" class="history-state empty-chat-state">
+                 <span class="empty-state-icon" aria-hidden="true">#</span>
+                 <strong>Channel này đã sẵn sàng</strong>
+                 <span>Bắt đầu bằng một câu hỏi, cập nhật hoặc file liên quan đến project.</span>
               </div>
               <div v-else-if="currentTab === 'dm' && !activeChat" class="history-state">
                 Chọn người dùng để bắt đầu trò chuyện.
@@ -464,7 +519,7 @@
                           >
                             <img :src="file.url" :alt="file.fileName" />
                           </button>
-                        </template>
+        </template>
                         <template v-else>
                           <div class="message-attachment" style="display: flex; align-items: center; gap: 8px; flex: 1;">
                             <i class="fa-solid fa-file-lines text-muted text-lg"></i>
@@ -481,10 +536,11 @@
                               <i class="fa-solid fa-download mr-1"></i> Tải xuống
                             </a>
                           </div>
-                        </template>
-                      </div>
+       </template>
+
                     </div>
                   </div>
+                </div>
                 </div>
               </template>
             </div>
@@ -605,6 +661,42 @@
           </div>
         </div>
       </template>
+
+      <aside v-if="showMembersSidebar" class="chat-context-panel" aria-label="Context panel">
+        <div class="context-panel-header">
+          <div><span class="context-kicker">CONTEXT</span><h3>{{ showVoiceCallMain && activeVoiceChannel ? 'Cuộc gọi' : 'Channel details' }}</h3></div>
+          <button type="button" class="context-close" aria-label="Đóng panel context" title="Đóng panel" @click="toggleContextPanel"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        </div>
+        <div class="context-tabs" role="tablist" aria-label="Context tabs">
+          <button type="button" class="context-tab is-active" role="tab" aria-selected="true">{{ showVoiceCallMain && activeVoiceChannel ? 'Participants' : 'Members' }}</button>
+          <button type="button" class="context-tab" role="tab" @click="openAiAnalysis(showVoiceCallMain ? 'call' : 'text')">AI</button>
+        </div>
+        <div v-if="showVoiceCallMain && activeVoiceChannel" class="context-call-summary">
+          <span class="context-status-dot"></span><div><strong>{{ activeVoiceChannel.name }}</strong><span>{{ activeVoiceChannel.users.length }} người trong phòng</span></div>
+        </div>
+        <div v-if="showVoiceCallMain && activeVoiceChannel" class="context-member-list">
+          <div v-for="user in activeVoiceChannel.users" :key="`context-${user.id}`" class="context-member-row">
+            <el-avatar :size="30" :src="user.avatar">{{ user.name?.charAt(0) }}</el-avatar><span>{{ user.name }}{{ user.id === currentUser.id ? ' (Bạn)' : '' }}</span>
+            <i v-if="user.id === currentUser.id && isMuted" class="fa-solid fa-microphone-slash" aria-label="Đang tắt micro"></i>
+          </div>
+        </div>
+        <div v-else class="context-member-list">
+          <div v-if="loadingMembers" class="context-empty">Đang tải thành viên...</div>
+          <div v-else-if="!projectMembers.length" class="context-empty">Chưa có thành viên để hiển thị.</div>
+          <div v-for="member in projectMembers" :key="`project-member-${member.userId || member.id}`" class="context-member-row">
+            <el-avatar :size="30" :src="member.avatarUrl || member.avatar">{{ (member.fullName || member.name || '?').charAt(0) }}</el-avatar>
+            <div class="context-member-copy"><strong>{{ member.fullName || member.name }}</strong><span>{{ member.jobTitle || 'Thành viên project' }}</span></div><span class="presence-dot is-idle" aria-label="Đang offline"></span>
+          </div>
+        </div>
+      </aside>
+
+      <aside v-if="aiAnalysisOpen" class="ai-analysis-surface" aria-live="polite" aria-label="AI analysis">
+        <div class="ai-surface-header"><div><span class="context-kicker">SPRINTA AI</span><h3>{{ aiAnalysisScope === 'call' ? 'Phân tích cuộc gọi' : 'Phân tích channel' }}</h3></div><button type="button" class="context-close" aria-label="Đóng AI analysis" title="Đóng" @click="aiAnalysisOpen = false"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+        <div class="ai-off-banner"><span class="ai-state-indicator"></span><strong>AI đang OFF</strong></div>
+        <p>Đây là điểm vào đã chuẩn bị cho phase AI tiếp theo. Chưa có phân tích, ghi âm hay lắng nghe nào được khởi động.</p>
+        <div class="ai-capability-list"><span>Tóm tắt</span><span>Quyết định</span><span>Việc cần làm</span><span>Rủi ro / câu hỏi</span></div>
+        <button type="button" class="ai-disabled-action" disabled>Coming in a later phase</button>
+      </aside>
     </div>
 
 
@@ -695,7 +787,7 @@
         </div>
       </template>
     </el-dialog>
-  </div>
+  </main>
 </template>
 
 <script setup>
@@ -729,8 +821,11 @@ const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
 const authStore = useAuthStore()
-const currentTab = computed(() => 'channel')
-const switchTab = () => {}
+const currentTab = ref('channel')
+const switchTab = (tab) => {
+  if (tab !== 'channel' && tab !== 'dm') return
+  currentTab.value = tab
+}
 
 const projectOptions = computed(() => projectStore.sidebarProjects)
 const activeProjectId = ref('')
@@ -909,8 +1004,8 @@ const createNewVoice = () => {
     name: newVoiceName.value.trim(),
     users: []
   }
-  activeServer.value.voiceChannels.push(newVc)
-  saveServers()
+  voiceChannels.value.push(newVc)
+  saveVoiceChannels()
   createVoiceActive.value = false
   ElMessage.success(`Đã tạo kênh thoại: ${newVc.name}`)
 }
@@ -998,6 +1093,12 @@ let markReadTimer = null
 let pendingRead = null
 let markReadVersion = 0
 const realtimeUnsubscribers = []
+const aiAnalysisOpen = ref(false)
+const aiAnalysisScope = ref('text')
+const openAiAnalysis = (scope = 'text') => {
+  aiAnalysisScope.value = scope
+  aiAnalysisOpen.value = true
+}
 const videoCallActive = ref(false)
 
 const isCallMuted = ref(false)
@@ -2534,9 +2635,9 @@ const showMembersSidebar = ref(true)
 const toggleMembersSidebar = () => {
   showMembersSidebar.value = !showMembersSidebar.value
 }
+const toggleContextPanel = toggleMembersSidebar
 const activeServerMembers = computed(() => {
-  if (!activeServer.value || !activeServer.value.members) return []
-  return activeServer.value.members
+  return projectMembers.value
 })
 
 const fileInputRef = ref(null)
@@ -2989,6 +3090,7 @@ const selectDirectRecipient = async (participantUserId) => {
 }
 
 const selectChat = async (item, type) => {
+  switchTab(type === 'dm' ? 'dm' : 'channel')
   if (type === 'channel') {
     if (
       !item?.id ||
@@ -4130,6 +4232,137 @@ onUnmounted(() => {
 .voice-action-btn-small.active {
   background-color: rgba(99, 102, 241, 0.1);
   color: var(--color-primary);
+}
+</style>
+
+<style scoped>
+.chat-workspace {
+  --chat-ink: #e8eef7;
+  --chat-muted: #91a2b8;
+  --chat-line: rgba(148, 163, 184, 0.14);
+  --chat-surface: #0b1422;
+  --chat-surface-2: #101d2e;
+  --chat-accent: #58b7e8;
+  --chat-context-width: 264px;
+  position: relative;
+  display: grid !important;
+  grid-template-columns: 68px 248px minmax(0, 1fr) !important;
+  width: min(1440px, calc(100% - 32px)) !important;
+  height: min(820px, calc(100dvh - 112px));
+  min-height: 620px;
+  margin: 20px auto 28px !important;
+  overflow: hidden;
+  border: 1px solid var(--chat-line);
+  border-radius: 18px;
+  background: #08111e;
+  color: var(--chat-ink);
+  box-shadow: 0 24px 70px rgba(2, 8, 23, 0.34);
+}
+
+.chat-workspace.has-context-panel .chat-main { padding-right: var(--chat-context-width); }
+.chat-workspace .server-bar,
+.chat-workspace .chat-sidebar,
+.chat-workspace .chat-main { min-width: 0; min-height: 0; }
+.chat-workspace .server-bar { width: auto !important; padding: 16px 10px !important; border-right: 1px solid var(--chat-line); background: #07101c; }
+.rail-caption { margin: 0 0 14px; color: #60748d; font-size: 9px; font-weight: 800; letter-spacing: .13em; text-align: center; }
+.chat-workspace .server-icon-wrapper { width: 46px; height: 46px; margin: 0 auto 10px; }
+.chat-workspace .server-icon { border: 1px solid rgba(88, 183, 232, .2); border-radius: 13px; background: #12253a; color: #bde9ff; font-weight: 700; transition: transform 180ms ease-out, background-color 180ms ease-out; }
+.chat-workspace .server-icon-wrapper:hover .server-icon,
+.chat-workspace .server-icon-wrapper.active .server-icon { background: #185174; color: #fff; transform: translateY(-1px); }
+.chat-workspace .chat-sidebar { display: flex; flex-direction: column; width: auto !important; padding: 18px 14px 12px !important; border-right: 1px solid var(--chat-line); background: var(--chat-surface); }
+.chat-workspace .sidebar-header { border-bottom-color: var(--chat-line) !important; }
+.chat-workspace .eyebrow, .context-kicker { color: #6e91ac !important; font-size: 9px !important; font-weight: 800; letter-spacing: .13em; }
+.workspace-mark { display: inline-grid; width: 24px; height: 24px; place-items: center; border-radius: 7px; background: #1c6d95; color: #e8f7ff; font-size: 12px; font-weight: 800; }
+.workspace-back-button { display: inline-flex; gap: 5px; align-items: center; border: 0; background: transparent; color: var(--chat-muted); font-size: 11px; cursor: pointer; }
+.workspace-back-button:hover { color: var(--chat-ink); }
+.chat-workspace .section-title { color: #7389a0; font-size: 10px; letter-spacing: .1em; }
+.chat-workspace .list-item { min-height: 34px; border-radius: 7px; color: #aebdd0; transition: background-color 160ms ease-out, color 160ms ease-out, transform 160ms ease-out; }
+.chat-workspace .list-item:hover { background: rgba(88, 183, 232, .08); color: #eef8ff; transform: translateX(1px); }
+.chat-workspace .list-item.active { background: rgba(88, 183, 232, .16); color: #f4fbff; box-shadow: inset 2px 0 #58b7e8; }
+.chat-workspace .voice-item .item-icon { color: #6bc5a5 !important; }
+.chat-workspace .voice-users-list { opacity: .9; }
+.chat-workspace .direct-section { margin-top: 18px; }
+.chat-workspace .direct-item { gap: 9px; }
+.chat-workspace .presence-dot, .context-status-dot, .ai-state-indicator { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #63d29f; box-shadow: 0 0 0 3px rgba(99, 210, 159, .12); }
+.chat-workspace .presence-dot.is-idle { background: #63758c; box-shadow: none; }
+.chat-workspace .connected-voice-panel { margin: 12px 0 0 !important; border: 1px solid rgba(99, 210, 159, .22); border-radius: 10px; background: rgba(25, 75, 66, .22); box-shadow: none; }
+.chat-workspace .chat-main { position: relative; display: flex; flex-direction: column; width: auto !important; background: #0a1422; }
+.chat-workspace .chat-header { min-height: 70px; padding: 14px 20px !important; border-bottom: 1px solid var(--chat-line); background: #0c1828; }
+.chat-workspace .active-info { min-width: 0; }
+.chat-workspace .active-icon { display: inline-grid; width: 30px; height: 30px; place-items: center; border-radius: 8px; background: rgba(88, 183, 232, .12); color: var(--chat-accent); font-size: 17px; }
+.chat-workspace .chat-header h4 { margin: 0; color: #edf7ff; font-size: 15px; }
+.chat-workspace .chat-header p { color: var(--chat-muted); font-size: 11px; }
+.chat-workspace .header-actions { gap: 7px; }
+.chat-workspace .action-btn { border: 1px solid transparent; border-radius: 7px; color: #91a8bd; transition: background-color 160ms ease-out, color 160ms ease-out, transform 120ms ease-out; }
+.chat-workspace .action-btn:hover { background: rgba(88, 183, 232, .1); color: #ecf9ff; }
+.chat-workspace .action-btn:active, .chat-workspace .ai-entry-button:active, .chat-workspace button:active { transform: scale(.97); }
+.chat-workspace .action-btn:focus-visible, .chat-workspace button:focus-visible, .chat-workspace textarea:focus-visible { outline: 2px solid var(--chat-accent); outline-offset: 2px; }
+.ai-entry-button { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 10px; border: 1px solid rgba(88, 183, 232, .25); border-radius: 7px; background: rgba(88, 183, 232, .08); color: #bfeaff; font-size: 11px; font-weight: 700; cursor: pointer; transition: background-color 160ms ease-out, border-color 160ms ease-out, transform 120ms ease-out; }
+.ai-entry-button:hover, .ai-entry-button.is-open { border-color: rgba(88, 183, 232, .58); background: rgba(88, 183, 232, .16); }
+.ai-off-state { color: #86a0b2; font-size: 9px; letter-spacing: .08em; }
+.chat-workspace .messages-thread { background: #0a1422; }
+.chat-workspace .message-card { border-bottom: 1px solid rgba(148, 163, 184, .08); padding: 13px 22px; }
+.chat-workspace .message-card:hover { background: rgba(255, 255, 255, .018); }
+.chat-workspace .message-body { color: #d7e2ee; line-height: 1.55; }
+.empty-chat-state { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 360px; margin: auto; color: #7f94aa; text-align: center; }
+.empty-chat-state strong { color: #dbeaf5; font-size: 15px; }
+.empty-state-icon { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(88, 183, 232, .3); border-radius: 12px; color: var(--chat-accent); font-size: 23px; }
+.chat-workspace .chat-input-area { margin: 12px 18px 16px; border: 1px solid var(--chat-line); border-radius: 11px; background: #101d2e; box-shadow: 0 10px 30px rgba(2, 8, 23, .18); }
+.chat-workspace .chat-input { color: #e7f2fb; }
+.chat-workspace .chat-input::placeholder { color: #72869b; }
+.chat-workspace .btn-send { background: #1c6d95; color: #f1fbff; transition: background-color 160ms ease-out, transform 120ms ease-out; }
+.chat-workspace .btn-send:hover:not(:disabled) { background: #2687b4; }
+.chat-workspace .call-header + div { min-height: 0 !important; background: #07111e !important; }
+.chat-workspace .group-video-grid { display: grid !important; grid-auto-flow: dense; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); align-content: start !important; align-items: stretch !important; justify-content: stretch !important; gap: 12px !important; padding: 8px; }
+.chat-workspace .group-video-grid .video-feed { width: 100% !important; max-width: none !important; min-height: 150px; border: 1px solid rgba(148, 163, 184, .16) !important; border-radius: 12px !important; }
+.chat-workspace .call-control-circle-btn { transition: background-color 160ms ease-out, color 160ms ease-out, transform 120ms ease-out; }
+.chat-workspace .call-control-circle-btn.hang-up { background: #bd4d5c; }
+.chat-workspace .call-control-circle-btn.hang-up:hover { background: #d35d6c; }
+.chat-context-panel { position: absolute; z-index: 4; top: 0; right: 0; bottom: 0; display: flex; width: var(--chat-context-width); flex-direction: column; border-left: 1px solid var(--chat-line); background: #0c1828; }
+.context-panel-header, .ai-surface-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 18px 16px 12px; border-bottom: 1px solid var(--chat-line); }
+.context-panel-header h3, .ai-surface-header h3 { margin: 4px 0 0; color: #e8f4fc; font-size: 14px; }
+.context-close { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #8297aa; cursor: pointer; transition: background-color 160ms ease-out, color 160ms ease-out, transform 120ms ease-out; }
+.context-close:hover { background: rgba(255,255,255,.07); color: #fff; }
+.context-tabs { display: flex; gap: 4px; padding: 10px 12px; border-bottom: 1px solid var(--chat-line); }
+.context-tab { flex: 1; padding: 7px 5px; border: 0; border-radius: 6px; background: transparent; color: #8297aa; font-size: 11px; cursor: pointer; }
+.context-tab.is-active, .context-tab:hover { background: rgba(88, 183, 232, .1); color: #dff5ff; }
+.context-call-summary { display: flex; align-items: center; gap: 10px; margin: 14px 12px 8px; padding: 10px; border: 1px solid rgba(99, 210, 159, .2); border-radius: 8px; background: rgba(99, 210, 159, .06); }
+.context-call-summary div, .context-member-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.context-call-summary strong, .context-member-copy strong { overflow: hidden; color: #e7f2fb; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.context-call-summary span:last-child, .context-member-copy span { color: #8196aa; font-size: 10px; }
+.context-member-list { display: flex; min-height: 0; flex-direction: column; gap: 3px; overflow-y: auto; padding: 8px 10px; }
+.context-member-row { display: flex; align-items: center; gap: 9px; min-height: 42px; padding: 5px 6px; border-radius: 7px; color: #c4d3df; font-size: 11px; }
+.context-member-row:hover { background: rgba(255,255,255,.04); }
+.context-member-row > i { color: #d35d6c; font-size: 10px; }
+.context-empty { padding: 22px 10px; color: #8095a8; font-size: 11px; line-height: 1.5; text-align: center; }
+.ai-analysis-surface { position: absolute; z-index: 8; top: 76px; right: calc(var(--chat-context-width) + 12px); width: min(330px, calc(100% - 32px)); padding-bottom: 16px; border: 1px solid rgba(88, 183, 232, .28); border-radius: 12px; background: #112338; box-shadow: 0 20px 50px rgba(2, 8, 23, .45); }
+.ai-analysis-surface p { padding: 0 16px; color: #a9bdce; font-size: 12px; line-height: 1.55; }
+.ai-off-banner { display: flex; align-items: center; gap: 8px; margin: 14px 16px 0; color: #dcebf3; font-size: 12px; }
+.ai-state-indicator { background: #657a8b; box-shadow: none; }
+.ai-capability-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 0 16px; }
+.ai-capability-list span { padding: 7px 8px; border: 1px solid rgba(148, 163, 184, .12); border-radius: 6px; color: #99afc1; font-size: 10px; }
+.ai-disabled-action { display: block; width: calc(100% - 32px); margin: 14px 16px 0; padding: 9px; border: 1px solid rgba(148, 163, 184, .16); border-radius: 7px; background: rgba(255,255,255,.04); color: #7890a4; font-size: 11px; }
+
+@media (max-width: 1120px) {
+  .chat-workspace { grid-template-columns: 60px 220px minmax(0, 1fr) !important; }
+  .chat-workspace.has-context-panel .chat-main { padding-right: 0; }
+  .chat-context-panel { width: min(264px, 78%); box-shadow: -16px 0 34px rgba(2, 8, 23, .3); }
+  .ai-analysis-surface { right: 12px; }
+}
+@media (max-width: 760px) {
+  .chat-workspace { width: 100% !important; height: calc(100dvh - 76px); min-height: 520px; margin: 0 !important; border-radius: 0; border-inline: 0; grid-template-columns: 54px minmax(0, 1fr) !important; }
+  .chat-workspace .chat-sidebar { position: absolute; z-index: 6; top: 0; bottom: 0; left: 54px; width: 248px !important; transform: translateX(-100%); transition: transform 200ms cubic-bezier(.32,.72,0,1); }
+  .chat-workspace:focus-within .chat-sidebar, .chat-workspace .chat-sidebar:hover { transform: translateX(0); }
+  .chat-workspace .chat-main { grid-column: 2; padding-right: 0 !important; }
+  .chat-workspace .server-bar { grid-column: 1; }
+  .chat-workspace .message-card { padding-inline: 14px; }
+  .chat-workspace .ai-entry-button span:not(.ai-off-state) { display: none; }
+  .chat-workspace .ai-entry-button { width: 32px; padding: 0; justify-content: center; }
+  .chat-context-panel { width: min(280px, 88vw); }
+  .chat-workspace .group-video-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace *, .chat-workspace *::before, .chat-workspace *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
 </style>
 
