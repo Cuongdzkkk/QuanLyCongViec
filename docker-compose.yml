@@ -24,6 +24,12 @@ services:
       Cors__AllowedOrigins__1: "https://www.sprinta.id.vn"
       Frontend__BaseUrl: "${FRONTEND_URL}"
 
+      PaymentProviders__SePay__Enabled: "${SEPAY_ENABLED:-false}"
+      PaymentProviders__SePay__WebhookSecret: "${SEPAY_WEBHOOK_SECRET:-}"
+      PaymentProviders__SePay__BankCode: "${SEPAY_BANK_CODE:-}"
+      PaymentProviders__SePay__AccountNumber: "${SEPAY_ACCOUNT_NUMBER:-}"
+      PaymentProviders__SePay__AccountName: "${SEPAY_ACCOUNT_NAME:-}"
+
       IntegrationOAuth__GoogleCalendar__Enabled: "${GOOGLE_CALENDAR_OAUTH_ENABLED:-false}"
       IntegrationOAuth__GoogleCalendar__ClientId: "${GOOGLE_CALENDAR_OAUTH_CLIENT_ID}"
       IntegrationOAuth__GoogleCalendar__ClientSecret: "${GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET}"
