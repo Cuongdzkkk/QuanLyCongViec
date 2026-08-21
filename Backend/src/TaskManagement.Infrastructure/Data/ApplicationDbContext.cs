@@ -801,6 +801,7 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<PaymentTransaction>().Property(x => x.Currency).HasMaxLength(8);
             modelBuilder.Entity<PaymentTransaction>().Property(x => x.Status).HasMaxLength(32);
             modelBuilder.Entity<PaymentTransaction>().Property(x => x.ProviderReference).HasMaxLength(256);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.Amount).HasPrecision(18, 2);
             modelBuilder.Entity<PaymentTransaction>().HasOne(x => x.PaymentOrder).WithMany(x => x.Transactions).HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<PaymentWebhookEvent>().HasIndex(x => new { x.Provider, x.ProviderEventId }).IsUnique();
             modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.Provider).HasMaxLength(64);
