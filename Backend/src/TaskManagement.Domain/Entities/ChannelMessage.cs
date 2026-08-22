@@ -13,8 +13,13 @@ namespace TaskManagement.Domain.Entities
         public User? Sender { get; set; }
         public string Content { get; set; } = string.Empty;
         public DateTime SentAt { get; set; } = DateTime.UtcNow;
+        public Guid? ReplyToMessageId { get; set; }
+        public ChannelMessage? ReplyToMessage { get; set; }
+        public ICollection<ChannelMessage> Replies { get; set; } = new List<ChannelMessage>();
         public string? AttachmentUrl { get; set; }
         public ICollection<CollaborationMessageAttachment> Attachments { get; set; } = new List<CollaborationMessageAttachment>();
         public ICollection<ChannelMessageMention> Mentions { get; set; } = new List<ChannelMessageMention>();
+        public ICollection<CollaborationMessageReaction> Reactions { get; set; } = new List<CollaborationMessageReaction>();
+        public CollaborationMessagePin? Pin { get; set; }
     }
 }
