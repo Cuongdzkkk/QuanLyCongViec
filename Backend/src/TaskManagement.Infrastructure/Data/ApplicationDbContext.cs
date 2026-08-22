@@ -80,6 +80,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<PaymentOrder> PaymentOrders { get; set; }
         public DbSet<PaymentTransaction> PaymentTransactions { get; set; }
         public DbSet<PaymentWebhookEvent> PaymentWebhookEvents { get; set; }
+        public DbSet<PaymentEmailDelivery> PaymentEmailDeliveries { get; set; }
         public DbSet<AiCreditReservation> AiCreditReservations { get; set; }
         public DbSet<AIFeedback> AIFeedbacks { get; set; }
         public DbSet<AITrainingDataset> AITrainingDatasets { get; set; }
@@ -804,6 +805,8 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<PaymentTransaction>().Property(x => x.Currency).HasMaxLength(8);
             modelBuilder.Entity<PaymentTransaction>().Property(x => x.Status).HasMaxLength(32);
             modelBuilder.Entity<PaymentTransaction>().Property(x => x.ProviderReference).HasMaxLength(256);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.SubscriptionPeriodStart);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.SubscriptionPeriodEnd);
             modelBuilder.Entity<PaymentTransaction>().Property(x => x.Amount).HasPrecision(18, 2);
             modelBuilder.Entity<PaymentTransaction>().HasOne(x => x.PaymentOrder).WithMany(x => x.Transactions).HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<PaymentWebhookEvent>().HasIndex(x => new { x.Provider, x.ProviderEventId }).IsUnique();
@@ -812,6 +815,17 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.EventType).HasMaxLength(64);
             modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.Status).HasMaxLength(32);
             modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.RawPayload).HasColumnType("nvarchar(max)");
+            modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.FailureReason).HasMaxLength(500);
+            modelBuilder.Entity<PaymentWebhookEvent>().HasIndex(x => x.PaymentOrderId);
+            modelBuilder.Entity<PaymentEmailDelivery>().Property(x => x.RecipientEmail).HasMaxLength(320);
+            modelBuilder.Entity<PaymentEmailDelivery>().Property(x => x.Kind).HasMaxLength(64);
+            modelBuilder.Entity<PaymentEmailDelivery>().Property(x => x.Status).HasMaxLength(32);
+            modelBuilder.Entity<PaymentEmailDelivery>().Property(x => x.ProviderMessageId).HasMaxLength(128);
+            modelBuilder.Entity<PaymentEmailDelivery>().Property(x => x.FailureReason).HasMaxLength(500);
+            modelBuilder.Entity<PaymentEmailDelivery>().HasIndex(x => new { x.PaymentOrderId, x.Kind, x.IsAutomatic }).IsUnique().HasFilter("[IsAutomatic] = 1");
+            modelBuilder.Entity<PaymentEmailDelivery>().HasIndex(x => new { x.PaymentOrderId, x.Kind, x.Attempt }).IsUnique();
+            modelBuilder.Entity<PaymentEmailDelivery>().HasOne(x => x.PaymentOrder).WithMany().HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PaymentEmailDelivery>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<AiCreditReservation>().HasIndex(x => x.IdempotencyKey).IsUnique();
             modelBuilder.Entity<AiCreditReservation>().HasIndex(x => new { x.UserId, x.Status, x.ExpiresAt });
             modelBuilder.Entity<AiCreditReservation>().Property(x => x.IdempotencyKey).HasMaxLength(200);
@@ -830,6 +844,8 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<AiActionExecution>().Property(x => x.ErrorCode).HasMaxLength(64);
             modelBuilder.Entity<AiActionExecution>().Property(x => x.RowVersion).IsRowVersion();
             modelBuilder.Entity<NotificationPreference>().HasIndex(x => new { x.UserId, x.Category }).IsUnique();
+            modelBuilder.Entity<Notification>().Property(x => x.DedupeKey).HasMaxLength(200);
+            modelBuilder.Entity<Notification>().HasIndex(x => x.DedupeKey).IsUnique().HasFilter("[DedupeKey] IS NOT NULL");
             modelBuilder.Entity<NotificationPreference>()
                 .HasOne(x => x.User).WithMany(x => x.NotificationPreferences).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
 

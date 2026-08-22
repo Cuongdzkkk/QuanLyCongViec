@@ -56,6 +56,32 @@ public sealed class AdminBillingController : ControllerBase
     public async Task<IActionResult> Orders([FromQuery] string? status, CancellationToken cancellationToken) =>
         Ok(ApiEnvelope(await _billingService.GetOrdersAsync(null, status, cancellationToken)));
 
+    [HttpGet("orders/search")]
+    public async Task<IActionResult> SearchOrders([FromQuery] BillingOrderQuery query, CancellationToken cancellationToken) =>
+        Ok(ApiEnvelope(await _billingService.SearchOrdersAsync(null, query, cancellationToken)));
+
+    [HttpGet("orders/{id:guid}")]
+    public async Task<IActionResult> OrderDetails(Guid id, CancellationToken cancellationToken)
+    {
+        try { return Ok(ApiEnvelope(await _billingService.GetOrderDetailsAsync(id, null, true, cancellationToken))); }
+        catch (KeyNotFoundException ex) { return NotFound(Error(ex.Message, 404)); }
+    }
+
+    [HttpGet("orders/{id:guid}/receipt")]
+    public async Task<IActionResult> Receipt(Guid id, CancellationToken cancellationToken)
+    {
+        try { return Ok(ApiEnvelope(await _billingService.GetReceiptAsync(id, null, true, cancellationToken))); }
+        catch (KeyNotFoundException ex) { return NotFound(Error(ex.Message, 404)); }
+    }
+
+    [HttpPost("orders/{id:guid}/receipt/resend")]
+    public async Task<IActionResult> ResendReceipt(Guid id, CancellationToken cancellationToken)
+    {
+        try { return Ok(ApiEnvelope(await _billingService.ResendReceiptAsync(id, null, true, cancellationToken), "Đã yêu cầu gửi lại receipt cho khách hàng.")); }
+        catch (KeyNotFoundException ex) { return NotFound(Error(ex.Message, 404)); }
+        catch (InvalidOperationException ex) { return Conflict(Error(ex.Message, 409)); }
+    }
+
     [HttpPost("orders/{id:guid}/approve")]
     public Task<IActionResult> ApproveOrder(Guid id, [FromBody] AdminReasonRequest request, CancellationToken cancellationToken) =>
         Execute(() => _billingService.ApproveOrderAsync(id, GetAdminId(), request.Reason, cancellationToken), "Đã xác nhận thanh toán và kích hoạt gói.");
@@ -114,7 +140,7 @@ public sealed class AdminBillingController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            return Conflict(new { statusCode = 409, message = ex.Message });
+            return Conflict(Error(ex.Message, 409));
         }
     }
 
@@ -123,5 +149,5 @@ public sealed class AdminBillingController : ControllerBase
         : throw new UnauthorizedAccessException("Invalid administrator identity.");
 
     private static object ApiEnvelope(object data, string message = "Success") => new { statusCode = 200, message, data };
-    private static object Error(string message) => new { statusCode = 400, message };
+    private static object Error(string message, int statusCode = 400) => new { statusCode, message };
 }
