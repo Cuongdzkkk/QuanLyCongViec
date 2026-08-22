@@ -202,13 +202,13 @@ public sealed class BillingService : IBillingService
             ?? throw new KeyNotFoundException("Không tìm thấy đơn thanh toán.");
         var timeline = new List<PaymentTimelineEventDto>
         {
-            new() { Type = "Order", Status = "Created", OccurredAt = order.CreatedAt, Reference = order.TransferCode }
+            new() { Type = "Order", Status = "Created", OccurredAt = AsUtc(order.CreatedAt), Reference = order.TransferCode }
         };
-        if (order.PaidAt.HasValue) timeline.Add(new PaymentTimelineEventDto { Type = "Payment", Status = order.Status, OccurredAt = order.PaidAt, Reference = order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.ProviderReference });
+        if (order.PaidAt.HasValue) timeline.Add(new PaymentTimelineEventDto { Type = "Payment", Status = order.Status, OccurredAt = AsUtc(order.PaidAt), Reference = order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.ProviderReference });
         var events = await _context.PaymentWebhookEvents.AsNoTracking().Where(x => x.PaymentOrderId == order.Id)
             .OrderBy(x => x.ReceivedAt).Take(50).ToListAsync(cancellationToken);
-        timeline.AddRange(events.Select(x => new PaymentTimelineEventDto { Type = "Webhook", Status = x.Status, OccurredAt = x.ProcessedAt ?? x.ReceivedAt, Reference = x.ProviderEventId, Note = x.FailureReason }));
-        if (order.Status == "Rejected") timeline.Add(new PaymentTimelineEventDto { Type = "Admin", Status = "Rejected", OccurredAt = order.PaidAt, Note = order.AdminNote });
+        timeline.AddRange(events.Select(x => new PaymentTimelineEventDto { Type = "Webhook", Status = x.Status, OccurredAt = AsUtc(x.ProcessedAt ?? x.ReceivedAt), Reference = x.ProviderEventId, Note = x.FailureReason }));
+        if (order.Status == "Rejected") timeline.Add(new PaymentTimelineEventDto { Type = "Admin", Status = "Rejected", OccurredAt = AsUtc(order.PaidAt), Note = order.AdminNote });
 
         var ledger = await _context.AiCreditAdjustments.AsNoTracking().Where(x => x.UserId == order.UserId)
             .OrderByDescending(x => x.CreatedAt).Take(25)
@@ -226,6 +226,7 @@ public sealed class BillingService : IBillingService
             Description = $"{x.FeatureCode} · {x.TokensUsed:N0} tokens; đối chiếu telemetry, không cộng thêm vào ledger"
         }));
         ledger = ledger.OrderByDescending(x => x.OccurredAt).Take(50).ToList();
+        foreach (var entry in ledger) entry.OccurredAt = AsUtc(entry.OccurredAt);
         return new PaymentOrderDetailsDto
         {
             Order = ToOrderDto(order, order.PlanNameSnapshot, _paymentProvider), Timeline = timeline.OrderBy(x => x.OccurredAt).ToList(),
@@ -244,8 +245,8 @@ public sealed class BillingService : IBillingService
             ReceiptNumber = BuildReceiptNumber(order.Id), Order = ToOrderDto(order, order.PlanNameSnapshot, _paymentProvider),
             CustomerName = string.IsNullOrWhiteSpace(order.User.FullName) ? order.User.Email : order.User.FullName,
             CustomerEmail = order.User.Email, IncludedAiCredits = transaction?.IncludedAiCredits ?? order.IncludedAiCreditsSnapshot,
-            SubscriptionPeriodStart = transaction?.SubscriptionPeriodStart,
-            SubscriptionPeriodEnd = transaction?.SubscriptionPeriodEnd, IsTaxInvoice = false
+            SubscriptionPeriodStart = AsUtc(transaction?.SubscriptionPeriodStart),
+            SubscriptionPeriodEnd = AsUtc(transaction?.SubscriptionPeriodEnd), IsTaxInvoice = false
         };
     }
 
@@ -649,7 +650,7 @@ public sealed class BillingService : IBillingService
         }
         var plan = await _context.AiPricingPlans.SingleOrDefaultAsync(x => x.Code == order.PlanCode, cancellationToken)
             ?? throw new InvalidOperationException("Gói của đơn thanh toán không còn tồn tại.");
-        var now = webhook.TransactionAt ?? DateTime.UtcNow;
+        var now = webhook.TransactionAt?.UtcDateTime ?? DateTime.UtcNow;
         order.Status = "Paid";
         order.PaidAt = now;
         var transactionRecord = new PaymentTransaction
@@ -834,19 +835,22 @@ public sealed class BillingService : IBillingService
         TransferCode = order.TransferCode,
         Currency = order.Currency,
         Provider = order.Provider,
-        ExpiresAt = order.ExpiresAt,
+        ExpiresAt = AsUtc(order.ExpiresAt),
         PaymentInstructions = provider?.Code == order.Provider ? provider.BuildInstructions(order) : null,
-        CreatedAt = order.CreatedAt,
-        PaidAt = order.PaidAt,
+        CreatedAt = AsUtc(order.CreatedAt),
+        PaidAt = AsUtc(order.PaidAt),
         ApprovedByUserId = order.ApprovedByUserId,
         AdminNote = order.AdminNote,
         ProviderTransactionId = order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.ProviderTransactionId,
         ProviderReference = order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.ProviderReference,
         TransactionStatus = order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.Status,
-        TransactionCreatedAt = order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.CreatedAt,
-        TransactionPeriodStart = order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.SubscriptionPeriodStart,
-        TransactionPeriodEnd = order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.SubscriptionPeriodEnd
+        TransactionCreatedAt = AsUtc(order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.CreatedAt),
+        TransactionPeriodStart = AsUtc(order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.SubscriptionPeriodStart),
+        TransactionPeriodEnd = AsUtc(order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.SubscriptionPeriodEnd)
     };
+
+    private static DateTime AsUtc(DateTime value) => value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+    private static DateTime? AsUtc(DateTime? value) => value.HasValue ? AsUtc(value.Value) : null;
 
     private static string BuildReceiptNumber(Guid orderId) => $"SPRINTA-{orderId:N}"[..21].ToUpperInvariant();
 

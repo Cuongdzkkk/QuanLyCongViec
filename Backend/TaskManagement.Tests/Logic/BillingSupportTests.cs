@@ -55,6 +55,10 @@ public sealed class BillingSupportTests
         first.ReceiptNumber.Should().Be(second.ReceiptNumber);
         first.IsTaxInvoice.Should().BeFalse();
         first.SubscriptionPeriodStart.Should().NotBeNull();
+        first.Order.PaidAt!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        first.SubscriptionPeriodStart!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        first.SubscriptionPeriodEnd!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        detail.Timeline.Where(item => item.OccurredAt.HasValue).Should().AllSatisfy(item => item.OccurredAt!.Value.Kind.Should().Be(DateTimeKind.Utc));
         detail.Timeline.Select(x => x.Note).Should().NotContain("SECRET_RAW_WEBHOOK");
     }
 
@@ -118,6 +122,10 @@ public sealed class BillingSupportTests
         (await context.PaymentTransactions.CountAsync()).Should().Be(2);
         (await context.AiSubscriptions.CountAsync()).Should().Be(1);
         (await context.PaymentOrders.CountAsync(x => x.Status == "Paid")).Should().Be(2);
+        (await context.PaymentTransactions.ToListAsync()).Should().AllSatisfy(transaction => transaction.PaidAt.Kind.Should().Be(DateTimeKind.Utc));
+        var subscription = await context.AiSubscriptions.SingleAsync();
+        subscription.CurrentPeriodStart.Kind.Should().Be(DateTimeKind.Utc);
+        subscription.CurrentPeriodEnd.Kind.Should().Be(DateTimeKind.Utc);
     }
 
     [Fact]
