@@ -788,11 +788,32 @@
       </aside>
 
       <aside v-if="aiAnalysisOpen" class="ai-analysis-surface" aria-live="polite" aria-label="AI analysis">
-        <div class="ai-surface-header"><div><span class="context-kicker">SPRINTA AI</span><h3>{{ aiAnalysisScope === 'call' ? 'Phân tích cuộc gọi' : 'Phân tích channel' }}</h3></div><button type="button" class="context-close" aria-label="Đóng AI analysis" title="Đóng" @click="aiAnalysisOpen = false"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
-        <div class="ai-off-banner"><span class="ai-state-indicator"></span><strong>AI đang OFF</strong></div>
-        <p>Đây là điểm vào đã chuẩn bị cho phase AI tiếp theo. Chưa có phân tích, ghi âm hay lắng nghe nào được khởi động.</p>
-        <div class="ai-capability-list"><span>Tóm tắt</span><span>Quyết định</span><span>Việc cần làm</span><span>Rủi ro / câu hỏi</span></div>
-        <button type="button" class="ai-disabled-action" disabled>Coming in a later phase</button>
+        <div class="ai-surface-header"><div><span class="context-kicker">SPRINTA AI</span><h3>{{ aiAnalysisScope === 'call' ? 'AI chỉ dùng cho văn bản' : 'Phân tích cuộc trò chuyện' }}</h3></div><button type="button" class="context-close" aria-label="Đóng AI analysis" title="Đóng" @click="aiAnalysisOpen = false"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+        <div v-if="aiAnalysisScope === 'call'" class="ai-text-only-notice">
+          <strong>Không phân tích cuộc gọi</strong>
+          <p>AI không ghi âm, phiên âm, lắng nghe microphone hoặc đọc camera, screen-share.</p>
+        </div>
+        <template v-else>
+          <div v-if="!aiAnalysisResult && !aiAnalysisLoading && !aiAnalysisError" class="ai-off-state-panel">
+            <div class="ai-off-banner"><span class="ai-state-indicator"></span><strong>AI đang OFF</strong></div>
+            <p>Chỉ phân tích các tin nhắn văn bản trong channel hiện tại khi bạn chủ động yêu cầu.</p>
+            <button type="button" class="ai-primary-action" @click="runAiAnalysis()">Phân tích bằng AI</button>
+          </div>
+          <div v-else-if="aiAnalysisLoading" class="ai-loading-state" role="status">
+            <span class="ai-loading-line"></span><strong>Đang phân tích tin nhắn văn bản...</strong><small>Chưa có dữ liệu nào được gửi từ cuộc gọi hoặc camera.</small>
+          </div>
+          <div v-else-if="aiAnalysisError" class="ai-error-state" role="alert">
+            <strong>{{ aiAnalysisError }}</strong><p>Không có kết quả thay thế được tạo.</p><button type="button" class="ai-secondary-action" @click="runAiAnalysis({ retry: true })">Thử lại</button>
+          </div>
+          <div v-else class="ai-result-content">
+            <div class="ai-result-meta"><span>{{ aiAnalysisResult.sourceMessageCount }} tin nhắn văn bản</span><button type="button" class="ai-inline-action" @click="runAiAnalysis({ retry: true })">Phân tích lại</button></div>
+            <section class="ai-result-section"><h4>Tóm tắt cuộc trò chuyện</h4><p>{{ aiAnalysisResult.summary || 'Chưa có tóm tắt đáng tin cậy.' }}</p></section>
+            <section class="ai-result-section"><h4>Quyết định đã thống nhất</h4><p v-if="!aiAnalysisResult.decisions?.length" class="ai-muted-copy">Không phát hiện quyết định đã được xác nhận.</p><div v-for="(decision, index) in aiAnalysisResult.decisions" :key="`ai-decision-${index}`" class="ai-result-item"><p>{{ decision.text }}</p><div class="ai-evidence-row"><button v-for="messageId in decision.evidenceMessageIds" :key="messageId" type="button" class="ai-evidence-link" @click="focusMessage(messageId)">Tin nhắn dẫn chứng</button></div></div></section>
+            <section class="ai-result-section"><h4>Việc cần làm</h4><p v-if="!aiAnalysisResult.actionItems?.length" class="ai-muted-copy">Không phát hiện việc cần làm rõ ràng.</p><div v-for="(item, index) in aiAnalysisResult.actionItems" :key="`ai-action-${index}`" class="ai-result-item"><p>{{ item.text }}</p><small>{{ item.assigneeCandidate ? `Người phụ trách: ${item.assigneeCandidate}` : 'Chưa xác định người phụ trách' }} · {{ item.deadlineCandidate ? `Hạn: ${item.deadlineCandidate}` : 'Chưa xác định hạn' }}</small><div class="ai-evidence-row"><button v-for="messageId in item.evidenceMessageIds" :key="messageId" type="button" class="ai-evidence-link" @click="focusMessage(messageId)">Tin nhắn dẫn chứng</button></div></div></section>
+            <section class="ai-result-section"><h4>Điểm chưa rõ / cần xác nhận</h4><p v-if="!aiAnalysisResult.openQuestions?.length" class="ai-muted-copy">Không phát hiện câu hỏi còn mở.</p><div v-for="(item, index) in aiAnalysisResult.openQuestions" :key="`ai-question-${index}`" class="ai-result-item"><p>{{ item.text }}</p><div class="ai-evidence-row"><button v-for="messageId in item.evidenceMessageIds" :key="messageId" type="button" class="ai-evidence-link" @click="focusMessage(messageId)">Tin nhắn dẫn chứng</button></div></div></section>
+            <section class="ai-result-section ai-question-section"><h4>Hỏi AI về cuộc trò chuyện</h4><form @submit.prevent="askAiQuestion"><input v-model="aiQuestion" type="text" maxlength="500" placeholder="Ví dụ: Ai đã nhận việc này?" :disabled="aiAnalysisLoading" /><button type="submit" class="ai-primary-action" :disabled="aiAnalysisLoading || !aiQuestion.trim()">Hỏi AI</button></form><div v-if="aiAnalysisResult.questionAnswer" class="ai-answer"><strong>{{ aiAnalysisResult.questionAnswer.unsupported ? 'Chưa đủ thông tin' : 'Trả lời' }}</strong><p>{{ aiAnalysisResult.questionAnswer.answer }}</p><div class="ai-evidence-row"><button v-for="messageId in aiAnalysisResult.questionAnswer.evidenceMessageIds" :key="messageId" type="button" class="ai-evidence-link" @click="focusMessage(messageId)">Tin nhắn dẫn chứng</button></div></div></section>
+          </div>
+        </template>
       </aside>
     </div>
 
@@ -1197,9 +1218,61 @@ let markReadVersion = 0
 const realtimeUnsubscribers = []
 const aiAnalysisOpen = ref(false)
 const aiAnalysisScope = ref('text')
+const aiAnalysisResult = ref(null)
+const aiAnalysisLoading = ref(false)
+const aiAnalysisError = ref('')
+const aiQuestion = ref('')
+const aiRequestId = ref('')
 const openAiAnalysis = (scope = 'text') => {
   aiAnalysisScope.value = scope
+  if (scope === 'text') {
+    aiAnalysisResult.value = null
+    aiAnalysisError.value = ''
+    aiQuestion.value = ''
+    aiRequestId.value = ''
+  }
   aiAnalysisOpen.value = true
+}
+const aiErrorMessage = (error) => {
+  const status = error?.response?.status
+  if (status === 402) return 'Không đủ credit AI để phân tích channel.'
+  if (status === 503) return 'Dịch vụ AI tạm thời không khả dụng. Hãy thử lại sau.'
+  return error?.response?.data?.message || error?.message || 'Không thể tạo phân tích AI.'
+}
+const runAiAnalysis = async ({ retry = false } = {}) => {
+  if (aiAnalysisLoading.value || !activeChannel.value?.id) return
+  if (!retry || !aiRequestId.value) aiRequestId.value = crypto.randomUUID()
+  aiAnalysisLoading.value = true
+  aiAnalysisError.value = ''
+  try {
+    aiAnalysisResult.value = await collaborationApi.analyzeChannelWithAi(activeChannel.value.id, {
+      requestId: aiRequestId.value,
+      messageIds: [],
+      question: null
+    })
+  } catch (error) {
+    aiAnalysisError.value = aiErrorMessage(error)
+  } finally {
+    aiAnalysisLoading.value = false
+  }
+}
+const askAiQuestion = async () => {
+  const question = aiQuestion.value.trim()
+  if (!question || aiAnalysisLoading.value || !activeChannel.value?.id) return
+  aiRequestId.value = crypto.randomUUID()
+  aiAnalysisLoading.value = true
+  aiAnalysisError.value = ''
+  try {
+    aiAnalysisResult.value = await collaborationApi.analyzeChannelWithAi(activeChannel.value.id, {
+      requestId: aiRequestId.value,
+      messageIds: [],
+      question
+    })
+  } catch (error) {
+    aiAnalysisError.value = aiErrorMessage(error)
+  } finally {
+    aiAnalysisLoading.value = false
+  }
 }
 const isCallCameraOn = ref(false)
 const activeVoiceChannel = ref(null)
@@ -5065,11 +5138,37 @@ const fetchProjectMembers = async () => {
 .context-empty { padding: 22px 10px; color: #8095a8; font-size: 11px; line-height: 1.5; text-align: center; }
 .ai-analysis-surface { position: absolute; z-index: 8; top: 76px; right: calc(var(--chat-context-width) + 12px); width: min(330px, calc(100% - 32px)); padding-bottom: 16px; border: 1px solid rgba(88, 183, 232, .28); border-radius: 12px; background: #112338; box-shadow: 0 20px 50px rgba(2, 8, 23, .45); }
 .ai-analysis-surface p { padding: 0 16px; color: #a9bdce; font-size: 12px; line-height: 1.55; }
+.ai-text-only-notice, .ai-off-state-panel, .ai-loading-state, .ai-error-state { padding: 14px 16px 0; }
+.ai-text-only-notice strong, .ai-error-state strong { color: #f0c58a; font-size: 12px; }
+.ai-text-only-notice p, .ai-off-state-panel p, .ai-loading-state small, .ai-error-state p { padding: 0; margin: 8px 0 0; }
 .ai-off-banner { display: flex; align-items: center; gap: 8px; margin: 14px 16px 0; color: #dcebf3; font-size: 12px; }
 .ai-state-indicator { background: #657a8b; box-shadow: none; }
-.ai-capability-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 0 16px; }
-.ai-capability-list span { padding: 7px 8px; border: 1px solid rgba(148, 163, 184, .12); border-radius: 6px; color: #99afc1; font-size: 10px; }
-.ai-disabled-action { display: block; width: calc(100% - 32px); margin: 14px 16px 0; padding: 9px; border: 1px solid rgba(148, 163, 184, .16); border-radius: 7px; background: rgba(255,255,255,.04); color: #7890a4; font-size: 11px; }
+.ai-primary-action, .ai-secondary-action { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 7px 11px; border-radius: 7px; font-size: 11px; font-weight: 700; cursor: pointer; transition: background-color 160ms ease-out, color 160ms ease-out, transform 120ms ease-out; }
+.ai-primary-action { margin: 14px 16px 0; border: 1px solid #63d29f; background: #63d29f; color: #06131c; }
+.ai-primary-action:hover { background: #83e5b7; }
+.ai-primary-action:active, .ai-secondary-action:active { transform: scale(.97); }
+.ai-primary-action:disabled { cursor: not-allowed; opacity: .5; }
+.ai-secondary-action { margin-top: 12px; border: 1px solid rgba(99, 210, 159, .45); background: transparent; color: #a9e7c8; }
+.ai-loading-state { display: flex; flex-direction: column; gap: 7px; color: #dcebf3; }
+.ai-loading-line { width: 35%; height: 3px; background: #63d29f; border-radius: 3px; }
+.ai-result-content { max-height: min(640px, calc(100vh - 150px)); overflow-y: auto; padding: 0 16px; }
+.ai-result-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0 4px; color: #7f9aac; font-size: 10px; }
+.ai-inline-action { border: 0; background: transparent; color: #8edeb7; cursor: pointer; font-size: 10px; }
+.ai-result-section { padding: 11px 0; border-top: 1px solid rgba(148, 163, 184, .12); }
+.ai-result-section h4 { margin: 0 0 5px; color: #e8f4fc; font-size: 11px; }
+.ai-result-section p { padding: 0; margin: 0; }
+.ai-result-item { padding: 7px 0; border-top: 1px solid rgba(148, 163, 184, .08); }
+.ai-result-item:first-of-type { border-top: 0; }
+.ai-result-item small, .ai-muted-copy { color: #8299ab; font-size: 10px; }
+.ai-evidence-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; padding: 0 16px; }
+.ai-evidence-link { padding: 3px 6px; border: 1px solid rgba(88, 183, 232, .35); border-radius: 5px; background: rgba(88, 183, 232, .08); color: #a8ddf4; cursor: pointer; font-size: 9px; }
+.ai-evidence-link:hover, .ai-evidence-link:focus-visible { background: rgba(88, 183, 232, .18); color: #e5f7ff; }
+.ai-question-section form { display: flex; gap: 6px; padding: 0 16px; }
+.ai-question-section input { min-width: 0; flex: 1; padding: 7px 8px; border: 1px solid rgba(148, 163, 184, .22); border-radius: 6px; background: #0b1929; color: #e8f4fc; font-size: 11px; }
+.ai-question-section form .ai-primary-action { margin: 0; white-space: nowrap; }
+.ai-answer { margin-top: 9px; padding: 8px; border-left: 2px solid #63d29f; background: rgba(99, 210, 159, .05); }
+.ai-answer strong { display: block; padding: 0 8px; color: #dcebf3; font-size: 10px; }
+.ai-answer p { padding: 0 8px; margin-top: 4px; }
 
 @media (max-width: 1120px) {
   .chat-workspace { grid-template-columns: 60px 220px minmax(0, 1fr) !important; }

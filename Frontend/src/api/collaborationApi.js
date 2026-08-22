@@ -80,6 +80,15 @@ export const collaborationApi = {
     return unwrapData(response)
   },
 
+  async analyzeChannelWithAi(channelId, payload, options = {}) {
+    const response = await axiosClient.post(
+      `/channels/${channelId}/ai/analysis`,
+      payload,
+      { signal: options.signal }
+    )
+    return unwrapData(response)
+  },
+
   async addChannelReaction(channelId, messageId, emoji, options = {}) {
     const response = await axiosClient.post(
       `/channels/${channelId}/messages/${messageId}/reactions`,

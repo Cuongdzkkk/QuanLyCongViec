@@ -113,7 +113,7 @@ namespace TaskManagement.Infrastructure.Migrations
                 column: "ReplyToMessageId",
                 principalTable: "ChannelMessages",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.SetNull);
+                onDelete: ReferentialAction.Restrict);
         }
 
         /// <inheritdoc />

@@ -39,6 +39,7 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<IBillingService, BillingService>();
             services.AddScoped<IPaymentProvider, SePayPaymentProvider>();
             services.AddScoped<IAiIntegrationService, AiIntegrationService>();
+            services.AddScoped<IAiChannelAnalysisService, AiChannelAnalysisService>();
             services.AddHttpClient<IAiService, GeminiAiService>(client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Gemini:TimeoutSeconds", 30), 5, 120));

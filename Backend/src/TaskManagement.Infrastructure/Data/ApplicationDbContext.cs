@@ -1328,7 +1328,7 @@ namespace TaskManagement.Infrastructure.Data
                 entity.HasOne(message => message.ReplyToMessage)
                     .WithMany(message => message.Replies)
                     .HasForeignKey(message => message.ReplyToMessageId)
-                    .OnDelete(DeleteBehavior.SetNull);
+                    .OnDelete(DeleteBehavior.Restrict);
                 entity.HasIndex(message => message.ReplyToMessageId);
             });
 

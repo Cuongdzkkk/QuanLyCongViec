@@ -4387,7 +4387,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasOne("TaskManagement.Domain.Entities.ChannelMessage", "ReplyToMessage")
                         .WithMany("Replies")
                         .HasForeignKey("ReplyToMessageId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("TaskManagement.Domain.Entities.User", "Sender")
                         .WithMany()
