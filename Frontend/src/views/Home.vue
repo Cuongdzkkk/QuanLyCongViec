@@ -14,8 +14,6 @@ import {
   Languages,
   Menu,
   Moon,
-  Play,
-  Rocket,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -26,14 +24,18 @@ import {
   Zap
 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
+import { billingApi, unwrapBillingData } from '@/api/billingApi'
 import ProductVideoSection from '@/components/landing/ProductVideoSection.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { currentTheme, toggleTheme } from '@/utils/theme'
 import { clearAuthSession, getStoredAccessToken, getStoredUserSession } from '@/utils/authSession'
 import { language, setLanguage } from '@/i18n'
+import { createCheckoutOrderGate } from '@/utils/billingCheckoutState'
 
 const router = useRouter()
+defineOptions({ name: 'SprintaHome' })
 const user = ref(getStoredUserSession() || {})
 const authenticated = ref(Boolean(getStoredAccessToken()))
 const mobileOpen = ref(false)
@@ -45,12 +47,13 @@ const usageError = ref(false)
 const landingRoot = ref(null)
 const scrollProgress = ref(0)
 const showPlanBenefits = ref(true)
+const checkoutPlanCode = ref('')
+const checkoutOrderGate = createCheckoutOrderGate(async (code) => unwrapBillingData(await billingApi.createOrder(code)))
 let revealObserver = null
 let revealFallbackTimer = null
 
 const isVi = computed(() => language.value === 'vi')
 const displayName = computed(() => user.value?.fullName || user.value?.username || user.value?.email || (isVi.value ? 'Người dùng SprintA' : 'SprintA user'))
-const initials = computed(() => displayName.value.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(-2).join('').toUpperCase() || 'SA')
 const workspaceName = computed(() => user.value?.currentWorkspace?.name || user.value?.workspaceName || 'Workspace')
 const usagePercent = computed(() => {
   const total = Number(usage.value?.includedCredits || 0) + Number(usage.value?.adjustmentCredits || 0)
@@ -314,15 +317,32 @@ const planFeatures = (plan) => {
   return features
 }
 
-const handlePlan = (plan) => {
+const handlePlan = async (plan) => {
   const code = planCode(plan)
   if (code === 'enterprise' || plan.monthlyPriceVnd == null) return
   const checkoutPath = `/billing/checkout/${encodeURIComponent(code)}`
-  if (authenticated.value) router.push(checkoutPath)
-  else router.push({ path: '/login', query: { redirect: checkoutPath } })
+  if (!authenticated.value) {
+    router.push({ path: '/login', query: { redirect: checkoutPath } })
+    return
+  }
+
+  checkoutPlanCode.value = code
+  try {
+    const order = await checkoutOrderGate(code)
+    await router.push({ path: checkoutPath, query: order?.id ? { orderId: order.id } : undefined })
+  } catch (requestError) {
+    ElMessage.error(requestError.response?.data?.message || (requestError.message === 'Invalid payment order response.' ? (isVi.value ? 'Dữ liệu đơn thanh toán trả về không hợp lệ.' : 'The payment order response is invalid.') : requestError.message) || (isVi.value ? 'Không thể tạo đơn thanh toán.' : 'Could not create a payment order.'))
+  } finally {
+    checkoutPlanCode.value = ''
+  }
 }
 
-const isCurrentPlan = (plan) => usage.value?.planCode === planCode(plan)
+const isCheckoutPlanLoading = (plan) => checkoutPlanCode.value === planCode(plan)
+const purchaseLabel = (plan) => {
+  if (isCheckoutPlanLoading(plan)) return isVi.value ? 'Đang chuẩn bị thanh toán...' : 'Preparing payment...'
+  if (isVi.value) return `Thanh toán ${plan.name} · ${priceLabel(plan).replace(' VND', 'đ')}`
+  return `Pay for ${plan.name} · ${priceLabel(plan)}`
+}
 
 const logout = () => {
   clearAuthSession()
@@ -684,8 +704,8 @@ onBeforeUnmount(() => {
                 <span v-if="plan.monthlyPriceVnd != null">{{ copy.perMonth }}<template v-if="plan.perUser"> {{ copy.perUser }}</template></span>
               </div>
               <p class="price-status"><i></i>{{ plan.monthlyPriceVnd == null ? copy.pending : copy.transparentPricing }}</p>
-              <button class="plan-cta" type="button" :disabled="plan.monthlyPriceVnd == null" @click="handlePlan(plan)">
-                {{ plan.monthlyPriceVnd == null ? copy.pending : isCurrentPlan(plan) ? (isVi ? 'Gói hiện tại' : 'Current plan') : `${copy.choosePlan} ${plan.name}` }} <ArrowRight v-if="plan.monthlyPriceVnd != null" :size="15" />
+              <button class="plan-cta" type="button" :disabled="plan.monthlyPriceVnd == null || Boolean(checkoutPlanCode)" @click="handlePlan(plan)">
+                {{ plan.monthlyPriceVnd == null ? copy.pending : purchaseLabel(plan) }} <ArrowRight v-if="plan.monthlyPriceVnd != null && !isCheckoutPlanLoading(plan)" :size="15" />
               </button>
               <div v-show="showPlanBenefits" class="feature-list">
                 <div v-for="feature in planFeatures(plan)" :key="feature" class="price-line"><span><Check :size="13" /></span>{{ feature }}</div>
