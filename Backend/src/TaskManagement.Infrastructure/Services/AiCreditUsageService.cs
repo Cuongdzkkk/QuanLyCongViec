@@ -124,6 +124,9 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
     }
 
     public async Task<Guid> ReserveAsync(Guid userId, int credits, string idempotencyKey, CancellationToken cancellationToken = default)
+        => (await ReserveDetailedAsync(userId, credits, idempotencyKey, cancellationToken)).ReservationId;
+
+    public async Task<AiCreditReservationResult> ReserveDetailedAsync(Guid userId, int credits, string idempotencyKey, CancellationToken cancellationToken = default)
     {
         if (credits <= 0) throw new ArgumentOutOfRangeException(nameof(credits));
         if (string.IsNullOrWhiteSpace(idempotencyKey)) throw new ArgumentException("Idempotency key is required.", nameof(idempotencyKey));
@@ -142,7 +145,7 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
         }
     }
 
-    private async Task<Guid> ReserveOnceAsync(Guid userId, int credits, string idempotencyKey, CancellationToken cancellationToken)
+    private async Task<AiCreditReservationResult> ReserveOnceAsync(Guid userId, int credits, string idempotencyKey, CancellationToken cancellationToken)
     {
         await using IDbContextTransaction? transaction = _context.Database.IsRelational()
             ? await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken) : null;
@@ -154,9 +157,24 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
                 .SingleOrDefaultAsync(cancellationToken);
         }
         var existing = await _context.AiCreditReservations.SingleOrDefaultAsync(x => x.IdempotencyKey == idempotencyKey, cancellationToken);
-        if (existing != null) return existing.Id;
-        var usage = await GetUsageAsync(userId, DateTime.MinValue, DateTime.MaxValue, cancellationToken);
         var now = DateTime.UtcNow;
+        if (existing != null)
+        {
+            if (existing.Status == "Finalized")
+                return new(existing.Id, false, existing.Status);
+            if (existing.Status == "Reserved" && existing.ExpiresAt > now)
+                return new(existing.Id, false, existing.Status);
+
+            existing.Credits = credits;
+            existing.Status = "Reserved";
+            existing.ExpiresAt = now.AddMinutes(10);
+            existing.CompletedAt = null;
+            existing.CreatedAt = now;
+            await _context.SaveChangesAsync(cancellationToken);
+            if (transaction != null) await transaction.CommitAsync(cancellationToken);
+            return new(existing.Id, true, existing.Status);
+        }
+        var usage = await GetUsageAsync(userId, DateTime.MinValue, DateTime.MaxValue, cancellationToken);
         var reserved = await _context.AiCreditReservations
             .Where(x => x.UserId == userId && x.Status == "Reserved" && x.ExpiresAt > now)
             .SumAsync(x => (int?)x.Credits, cancellationToken) ?? 0;
@@ -170,7 +188,7 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
         _context.AiCreditReservations.Add(reservation);
         await _context.SaveChangesAsync(cancellationToken);
         if (transaction != null) await transaction.CommitAsync(cancellationToken);
-        return reservation.Id;
+        return new(reservation.Id, true, reservation.Status);
     }
 
     private static bool IsDeadlock(Exception exception)

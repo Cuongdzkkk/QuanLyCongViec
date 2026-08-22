@@ -166,6 +166,50 @@ public sealed class CollaborationChannelServiceTests
     }
 
     [Fact]
+    public async Task FreshHostAndRepeatedInitializationKeepOneProjectDiscussionChannel()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        DiscoverySeed seed;
+        await using (var setup = CreateContext(databaseName))
+        {
+            seed = await DiscoverySeed.InsertAsync(setup);
+        }
+
+        var initializations = Enumerable.Range(0, 8)
+            .Select(async _ =>
+            {
+                await using var context = CreateContext(databaseName);
+                return await CreateService(context)
+                    .EnsureProjectDiscussionAsync(seed.ProjectAId, seed.MemberId);
+            });
+        var initialResults = await Task.WhenAll(initializations);
+
+        initialResults.Count(result => result.Created).Should().Be(1);
+        await using (var verify = CreateContext(databaseName))
+        {
+            (await verify.CollaborationChannels.CountAsync(item =>
+                    item.ProjectId == seed.ProjectAId &&
+                    item.ChannelScope == CollaborationChannelService.ProjectDiscussionScope &&
+                    !item.IsDeleted && !item.IsArchived))
+                .Should().Be(1);
+        }
+
+        await using (var repeated = CreateContext(databaseName))
+        {
+            (await CreateService(repeated)
+                .EnsureProjectDiscussionAsync(seed.ProjectAId, seed.ManagerId))
+                .Created.Should().BeFalse();
+        }
+
+        await using var finalVerify = CreateContext(databaseName);
+        (await finalVerify.CollaborationChannels.CountAsync(item =>
+                item.ProjectId == seed.ProjectAId &&
+                item.ChannelScope == CollaborationChannelService.ProjectDiscussionScope &&
+                !item.IsDeleted && !item.IsArchived))
+            .Should().Be(1);
+    }
+
+    [Fact]
     public async Task OutsiderAndInactiveUserCannotDiscoverOrCreate()
     {
         await using var context = CreateContext();

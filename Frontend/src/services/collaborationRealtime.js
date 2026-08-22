@@ -5,7 +5,9 @@ export const COLLABORATION_REALTIME_EVENTS = Object.freeze({
   CHANNEL_MESSAGE_CREATED: 'ChannelMessageCreated',
   DIRECT_MESSAGE_CREATED: 'DirectMessageCreated',
   READ_STATE_CHANGED: 'CollaborationReadStateChanged',
-  MENTION_CREATED: 'CollaborationMentionCreated'
+  MENTION_CREATED: 'CollaborationMentionCreated',
+  CHANNEL_MESSAGE_REACTION_CHANGED: 'ChannelMessageReactionChanged',
+  CHANNEL_MESSAGE_PIN_CHANGED: 'ChannelMessagePinChanged'
 })
 
 export const COLLABORATION_REALTIME_STATES = Object.freeze({
@@ -52,6 +54,8 @@ class CollaborationRealtimeService {
     this.directSubscribers = new Set()
     this.readStateSubscribers = new Set()
     this.mentionSubscribers = new Set()
+    this.reactionSubscribers = new Set()
+    this.pinSubscribers = new Set()
     this.stateSubscribers = new Set()
     this.reconnectedSubscribers = new Set()
   }
@@ -92,6 +96,14 @@ class CollaborationRealtimeService {
     connection.on(
       COLLABORATION_REALTIME_EVENTS.MENTION_CREATED,
       payload => this.mentionSubscribers.forEach(handler => handler(payload))
+    )
+    connection.on(
+      COLLABORATION_REALTIME_EVENTS.CHANNEL_MESSAGE_REACTION_CHANGED,
+      payload => this.reactionSubscribers.forEach(handler => handler(payload))
+    )
+    connection.on(
+      COLLABORATION_REALTIME_EVENTS.CHANNEL_MESSAGE_PIN_CHANGED,
+      payload => this.pinSubscribers.forEach(handler => handler(payload))
     )
     connection.onreconnecting(() => {
       if (!this.intentionalStop) this.emitState(COLLABORATION_REALTIME_STATES.RECONNECTING)
@@ -237,6 +249,16 @@ class CollaborationRealtimeService {
   subscribeMention(handler) {
     this.mentionSubscribers.add(handler)
     return () => this.mentionSubscribers.delete(handler)
+  }
+
+  subscribeReaction(handler) {
+    this.reactionSubscribers.add(handler)
+    return () => this.reactionSubscribers.delete(handler)
+  }
+
+  subscribePin(handler) {
+    this.pinSubscribers.add(handler)
+    return () => this.pinSubscribers.delete(handler)
   }
 
   subscribeState(handler) {

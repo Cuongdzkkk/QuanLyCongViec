@@ -31,7 +31,10 @@ public sealed class ChatRealtimePublisher : ICollaborationRealtimePublisher
                 message.Sender,
                 message.CreatedAt,
                 message.Attachments,
-                message.Mentions),
+                message.Mentions,
+                message.ReplyTo,
+                message.Reactions,
+                message.IsPinned),
             message.MessageId,
             cancellationToken);
 
@@ -71,6 +74,26 @@ public sealed class ChatRealtimePublisher : ICollaborationRealtimePublisher
             ChatRealtimeEvents.CollaborationMentionCreated,
             notification,
             notification.NotificationId,
+            cancellationToken);
+
+    public Task PublishChannelReactionChangedAsync(
+        ChannelMessageReactionChangeDto change,
+        CancellationToken cancellationToken = default) =>
+        PublishSafelyAsync(
+            ChatRealtimeGroups.Channel(change.ChannelId),
+            ChatRealtimeEvents.ChannelMessageReactionChanged,
+            change,
+            change.MessageId,
+            cancellationToken);
+
+    public Task PublishChannelPinChangedAsync(
+        ChannelMessagePinChangeDto change,
+        CancellationToken cancellationToken = default) =>
+        PublishSafelyAsync(
+            ChatRealtimeGroups.Channel(change.ChannelId),
+            ChatRealtimeEvents.ChannelMessagePinChanged,
+            change,
+            change.MessageId,
             cancellationToken);
 
     private async Task PublishSafelyAsync<TPayload>(

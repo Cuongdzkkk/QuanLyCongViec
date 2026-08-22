@@ -9,6 +9,8 @@ public sealed class SendChannelMessageRequestDto
     public string Content { get; set; } = string.Empty;
 
     public List<ChannelMessageMentionRequestDto> Mentions { get; set; } = [];
+
+    public Guid? ReplyToMessageId { get; set; }
 }
 
 public sealed class ChannelMessageMentionRequestDto
@@ -34,6 +36,33 @@ public sealed record ChannelMessageSenderDto(
     string DisplayName,
     string? AvatarUrl);
 
+public sealed record ChannelMessageQuoteDto(
+    Guid MessageId,
+    string Content,
+    ChannelMessageSenderDto Sender,
+    DateTime CreatedAt,
+    bool IsAvailable = true);
+
+public sealed record ChannelMessageReactionDto(
+    string Emoji,
+    int Count,
+    bool ReactedByCurrentUser);
+
+public sealed record ChannelMessageReactionChangeDto(
+    Guid ChannelId,
+    Guid MessageId,
+    Guid ActorUserId,
+    string Emoji,
+    bool IsActive,
+    IReadOnlyList<ChannelMessageReactionDto> Reactions);
+
+public sealed record ChannelMessagePinChangeDto(
+    Guid ChannelId,
+    Guid MessageId,
+    Guid? PinnedByUserId,
+    DateTime? PinnedAt,
+    bool IsPinned);
+
 public sealed record ChannelMessageDto(
     Guid MessageId,
     Guid ChannelId,
@@ -42,7 +71,17 @@ public sealed record ChannelMessageDto(
     DateTime CreatedAt,
     Guid OrderingId,
     IReadOnlyList<CollaborationAttachmentDto>? Attachments = null,
-    IReadOnlyList<ChannelMessageMentionDto>? Mentions = null);
+    IReadOnlyList<ChannelMessageMentionDto>? Mentions = null,
+    ChannelMessageQuoteDto? ReplyTo = null,
+    IReadOnlyList<ChannelMessageReactionDto>? Reactions = null,
+    bool IsPinned = false);
+
+public sealed record ChannelPinnedMessageDto(
+    ChannelMessageDto Message,
+    ChannelMessageSenderDto PinnedBy,
+    DateTime PinnedAt);
+
+public sealed record ChannelMessageReactionRequestDto(string Emoji);
 
 public sealed record ChannelMessagePageDto(
     IReadOnlyList<ChannelMessageDto> Items,

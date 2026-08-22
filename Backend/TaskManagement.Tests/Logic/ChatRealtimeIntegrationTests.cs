@@ -57,6 +57,24 @@ public sealed class ChatRealtimeIntegrationTests
     }
 
     [Fact]
+    public async Task CallHubSupportsQueryTokenAndRejectsAnonymousConnections()
+    {
+        await using var factory = new ChatApplicationFactory();
+        var userId = Guid.NewGuid();
+        await SeedUserAsync(factory, userId, active: true);
+
+        await using var missing = CreateCallConnection(factory, accessToken: null);
+        await missing.Invoking(connection => connection.StartAsync())
+            .Should().ThrowAsync<Exception>();
+
+        using var client = factory.CreateClient();
+        var response = await client.PostAsync(
+            $"{CallHub.Route}/negotiate?negotiateVersion=1&access_token={CreateToken(factory, userId)}",
+            content: null);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task NotificationHubRequiresAuthAndOnlyDeliversToAuthenticatedUserGroup()
     {
         await using var factory = new ChatApplicationFactory();
@@ -374,6 +392,21 @@ public sealed class ChatRealtimeIntegrationTests
         new HubConnectionBuilder()
             .WithUrl(
                 new Uri(factory.Server.BaseAddress, ChatHub.Route),
+                options =>
+                {
+                    options.Transports = HttpTransportType.LongPolling;
+                    options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                    if (accessToken != null)
+                        options.AccessTokenProvider = () => Task.FromResult(accessToken)!;
+                })
+            .Build();
+
+    private static HubConnection CreateCallConnection(
+        ChatApplicationFactory factory,
+        string? accessToken) =>
+        new HubConnectionBuilder()
+            .WithUrl(
+                new Uri(factory.Server.BaseAddress, CallHub.Route),
                 options =>
                 {
                     options.Transports = HttpTransportType.LongPolling;

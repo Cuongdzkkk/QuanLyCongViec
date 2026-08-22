@@ -33,45 +33,15 @@ public sealed class ChannelTextService : IChannelTextService
         ValidatePage(page, pageSize);
         await AuthorizeAsync(channelId, userId, requireSend: false, cancellationToken);
 
-        var query = _context.ChannelMessages
-            .AsNoTracking()
-            .Where(message => message.CollaborationChannelId == channelId);
+        var query = BuildMessageQuery(channelId);
         var totalCount = await query.CountAsync(cancellationToken);
-        var items = await query
+        var messages = await query
             .OrderByDescending(message => message.SentAt)
             .ThenByDescending(message => message.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(message => new ChannelMessageDto(
-                message.Id,
-                channelId,
-                message.Content,
-                new ChannelMessageSenderDto(
-                    message.SenderId,
-                    message.Sender != null
-                        ? message.Sender.FullName ?? message.Sender.Email
-                        : "Unknown user",
-                    message.Sender != null ? message.Sender.AvatarUrl : null),
-                message.SentAt,
-                message.Id,
-                message.Attachments
-                    .OrderBy(attachment => attachment.CreatedAt)
-                    .ThenBy(attachment => attachment.Id)
-                    .Select(attachment => new CollaborationAttachmentDto(
-                        attachment.Id,
-                        attachment.OriginalFileName,
-                        attachment.ContentType,
-                        attachment.SizeBytes))
-                    .ToList(),
-                message.Mentions
-                    .OrderBy(mention => mention.StartIndex)
-                    .Select(mention => new ChannelMessageMentionDto(
-                        mention.MentionedUserId,
-                        mention.DisplayText,
-                        mention.StartIndex,
-                        mention.Length))
-                    .ToList()))
             .ToListAsync(cancellationToken);
+        var items = messages.Select(message => MapMessage(message, channelId, userId)).ToList();
 
         return new ChannelMessagePageDto(
             items,
@@ -104,13 +74,23 @@ public sealed class ChannelTextService : IChannelTextService
         string? content,
         IReadOnlyList<ChannelMessageMentionRequestDto> mentions,
         IReadOnlyList<PendingCollaborationAttachmentDto> attachments,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid? replyToMessageId = null)
     {
         var channel = await AuthorizeAsync(channelId, userId, requireSend: true, cancellationToken);
         ValidateAttachments(attachments);
         var normalizedContent = NormalizeContent(content, attachments.Count > 0);
         var normalizedMentions = await ValidateMentionsAsync(
             channelId, userId, normalizedContent, mentions, cancellationToken);
+        if (replyToMessageId.HasValue)
+        {
+            var replyExists = await _context.ChannelMessages.AsNoTracking().AnyAsync(
+                message => message.Id == replyToMessageId.Value &&
+                    message.CollaborationChannelId == channelId,
+                cancellationToken);
+            if (!replyExists)
+                throw new ArgumentException("The referenced message is not available in this channel.", nameof(replyToMessageId));
+        }
         var actor = await _context.Users.AsNoTracking()
             .Where(item => item.Id == userId)
             .Select(item => new ChannelMessageSenderDto(
@@ -125,7 +105,8 @@ public sealed class ChannelTextService : IChannelTextService
             CollaborationChannelId = channelId,
             SenderId = userId,
             Content = normalizedContent,
-            SentAt = DateTime.UtcNow
+            SentAt = DateTime.UtcNow,
+            ReplyToMessageId = replyToMessageId
         };
         foreach (var attachment in attachments)
         {
@@ -187,41 +168,156 @@ public sealed class ChannelTextService : IChannelTextService
         _context.ChannelMessages.Add(message);
         await _context.SaveChangesAsync(cancellationToken);
 
-        var persisted = await _context.ChannelMessages
-            .AsNoTracking()
-            .Where(item => item.Id == message.Id)
-            .Select(item => new ChannelMessageDto(
-                item.Id,
-                channelId,
-                item.Content,
-                new ChannelMessageSenderDto(
-                    item.SenderId,
-                    item.Sender != null
-                        ? item.Sender.FullName ?? item.Sender.Email
-                        : "Unknown user",
-                    item.Sender != null ? item.Sender.AvatarUrl : null),
-                item.SentAt,
-                item.Id,
-                item.Attachments
-                    .OrderBy(attachment => attachment.CreatedAt)
-                    .ThenBy(attachment => attachment.Id)
-                    .Select(attachment => new CollaborationAttachmentDto(
-                        attachment.Id,
-                        attachment.OriginalFileName,
-                        attachment.ContentType,
-                        attachment.SizeBytes))
-                    .ToList(),
-                item.Mentions
-                    .OrderBy(mention => mention.StartIndex)
-                    .Select(mention => new ChannelMessageMentionDto(
-                        mention.MentionedUserId,
-                        mention.DisplayText,
-                        mention.StartIndex,
-                        mention.Length))
-                    .ToList()))
-            .SingleAsync(cancellationToken);
+        var persistedEntity = await BuildMessageQuery(channelId)
+            .SingleAsync(item => item.Id == message.Id, cancellationToken);
+        var persisted = MapMessage(persistedEntity, channelId, userId);
 
         return new SendChannelMessageResult(persisted, notificationEvents);
+    }
+
+    public async Task<ChannelMessagePageDto> SearchAsync(
+        Guid channelId,
+        Guid userId,
+        string query,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        ValidatePage(page, pageSize);
+        await AuthorizeAsync(channelId, userId, requireSend: false, cancellationToken);
+        var normalizedQuery = query?.Trim() ?? string.Empty;
+        if (normalizedQuery.Length is < 1 or > 200)
+            throw new ArgumentException("Search query must contain between 1 and 200 characters.", nameof(query));
+
+        var search = BuildMessageQuery(channelId)
+            .Where(message => message.Content.Contains(normalizedQuery));
+        var totalCount = await search.CountAsync(cancellationToken);
+        var messages = await search
+            .OrderByDescending(message => message.SentAt)
+            .ThenByDescending(message => message.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+        return new ChannelMessagePageDto(
+            messages.Select(message => MapMessage(message, channelId, userId)).ToList(),
+            page,
+            pageSize,
+            totalCount,
+            "createdAt_desc,messageId_desc");
+    }
+
+    public async Task<ChannelMessageReactionChangeDto> AddReactionAsync(
+        Guid channelId,
+        Guid messageId,
+        Guid userId,
+        string emoji,
+        CancellationToken cancellationToken = default)
+    {
+        await AuthorizeMessageAsync(channelId, messageId, userId, requireManage: false, cancellationToken);
+        var normalizedEmoji = NormalizeEmoji(emoji);
+        var existing = await _context.CollaborationMessageReactions.SingleOrDefaultAsync(
+            reaction => reaction.ChannelMessageId == messageId &&
+                reaction.UserId == userId && reaction.Emoji == normalizedEmoji,
+            cancellationToken);
+        if (existing == null)
+        {
+            _context.CollaborationMessageReactions.Add(new CollaborationMessageReaction
+            {
+                Id = Guid.NewGuid(),
+                ChannelMessageId = messageId,
+                UserId = userId,
+                Emoji = normalizedEmoji,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        return await BuildReactionChangeAsync(channelId, messageId, userId, normalizedEmoji, true, cancellationToken);
+    }
+
+    public async Task<ChannelMessageReactionChangeDto> RemoveReactionAsync(
+        Guid channelId,
+        Guid messageId,
+        Guid userId,
+        string emoji,
+        CancellationToken cancellationToken = default)
+    {
+        await AuthorizeMessageAsync(channelId, messageId, userId, requireManage: false, cancellationToken);
+        var normalizedEmoji = NormalizeEmoji(emoji);
+        var existing = await _context.CollaborationMessageReactions.SingleOrDefaultAsync(
+            reaction => reaction.ChannelMessageId == messageId &&
+                reaction.UserId == userId && reaction.Emoji == normalizedEmoji,
+            cancellationToken);
+        if (existing != null)
+        {
+            _context.CollaborationMessageReactions.Remove(existing);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        return await BuildReactionChangeAsync(channelId, messageId, userId, normalizedEmoji, false, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ChannelPinnedMessageDto>> GetPinsAsync(
+        Guid channelId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        await AuthorizeAsync(channelId, userId, requireSend: false, cancellationToken);
+        var pins = await _context.CollaborationMessagePins
+            .AsNoTracking()
+            .Where(pin => pin.ChannelMessage.CollaborationChannelId == channelId)
+            .Include(pin => pin.PinnedByUser)
+            .Include(pin => pin.ChannelMessage).ThenInclude(message => message.Sender)
+            .Include(pin => pin.ChannelMessage).ThenInclude(message => message.ReplyToMessage).ThenInclude(message => message!.Sender)
+            .Include(pin => pin.ChannelMessage).ThenInclude(message => message.Attachments)
+            .Include(pin => pin.ChannelMessage).ThenInclude(message => message.Mentions)
+            .Include(pin => pin.ChannelMessage).ThenInclude(message => message.Reactions)
+            .OrderByDescending(pin => pin.PinnedAt)
+            .ThenByDescending(pin => pin.Id)
+            .ToListAsync(cancellationToken);
+        return pins.Select(pin => new ChannelPinnedMessageDto(
+            MapMessage(pin.ChannelMessage, channelId, userId),
+            ToSender(pin.PinnedByUserId, pin.PinnedByUser),
+            pin.PinnedAt)).ToList();
+    }
+
+    public async Task<ChannelMessagePinChangeDto> PinAsync(
+        Guid channelId,
+        Guid messageId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        await AuthorizeMessageAsync(channelId, messageId, userId, requireManage: true, cancellationToken);
+        var existing = await _context.CollaborationMessagePins.SingleOrDefaultAsync(
+            pin => pin.ChannelMessageId == messageId, cancellationToken);
+        if (existing == null)
+        {
+            existing = new CollaborationMessagePin
+            {
+                Id = Guid.NewGuid(),
+                ChannelMessageId = messageId,
+                PinnedByUserId = userId,
+                PinnedAt = DateTime.UtcNow
+            };
+            _context.CollaborationMessagePins.Add(existing);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        return new ChannelMessagePinChangeDto(channelId, messageId, existing.PinnedByUserId, existing.PinnedAt, true);
+    }
+
+    public async Task<ChannelMessagePinChangeDto> UnpinAsync(
+        Guid channelId,
+        Guid messageId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        await AuthorizeMessageAsync(channelId, messageId, userId, requireManage: true, cancellationToken);
+        var existing = await _context.CollaborationMessagePins.SingleOrDefaultAsync(
+            pin => pin.ChannelMessageId == messageId, cancellationToken);
+        if (existing != null)
+        {
+            _context.CollaborationMessagePins.Remove(existing);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        return new ChannelMessagePinChangeDto(channelId, messageId, null, null, false);
     }
 
     public async Task<IReadOnlyList<ChannelMemberSuggestionDto>> SearchMembersAsync(
@@ -254,6 +350,124 @@ public sealed class ChannelTextService : IChannelTextService
                 member.User.FullName,
                 member.User.AvatarUrl))
             .ToListAsync(cancellationToken);
+    }
+
+    private IQueryable<ChannelMessage> BuildMessageQuery(Guid channelId) =>
+        _context.ChannelMessages
+            .AsNoTracking()
+            .Where(message => message.CollaborationChannelId == channelId)
+            .Include(message => message.Sender)
+            .Include(message => message.Attachments)
+            .Include(message => message.Mentions)
+            .Include(message => message.ReplyToMessage).ThenInclude(message => message!.Sender)
+            .Include(message => message.Reactions)
+            .Include(message => message.Pin);
+
+    private static ChannelMessageDto MapMessage(ChannelMessage message, Guid channelId, Guid currentUserId)
+    {
+        var reply = message.ReplyToMessage == null
+            ? message.ReplyToMessageId.HasValue
+                ? new ChannelMessageQuoteDto(
+                    message.ReplyToMessageId.Value,
+                    string.Empty,
+                    new ChannelMessageSenderDto(Guid.Empty, "Unavailable user", null),
+                    message.SentAt,
+                    false)
+                : null
+            : new ChannelMessageQuoteDto(
+                message.ReplyToMessage.Id,
+                message.ReplyToMessage.Content,
+                ToSender(message.ReplyToMessage.SenderId, message.ReplyToMessage.Sender),
+                message.ReplyToMessage.SentAt);
+        var reactions = message.Reactions
+            .GroupBy(reaction => reaction.Emoji, StringComparer.Ordinal)
+            .Select(group => new ChannelMessageReactionDto(
+                group.Key,
+                group.Count(),
+                group.Any(reaction => reaction.UserId == currentUserId)))
+            .OrderBy(reaction => reaction.Emoji, StringComparer.Ordinal)
+            .ToList();
+        return new ChannelMessageDto(
+            message.Id,
+            channelId,
+            message.Content,
+            ToSender(message.SenderId, message.Sender),
+            message.SentAt,
+            message.Id,
+            message.Attachments
+                .OrderBy(attachment => attachment.CreatedAt)
+                .ThenBy(attachment => attachment.Id)
+                .Select(attachment => new CollaborationAttachmentDto(
+                    attachment.Id,
+                    attachment.OriginalFileName,
+                    attachment.ContentType,
+                    attachment.SizeBytes))
+                .ToList(),
+            message.Mentions
+                .OrderBy(mention => mention.StartIndex)
+                .Select(mention => new ChannelMessageMentionDto(
+                    mention.MentionedUserId,
+                    mention.DisplayText,
+                    mention.StartIndex,
+                    mention.Length))
+                .ToList(),
+            reply,
+            reactions,
+            message.Pin != null);
+    }
+
+    private static ChannelMessageSenderDto ToSender(Guid userId, User? user) =>
+        new(userId, user?.FullName ?? user?.Email ?? "Unknown user", user?.AvatarUrl);
+
+    private async Task AuthorizeMessageAsync(
+        Guid channelId,
+        Guid messageId,
+        Guid userId,
+        bool requireManage,
+        CancellationToken cancellationToken)
+    {
+        var channel = await AuthorizeAsync(channelId, userId, requireSend: false, cancellationToken);
+        var messageExists = await _context.ChannelMessages.AsNoTracking().AnyAsync(
+            message => message.Id == messageId && message.CollaborationChannelId == channelId,
+            cancellationToken);
+        if (!messageExists) throw new ChannelNotFoundException();
+        if (!requireManage) return;
+        var projectAccess = await _authorization.AuthorizeProjectAsync(
+            userId, channel.ProjectId, ResourcePermissionCodes.ProjectWrite);
+        if (!projectAccess.Succeeded) throw new ChannelManageForbiddenException();
+    }
+
+    private async Task<ChannelMessageReactionChangeDto> BuildReactionChangeAsync(
+        Guid channelId,
+        Guid messageId,
+        Guid userId,
+        string emoji,
+        bool isActive,
+        CancellationToken cancellationToken)
+    {
+        var reactions = await _context.CollaborationMessageReactions.AsNoTracking()
+            .Where(reaction => reaction.ChannelMessageId == messageId)
+            .ToListAsync(cancellationToken);
+        var summary = reactions
+            .GroupBy(reaction => reaction.Emoji, StringComparer.Ordinal)
+            .Select(group => new ChannelMessageReactionDto(
+                group.Key,
+                group.Count(),
+                group.Any(reaction => reaction.UserId == userId)))
+            .OrderBy(reaction => reaction.Emoji, StringComparer.Ordinal)
+            .ToList();
+        return new ChannelMessageReactionChangeDto(
+            channelId, messageId, userId, emoji, isActive, summary);
+    }
+
+    private static string NormalizeEmoji(string emoji)
+    {
+        if (string.IsNullOrWhiteSpace(emoji))
+            throw new ArgumentException("Reaction emoji is required.", nameof(emoji));
+        var normalized = emoji.Trim();
+        if (normalized.Length > 32 || normalized.Any(char.IsControl))
+            throw new ArgumentException("Reaction emoji is invalid.", nameof(emoji));
+        return normalized;
     }
 
     private async Task<AuthorizedChannel> AuthorizeAsync(
