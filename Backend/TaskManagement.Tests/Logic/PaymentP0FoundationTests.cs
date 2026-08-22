@@ -83,6 +83,79 @@ public sealed class PaymentP0FoundationTests
     }
 
     [Fact]
+    public async Task SePayWebhook_ProductionEnvironmentKeysBindAndAuthenticateOverHttp()
+    {
+        const string secret = "production-style-fake-secret";
+        var previous = new Dictionary<string, string?>
+        {
+            ["PaymentProviders__SePay__Enabled"] = Environment.GetEnvironmentVariable("PaymentProviders__SePay__Enabled"),
+            ["PaymentProviders__SePay__WebhookSecret"] = Environment.GetEnvironmentVariable("PaymentProviders__SePay__WebhookSecret"),
+            ["PaymentProviders__SePay__BankCode"] = Environment.GetEnvironmentVariable("PaymentProviders__SePay__BankCode"),
+            ["PaymentProviders__SePay__AccountNumber"] = Environment.GetEnvironmentVariable("PaymentProviders__SePay__AccountNumber"),
+            ["PaymentProviders__SePay__AccountName"] = Environment.GetEnvironmentVariable("PaymentProviders__SePay__AccountName")
+        };
+        try
+        {
+            Environment.SetEnvironmentVariable("PaymentProviders__SePay__Enabled", "true");
+            Environment.SetEnvironmentVariable("PaymentProviders__SePay__WebhookSecret", secret);
+            Environment.SetEnvironmentVariable("PaymentProviders__SePay__BankCode", "VietinBank");
+            Environment.SetEnvironmentVariable("PaymentProviders__SePay__AccountNumber", "0000000000");
+            Environment.SetEnvironmentVariable("PaymentProviders__SePay__AccountName", "FAKE TEST ACCOUNT");
+
+            await using var factory = new PaymentHttpApplicationFactory(useEnvironmentKeys: true);
+            using var client = factory.CreateClient();
+            const string body = "{\"id\":\"env-http-1\",\"transferType\":\"in\",\"accountNumber\":\"0000000000\",\"transferAmount\":49000,\"content\":\"SEVQR SPAUNKNOWN\"}";
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/payments/webhooks/sepay")
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            };
+            request.Headers.Add("X-SePay-Timestamp", timestamp);
+            request.Headers.Add("X-SePay-Signature", Sign(secret, timestamp, body));
+
+            var response = await client.SendAsync(request);
+            response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        }
+        finally
+        {
+            foreach (var pair in previous)
+                Environment.SetEnvironmentVariable(pair.Key, pair.Value);
+        }
+    }
+
+    [Fact]
+    public async Task SePayWebhook_AuthenticationFailuresDoNotClaimConfigurationMissing()
+    {
+        await using var factory = new PaymentHttpApplicationFactory();
+        using var client = factory.CreateClient();
+        const string body = "{\"id\":\"http-auth-1\",\"transferType\":\"in\",\"accountNumber\":\"0000000000\",\"transferAmount\":49000,\"content\":\"SEVQR SPAUNKNOWN\"}";
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+
+        async Task<HttpResponseMessage> Send(string? signature, string? requestTimestamp, string requestBody = body)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/payments/webhooks/sepay")
+            {
+                Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
+            };
+            if (signature != null) request.Headers.Add("X-SePay-Signature", signature);
+            if (requestTimestamp != null) request.Headers.Add("X-SePay-Timestamp", requestTimestamp);
+            return await client.SendAsync(request);
+        }
+
+        var missing = await Send(null, null);
+        var wrong = await Send("sha256=wrong", timestamp);
+        var tampered = await Send(Sign("test-sepay-webhook-secret", timestamp, body), timestamp, body.Replace("49000", "49001", StringComparison.Ordinal));
+        var expiredTimestamp = DateTimeOffset.UtcNow.AddMinutes(-6).ToUnixTimeSeconds().ToString();
+        var expired = await Send(Sign("test-sepay-webhook-secret", expiredTimestamp, body), expiredTimestamp);
+
+        missing.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        wrong.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        tampered.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        expired.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        (await missing.Content.ReadAsStringAsync()).Should().NotContain("not configured");
+    }
+
+    [Fact]
     public async Task ProviderPayment_DuplicateEventDoesNotActivateTwice()
     {
         await using var context = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -142,23 +215,34 @@ public sealed class PaymentP0FoundationTests
 public sealed class PaymentHttpApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly string _databaseName = $"payment-http-{Guid.NewGuid():N}";
+    private readonly bool _useEnvironmentKeys;
+
+    public PaymentHttpApplicationFactory(bool useEnvironmentKeys = false) => _useEnvironmentKeys = useEnvironmentKeys;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
-        builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        builder.ConfigureAppConfiguration((_, configuration) =>
         {
+            var settings = new Dictionary<string, string?>
+            {
             ["Jwt:SecretKey"] = "payment-http-testing-signing-key-1234567890",
             ["Security:RequireHttpsMetadata"] = "false",
             ["Database:Provider"] = "InMemory",
             ["Database:InMemoryName"] = _databaseName,
-            ["PaymentProviders:SePay:Enabled"] = "true",
-            ["PaymentProviders:SePay:WebhookSecret"] = "test-sepay-webhook-secret",
-            ["PaymentProviders:SePay:BankCode"] = "VietinBank",
-            ["PaymentProviders:SePay:AccountNumber"] = "0000000000",
             ["OpenApi:Enabled"] = "false",
             ["DataProtection:KeysPath"] = Path.Combine(Path.GetTempPath(), $"sprinta-payment-keys-{Guid.NewGuid():N}")
-        }));
+            };
+            if (!_useEnvironmentKeys)
+            {
+                settings["PaymentProviders:SePay:Enabled"] = "true";
+                settings["PaymentProviders:SePay:WebhookSecret"] = "test-sepay-webhook-secret";
+                settings["PaymentProviders:SePay:BankCode"] = "VietinBank";
+                settings["PaymentProviders:SePay:AccountNumber"] = "0000000000";
+            }
+            configuration.AddInMemoryCollection(settings);
+            if (_useEnvironmentKeys) configuration.AddEnvironmentVariables();
+        });
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<ApplicationDbContext>();
