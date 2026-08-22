@@ -259,7 +259,18 @@ public sealed class BillingService : IBillingService
     public async Task<PaymentOrderDto> ApproveOrderAsync(
         Guid orderId, Guid adminUserId, string? note, CancellationToken cancellationToken = default)
     {
-        await using IDbContextTransaction? transaction = _context.Database.IsRelational()
+        if (!_context.Database.IsRelational())
+            return await ApproveOrderCoreAsync(orderId, adminUserId, note, false, cancellationToken);
+
+        return await _context.Database.CreateExecutionStrategy()
+            .ExecuteAsync(() => ApproveOrderCoreAsync(orderId, adminUserId, note, true, cancellationToken));
+    }
+
+    private async Task<PaymentOrderDto> ApproveOrderCoreAsync(
+        Guid orderId, Guid adminUserId, string? note, bool useTransaction, CancellationToken cancellationToken)
+    {
+        if (useTransaction) _context.ChangeTracker.Clear();
+        await using IDbContextTransaction? transaction = useTransaction
             ? await _context.Database.BeginTransactionAsync(cancellationToken)
             : null;
         var order = await _context.PaymentOrders.Include(item => item.User)
@@ -318,8 +329,20 @@ public sealed class BillingService : IBillingService
     {
         if (!webhook.IsValid || string.IsNullOrWhiteSpace(webhook.ProviderEventId))
             throw new ArgumentException("Webhook không hợp lệ.");
-        await using IDbContextTransaction? transaction = _context.Database.IsRelational()
-            ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+        if (!_context.Database.IsRelational())
+            return await ProcessProviderPaymentCoreAsync(provider, webhook, rawPayload, false, cancellationToken);
+
+        return await _context.Database.CreateExecutionStrategy()
+            .ExecuteAsync(() => ProcessProviderPaymentCoreAsync(provider, webhook, rawPayload, true, cancellationToken));
+    }
+
+    private async Task<PaymentOrderDto?> ProcessProviderPaymentCoreAsync(
+        string provider, PaymentWebhookVerificationResult webhook, string rawPayload, bool useTransaction, CancellationToken cancellationToken)
+    {
+        if (useTransaction) _context.ChangeTracker.Clear();
+        await using IDbContextTransaction? transaction = useTransaction
+            ? await _context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
         var existingEvent = await _context.PaymentWebhookEvents.SingleOrDefaultAsync(x => x.Provider == provider && x.ProviderEventId == webhook.ProviderEventId, cancellationToken);
         if (existingEvent != null)
             return null;
