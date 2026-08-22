@@ -38,8 +38,10 @@ public sealed class SePayPaymentProvider : IPaymentProvider
     public Task<PaymentWebhookVerificationResult> VerifyWebhookAsync(string rawBody, string? signature, string? timestamp, CancellationToken cancellationToken = default)
     {
         var secret = _configuration["PaymentProviders:SePay:WebhookSecret"];
-        if (string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(signature) || !long.TryParse(timestamp, out var unixTimestamp))
+        if (string.IsNullOrWhiteSpace(secret))
             return Task.FromResult(new PaymentWebhookVerificationResult { Error = "Webhook authentication is not configured." });
+        if (string.IsNullOrWhiteSpace(signature) || !long.TryParse(timestamp, out var unixTimestamp))
+            return Task.FromResult(new PaymentWebhookVerificationResult { Error = "Webhook signature or timestamp is missing." });
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         if (Math.Abs(now - unixTimestamp) > 300)
             return Task.FromResult(new PaymentWebhookVerificationResult { Error = "Webhook timestamp is outside the replay window." });
