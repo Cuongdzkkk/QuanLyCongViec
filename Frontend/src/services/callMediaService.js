@@ -39,7 +39,7 @@ const getIceServers = async () => {
   }))
 }
 
-export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams }) => {
+export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams, onAiState, onTranscriptChunk }) => {
   let connection = null
   let roomId = null
   let localStream = null
@@ -62,6 +62,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const emit = (state, detail = {}) => onState?.({ state, ...detail })
   const emitParticipants = () => onParticipants?.([...participants.values()])
   const emitRemoteStreams = () => onRemoteStreams?.(new Map(remoteStreams))
+  const emitAiState = value => onAiState?.(read(value, 'state', 'State') || value)
 
   const localConnectionId = () => connection?.connectionId
   const getPeer = (connectionId) => peers.get(connectionId)
@@ -184,6 +185,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       const participant = normalizeParticipant(item)
       return [participant.connectionId, participant]
     }))
+    emitAiState(read(snapshot, 'aiState', 'AiState'))
     emitParticipants()
     for (const participant of participants.values()) await createPeer(participant.connectionId)
   }
@@ -214,6 +216,14 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       })
       emitParticipants()
     })
+    connection.on('CallAiStateChanged', event => emitAiState(read(event, 'state', 'State')))
+    connection.on('AiConsentRequested', event => emitAiState(read(event, 'state', 'State')))
+    connection.on('AiParticipantAccepted', event => emitAiState(read(event, 'state', 'State')))
+    connection.on('AiParticipantDeclined', event => emitAiState(read(event, 'state', 'State')))
+    connection.on('AiTranscriptionStarted', event => emitAiState(read(event, 'state', 'State')))
+    connection.on('AiTranscriptionPaused', event => emitAiState(read(event, 'state', 'State')))
+    connection.on('AiTranscriptionStopped', event => emitAiState(read(event, 'state', 'State')))
+    connection.on('CallTranscriptChunkAdded', event => onTranscriptChunk?.(event))
     connection.on('WebRtcOffer', applyOffer)
     connection.on('WebRtcAnswer', applyAnswer)
     connection.on('IceCandidate', applyCandidate)
@@ -415,6 +425,11 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     setCameraEnabled,
     setCameraBackgroundEffect,
     toggleScreenShare,
+    requestAiTranscription: async () => connection?.invoke('RequestAiTranscription', roomId),
+    respondToAiConsent: async (accepted, state) => connection?.invoke(
+      'RespondToAiConsent', roomId, state?.callSessionId || state?.CallSessionId,
+      state?.consentGeneration || state?.ConsentGeneration, accepted),
+    stopAiTranscription: async () => connection?.invoke('StopAiTranscription', roomId),
     getLocalStream: () => localStream,
     getRoomId: () => roomId,
     getConnectionId: localConnectionId,

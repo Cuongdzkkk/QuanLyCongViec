@@ -225,10 +225,10 @@
             </div>
           </div>
           <div class="header-actions">
-            <button type="button" class="ai-entry-button" :class="{ 'is-open': aiAnalysisOpen }" aria-label="AI đang OFF — tính năng sắp ra mắt" title="AI đang OFF — tính năng sắp ra mắt" @click="openAiAnalysis('call')">
+            <button type="button" class="ai-entry-button" :class="{ 'is-open': callAiState.state !== 'OFF' }" :aria-label="callAiButtonLabel" :title="callAiButtonLabel" @click="requestCallAi">
               <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-              <span>AI đang OFF</span>
-              <span class="ai-off-state">Sắp ra mắt</span>
+              <span>{{ callAiStateLabel }}</span>
+              <span class="ai-off-state">{{ callAiState.state === 'OFF' ? 'Bật thủ công' : 'Consent' }}</span>
             </button>
             <button type="button" class="action-btn" aria-label="Mở panel cuộc gọi" title="Mở panel cuộc gọi" @click="toggleContextPanel">
               <i class="fa-solid fa-layout-sidebar" aria-hidden="true"></i>
@@ -315,6 +315,45 @@
               </div>
             </article>
           </section>
+
+          <aside class="call-transcript-panel" aria-label="AI call transcript">
+            <div class="call-transcript-header">
+              <div><span class="context-kicker">CALL TRANSCRIPT</span><strong>Biên bản cuộc gọi</strong></div>
+              <span class="call-ai-state-pill" :class="`is-${callAiState.state.toLowerCase()}`">{{ callAiStateLabel }}</span>
+            </div>
+            <div v-if="callAiState.state === 'OFF'" class="call-transcript-off">
+              <strong>AI đang tắt</strong>
+              <p>Chỉ phiên âm khi bạn chủ động bật và mọi người trong cuộc gọi đồng ý.</p>
+              <button type="button" class="ai-primary-action" @click="requestCallAi">Bật AI cho cuộc gọi</button>
+            </div>
+            <div v-else-if="callAiState.state === 'WAITING_FOR_CONSENT' || callAiState.state === 'PAUSED_CONSENT'" class="call-transcript-consent">
+              <strong>{{ callAiState.state === 'PAUSED_CONSENT' ? 'AI đã tạm dừng — chờ đồng ý' : 'Đang chờ sự đồng ý' }}</strong>
+              <p>AI sẽ ghi lời nói thành văn bản, không lưu âm thanh gốc.</p>
+              <div class="call-consent-list">
+                <div v-for="participant in callAiState.participants" :key="`consent-${participant.userId}`">
+                  <span>{{ participant.displayName }}</span><span>{{ consentStatusLabel(participant.consentStatus) }}</span>
+                </div>
+              </div>
+              <div v-if="currentCallConsentStatus === 'PENDING'" class="call-consent-actions">
+                <button type="button" class="ai-primary-action" @click="respondCallAiConsent(true)">Đồng ý</button>
+                <button type="button" class="ai-secondary-action" @click="respondCallAiConsent(false)">Từ chối</button>
+              </div>
+            </div>
+            <div v-else-if="callAiState.state === 'ACTIVE'" class="call-transcript-active">
+              <div class="call-transcript-indicator"><span></span> AI đang ghi biên bản</div>
+              <button type="button" class="ai-secondary-action" @click="stopCallAi">Dừng AI</button>
+            </div>
+            <div v-else class="call-transcript-paused">
+              <strong>{{ callAiState.state === 'ERROR' ? 'Không thể khởi động phiên âm' : 'AI đang tắt' }}</strong>
+            </div>
+            <div class="call-transcript-list" aria-live="polite">
+              <div v-for="chunk in callTranscriptChunks" :key="chunk.id" class="call-transcript-chunk">
+                <div><time>{{ formatTime(chunk.startedAt) }}</time><strong>{{ chunk.speakerDisplayName }}</strong></div>
+                <p>“{{ chunk.text }}”</p>
+              </div>
+              <span v-if="!callTranscriptChunks.length" class="channel-utility-empty">Chưa có nội dung phiên âm.</span>
+            </div>
+          </aside>
 
           <div class="call-controls-row">
             <div class="call-control-dock">
@@ -1293,6 +1332,8 @@ const callConnectionId = ref('')
 const callState = ref('disconnected')
 const callError = ref('')
 const callSession = ref(null)
+const callAiState = ref({ state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] })
+const callTranscriptChunks = ref([])
 const callChatOpen = ref(false)
 const callChatDraft = ref('')
 const callChatSending = ref(false)
@@ -1339,6 +1380,68 @@ const setRemoteAudioElement = (element, connectionId) => {
 
 const setPresentationVideoElement = (element) => {
   if (element) element.srcObject = activePresenterStream()
+}
+
+const callAiStateLabel = computed(() => ({
+  OFF: 'AI đang OFF',
+  WAITING_FOR_CONSENT: 'Đang chờ sự đồng ý',
+  ACTIVE: 'AI đang ghi lời nói thành văn bản',
+  PAUSED_CONSENT: 'AI đã tạm dừng — chờ đồng ý',
+  STOPPING: 'Đang dừng AI',
+  ERROR: 'AI gặp lỗi'
+}[callAiState.value.state] || 'AI đang OFF'))
+const callAiButtonLabel = computed(() => callAiStateLabel.value === 'AI đang OFF' ? 'Bật AI cho cuộc gọi' : callAiStateLabel.value)
+const currentCallConsentStatus = computed(() => {
+  const currentUserId = currentUser.value?.id
+  return callAiState.value.participants.find(item => `${item.userId}` === `${currentUserId}`)?.consentStatus || 'PENDING'
+})
+const consentStatusLabel = status => ({ PENDING: '…', ACCEPTED: '✓', DECLINED: '✕' }[status] || '…')
+
+const normalizeCallAiState = value => {
+  const state = value || {}
+  return {
+    state: state.state ?? state.State ?? 'OFF',
+    callSessionId: state.callSessionId ?? state.CallSessionId ?? '',
+    consentGeneration: state.consentGeneration ?? state.ConsentGeneration ?? 0,
+    participants: (state.participants ?? state.Participants ?? []).map(item => ({
+      userId: item.userId ?? item.UserId,
+      displayName: item.displayName ?? item.DisplayName ?? 'SprintA user',
+      consentStatus: item.consentStatus ?? item.ConsentStatus ?? 'PENDING',
+      respondedAt: item.respondedAt ?? item.RespondedAt ?? null
+    }))
+  }
+}
+
+const handleCallAiState = value => {
+  callAiState.value = normalizeCallAiState(value)
+}
+
+const handleTranscriptChunk = value => {
+  const chunk = {
+    id: value?.id ?? value?.Id,
+    startedAt: value?.startedAt ?? value?.StartedAt,
+    speakerDisplayName: value?.speakerDisplayName ?? value?.SpeakerDisplayName ?? 'Unknown user',
+    text: value?.text ?? value?.Text ?? ''
+  }
+  if (!chunk.id || !chunk.text) return
+  callTranscriptChunks.value = [...callTranscriptChunks.value.filter(item => item.id !== chunk.id), chunk]
+    .sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt))
+}
+
+const loadCallTranscript = async voiceChannel => {
+  const sessionId = callAiState.value.callSessionId
+  if (!activeProjectId.value || !sessionId) return
+  try {
+    const items = await collaborationApi.getCallTranscript(
+      activeProjectId.value,
+      `${voiceChannel.name}`.trim().toLocaleLowerCase(),
+      sessionId)
+    callTranscriptChunks.value = []
+    const chunks = Array.isArray(items) ? items : []
+    chunks.forEach(handleTranscriptChunk)
+  } catch (error) {
+    if (error?.response?.status !== 404 && error?.response?.status !== 403) console.warn('Unable to load call transcript', error)
+  }
 }
 
 const describeCallError = (error) => ({
@@ -1392,8 +1495,37 @@ const createCallSessionForVoiceChannel = (voiceChannel) => createCallMediaSessio
   },
   onRemoteStreams: (items) => {
     remoteStreams.value = items
-  }
+  },
+  onAiState: handleCallAiState,
+  onTranscriptChunk: handleTranscriptChunk
 })
+
+const requestCallAi = async () => {
+  if (!callSession.value) return
+  try {
+    await callSession.value.requestAiTranscription()
+  } catch (error) {
+    handleCallError(error)
+  }
+}
+
+const respondCallAiConsent = async accepted => {
+  if (!callSession.value) return
+  try {
+    await callSession.value.respondToAiConsent(accepted, callAiState.value)
+  } catch (error) {
+    handleCallError(error)
+  }
+}
+
+const stopCallAi = async () => {
+  if (!callSession.value) return
+  try {
+    await callSession.value.stopAiTranscription()
+  } catch (error) {
+    handleCallError(error)
+  }
+}
 
 const toggleCallMicrophone = async () => {
   if (!callSession.value) return
@@ -1467,6 +1599,7 @@ const joinVoiceChannel = async (vc) => {
     await session.start()
     activeVoiceChannel.value = vc
     showVoiceCallMain.value = true
+    await loadCallTranscript(vc)
     await syncLocalCallPreview()
     ElMessage.success(`Đã kết nối vào kênh thoại: ${vc.name}`)
   } catch (error) {
@@ -1484,6 +1617,8 @@ const leaveVoiceChannel = async (showMessage = true) => {
   if (callSession.value) await callSession.value.leave()
   callSession.value = null
   callParticipants.value = []
+  callAiState.value = { state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] }
+  callTranscriptChunks.value = []
   remoteStreams.value = new Map()
   localCallStream.value = null
   callConnectionId.value = ''
@@ -5079,6 +5214,27 @@ const fetchProjectMembers = async () => {
 .chat-workspace .call-control-circle-btn { transition: background-color 160ms ease-out, color 160ms ease-out, transform 120ms ease-out; }
 .chat-workspace .call-control-circle-btn.hang-up { background: #bd4d5c; }
 .chat-workspace .call-control-circle-btn.hang-up:hover { background: #d35d6c; }
+.call-transcript-panel { display: flex; width: 310px; min-width: 310px; flex-direction: column; gap: 12px; padding: 14px; border-left: 1px solid rgba(148, 163, 184, .13); background: #091725; color: #e7f2fb; }
+.call-transcript-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.call-transcript-header strong { display: block; margin-top: 3px; font-size: 13px; }
+.call-ai-state-pill { border: 1px solid rgba(99, 210, 159, .35); border-radius: 999px; padding: 3px 7px; color: #8be5b8; font-size: 9px; line-height: 1.2; text-align: right; }
+.call-ai-state-pill.is-off { border-color: rgba(148, 163, 184, .3); color: #b4c1cd; }
+.call-ai-state-pill.is-paused_consent, .call-ai-state-pill.is-waiting_for_consent { border-color: rgba(245, 190, 91, .4); color: #f5c66e; }
+.call-transcript-off, .call-transcript-consent, .call-transcript-active, .call-transcript-paused { border: 1px solid rgba(148, 163, 184, .14); border-radius: 10px; padding: 11px; background: rgba(255, 255, 255, .035); }
+.call-transcript-off p, .call-transcript-consent p { margin: 6px 0 10px; color: #9fb0bf; font-size: 11px; line-height: 1.4; }
+.call-consent-list { display: grid; gap: 6px; margin-bottom: 10px; font-size: 11px; }
+.call-consent-list > div { display: flex; justify-content: space-between; gap: 8px; }
+.call-consent-list > div span:last-child { color: #aab9c5; }
+.call-consent-actions { display: flex; gap: 7px; }
+.call-transcript-indicator { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; color: #8be5b8; font-size: 11px; }
+.call-transcript-indicator span { width: 7px; height: 7px; border-radius: 50%; background: #55d994; box-shadow: 0 0 0 4px rgba(85, 217, 148, .12); }
+.call-transcript-list { display: flex; min-height: 120px; max-height: 240px; flex-direction: column; gap: 12px; overflow: auto; padding-top: 3px; }
+.call-transcript-chunk { border-bottom: 1px solid rgba(148, 163, 184, .1); padding-bottom: 9px; }
+.call-transcript-chunk > div { display: flex; align-items: center; gap: 7px; color: #8be5b8; font-size: 10px; }
+.call-transcript-chunk time { color: #8295a6; }
+.call-transcript-chunk p { margin: 5px 0 0; color: #d4e1eb; font-size: 12px; line-height: 1.45; }
+@media (max-width: 1180px) { .call-transcript-panel { width: 260px; min-width: 260px; } }
+@media (max-width: 900px) { .call-transcript-panel { width: 100%; min-width: 0; border-left: 0; border-top: 1px solid rgba(148, 163, 184, .13); } }
 .message-card { position: relative; }
 .message-card:hover .message-actions, .message-card:focus-within .message-actions { opacity: 1; transform: translateY(0); }
 .message-focus-target { background: rgba(99, 210, 159, .12); box-shadow: inset 3px 0 #63d29f; transition: background 180ms ease-out, box-shadow 180ms ease-out; }

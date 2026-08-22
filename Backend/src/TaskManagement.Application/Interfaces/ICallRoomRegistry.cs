@@ -18,6 +18,18 @@ public sealed record CallRoomJoinResult(
     CallRoomSnapshotDto Snapshot,
     CallParticipantDto? JoinedParticipant);
 
+public sealed record CallAiSessionSnapshot(
+    string State,
+    Guid CallSessionId,
+    long ConsentGeneration,
+    IReadOnlyList<CallAiParticipantConsentDto> Participants);
+
+public sealed record CallTranscriptionParticipant(
+    Guid CallSessionId,
+    long ConsentGeneration,
+    Guid UserId,
+    string DisplayName);
+
 public interface ICallRoomRegistry
 {
     const int MaximumParticipants = 6;
@@ -39,6 +51,26 @@ public interface ICallRoomRegistry
     bool IsParticipantInRoom(string roomId, string connectionId);
 
     IReadOnlyList<CallRoomParticipant> GetRoomParticipants(string roomId);
+
+    CallAiSessionSnapshot GetAiState(string roomId);
+
+    CallAiSessionSnapshot RequestAiTranscription(string roomId, string connectionId);
+
+    CallAiSessionSnapshot RespondToAiConsent(
+        string roomId,
+        string connectionId,
+        Guid callSessionId,
+        long consentGeneration,
+        bool accepted);
+
+    CallAiSessionSnapshot StopAiTranscription(string roomId, string connectionId);
+
+    bool TryAuthorizeTranscription(
+        string roomId,
+        string connectionId,
+        Guid callSessionId,
+        long consentGeneration,
+        out CallTranscriptionParticipant participant);
 
     static CallParticipantDto ToDto(CallRoomParticipant participant) => new(
         participant.ConnectionId,

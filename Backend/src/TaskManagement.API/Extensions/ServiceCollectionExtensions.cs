@@ -55,6 +55,8 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<ICollaborationRealtimeAuthorizationService, CollaborationRealtimeAuthorizationService>();
             services.AddScoped<ICallRoomAuthorizationService, CallRoomAuthorizationService>();
             services.AddSingleton<ICallRoomRegistry, TaskManagement.API.Services.CallRoomRegistry>();
+            services.AddScoped<ICallTranscriptService, CallTranscriptService>();
+            services.AddSingleton<ICallTranscriptionProvider, UnavailableCallTranscriptionProvider>();
             services.AddSingleton<ICollaborationRealtimePublisher, TaskManagement.API.Services.ChatRealtimePublisher>();
             services.AddScoped<TaskManagement.API.Services.ICollaborationAttachmentStorage, TaskManagement.API.Services.CollaborationAttachmentStorage>();
             services.AddScoped<ITaskDependencyService, TaskDependencyService>();

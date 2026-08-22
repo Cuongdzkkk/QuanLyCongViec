@@ -140,6 +140,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<CollaborationChannelReadState> CollaborationChannelReadStates { get; set; }
         public DbSet<DirectConversationReadState> DirectConversationReadStates { get; set; }
         public DbSet<CollaborationMessageAttachment> CollaborationMessageAttachments { get; set; }
+        public DbSet<CallTranscriptChunk> CallTranscriptChunks { get; set; }
 
         public DbSet<CustomFieldDefinition> CustomFieldDefinitions { get; set; }
         public DbSet<CustomFieldValue> CustomFieldValues { get; set; }
@@ -1403,6 +1404,16 @@ namespace TaskManagement.Infrastructure.Data
                 entity.HasOne(item => item.UploadedByUser).WithMany()
                     .HasForeignKey(item => item.UploadedByUserId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<CallTranscriptChunk>(entity =>
+            {
+                entity.HasKey(chunk => chunk.Id);
+                entity.Property(chunk => chunk.VoiceChannelId).HasMaxLength(200).IsRequired();
+                entity.Property(chunk => chunk.SpeakerDisplayName).HasMaxLength(256).IsRequired();
+                entity.Property(chunk => chunk.Text).HasMaxLength(12000).IsRequired();
+                entity.HasIndex(chunk => new { chunk.ProjectId, chunk.VoiceChannelId, chunk.CallSessionId, chunk.StartedAt });
+                entity.HasIndex(chunk => new { chunk.CallSessionId, chunk.CreatedAt });
             });
 
             modelBuilder.Entity<ChannelMessage>()
