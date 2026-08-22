@@ -413,6 +413,6 @@ public sealed class PaymentSqlServerTransactionTests
     private static PaymentWebhookVerificationResult ValidWebhook(PaymentOrder order, string providerEventId) => new()
     {
         IsValid = true, ProviderEventId = providerEventId, TransactionType = "in", Amount = order.AmountVnd,
-        TransferContent = $"payment {order.TransferCode}", ProviderReference = "SEVQR SPA_TEST", TransactionAt = DateTime.UtcNow
+        TransferContent = $"payment {order.TransferCode}", ProviderReference = "SEVQR SPA_TEST", TransactionAt = DateTimeOffset.UtcNow
     };
 }

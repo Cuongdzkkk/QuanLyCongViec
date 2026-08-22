@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using TaskManagement.Application.DTOs.Billing;
@@ -11,6 +12,14 @@ namespace TaskManagement.Infrastructure.Payments;
 
 public sealed class SePayPaymentProvider : IPaymentProvider
 {
+    private static readonly string[] LocalDateFormats =
+    [
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm:ss.FFFFFFF",
+        "yyyy-MM-dd'T'HH:mm:ss",
+        "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF"
+    ];
+    private static readonly Lazy<TimeZoneInfo> VietnamTimeZone = new(ResolveVietnamTimeZone);
     private readonly IConfiguration _configuration;
     public SePayPaymentProvider(IConfiguration configuration) => _configuration = configuration;
     public string Code => "sepay";
@@ -62,8 +71,9 @@ public sealed class SePayPaymentProvider : IPaymentProvider
             var configuredAccount = _configuration["PaymentProviders:SePay:AccountNumber"];
             if (!string.IsNullOrWhiteSpace(configuredAccount) && !string.Equals(accountNumber, configuredAccount, StringComparison.OrdinalIgnoreCase))
                 return Task.FromResult(new PaymentWebhookVerificationResult { Error = "Webhook destination account does not match configuration." });
-            var transactionAt = root.TryGetProperty("transactionDate", out var dateElement) && DateTime.TryParse(dateElement.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
-                ? parsed.ToUniversalTime() : (DateTime?)null;
+            var transactionAt = root.TryGetProperty("transactionDate", out var dateElement)
+                ? ParseTransactionDate(dateElement.GetString())
+                : null;
             return Task.FromResult(new PaymentWebhookVerificationResult
             {
                 IsValid = true,
@@ -84,4 +94,35 @@ public sealed class SePayPaymentProvider : IPaymentProvider
 
     private static string ReadString(JsonElement root, string name) =>
         root.TryGetProperty(name, out var value) ? value.ToString() : string.Empty;
+
+    private static DateTimeOffset? ParseTransactionDate(string? rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue)) return null;
+        var value = rawValue.Trim();
+
+        if (HasExplicitOffset(value) && DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var withOffset))
+            return withOffset.ToUniversalTime();
+
+        if (!DateTime.TryParseExact(value, LocalDateFormats, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var localTime))
+            return null;
+
+        var unspecified = DateTime.SpecifyKind(localTime, DateTimeKind.Unspecified);
+        var localOffset = VietnamTimeZone.Value.GetUtcOffset(unspecified);
+        return new DateTimeOffset(unspecified, localOffset).ToUniversalTime();
+    }
+
+    private static bool HasExplicitOffset(string value) =>
+        value.EndsWith('Z') || Regex.IsMatch(value, @"[+-]\d{2}:?\d{2}$", RegexOptions.CultureInvariant);
+
+    private static TimeZoneInfo ResolveVietnamTimeZone()
+    {
+        foreach (var id in new[] { "Asia/Ho_Chi_Minh", "SE Asia Standard Time" })
+        {
+            try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+            catch (TimeZoneNotFoundException) { }
+            catch (InvalidTimeZoneException) { }
+        }
+
+        throw new InvalidOperationException("Asia/Ho_Chi_Minh timezone data is required for SePay webhook parsing.");
+    }
 }

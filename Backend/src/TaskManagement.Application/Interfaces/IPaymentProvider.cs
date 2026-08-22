@@ -22,5 +22,5 @@ public sealed class PaymentWebhookVerificationResult
     public decimal Amount { get; init; }
     public string TransferContent { get; init; } = string.Empty;
     public string? ProviderReference { get; init; }
-    public DateTime? TransactionAt { get; init; }
+    public DateTimeOffset? TransactionAt { get; init; }
 }

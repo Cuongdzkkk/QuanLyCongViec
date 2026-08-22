@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Globalization;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -40,6 +42,146 @@ public sealed class PaymentP0FoundationTests
         result.ProviderEventId.Should().Be("12345");
         result.Amount.Should().Be(99000);
         result.TransferContent.Should().Contain("SPA123");
+    }
+
+    [Fact]
+    public async Task SePayWebhook_InterpretsOffsetlessTransactionDateAsVietnamTime()
+    {
+        var result = await VerifyTransactionDate("2026-08-22 20:55:39");
+
+        result.TransactionAt.Should().Be(new DateTimeOffset(2026, 8, 22, 13, 55, 39, TimeSpan.Zero));
+    }
+
+    [Theory]
+    [InlineData("2026-08-22 20:55:39+07:00", "2026-08-22T13:55:39.0000000+00:00")]
+    [InlineData("2026-08-22T13:55:39Z", "2026-08-22T13:55:39.0000000+00:00")]
+    public async Task SePayWebhook_HonorsExplicitTimestampOffsets(string rawTimestamp, string expectedUtc)
+    {
+        var result = await VerifyTransactionDate(rawTimestamp);
+
+        result.TransactionAt.Should().Be(DateTimeOffset.Parse(expectedUtc, CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public async Task SePayWebhook_NullTransactionDateReturnsNullWithoutThrowing()
+    {
+        var result = await VerifyTransactionDate(null);
+
+        result.TransactionAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SePayWebhook_EmptyTransactionDateReturnsNullWithoutThrowing()
+    {
+        var result = await VerifyTransactionDate(string.Empty);
+
+        result.TransactionAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SePayWebhook_WhitespaceTransactionDateReturnsNullWithoutThrowing()
+    {
+        var result = await VerifyTransactionDate("   ");
+
+        result.TransactionAt.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("not-a-date")]
+    [InlineData("2026-99-99 25:61:61")]
+    public async Task SePayWebhook_MalformedTransactionDateReturnsNullWithoutThrowing(string rawTimestamp)
+    {
+        var result = await VerifyTransactionDate(rawTimestamp);
+
+        result.TransactionAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ProviderPayment_UsesNormalizedUtcInstantForEntitlementAndCredits()
+    {
+        await using var context = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var now = DateTime.UtcNow;
+        var user = new User { Id = Guid.NewGuid(), Email = "timezone-user@test.local", FullName = "Timezone User", PasswordHash = "test", CreatedAt = now, UpdatedAt = now };
+        var plan = new AiPricingPlan { Id = Guid.NewGuid(), Code = "pro", Name = "Pro", MonthlyPriceVnd = 199000, IncludedAiCredits = 3000, IsPublished = true, CreatedAt = now, UpdatedAt = now };
+        var order = new PaymentOrder { Id = Guid.NewGuid(), UserId = user.Id, User = user, PlanCode = "pro", PlanNameSnapshot = "Pro", IncludedAiCreditsSnapshot = 3000, AmountVnd = 199000, Currency = "VND", Provider = "sepay", Status = "Pending", TransferCode = "SEVQR SPA-TZ", CreatedAt = now, ExpiresAt = now.AddMinutes(20) };
+        context.Users.Add(user);
+        context.AiPricingPlans.Add(plan);
+        context.PaymentOrders.Add(order);
+        await context.SaveChangesAsync();
+
+        var paidAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var billing = new BillingService(context, new AiCreditUsageService(context));
+        await billing.ProcessProviderPaymentAsync("sepay", new PaymentWebhookVerificationResult
+        {
+            IsValid = true, ProviderEventId = "timezone-event", TransactionType = "in", Amount = order.AmountVnd,
+            TransferContent = order.TransferCode, TransactionAt = paidAt.ToOffset(TimeSpan.FromHours(7))
+        }, "{\"id\":\"timezone-event\"}");
+
+        var savedOrder = await context.PaymentOrders.SingleAsync();
+        var subscription = await context.AiSubscriptions.SingleAsync();
+        var transaction = await context.PaymentTransactions.SingleAsync();
+        var usage = await new AiCreditUsageService(context).GetUsageAsync(user.Id, DateTime.MinValue, DateTime.MaxValue);
+
+        savedOrder.PaidAt.Should().Be(paidAt.UtcDateTime);
+        transaction.PaidAt.Should().Be(paidAt.UtcDateTime);
+        subscription.CurrentPeriodStart.Should().Be(paidAt.UtcDateTime);
+        subscription.CurrentPeriodEnd.Should().Be(paidAt.UtcDateTime.AddMonths(1));
+        subscription.ActivatedAt.Should().Be(paidAt.UtcDateTime);
+        subscription.ActivatedAt!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        transaction.CreatedAt.Kind.Should().Be(DateTimeKind.Utc);
+        var webhook = await context.PaymentWebhookEvents.SingleAsync();
+        webhook.ProcessedAt.Should().NotBeNull();
+        webhook.ProcessedAt!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        usage.PlanCode.Should().Be("pro");
+        usage.IncludedCredits.Should().Be(3000);
+    }
+
+    [Theory]
+    [InlineData(null, "null-fallback-event")]
+    [InlineData("not-a-date", "malformed-fallback-event")]
+    public async Task ProviderPayment_InvalidProviderTimestampFallsBackToUtcNow(
+        string? rawTimestamp,
+        string providerEventId)
+    {
+        await using var context = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var seedNow = DateTime.UtcNow;
+        var user = new User { Id = Guid.NewGuid(), Email = $"fallback-{providerEventId}@test.local", FullName = "Fallback User", PasswordHash = "test", CreatedAt = seedNow, UpdatedAt = seedNow };
+        var plan = new AiPricingPlan { Id = Guid.NewGuid(), Code = "pro", Name = "Pro", MonthlyPriceVnd = 99000, IncludedAiCredits = 3000, IsPublished = true, CreatedAt = seedNow, UpdatedAt = seedNow };
+        var order = new PaymentOrder { Id = Guid.NewGuid(), UserId = user.Id, User = user, PlanCode = "pro", PlanNameSnapshot = "Pro", IncludedAiCreditsSnapshot = 3000, AmountVnd = 99000, Currency = "VND", Provider = "sepay", Status = "Pending", TransferCode = $"SEVQR {providerEventId}", CreatedAt = seedNow, ExpiresAt = seedNow.AddMinutes(20) };
+        context.Users.Add(user);
+        context.AiPricingPlans.Add(plan);
+        context.PaymentOrders.Add(order);
+        await context.SaveChangesAsync();
+
+        var webhook = await VerifyTransactionDate(rawTimestamp);
+        webhook.TransactionAt.Should().BeNull();
+        webhook = new PaymentWebhookVerificationResult
+        {
+            IsValid = webhook.IsValid,
+            ProviderEventId = providerEventId,
+            TransactionType = webhook.TransactionType,
+            Amount = webhook.Amount,
+            TransferContent = order.TransferCode
+        };
+        var beforeFulfillment = DateTime.UtcNow;
+        var billing = new BillingService(context, new AiCreditUsageService(context));
+        await billing.ProcessProviderPaymentAsync("sepay", webhook, JsonSerializer.Serialize(new { id = providerEventId }));
+        var afterFulfillment = DateTime.UtcNow;
+
+        var savedOrder = await context.PaymentOrders.SingleAsync();
+        var subscription = await context.AiSubscriptions.SingleAsync();
+        var usage = await new AiCreditUsageService(context).GetUsageAsync(user.Id, DateTime.MinValue, DateTime.MaxValue);
+        savedOrder.Status.Should().Be("Paid");
+        savedOrder.PaidAt.Should().NotBeNull();
+        savedOrder.PaidAt!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        savedOrder.PaidAt.Value.Should().BeOnOrAfter(beforeFulfillment).And.BeOnOrBefore(afterFulfillment);
+        subscription.Status.Should().Be("Active");
+        subscription.CurrentPeriodStart.Should().Be(savedOrder.PaidAt.Value);
+        subscription.CurrentPeriodStart.Kind.Should().Be(DateTimeKind.Utc);
+        subscription.CurrentPeriodEnd.Should().Be(savedOrder.PaidAt.Value.AddMonths(1));
+        subscription.CurrentPeriodEnd.Kind.Should().Be(DateTimeKind.Utc);
+        usage.PlanCode.Should().Be("pro");
+        usage.IncludedCredits.Should().Be(3000);
     }
 
     [Fact]
@@ -203,6 +345,16 @@ public sealed class PaymentP0FoundationTests
             ["PaymentProviders:SePay:AccountNumber"] = "123456789"
         }).Build();
         return new SePayPaymentProvider(configuration);
+    }
+
+    private static async Task<PaymentWebhookVerificationResult> VerifyTransactionDate(string? transactionDate)
+    {
+        const string secret = "secret";
+        var transactionDateJson = transactionDate is null ? "null" : JsonSerializer.Serialize(transactionDate);
+        var body = $"{{\"id\":\"timestamp-test\",\"transferType\":\"in\",\"accountNumber\":\"123456789\",\"transferAmount\":99000,\"content\":\"SEVQR SPA123\",\"transactionDate\":{transactionDateJson}}}";
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+        var signature = "sha256=" + Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes($"{timestamp}.{body}"))).ToLowerInvariant();
+        return await Provider(secret).VerifyWebhookAsync(body, signature, timestamp);
     }
 
     private static string Sign(string secret, string timestamp, string body)

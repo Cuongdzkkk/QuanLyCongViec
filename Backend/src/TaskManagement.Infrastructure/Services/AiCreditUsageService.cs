@@ -103,8 +103,8 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
             AdjustmentCredits = adjustmentCredits,
             HasConfiguredEntitlement = plan != null,
             TotalTokens = totalTokens,
-            CurrentPeriodStart = periodStart,
-            CurrentPeriodEnd = periodEnd,
+            CurrentPeriodStart = DateTime.SpecifyKind(periodStart, DateTimeKind.Utc),
+            CurrentPeriodEnd = DateTime.SpecifyKind(periodEnd, DateTimeKind.Utc),
             SubscriptionStatus = subscription?.Status ?? "Active"
         };
     }
