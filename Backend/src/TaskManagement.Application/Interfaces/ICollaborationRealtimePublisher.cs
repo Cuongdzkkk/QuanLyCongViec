@@ -21,4 +21,12 @@ public interface ICollaborationRealtimePublisher
         Guid userId,
         CollaborationMentionCreatedEventDto notification,
         CancellationToken cancellationToken = default);
+
+    Task PublishChannelReactionChangedAsync(
+        ChannelMessageReactionChangeDto change,
+        CancellationToken cancellationToken = default);
+
+    Task PublishChannelPinChangedAsync(
+        ChannelMessagePinChangeDto change,
+        CancellationToken cancellationToken = default);
 }

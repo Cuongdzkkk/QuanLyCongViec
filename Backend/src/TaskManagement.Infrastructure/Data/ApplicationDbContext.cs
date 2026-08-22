@@ -133,6 +133,8 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<DirectConversationParticipant> DirectConversationParticipants { get; set; }
         public DbSet<ChannelMessage> ChannelMessages { get; set; }
         public DbSet<ChannelMessageMention> ChannelMessageMentions { get; set; }
+        public DbSet<CollaborationMessageReaction> CollaborationMessageReactions { get; set; }
+        public DbSet<CollaborationMessagePin> CollaborationMessagePins { get; set; }
         public DbSet<CollaborationChannel> CollaborationChannels { get; set; }
         public DbSet<CollaborationChannelMember> CollaborationChannelMembers { get; set; }
         public DbSet<CollaborationChannelReadState> CollaborationChannelReadStates { get; set; }
@@ -1322,6 +1324,38 @@ namespace TaskManagement.Infrastructure.Data
                 entity.HasOne(message => message.CollaborationChannel)
                     .WithMany(channel => channel.Messages)
                     .HasForeignKey(message => message.CollaborationChannelId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(message => message.ReplyToMessage)
+                    .WithMany(message => message.Replies)
+                    .HasForeignKey(message => message.ReplyToMessageId)
+                    .OnDelete(DeleteBehavior.SetNull);
+                entity.HasIndex(message => message.ReplyToMessageId);
+            });
+
+            modelBuilder.Entity<CollaborationMessageReaction>(entity =>
+            {
+                entity.Property(reaction => reaction.Emoji).HasMaxLength(32).IsRequired();
+                entity.HasIndex(reaction => new { reaction.ChannelMessageId, reaction.UserId, reaction.Emoji }).IsUnique();
+                entity.HasIndex(reaction => new { reaction.ChannelMessageId, reaction.Emoji });
+                entity.HasOne(reaction => reaction.ChannelMessage)
+                    .WithMany(message => message.Reactions)
+                    .HasForeignKey(reaction => reaction.ChannelMessageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(reaction => reaction.User).WithMany()
+                    .HasForeignKey(reaction => reaction.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<CollaborationMessagePin>(entity =>
+            {
+                entity.HasIndex(pin => pin.ChannelMessageId).IsUnique();
+                entity.HasIndex(pin => new { pin.ChannelMessageId, pin.PinnedAt });
+                entity.HasOne(pin => pin.ChannelMessage)
+                    .WithOne(message => message.Pin)
+                    .HasForeignKey<CollaborationMessagePin>(pin => pin.ChannelMessageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(pin => pin.PinnedByUser).WithMany()
+                    .HasForeignKey(pin => pin.PinnedByUserId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
 

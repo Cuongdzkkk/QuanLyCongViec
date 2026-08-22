@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaskManagement.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using TaskManagement.Infrastructure.Data;
 namespace TaskManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260822065924_ChatComms1MessageInteractions")]
+    partial class ChatComms1MessageInteractions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -4387,7 +4390,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasOne("TaskManagement.Domain.Entities.ChannelMessage", "ReplyToMessage")
                         .WithMany("Replies")
                         .HasForeignKey("ReplyToMessageId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("TaskManagement.Domain.Entities.User", "Sender")
                         .WithMany()

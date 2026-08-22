@@ -2,9 +2,10 @@ import axiosClient from '@/api/axiosClient'
 
 const unwrapData = (response) => response?.data?.data ?? response?.data
 
-const messageForm = (content, files, mentions = []) => {
+const messageForm = (content, files, mentions = [], replyToMessageId = null) => {
   const form = new FormData()
   if (content) form.append('content', content)
+  if (replyToMessageId) form.append('replyToMessageId', replyToMessageId)
   files.forEach(file => form.append('files', file))
   mentions.forEach((mention, index) => {
     form.append(`mentions[${index}].userId`, mention.userId)
@@ -57,12 +58,65 @@ export const collaborationApi = {
     const response = await axiosClient.post(
       `/channels/${channelId}/messages`,
       files.length
-        ? messageForm(payload.content, files, mentions)
-        : { content: payload.content, mentions },
+        ? messageForm(payload.content, files, mentions, payload.replyToMessageId)
+        : { content: payload.content, mentions, replyToMessageId: payload.replyToMessageId || null },
       {
         signal: options.signal,
         headers: files.length ? { 'Content-Type': 'multipart/form-data' } : undefined
       }
+    )
+    return unwrapData(response)
+  },
+
+  async searchChannelMessages(channelId, query, options = {}) {
+    const response = await axiosClient.get(`/channels/${channelId}/messages/search`, {
+      params: {
+        query,
+        page: options.page ?? 1,
+        pageSize: options.pageSize ?? 50
+      },
+      signal: options.signal
+    })
+    return unwrapData(response)
+  },
+
+  async addChannelReaction(channelId, messageId, emoji, options = {}) {
+    const response = await axiosClient.post(
+      `/channels/${channelId}/messages/${messageId}/reactions`,
+      { emoji },
+      { signal: options.signal }
+    )
+    return unwrapData(response)
+  },
+
+  async removeChannelReaction(channelId, messageId, emoji, options = {}) {
+    const response = await axiosClient.delete(
+      `/channels/${channelId}/messages/${messageId}/reactions`,
+      { params: { emoji }, signal: options.signal }
+    )
+    return unwrapData(response)
+  },
+
+  async getChannelPins(channelId, options = {}) {
+    const response = await axiosClient.get(`/channels/${channelId}/pins`, {
+      signal: options.signal
+    })
+    return unwrapData(response)
+  },
+
+  async pinChannelMessage(channelId, messageId, options = {}) {
+    const response = await axiosClient.post(
+      `/channels/${channelId}/messages/${messageId}/pin`,
+      null,
+      { signal: options.signal }
+    )
+    return unwrapData(response)
+  },
+
+  async unpinChannelMessage(channelId, messageId, options = {}) {
+    const response = await axiosClient.delete(
+      `/channels/${channelId}/messages/${messageId}/pin`,
+      { signal: options.signal }
     )
     return unwrapData(response)
   },
