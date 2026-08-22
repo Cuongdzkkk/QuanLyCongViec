@@ -177,7 +177,37 @@ namespace TaskManagement.Infrastructure.Services
             await SendResendEmailAsync(toEmail, subject, html, null);
         }
 
-        private async Task SendResendEmailAsync(string toEmail, string subject, string html, string? text = null, System.Threading.CancellationToken cancellationToken = default)
+        public async Task<string?> SendPaymentReceiptEmailAsync(
+            string toEmail,
+            string customerName,
+            string receiptNumber,
+            string planName,
+            decimal amount,
+            string currency,
+            DateTime paidAt)
+        {
+            var safeName = WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(customerName) ? toEmail : customerName);
+            var safeReceipt = WebUtility.HtmlEncode(receiptNumber);
+            var safePlan = WebUtility.HtmlEncode(planName);
+            var safeAmount = WebUtility.HtmlEncode($"{amount:N0} {currency}");
+            var safePaidAt = WebUtility.HtmlEncode(paidAt.ToString("yyyy-MM-dd HH:mm 'UTC'"));
+            var subject = $"SprintA payment receipt {receiptNumber}";
+            var html = $@"
+                <div style='font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px;color:#172b4d'>
+                  <h2 style='margin:0 0 16px'>Payment confirmed</h2>
+                  <p>Hi {safeName}, your SprintA payment has been recorded.</p>
+                  <table role='presentation' cellpadding='0' cellspacing='0' style='width:100%;border-collapse:collapse'>
+                    <tr><td style='padding:10px;border:1px solid #dfe1e6;font-weight:700'>Receipt</td><td style='padding:10px;border:1px solid #dfe1e6'>{safeReceipt}</td></tr>
+                    <tr><td style='padding:10px;border:1px solid #dfe1e6;font-weight:700'>Plan</td><td style='padding:10px;border:1px solid #dfe1e6'>{safePlan}</td></tr>
+                    <tr><td style='padding:10px;border:1px solid #dfe1e6;font-weight:700'>Amount</td><td style='padding:10px;border:1px solid #dfe1e6'>{safeAmount}</td></tr>
+                    <tr><td style='padding:10px;border:1px solid #dfe1e6;font-weight:700'>Paid at</td><td style='padding:10px;border:1px solid #dfe1e6'>{safePaidAt}</td></tr>
+                  </table>
+                  <p style='color:#626f86;font-size:13px'>This is a payment receipt, not a VAT/e-invoice.</p>
+                </div>";
+            return await SendResendEmailAsync(toEmail, subject, html, null);
+        }
+
+        private async Task<string?> SendResendEmailAsync(string toEmail, string subject, string html, string? text = null, System.Threading.CancellationToken cancellationToken = default)
         {
             var apiKey = _configuration["Resend:ApiKey"]
                 ?? throw new InvalidOperationException("Resend API key is missing.");
@@ -209,6 +239,16 @@ namespace TaskManagement.Infrastructure.Services
             }
 
             Console.WriteLine($"Email sent to {toEmail}: {subject}");
+            try
+            {
+                await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                using var responseDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken);
+                return responseDocument.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
         }
     }
 }

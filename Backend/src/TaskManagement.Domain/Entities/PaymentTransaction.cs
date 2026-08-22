@@ -11,6 +11,9 @@ public sealed class PaymentTransaction
     public string Status { get; set; } = "Paid";
     public DateTime PaidAt { get; set; }
     public string? ProviderReference { get; set; }
+    public int? IncludedAiCredits { get; set; }
+    public DateTime? SubscriptionPeriodStart { get; set; }
+    public DateTime? SubscriptionPeriodEnd { get; set; }
     public DateTime CreatedAt { get; set; }
 
     public PaymentOrder PaymentOrder { get; set; } = null!;

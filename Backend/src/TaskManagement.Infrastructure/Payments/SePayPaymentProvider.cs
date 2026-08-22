@@ -56,6 +56,9 @@ public sealed class SePayPaymentProvider : IPaymentProvider
             var root = json.RootElement;
             var amount = root.TryGetProperty("transferAmount", out var amountElement) ? amountElement.GetDecimal() : 0;
             var accountNumber = ReadString(root, "accountNumber");
+            var providerEventId = ReadString(root, "id");
+            if (string.IsNullOrWhiteSpace(providerEventId))
+                return Task.FromResult(new PaymentWebhookVerificationResult { Error = "Webhook event id is missing." });
             var configuredAccount = _configuration["PaymentProviders:SePay:AccountNumber"];
             if (!string.IsNullOrWhiteSpace(configuredAccount) && !string.Equals(accountNumber, configuredAccount, StringComparison.OrdinalIgnoreCase))
                 return Task.FromResult(new PaymentWebhookVerificationResult { Error = "Webhook destination account does not match configuration." });
@@ -64,7 +67,7 @@ public sealed class SePayPaymentProvider : IPaymentProvider
             return Task.FromResult(new PaymentWebhookVerificationResult
             {
                 IsValid = true,
-                ProviderEventId = ReadString(root, "id"),
+                ProviderEventId = providerEventId,
                 TransactionType = ReadString(root, "transferType"),
                 AccountNumber = accountNumber,
                 Amount = amount,
