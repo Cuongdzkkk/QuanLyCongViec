@@ -1,3 +1,4 @@
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -104,10 +105,10 @@ public sealed class BillingService : IBillingService
             TotalCount = totalCount,
             RevenueVnd = await aggregateQuery.Where(order => order.Status == "Paid").SumAsync(order => (decimal?)order.AmountVnd, cancellationToken) ?? 0,
             SuccessfulPayments = await aggregateQuery.CountAsync(order => order.Status == "Paid", cancellationToken),
-            PendingPayments = await aggregateQuery.CountAsync(order => order.Status == "Pending", cancellationToken),
+            PendingPayments = await aggregateQuery.CountAsync(order => order.Status == "Pending" && (order.ExpiresAt == null || order.ExpiresAt > now), cancellationToken),
             FailedPayments = await aggregateQuery.CountAsync(order => order.Status == "Failed" || order.Status == "Rejected", cancellationToken),
             NeedsAttention = await aggregateQuery.CountAsync(order =>
-                order.Status == "Failed" ||
+                order.Status == "Failed" || order.Status == "Expired" ||
                 (order.Status == "Pending" && (order.ExpiresAt <= now || failedWebhookOrders.Contains(order.Id))) ||
                 (order.Status == "Paid" && order.PaidAt >= now.AddMonths(-1) &&
                  (failedWebhookOrders.Contains(order.Id) ||
@@ -151,6 +152,16 @@ public sealed class BillingService : IBillingService
             if (string.Equals(status, "Failed", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(status, "FailedOrRejected", StringComparison.OrdinalIgnoreCase))
                 query = query.Where(order => order.Status == "Failed" || order.Status == "Rejected");
+            else if (string.Equals(status, "Pending", StringComparison.OrdinalIgnoreCase))
+            {
+                var now = DateTime.UtcNow;
+                query = query.Where(order => order.Status == "Pending" && (order.ExpiresAt == null || order.ExpiresAt > now));
+            }
+            else if (string.Equals(status, "Expired", StringComparison.OrdinalIgnoreCase))
+            {
+                var now = DateTime.UtcNow;
+                query = query.Where(order => order.Status == "Expired" || (order.Status == "Pending" && order.ExpiresAt <= now));
+            }
             else if (string.Equals(status, "Attention", StringComparison.OrdinalIgnoreCase))
             {
                 var failedWebhookOrders = _context.PaymentWebhookEvents.AsNoTracking()
@@ -158,7 +169,7 @@ public sealed class BillingService : IBillingService
                     .Select(x => x.PaymentOrderId!.Value);
                 var now = DateTime.UtcNow;
                 query = query.Where(order =>
-                    order.Status == "Failed" ||
+                    order.Status == "Failed" || order.Status == "Expired" ||
                     (order.Status == "Pending" && (order.ExpiresAt <= now || failedWebhookOrders.Contains(order.Id))) ||
                     (order.Status == "Paid" && order.PaidAt >= now.AddMonths(-1) &&
                      (failedWebhookOrders.Contains(order.Id) ||
@@ -275,9 +286,43 @@ public sealed class BillingService : IBillingService
         if (plan.MonthlyPriceVnd is null or <= 0 || normalizedCode == "enterprise")
             throw new ArgumentException("Gói này không hỗ trợ thanh toán thủ công.");
 
+        try
+        {
+            return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                if (!_context.Database.IsRelational())
+                    return await CreateOrderCoreAsync(userId, normalizedCode, plan, cancellationToken);
+
+                await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+                var result = await CreateOrderCoreAsync(userId, normalizedCode, plan, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return result;
+            });
+        }
+        catch
+        {
+            _context.ChangeTracker.Clear();
+            throw;
+        }
+    }
+
+    private async Task<PaymentOrderDto> CreateOrderCoreAsync(
+        Guid userId, string normalizedCode, AiPricingPlan plan, CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var expiredOrders = await _context.PaymentOrders
+            .Where(order => order.UserId == userId && order.PlanCode == normalizedCode && order.Status == "Pending" && order.ExpiresAt != null && order.ExpiresAt <= now)
+            .ToListAsync(cancellationToken);
+        foreach (var expiredOrder in expiredOrders) expiredOrder.Status = "Expired";
+
         var existing = await _context.PaymentOrders.Include(order => order.User)
-            .FirstOrDefaultAsync(order => order.UserId == userId && order.PlanCode == normalizedCode && order.Status == "Pending", cancellationToken);
-        if (existing != null) return ToOrderDto(existing, plan.Name);
+            .FirstOrDefaultAsync(order => order.UserId == userId && order.PlanCode == normalizedCode && order.Status == "Pending" &&
+                (order.ExpiresAt == null || order.ExpiresAt > now), cancellationToken);
+        if (existing != null)
+        {
+            if (expiredOrders.Count > 0) await _context.SaveChangesAsync(cancellationToken);
+            return ToOrderDto(existing, plan.Name, _paymentProvider);
+        }
 
         var user = await _context.Users.SingleOrDefaultAsync(item => item.Id == userId && !item.IsDeleted, cancellationToken)
             ?? throw new ArgumentException("Người dùng không tồn tại.");
@@ -289,13 +334,13 @@ public sealed class BillingService : IBillingService
             PlanCode = normalizedCode,
             PlanNameSnapshot = plan.Name,
             IncludedAiCreditsSnapshot = plan.IncludedAiCredits,
-            AmountVnd = plan.MonthlyPriceVnd.Value,
+            AmountVnd = plan.MonthlyPriceVnd!.Value,
             Currency = "VND",
             Provider = _paymentProvider?.IsConfigured == true ? _paymentProvider.Code : "manual_bank_transfer",
             Status = "Pending",
             TransferCode = await CreateTransferCodeAsync(cancellationToken),
-            CreatedAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddMinutes(30)
+            CreatedAt = now,
+            ExpiresAt = now.AddMinutes(30)
         };
         _context.PaymentOrders.Add(order);
         await _context.SaveChangesAsync(cancellationToken);
@@ -783,7 +828,9 @@ public sealed class BillingService : IBillingService
         PlanCode = order.PlanCode,
         PlanName = string.IsNullOrWhiteSpace(order.PlanNameSnapshot) ? planName : order.PlanNameSnapshot,
         AmountVnd = order.AmountVnd,
-        Status = order.Status,
+        Status = order.Status == "Pending" && order.ExpiresAt.HasValue && order.ExpiresAt.Value <= DateTime.UtcNow
+            ? "Expired"
+            : order.Status,
         TransferCode = order.TransferCode,
         Currency = order.Currency,
         Provider = order.Provider,

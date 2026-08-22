@@ -121,6 +121,46 @@ public sealed class BillingSupportTests
     }
 
     [Fact]
+    public async Task ExpiredPendingOrder_IsClosedBeforeCreatingReplacement_AndSubscriptionStaysUnchanged()
+    {
+        await using var context = CreateContext();
+        var user = AddUser(context, "expired-order@test.local");
+        var now = DateTime.UtcNow;
+        context.AiPricingPlans.Add(new AiPricingPlan { Id = Guid.NewGuid(), Code = "pro", Name = "Pro", MonthlyPriceVnd = 199000, IncludedAiCredits = 3000, IsPublished = true, CreatedAt = now, UpdatedAt = now });
+        context.AiSubscriptions.Add(new AiSubscription { Id = Guid.NewGuid(), UserId = user.Id, User = user, PlanCode = "plus", Status = "Active", CurrentPeriodStart = now.AddDays(-5), CurrentPeriodEnd = now.AddDays(25), CreatedAt = now.AddDays(-5), UpdatedAt = now });
+        var expired = new PaymentOrder { Id = Guid.NewGuid(), UserId = user.Id, User = user, PlanCode = "pro", PlanNameSnapshot = "Pro", IncludedAiCreditsSnapshot = 3000, AmountVnd = 199000, Currency = "VND", Provider = "sepay", Status = "Pending", TransferCode = "SEVQR SPA-EXPIRED", CreatedAt = now.AddMinutes(-40), ExpiresAt = now.AddMinutes(-10) };
+        context.PaymentOrders.Add(expired);
+        await context.SaveChangesAsync();
+
+        var billing = new BillingService(context, new AiCreditUsageService(context));
+        var replacement = await billing.CreateOrderAsync(user.Id, "pro");
+
+        replacement.Status.Should().Be("Pending");
+        replacement.Id.Should().NotBe(expired.Id);
+        (await context.PaymentOrders.SingleAsync(order => order.Id == expired.Id)).Status.Should().Be("Expired");
+        (await context.AiSubscriptions.SingleAsync()).PlanCode.Should().Be("plus");
+        (await context.PaymentOrders.CountAsync(order => order.Status == "Pending")).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task PendingAndExpiredOrders_CannotExposeReceipt()
+    {
+        await using var context = CreateContext();
+        var user = AddUser(context, "receipt-eligibility@test.local");
+        var now = DateTime.UtcNow;
+        var pending = new PaymentOrder { Id = Guid.NewGuid(), UserId = user.Id, User = user, PlanCode = "pro", PlanNameSnapshot = "Pro", AmountVnd = 199000, Provider = "sepay", Status = "Pending", TransferCode = "SEVQR SPA-PENDING", CreatedAt = now, ExpiresAt = now.AddMinutes(20) };
+        var expired = new PaymentOrder { Id = Guid.NewGuid(), UserId = user.Id, User = user, PlanCode = "pro", PlanNameSnapshot = "Pro", AmountVnd = 199000, Provider = "sepay", Status = "Expired", TransferCode = "SEVQR SPA-EXPIRED-RECEIPT", CreatedAt = now.AddMinutes(-40), ExpiresAt = now.AddMinutes(-10) };
+        context.PaymentOrders.AddRange(pending, expired);
+        await context.SaveChangesAsync();
+        var billing = new BillingService(context, new AiCreditUsageService(context));
+
+        Func<Task> pendingReceipt = () => billing.GetReceiptAsync(pending.Id, user.Id, false);
+        Func<Task> expiredReceipt = () => billing.GetReceiptAsync(expired.Id, user.Id, false);
+        await pendingReceipt.Should().ThrowAsync<KeyNotFoundException>();
+        await expiredReceipt.Should().ThrowAsync<KeyNotFoundException>();
+    }
+
+    [Fact]
     public async Task NegativeCreditAdjustment_ReducesCurrentPeriodEntitlement()
     {
         await using var context = CreateContext();
