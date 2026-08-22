@@ -41,6 +41,33 @@ namespace TaskManagement.Infrastructure.Services
             await _clientNotifier.SendNotificationAsync(userId, notification);
         }
 
+        public async Task<bool> SendNotificationOnceAsync(Guid userId, string title, string content, string type, string dedupeKey, string? linkUrl = null, Guid? triggeredByUserId = null)
+        {
+            if (string.IsNullOrWhiteSpace(dedupeKey)) throw new ArgumentException("Notification dedupe key is required.", nameof(dedupeKey));
+            if (await _context.Notifications.AnyAsync(x => x.DedupeKey == dedupeKey)) return false;
+
+            var notification = new Notification
+            {
+                Id = Guid.NewGuid(), UserId = userId, Title = title, Content = content,
+                NotificationType = type, LinkUrl = linkUrl, DedupeKey = dedupeKey,
+                TriggeredByUserId = triggeredByUserId, CreatedAt = DateTime.UtcNow, IsRead = false
+            };
+            _context.Notifications.Add(notification);
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                // A concurrent webhook/order transition already persisted this notification.
+                _context.Entry(notification).State = EntityState.Detached;
+                return false;
+            }
+
+            await _clientNotifier.SendNotificationAsync(userId, notification);
+            return true;
+        }
+
         public async Task SendNotificationToTeamAsync(Guid teamId, string title, string content, string type, string? linkUrl = null, Guid? triggeredByUserId = null)
         {
             var memberIds = await _context.DepartmentMembers

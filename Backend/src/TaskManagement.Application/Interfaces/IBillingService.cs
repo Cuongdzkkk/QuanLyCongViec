@@ -6,6 +6,10 @@ public interface IBillingService
 {
     Task<BillingSummaryDto> GetSummaryAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PaymentOrderDto>> GetOrdersAsync(Guid? userId, string? status, CancellationToken cancellationToken = default);
+    Task<PaymentOrderPageDto> SearchOrdersAsync(Guid? userId, BillingOrderQuery query, CancellationToken cancellationToken = default);
+    Task<PaymentOrderDetailsDto> GetOrderDetailsAsync(Guid orderId, Guid? userId, bool isAdmin, CancellationToken cancellationToken = default);
+    Task<PaymentReceiptDto> GetReceiptAsync(Guid orderId, Guid? userId, bool isAdmin, CancellationToken cancellationToken = default);
+    Task<PaymentEmailDeliveryDto> ResendReceiptAsync(Guid orderId, Guid? userId, bool isAdmin, CancellationToken cancellationToken = default);
     Task<PaymentOrderDto> CreateOrderAsync(Guid userId, string planCode, CancellationToken cancellationToken = default);
     Task<BillingSummaryDto> ActivateFreeAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<BillingUserDto>> GetAdminUsersAsync(CancellationToken cancellationToken = default);

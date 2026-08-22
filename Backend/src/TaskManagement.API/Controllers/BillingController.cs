@@ -26,6 +26,32 @@ public sealed class BillingController : ControllerBase
     public async Task<IActionResult> Orders(CancellationToken cancellationToken) =>
         Ok(ApiEnvelope(await _billingService.GetOrdersAsync(GetUserId(), null, cancellationToken)));
 
+    [HttpGet("orders/history")]
+    public async Task<IActionResult> OrderHistory([FromQuery] BillingOrderQuery query, CancellationToken cancellationToken) =>
+        Ok(ApiEnvelope(await _billingService.SearchOrdersAsync(GetUserId(), query, cancellationToken)));
+
+    [HttpGet("orders/{id:guid}")]
+    public async Task<IActionResult> OrderDetails(Guid id, CancellationToken cancellationToken)
+    {
+        try { return Ok(ApiEnvelope(await _billingService.GetOrderDetailsAsync(id, GetUserId(), false, cancellationToken))); }
+        catch (KeyNotFoundException ex) { return NotFound(Error(ex.Message, 404)); }
+    }
+
+    [HttpGet("orders/{id:guid}/receipt")]
+    public async Task<IActionResult> Receipt(Guid id, CancellationToken cancellationToken)
+    {
+        try { return Ok(ApiEnvelope(await _billingService.GetReceiptAsync(id, GetUserId(), false, cancellationToken))); }
+        catch (KeyNotFoundException ex) { return NotFound(Error(ex.Message, 404)); }
+    }
+
+    [HttpPost("orders/{id:guid}/receipt/resend")]
+    public async Task<IActionResult> ResendReceipt(Guid id, CancellationToken cancellationToken)
+    {
+        try { return Ok(ApiEnvelope(await _billingService.ResendReceiptAsync(id, GetUserId(), false, cancellationToken), "Đã yêu cầu gửi lại receipt.")); }
+        catch (KeyNotFoundException ex) { return NotFound(Error(ex.Message, 404)); }
+        catch (InvalidOperationException ex) { return Conflict(Error(ex.Message, 409)); }
+    }
+
     [HttpPost("orders")]
     public async Task<IActionResult> CreateOrder([FromBody] CreatePaymentOrderRequest request, CancellationToken cancellationToken)
     {
@@ -40,7 +66,7 @@ public sealed class BillingController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            return Conflict(Error(ex.Message));
+            return Conflict(Error(ex.Message, 409));
         }
     }
 
@@ -64,5 +90,5 @@ public sealed class BillingController : ControllerBase
         : throw new UnauthorizedAccessException("Invalid user identity.");
 
     private static object ApiEnvelope(object data, string message = "Success") => new { statusCode = 200, message, data };
-    private static object Error(string message) => new { statusCode = 400, message };
+    private static object Error(string message, int statusCode = 400) => new { statusCode, message };
 }
