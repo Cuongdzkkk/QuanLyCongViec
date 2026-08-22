@@ -139,7 +139,11 @@ public sealed class CallRoomRegistryTests
         context.SetupGet(item => item.ConnectionAborted).Returns(CancellationToken.None);
         context.SetupGet(item => item.User).Returns(new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "test")));
-        var hub = new CallHub(registry, authorization.Object)
+        var hub = new CallHub(
+            registry,
+            authorization.Object,
+            Mock.Of<ICallTranscriptionProvider>(),
+            Mock.Of<ICallTranscriptService>())
         {
             Context = context.Object,
             Groups = groups.Object,
@@ -244,7 +248,11 @@ public sealed class CallRoomRegistryTests
                 .Returns(new Mock<IClientProxy>().Object);
             callerClients = defaultClients.Object;
         }
-        return new CallHub(registry, authorization)
+        return new CallHub(
+            registry,
+            authorization,
+            Mock.Of<ICallTranscriptionProvider>(),
+            Mock.Of<ICallTranscriptService>())
         {
             Context = context.Object,
             Groups = new Mock<IGroupManager>().Object,

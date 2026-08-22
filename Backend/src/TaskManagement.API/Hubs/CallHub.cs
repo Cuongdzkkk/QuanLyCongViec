@@ -13,19 +13,14 @@ public sealed class CallHub : Hub
 
     private readonly ICallRoomRegistry _rooms;
     private readonly ICallRoomAuthorizationService _authorization;
-    private readonly ICallTranscriptionProvider? _transcriptionProvider;
-    private readonly ICallTranscriptService? _transcripts;
-
-    public CallHub(ICallRoomRegistry rooms, ICallRoomAuthorizationService authorization)
-        : this(rooms, authorization, null, null)
-    {
-    }
+    private readonly ICallTranscriptionProvider _transcriptionProvider;
+    private readonly ICallTranscriptService _transcripts;
 
     public CallHub(
         ICallRoomRegistry rooms,
         ICallRoomAuthorizationService authorization,
-        ICallTranscriptionProvider? transcriptionProvider,
-        ICallTranscriptService? transcripts)
+        ICallTranscriptionProvider transcriptionProvider,
+        ICallTranscriptService transcripts)
     {
         _rooms = rooms;
         _authorization = authorization;
