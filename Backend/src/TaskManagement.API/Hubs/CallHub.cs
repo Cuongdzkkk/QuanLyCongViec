@@ -53,6 +53,7 @@ public sealed class CallHub : Hub
         var nextAiState = result.Snapshot.AiState;
         if (previousAiState.State == CallAiStates.Active && nextAiState.State == CallAiStates.PausedConsent)
         {
+            await StopRoomTranscriptionAsync(roomId, Context.ConnectionAborted);
             await Clients.Group(roomId).SendAsync(
                 CallRealtimeEvents.AiTranscriptionPaused,
                 new CallAiStateChangedDto(nextAiState),
@@ -94,6 +95,14 @@ public sealed class CallHub : Hub
     public async Task RequestAiTranscription(string? roomId)
     {
         var normalizedRoomId = NormalizeRoomId(roomId);
+        if (_transcriptionProvider?.IsConfigured != true)
+        {
+            await Clients.Caller.SendAsync(
+                CallRealtimeEvents.AiTranscriptionUnavailable,
+                new CallTranscriptionErrorDto("BLOCKED_CONFIG", "Live call transcription is not configured."),
+                Context.ConnectionAborted);
+            return;
+        }
         var state = _rooms.RequestAiTranscription(normalizedRoomId, Context.ConnectionId);
         var dto = new CallAiStateChangedDto(ToDto(state));
         await Clients.Group(normalizedRoomId).SendAsync(CallRealtimeEvents.AiConsentRequested, dto, Context.ConnectionAborted);
@@ -126,6 +135,7 @@ public sealed class CallHub : Hub
     {
         var normalizedRoomId = NormalizeRoomId(roomId);
         var state = _rooms.StopAiTranscription(normalizedRoomId, Context.ConnectionId);
+        await StopRoomTranscriptionAsync(normalizedRoomId, Context.ConnectionAborted);
         var dto = new CallAiStateChangedDto(ToDto(state));
         await Clients.Group(normalizedRoomId).SendAsync(CallRealtimeEvents.AiTranscriptionStopped, dto, Context.ConnectionAborted);
         await Clients.Group(normalizedRoomId).SendAsync(CallRealtimeEvents.CallAiStateChanged, dto, Context.ConnectionAborted);
@@ -162,26 +172,50 @@ public sealed class CallHub : Hub
             audioBytes,
             startedAt,
             endedAt,
-            participant.ConsentGeneration);
+            participant.ConsentGeneration,
+            Context.ConnectionId);
         try
         {
-            var result = await _transcriptionProvider.TranscribeAsync(source, Context.ConnectionAborted);
-            if (result is null || string.IsNullOrWhiteSpace(result.Text)) return;
-            if (!_rooms.TryAuthorizeTranscription(normalizedRoomId, Context.ConnectionId, sessionId, consentGeneration, out _)) return;
-
-            var transcript = await _transcripts.AppendAsync(source, result, Context.ConnectionAborted);
-            if (transcript is not null)
+            if (_transcriptionProvider is ICallStreamingTranscriptionProvider streamingProvider)
             {
-                await Clients.Group(normalizedRoomId).SendAsync(
-                    CallRealtimeEvents.CallTranscriptChunkAdded,
-                    transcript,
+                await streamingProvider.SubmitAsync(
+                    source,
+                    HandleTranscriptionResultAsync,
+                    () => _rooms.TryAuthorizeTranscription(normalizedRoomId, Context.ConnectionId, sessionId, consentGeneration, out _),
                     Context.ConnectionAborted);
             }
+            else
+            {
+                var result = await _transcriptionProvider.TranscribeAsync(source, Context.ConnectionAborted);
+                if (result is not null)
+                    await HandleTranscriptionResultAsync(source, result);
+            }
+        }
+        catch (CallTranscriptionProviderUnavailableException)
+        {
+            await NotifyTranscriptionFailureAsync(normalizedRoomId, "BLOCKED_CONFIG", "Live call transcription is not configured.");
+        }
+        catch (Exception) when (!Context.ConnectionAborted.IsCancellationRequested)
+        {
+            await StopRoomTranscriptionAsync(normalizedRoomId, Context.ConnectionAborted);
+            await NotifyTranscriptionFailureAsync(normalizedRoomId, "PROVIDER_ERROR", "Không thể ghi biên bản cuộc gọi lúc này.");
         }
         finally
         {
             Array.Clear(source.AudioBytes, 0, source.AudioBytes.Length);
         }
+    }
+
+    public async Task StopCallAudioStream(string? roomId, string? callSessionId, long consentGeneration)
+    {
+        var normalizedRoomId = NormalizeRoomId(roomId);
+        var sessionId = ParseGuid(callSessionId, "INVALID_CALL_SESSION_ID");
+        if (!_rooms.TryGetParticipant(normalizedRoomId, Context.ConnectionId, out var participant))
+            throw new HubException("NOT_IN_CALL_ROOM");
+        var state = _rooms.GetAiState(normalizedRoomId);
+        if (state.CallSessionId != sessionId || state.ConsentGeneration != consentGeneration) return;
+        if (_transcriptionProvider is ICallStreamingTranscriptionProvider streamingProvider)
+            await streamingProvider.StopAsync(normalizedRoomId, sessionId, participant.UserId, consentGeneration, Context.ConnectionAborted);
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -220,6 +254,7 @@ public sealed class CallHub : Hub
         var previousAiState = _rooms.GetAiState(roomId);
         var participant = _rooms.Leave(roomId, Context.ConnectionId);
         if (participant == null) return;
+        await StopRoomTranscriptionAsync(roomId, cancellationToken);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId, cancellationToken);
         await Clients.OthersInGroup(roomId).SendAsync(
             CallRealtimeEvents.ParticipantLeft,
@@ -260,6 +295,8 @@ public sealed class CallHub : Hub
         CallAiSessionSnapshot nextState,
         CancellationToken cancellationToken)
     {
+        if (nextState.State != CallAiStates.Active)
+            await StopRoomTranscriptionAsync(roomId, cancellationToken);
         var dto = new CallAiStateChangedDto(ToDto(nextState));
         if (nextState.State == CallAiStates.Active)
             await Clients.Group(roomId).SendAsync(CallRealtimeEvents.AiTranscriptionStarted, dto, cancellationToken);
@@ -267,4 +304,53 @@ public sealed class CallHub : Hub
             await Clients.Group(roomId).SendAsync(CallRealtimeEvents.AiTranscriptionPaused, dto, cancellationToken);
         await Clients.Group(roomId).SendAsync(CallRealtimeEvents.CallAiStateChanged, dto, cancellationToken);
     }
+
+    private async Task HandleTranscriptionResultAsync(CallAudioChunk source, CallTranscriptionResult result)
+    {
+        if (string.IsNullOrWhiteSpace(result.Text) || string.IsNullOrWhiteSpace(source.SpeakerConnectionId)) return;
+        if (!_rooms.TryAuthorizeTranscription(
+                source.RoomId,
+                source.SpeakerConnectionId,
+                source.CallSessionId,
+                source.ConsentGeneration,
+                out _)) return;
+
+        if (!result.IsFinal)
+        {
+            await Clients.Group(source.RoomId).SendAsync(
+                CallRealtimeEvents.CallTranscriptInterim,
+                new CallTranscriptInterimDto(
+                    source.CallSessionId,
+                    source.SpeakerUserId,
+                    source.SpeakerDisplayName,
+                    result.StartedAt,
+                    result.EndedAt,
+                    result.Text.Trim(),
+                    result.Confidence),
+                Context.ConnectionAborted);
+            return;
+        }
+
+        if (_transcripts is null) return;
+        var transcript = await _transcripts.AppendAsync(source, result, Context.ConnectionAborted);
+        if (transcript is not null)
+        {
+            await Clients.Group(source.RoomId).SendAsync(
+                CallRealtimeEvents.CallTranscriptChunkAdded,
+                transcript,
+                Context.ConnectionAborted);
+        }
+    }
+
+    private async Task StopRoomTranscriptionAsync(string roomId, CancellationToken cancellationToken)
+    {
+        if (_transcriptionProvider is ICallStreamingTranscriptionProvider streamingProvider)
+            await streamingProvider.StopRoomAsync(roomId, cancellationToken);
+    }
+
+    private Task NotifyTranscriptionFailureAsync(string roomId, string code, string message) =>
+        Clients.Group(roomId).SendAsync(
+            CallRealtimeEvents.AiTranscriptionError,
+            new CallTranscriptionErrorDto(code, message),
+            Context.ConnectionAborted);
 }

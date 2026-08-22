@@ -11,6 +11,29 @@ public interface ICallTranscriptionProvider
         CancellationToken cancellationToken = default);
 }
 
+public interface ICallStreamingTranscriptionProvider : ICallTranscriptionProvider
+{
+    Task SubmitAsync(
+        CallAudioChunk chunk,
+        Func<CallAudioChunk, CallTranscriptionResult, Task> onResult,
+        Func<bool> canContinue,
+        CancellationToken cancellationToken = default);
+
+    Task StopAsync(
+        string roomId,
+        Guid callSessionId,
+        Guid speakerUserId,
+        long consentGeneration,
+        CancellationToken cancellationToken = default);
+
+    Task StopRoomAsync(string roomId, CancellationToken cancellationToken = default);
+}
+
+public interface ICallTranscriptionUsageSink
+{
+    Task RecordAsync(CallTranscriptionUsage usage, CancellationToken cancellationToken = default);
+}
+
 public interface ICallTranscriptService
 {
     Task<CallTranscriptChunkDto?> AppendAsync(

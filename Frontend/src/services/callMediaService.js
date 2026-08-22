@@ -39,7 +39,7 @@ const getIceServers = async () => {
   }))
 }
 
-export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams, onAiState, onTranscriptChunk }) => {
+export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams, onAiState, onTranscriptChunk, onTranscriptInterim, onTranscriptionError }) => {
   let connection = null
   let roomId = null
   let localStream = null
@@ -58,11 +58,156 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   let participants = new Map()
   const peers = new Map()
   const remoteStreams = new Map()
+  let transcriptionCapture = null
+  let transcriptionQueue = Promise.resolve()
 
   const emit = (state, detail = {}) => onState?.({ state, ...detail })
   const emitParticipants = () => onParticipants?.([...participants.values()])
   const emitRemoteStreams = () => onRemoteStreams?.(new Map(remoteStreams))
-  const emitAiState = value => onAiState?.(read(value, 'state', 'State') || value)
+  const emitAiState = value => {
+    const nested = read(value, 'state', 'State')
+    onAiState?.(nested && typeof nested === 'object' ? nested : value)
+  }
+
+  const downsampleToPcm16 = (input, inputRate, outputRate = 16000) => {
+    const ratio = inputRate / outputRate
+    const outputLength = Math.max(1, Math.floor(input.length / ratio))
+    const output = new Uint8Array(outputLength * 2)
+    const view = new DataView(output.buffer)
+    for (let index = 0; index < outputLength; index += 1) {
+      const sourceIndex = Math.min(input.length - 1, Math.floor(index * ratio))
+      const sample = Math.max(-1, Math.min(1, input[sourceIndex]))
+      view.setInt16(index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
+    }
+    return output
+  }
+
+  const sendTranscriptionChunk = (capture, bytes, startedAt, endedAt) => {
+    if (!capture.active || !connection || connection.state !== signalR.HubConnectionState.Connected || !roomId) return
+    const payload = Array.from(bytes)
+    transcriptionQueue = transcriptionQueue
+      .catch(() => {})
+      .then(async () => {
+        if (!capture.active || connection?.state !== signalR.HubConnectionState.Connected || capture !== transcriptionCapture) return
+        try {
+          await connection.invoke(
+            'SubmitCallAudioChunk',
+            roomId,
+            capture.callSessionId,
+            capture.consentGeneration,
+            'audio/linear16;rate=16000;channels=1',
+            payload,
+            startedAt.toISOString(),
+            endedAt.toISOString())
+        } catch (error) {
+          if (!['AI_TRANSCRIPTION_NOT_ACTIVE', 'CALL_TRANSCRIPTION_NOT_CONFIGURED'].includes(error?.message)) onTranscriptionError?.({ code: 'INGEST_ERROR', message: 'Không thể gửi âm thanh cho biên bản cuộc gọi.' })
+        }
+      })
+  }
+
+  const stopTranscriptionCapture = async ({ notifyServer = true } = {}) => {
+    const capture = transcriptionCapture
+    transcriptionCapture = null
+    if (!capture) return
+    capture.active = false
+    capture.processor.onaudioprocess = null
+    capture.source.disconnect()
+    capture.processor.disconnect()
+    capture.sink.disconnect()
+    await capture.context.close().catch(() => {})
+    if (notifyServer && connection?.state === signalR.HubConnectionState.Connected && roomId) {
+      await connection.invoke('StopCallAudioStream', roomId, capture.callSessionId, capture.consentGeneration).catch(() => {})
+    }
+  }
+
+  const startTranscriptionCapture = async aiState => {
+    const callSessionId = read(aiState, 'callSessionId', 'CallSessionId')
+    const consentGeneration = read(aiState, 'consentGeneration', 'ConsentGeneration')
+    if (!callSessionId || !consentGeneration || !localStream || !microphoneEnabled) return
+    if (transcriptionCapture?.callSessionId === callSessionId && transcriptionCapture?.consentGeneration === consentGeneration) return
+    await stopTranscriptionCapture()
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext
+    if (!AudioContextCtor) {
+      onTranscriptionError?.({ code: 'UNSUPPORTED_AUDIO_CAPTURE', message: 'Trình duyệt không hỗ trợ thu âm cuộc gọi cho biên bản.' })
+      return
+    }
+    const context = new AudioContextCtor()
+    const source = context.createMediaStreamSource(localStream)
+    const processor = context.createScriptProcessor(4096, 1, 1)
+    const sink = context.createGain()
+    sink.gain.value = 0
+    const capture = {
+      active: true,
+      callSessionId,
+      consentGeneration,
+      context,
+      source,
+      processor,
+      sink,
+      pending: [],
+      preRoll: [],
+      speaking: false,
+      silenceChunks: 0
+    }
+    transcriptionCapture = capture
+    processor.onaudioprocess = event => {
+      if (!capture.active || !microphoneEnabled) return
+      const pcm = downsampleToPcm16(event.inputBuffer.getChannelData(0), context.sampleRate)
+      capture.pending.push(pcm)
+      let pendingLength = capture.pending.reduce((total, item) => total + item.length, 0)
+      while (pendingLength >= 8000 && capture.active) {
+        const chunk = new Uint8Array(8000)
+        let offset = 0
+        while (offset < chunk.length && capture.pending.length) {
+          const first = capture.pending[0]
+          const copyLength = Math.min(first.length, chunk.length - offset)
+          chunk.set(first.subarray(0, copyLength), offset)
+          offset += copyLength
+          if (copyLength === first.length) capture.pending.shift()
+          else capture.pending[0] = first.subarray(copyLength)
+        }
+        pendingLength -= chunk.length
+        let energy = 0
+        const view = new DataView(chunk.buffer)
+        for (let index = 0; index < chunk.length; index += 2) {
+          const sample = view.getInt16(index, true) / 0x8000
+          energy += sample * sample
+        }
+        const voiced = Math.sqrt(energy / (chunk.length / 2)) >= 0.012
+        const endedAt = new Date()
+        const startedAt = new Date(endedAt.getTime() - 250)
+        capture.preRoll.push({ chunk, startedAt, endedAt })
+        if (capture.preRoll.length > 2) capture.preRoll.shift()
+        if (voiced) {
+          if (!capture.speaking) {
+            capture.speaking = true
+            for (const buffered of capture.preRoll) sendTranscriptionChunk(capture, buffered.chunk, buffered.startedAt, buffered.endedAt)
+          } else sendTranscriptionChunk(capture, chunk, startedAt, endedAt)
+          capture.silenceChunks = 0
+        } else if (capture.speaking) {
+          sendTranscriptionChunk(capture, chunk, startedAt, endedAt)
+          capture.silenceChunks += 1
+          if (capture.silenceChunks >= 2) {
+            capture.speaking = false
+            capture.preRoll = []
+          }
+        }
+      }
+    }
+    source.connect(processor)
+    processor.connect(sink)
+    sink.connect(context.destination)
+    await context.resume().catch(() => {})
+  }
+
+  const handleAiState = value => {
+    const nested = read(value, 'state', 'State')
+    const state = nested && typeof nested === 'object' ? nested : value
+    emitAiState(state)
+    const stateName = read(state, 'state', 'State')
+    if (stateName === 'ACTIVE') void startTranscriptionCapture(state)
+    else void stopTranscriptionCapture()
+  }
 
   const localConnectionId = () => connection?.connectionId
   const getPeer = (connectionId) => peers.get(connectionId)
@@ -185,7 +330,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       const participant = normalizeParticipant(item)
       return [participant.connectionId, participant]
     }))
-    emitAiState(read(snapshot, 'aiState', 'AiState'))
+    handleAiState(read(snapshot, 'aiState', 'AiState'))
     emitParticipants()
     for (const participant of participants.values()) await createPeer(participant.connectionId)
   }
@@ -216,14 +361,23 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       })
       emitParticipants()
     })
-    connection.on('CallAiStateChanged', event => emitAiState(read(event, 'state', 'State')))
-    connection.on('AiConsentRequested', event => emitAiState(read(event, 'state', 'State')))
-    connection.on('AiParticipantAccepted', event => emitAiState(read(event, 'state', 'State')))
-    connection.on('AiParticipantDeclined', event => emitAiState(read(event, 'state', 'State')))
-    connection.on('AiTranscriptionStarted', event => emitAiState(read(event, 'state', 'State')))
-    connection.on('AiTranscriptionPaused', event => emitAiState(read(event, 'state', 'State')))
-    connection.on('AiTranscriptionStopped', event => emitAiState(read(event, 'state', 'State')))
+    connection.on('CallAiStateChanged', event => handleAiState(read(event, 'state', 'State')))
+    connection.on('AiConsentRequested', event => handleAiState(read(event, 'state', 'State')))
+    connection.on('AiParticipantAccepted', event => handleAiState(read(event, 'state', 'State')))
+    connection.on('AiParticipantDeclined', event => handleAiState(read(event, 'state', 'State')))
+    connection.on('AiTranscriptionStarted', event => handleAiState(read(event, 'state', 'State')))
+    connection.on('AiTranscriptionPaused', event => handleAiState(read(event, 'state', 'State')))
+    connection.on('AiTranscriptionStopped', event => handleAiState(read(event, 'state', 'State')))
+    connection.on('AiTranscriptionUnavailable', event => {
+      onTranscriptionError?.(event)
+      void stopTranscriptionCapture({ notifyServer: false })
+    })
+    connection.on('AiTranscriptionError', event => {
+      onTranscriptionError?.(event)
+      void stopTranscriptionCapture({ notifyServer: false })
+    })
     connection.on('CallTranscriptChunkAdded', event => onTranscriptChunk?.(event))
+    connection.on('CallTranscriptInterim', event => onTranscriptInterim?.(event))
     connection.on('WebRtcOffer', applyOffer)
     connection.on('WebRtcAnswer', applyAnswer)
     connection.on('IceCandidate', applyCandidate)
@@ -393,6 +547,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const leave = async () => {
     intentionalLeave = true
     try {
+      await stopTranscriptionCapture()
       if (connection?.state === signalR.HubConnectionState.Connected && roomId) {
         await connection.invoke('LeaveVoiceRoom', projectId, voiceChannelId)
       }

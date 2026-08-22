@@ -31,11 +31,16 @@ const required = [
   'setCameraBackgroundEffect',
   'backgroundEffect',
   'effect-fallback',
-  'createBackgroundBlurProcessor'
+  'createBackgroundBlurProcessor',
+  'AudioContext',
+  'SubmitCallAudioChunk',
+  'StopCallAudioStream',
+  'linear16',
+  'preRoll'
 ]
 
 for (const needle of required) assert.ok(source.includes(needle), `missing ${needle}`)
 assert.equal(source.includes('MediaRecorder'), false)
-assert.equal(source.includes('transcri'), false)
+assert.equal(source.includes('SpeechRecognition'), false)
 
 console.log(`callMediaService.test.mjs: ${required.length} media foundation checks passed`)

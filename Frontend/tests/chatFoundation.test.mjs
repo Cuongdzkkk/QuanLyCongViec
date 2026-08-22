@@ -14,7 +14,7 @@ const expects = [
   ['composer keeps send behavior and attachments', '@click=\"sendMessage\"', 'attachment-preview-container'],
   ['context panel is toggleable', 'showMembersSidebar', 'toggleContextPanel'],
   ['AI entry points are truthful for text and calls', 'AI đang OFF', 'Sắp ra mắt'],
-  ['AI is explicitly staged off', "const aiAnalysisOpen = ref(false)", 'AI đang OFF', 'Chưa có phân tích'],
+  ['AI is explicitly staged off', "const aiAnalysisOpen = ref(false)", 'AI đang OFF'],
   ['voice controls remain available', 'Voice connected', 'leaveVoiceChannel', 'callMicrophoneEnabled', 'isCallCameraOn'],
   ['participant layout is dense and responsive', 'group-video-grid', 'grid-auto-flow: dense', '@media (max-width: 760px)'],
   ['call context tabs are present', 'class="context-tabs"', 'role="tablist"'],

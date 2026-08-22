@@ -18,8 +18,6 @@ public sealed class CallTranscriptService : ICallTranscriptService
     {
         var text = result.Text?.Trim();
         if (string.IsNullOrWhiteSpace(text)) return null;
-        if (source.AudioBytes.Length == 0) return null;
-
         var chunk = new Domain.Entities.CallTranscriptChunk
         {
             Id = Guid.NewGuid(),

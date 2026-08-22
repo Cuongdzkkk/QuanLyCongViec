@@ -351,6 +351,10 @@
                 <div><time>{{ formatTime(chunk.startedAt) }}</time><strong>{{ chunk.speakerDisplayName }}</strong></div>
                 <p>“{{ chunk.text }}”</p>
               </div>
+              <div v-if="callTranscriptInterim.text" class="call-transcript-chunk is-interim">
+                <div><time>{{ formatTime(callTranscriptInterim.startedAt) }}</time><strong>{{ callTranscriptInterim.speakerDisplayName }}</strong></div>
+                <p>“{{ callTranscriptInterim.text }}”</p>
+              </div>
               <span v-if="!callTranscriptChunks.length" class="channel-utility-empty">Chưa có nội dung phiên âm.</span>
             </div>
           </aside>
@@ -1334,6 +1338,7 @@ const callError = ref('')
 const callSession = ref(null)
 const callAiState = ref({ state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] })
 const callTranscriptChunks = ref([])
+const callTranscriptInterim = ref({ text: '', startedAt: '', speakerDisplayName: '' })
 const callChatOpen = ref(false)
 const callChatDraft = ref('')
 const callChatSending = ref(false)
@@ -1424,8 +1429,23 @@ const handleTranscriptChunk = value => {
     text: value?.text ?? value?.Text ?? ''
   }
   if (!chunk.id || !chunk.text) return
+  callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
   callTranscriptChunks.value = [...callTranscriptChunks.value.filter(item => item.id !== chunk.id), chunk]
     .sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt))
+}
+
+const handleTranscriptInterim = value => {
+  callTranscriptInterim.value = {
+    text: value?.text ?? value?.Text ?? '',
+    startedAt: value?.startedAt ?? value?.StartedAt ?? '',
+    speakerDisplayName: value?.speakerDisplayName ?? value?.SpeakerDisplayName ?? 'Unknown user'
+  }
+}
+
+const handleTranscriptionError = value => {
+  const message = value?.message ?? value?.Message ?? 'Không thể ghi biên bản cuộc gọi lúc này.'
+  callError.value = message
+  ElMessage.warning(message)
 }
 
 const loadCallTranscript = async voiceChannel => {
@@ -1497,7 +1517,9 @@ const createCallSessionForVoiceChannel = (voiceChannel) => createCallMediaSessio
     remoteStreams.value = items
   },
   onAiState: handleCallAiState,
-  onTranscriptChunk: handleTranscriptChunk
+  onTranscriptChunk: handleTranscriptChunk,
+  onTranscriptInterim: handleTranscriptInterim,
+  onTranscriptionError: handleTranscriptionError
 })
 
 const requestCallAi = async () => {
@@ -5233,6 +5255,7 @@ const fetchProjectMembers = async () => {
 .call-transcript-chunk > div { display: flex; align-items: center; gap: 7px; color: #8be5b8; font-size: 10px; }
 .call-transcript-chunk time { color: #8295a6; }
 .call-transcript-chunk p { margin: 5px 0 0; color: #d4e1eb; font-size: 12px; line-height: 1.45; }
+.call-transcript-chunk.is-interim { opacity: .7; border-bottom-style: dashed; }
 @media (max-width: 1180px) { .call-transcript-panel { width: 260px; min-width: 260px; } }
 @media (max-width: 900px) { .call-transcript-panel { width: 100%; min-width: 0; border-left: 0; border-top: 1px solid rgba(148, 163, 184, .13); } }
 .message-card { position: relative; }

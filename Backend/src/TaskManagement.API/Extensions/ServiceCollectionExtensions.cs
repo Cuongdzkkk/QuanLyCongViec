@@ -56,7 +56,13 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<ICallRoomAuthorizationService, CallRoomAuthorizationService>();
             services.AddSingleton<ICallRoomRegistry, TaskManagement.API.Services.CallRoomRegistry>();
             services.AddScoped<ICallTranscriptService, CallTranscriptService>();
-            services.AddSingleton<ICallTranscriptionProvider, UnavailableCallTranscriptionProvider>();
+            var callTranscriptionOptions = configuration
+                .GetSection(CallTranscriptionOptions.SectionName)
+                .Get<CallTranscriptionOptions>() ?? new CallTranscriptionOptions();
+            services.AddSingleton<ICallTranscriptionUsageSink, CallTranscriptionUsageSink>();
+            services.AddSingleton<ICallTranscriptionProvider>(_ => callTranscriptionOptions.IsConfigured
+                ? new DeepgramCallTranscriptionProvider(callTranscriptionOptions, _.GetRequiredService<ICallTranscriptionUsageSink>())
+                : new UnavailableCallTranscriptionProvider());
             services.AddSingleton<ICollaborationRealtimePublisher, TaskManagement.API.Services.ChatRealtimePublisher>();
             services.AddScoped<TaskManagement.API.Services.ICollaborationAttachmentStorage, TaskManagement.API.Services.CollaborationAttachmentStorage>();
             services.AddScoped<ITaskDependencyService, TaskDependencyService>();

@@ -15,9 +15,14 @@ public static class CallRealtimeEvents
     public const string AiTranscriptionStarted = nameof(AiTranscriptionStarted);
     public const string AiTranscriptionPaused = nameof(AiTranscriptionPaused);
     public const string AiTranscriptionStopped = nameof(AiTranscriptionStopped);
+    public const string AiTranscriptionUnavailable = nameof(AiTranscriptionUnavailable);
+    public const string AiTranscriptionError = nameof(AiTranscriptionError);
     public const string CallAiStateChanged = nameof(CallAiStateChanged);
     public const string CallTranscriptChunkAdded = nameof(CallTranscriptChunkAdded);
+    public const string CallTranscriptInterim = nameof(CallTranscriptInterim);
 }
+
+public sealed record CallTranscriptionErrorDto(string Code, string Message);
 
 public static class CallAiStates
 {
