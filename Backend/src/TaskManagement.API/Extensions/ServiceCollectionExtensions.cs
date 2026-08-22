@@ -52,6 +52,8 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<IDirectConversationService, DirectConversationService>();
             services.AddScoped<ICollaborationReadStateService, CollaborationReadStateService>();
             services.AddScoped<ICollaborationRealtimeAuthorizationService, CollaborationRealtimeAuthorizationService>();
+            services.AddScoped<ICallRoomAuthorizationService, CallRoomAuthorizationService>();
+            services.AddSingleton<ICallRoomRegistry, TaskManagement.API.Services.CallRoomRegistry>();
             services.AddSingleton<ICollaborationRealtimePublisher, TaskManagement.API.Services.ChatRealtimePublisher>();
             services.AddScoped<TaskManagement.API.Services.ICollaborationAttachmentStorage, TaskManagement.API.Services.CollaborationAttachmentStorage>();
             services.AddScoped<ITaskDependencyService, TaskDependencyService>();
@@ -97,7 +99,8 @@ namespace TaskManagement.API.Extensions
                         var requestPath = context.HttpContext.Request.Path;
                         if ((requestPath.StartsWithSegments(TaskManagement.API.Hubs.ChatHub.Route) ||
                                 requestPath.StartsWithSegments(TaskManagement.API.Hubs.KanbanHub.Route) ||
-                                requestPath.StartsWithSegments(TaskManagement.API.Hubs.NotificationHub.Route)) &&
+                                requestPath.StartsWithSegments(TaskManagement.API.Hubs.NotificationHub.Route) ||
+                                requestPath.StartsWithSegments(TaskManagement.API.Hubs.CallHub.Route)) &&
                             context.Request.Query.TryGetValue("access_token", out var accessToken) &&
                             !string.IsNullOrWhiteSpace(accessToken))
                         {
