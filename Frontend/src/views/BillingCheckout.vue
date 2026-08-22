@@ -44,14 +44,19 @@
         <div v-else class="payment-grid">
           <section class="payment-card">
             <div class="section-title">
-              <div><p>{{ t('Thanh toán chuyển khoản', 'Bank transfer payment') }}</p><h2>{{ t('Quét QR để thanh toán', 'Scan QR to pay') }}</h2></div>
+              <div><p>{{ t('Thanh toán chuyển khoản', 'Bank transfer payment') }}</p><h2>{{ activeOrder ? t('Quét QR để thanh toán', 'Scan QR to pay') : t('Sẵn sàng tạo đơn', 'Ready to create an order') }}</h2></div>
               <QrCode :size="24" />
             </div>
-            <div class="qr-frame">
+            <div v-if="activeOrder" class="qr-frame">
               <img v-if="qrImagePath" :src="qrImagePath" :alt="t('QR thanh toán SprintA', 'SprintA payment QR')" @error="qrFailed = true" />
-              <div v-else class="qr-placeholder"><QrCode :size="38" /><span>{{ t('Chưa cấu hình QR thanh toán.', 'Payment QR is not configured.') }}</span></div>
+              <div v-else class="qr-placeholder"><QrCode :size="38" /><span>{{ qrFailed ? t('Không thể tải QR lúc này.', 'The QR could not be loaded right now.') : t('QR chưa khả dụng cho đơn này.', 'A QR is not available for this order.') }}</span></div>
             </div>
-            <p class="payment-note">{{ t('Chuyển đúng số tiền và ghi đúng mã thanh toán. Gói sẽ được kích hoạt sau khi quản trị viên xác nhận.', 'Transfer the exact amount with the correct payment code. Your plan is activated after administrator approval.') }}</p>
+            <div v-else class="pre-checkout-state">
+              <QrCode :size="38" />
+              <strong>{{ t('Chưa tạo đơn thanh toán', 'No payment order yet') }}</strong>
+              <p>{{ t('Bạn sẽ thấy QR, mã chuyển khoản và thời hạn ngay sau khi xác nhận tạo đơn.', 'The QR, transfer code, and expiry will appear after you confirm the order.') }}</p>
+            </div>
+            <p class="payment-note">{{ activeOrder ? t('Chuyển đúng số tiền và ghi đúng mã thanh toán. Gói chỉ được kích hoạt sau khi thanh toán được xác nhận.', 'Transfer the exact amount with the correct payment code. The plan activates only after payment is confirmed.') : t('Chỉ việc mở trang này chưa tạo ra giao dịch. Xem lại gói và tạo đơn khi bạn đã sẵn sàng thanh toán.', 'Opening this page does not create a transaction. Review the plan and create an order when you are ready to pay.') }}</p>
           </section>
 
           <section class="order-card">
@@ -89,8 +94,8 @@
           <div class="history-list">
             <article v-for="order in history" :key="order.id" class="history-row">
               <div><strong>{{ order.planName || order.planCode }}</strong><small>{{ formatDate(order.createdAt) }} · {{ order.transferCode }}</small></div>
-              <div class="history-meta"><strong>{{ priceLabel(order.amountVnd) }}</strong><span class="history-status" :class="String(order.status).toLowerCase()">{{ statusLabel(order.status) }}</span></div>
-              <div class="history-actions"><button type="button" @click="openDetails(order)">{{ t('Chi tiết', 'Details') }}</button><button v-if="order.status === 'Paid'" type="button" @click="openReceipt(order)">{{ t('Receipt', 'Receipt') }}</button></div>
+              <div class="history-meta"><strong>{{ priceLabel(order.amountVnd) }}</strong><span class="history-status" :class="getOrderDisplayStatus(order).toLowerCase()">{{ statusLabel(getOrderDisplayStatus(order)) }}</span></div>
+              <div class="history-actions"><button type="button" @click="openDetails(order)">{{ t('Chi tiết đơn', 'Order details') }}</button><button v-if="canShowPaymentReceipt(order)" type="button" @click="openReceipt(order)">{{ t('Receipt', 'Receipt') }}</button></div>
             </article>
           </div>
           <nav v-if="historyTotalPages > 1" class="pagination-controls" :aria-label="t('Phân trang lịch sử thanh toán', 'Payment history pagination')">
@@ -124,6 +129,7 @@ import { ArrowLeft, CircleAlert, Clock3, Coins, Copy, QrCode, ShieldCheck } from
 import axiosClient from '@/api/axiosClient'
 import { billingApi, unwrapBillingData } from '@/api/billingApi'
 import { language } from '@/i18n'
+import { canShowPaymentReceipt, getOrderDisplayStatus, isActivePendingOrder } from '@/utils/billingCheckoutState'
 
 const route = useRoute()
 const router = useRouter()
@@ -146,7 +152,8 @@ const t = (vi, en) => isVi.value ? vi : en
 const planCode = computed(() => String(route.params.planCode || '').toLowerCase())
 const isFree = computed(() => planCode.value === 'free' || Number(plan.value?.monthlyPriceVnd) === 0)
 const isEnterprise = computed(() => planCode.value === 'enterprise' || plan.value?.monthlyPriceVnd == null)
-const activeOrder = computed(() => orders.value.find(order => order.planCode === planCode.value && order.status === 'Pending'))
+const activeOrder = computed(() => [billing.value?.pendingOrder, ...orders.value]
+  .find(order => order?.planCode === planCode.value && isActivePendingOrder(order)))
 const qrImagePath = computed(() => qrFailed.value ? '' : (activeOrder.value?.paymentInstructions?.qrUrl || ''))
 const historyTotalPages = computed(() => Math.max(1, Math.ceil(historyTotal.value / historyPageSize)))
 
@@ -175,6 +182,7 @@ const loadHistory = async (page = 1) => {
 const loadData = async () => {
   loading.value = true
   error.value = ''
+  qrFailed.value = false
   try {
     const [pricingResponse, billingResponse, historyResponse] = await Promise.all([
       axiosClient.get('/public/pricing'), billingApi.getMe(), billingApi.getMyHistory({ page: 1, pageSize: historyPageSize })
@@ -194,9 +202,11 @@ const loadData = async () => {
 
 const createOrder = async () => {
   submitting.value = true
+  qrFailed.value = false
   try {
     const response = await billingApi.createOrder(planCode.value)
     const order = unwrapBillingData(response)
+    billing.value = { ...(billing.value || {}), pendingOrder: order }
     await loadHistory(1)
     if (!orders.value.some(item => item.id === order?.id)) orders.value = [order, ...orders.value]
     ElMessage.success(response.data?.message || t('Đã tạo đơn thanh toán.', 'Payment order created.'))
@@ -236,7 +246,7 @@ const resendReceipt = async () => {
 }
 const priceLabel = (amount) => amount == null ? t('Liên hệ', 'Contact') : `${new Intl.NumberFormat(isVi.value ? 'vi-VN' : 'en-US').format(amount)} VND`
 const formatDate = (value) => value ? new Intl.DateTimeFormat(isVi.value ? 'vi-VN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '-'
-const statusLabel = (status) => ({ Pending: t('Chờ xác nhận', 'Pending'), Paid: t('Đã thanh toán', 'Paid'), Rejected: t('Đã từ chối', 'Rejected'), Cancelled: t('Đã hủy', 'Cancelled') }[status] || status)
+const statusLabel = (status) => ({ Pending: t('Chờ thanh toán', 'Pending payment'), Paid: t('Đã thanh toán', 'Paid'), Expired: t('Đã hết hạn', 'Expired'), Failed: t('Thất bại', 'Failed'), Rejected: t('Đã từ chối', 'Rejected'), Cancelled: t('Đã hủy', 'Cancelled') }[status] || status)
 
 onMounted(loadData)
 </script>
@@ -255,13 +265,14 @@ onMounted(loadData)
 .payment-card, .order-card, .free-panel, .state-panel { border: 1px solid var(--color-border, #dfe4ec); border-radius: 14px; background: var(--color-surface, #fff); padding: 26px; }
 .section-title { display: flex; align-items: center; justify-content: space-between; color: var(--color-primary, #3563e9); }.section-title h2 { color: var(--color-text-primary, #172033); font-size: 20px; }
 .qr-frame { width: min(310px, 100%); aspect-ratio: 1; margin: 24px auto; border: 1px solid var(--color-border, #dfe4ec); border-radius: 12px; padding: 12px; display: grid; place-items: center; background: #fff; }.qr-frame img { width: 100%; height: 100%; object-fit: contain; }.qr-placeholder { color: #667085; display: grid; place-items: center; gap: 12px; text-align: center; }
+.pre-checkout-state { min-height: 310px; margin: 24px auto; padding: 32px; border: 1px dashed var(--color-border, #dfe4ec); border-radius: 12px; display: grid; place-items: center; align-content: center; gap: 10px; color: var(--color-primary, #3563e9); text-align: center; }.pre-checkout-state strong { color: var(--color-text-primary, #172033); font-size: 18px; }.pre-checkout-state p { max-width: 34ch; margin: 0; color: var(--color-text-muted, #667085); line-height: 1.6; }
 .payment-note, .order-card > p, .pending-copy { color: var(--color-text-muted, #667085); line-height: 1.65; }.payment-note { margin: 0; font-size: 14px; }
 .order-card h2 { margin: 18px 0 12px; font-size: 22px; }.status-badge { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 999px; color: #875a00; background: #fff5d6; font-size: 12px; font-weight: 750; }.status-badge.paid { color: #12613d; background: #dcf8e9; }
 dl { margin: 22px 0; }dl > div { display: flex; justify-content: space-between; gap: 20px; padding: 12px 0; border-bottom: 1px solid var(--color-border, #dfe4ec); }dt { color: var(--color-text-muted, #667085); }dd { margin: 0; font-weight: 700; text-align: right; }.transfer-row dd { display: flex; align-items: center; gap: 8px; }.transfer-row code { color: var(--color-primary, #3563e9); font-size: 15px; }.transfer-row button { border: 0; background: transparent; color: var(--color-primary, #3563e9); cursor: pointer; }
 .summary-line { display: flex; justify-content: space-between; gap: 20px; margin: 28px 0 18px; padding: 16px 0; border-top: 1px solid var(--color-border, #dfe4ec); border-bottom: 1px solid var(--color-border, #dfe4ec); }
 .primary-button, .secondary-button { min-height: 42px; border-radius: 9px; padding: 0 17px; font-weight: 750; cursor: pointer; transition: transform .15s ease, opacity .15s ease; }.primary-button { width: 100%; border: 1px solid var(--color-primary, #3563e9); background: var(--color-primary, #3563e9); color: #fff; }.secondary-button { border: 1px solid var(--color-border, #dfe4ec); background: transparent; color: var(--color-text-primary, #172033); }.primary-button:active, .secondary-button:active { transform: translateY(1px); }.primary-button:disabled { opacity: .58; cursor: wait; }
 .current-entitlement { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 24px; border-top: 1px solid var(--color-border, #dfe4ec); border-bottom: 1px solid var(--color-border, #dfe4ec); }.current-entitlement > div { display: grid; gap: 7px; padding: 18px 20px; border-right: 1px solid var(--color-border, #dfe4ec); }.current-entitlement > div:last-child { border-right: 0; }.current-entitlement span { color: var(--color-text-muted, #667085); font-size: 13px; }
-.billing-history, .billing-detail { margin-top: 28px; border: 1px solid var(--color-border, #dfe4ec); border-radius: 14px; background: var(--color-surface, #fff); padding: 24px; }.history-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }.history-heading span { color: var(--color-text-muted, #667085); font-size: 13px; }.history-heading h2 { margin: 4px 0 0; font-size: 20px; }.history-heading small { color: var(--color-text-muted, #667085); }.history-list { margin-top: 18px; }.history-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 18px; padding: 15px 0; border-top: 1px solid var(--color-border, #dfe4ec); }.history-row small { display: block; margin-top: 5px; color: var(--color-text-muted, #667085); }.history-meta { display: grid; justify-items: end; gap: 5px; }.history-status { padding: 4px 8px; border-radius: 99px; font-size: 11px; font-weight: 750; }.history-status.paid { color: #12613d; background: #dcf8e9; }.history-status.pending { color: #875a00; background: #fff5d6; }.history-status.rejected { color: #b42318; background: #fee4e2; }.history-actions { display: flex; gap: 8px; }.history-actions button, .close-detail { border: 0; background: transparent; color: var(--color-primary, #3563e9); cursor: pointer; font-weight: 700; }.close-detail { font-size: 24px; line-height: 1; }.billing-detail dl { margin-bottom: 4px; }.muted-copy, .receipt-card p, .receipt-card small { color: var(--color-text-muted, #667085); line-height: 1.6; }.timeline-list { display: grid; gap: 10px; margin-top: 14px; }.timeline-list > div { display: grid; gap: 4px; padding-left: 14px; border-left: 2px solid var(--color-primary, #3563e9); }.timeline-list small { color: var(--color-text-muted, #667085); }.receipt-card { display: grid; gap: 8px; }.receipt-card .secondary-button { justify-self: start; margin-top: 8px; }
+.billing-history, .billing-detail { margin-top: 28px; border: 1px solid var(--color-border, #dfe4ec); border-radius: 14px; background: var(--color-surface, #fff); padding: 24px; }.history-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }.history-heading span { color: var(--color-text-muted, #667085); font-size: 13px; }.history-heading h2 { margin: 4px 0 0; font-size: 20px; }.history-heading small { color: var(--color-text-muted, #667085); }.history-list { margin-top: 18px; }.history-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 18px; padding: 15px 0; border-top: 1px solid var(--color-border, #dfe4ec); }.history-row small { display: block; margin-top: 5px; color: var(--color-text-muted, #667085); }.history-meta { display: grid; justify-items: end; gap: 5px; }.history-status { padding: 4px 8px; border-radius: 99px; font-size: 11px; font-weight: 750; }.history-status.paid { color: #12613d; background: #dcf8e9; }.history-status.pending { color: #875a00; background: #fff5d6; }.history-status.expired, .history-status.failed, .history-status.rejected { color: #b42318; background: #fee4e2; }.history-actions { display: flex; gap: 8px; }.history-actions button, .close-detail { border: 0; background: transparent; color: var(--color-primary, #3563e9); cursor: pointer; font-weight: 700; }.close-detail { font-size: 24px; line-height: 1; }.billing-detail dl { margin-bottom: 4px; }.muted-copy, .receipt-card p, .receipt-card small { color: var(--color-text-muted, #667085); line-height: 1.6; }.timeline-list { display: grid; gap: 10px; margin-top: 14px; }.timeline-list > div { display: grid; gap: 4px; padding-left: 14px; border-left: 2px solid var(--color-primary, #3563e9); }.timeline-list small { color: var(--color-text-muted, #667085); }.receipt-card { display: grid; gap: 8px; }.receipt-card .secondary-button { justify-self: start; margin-top: 8px; }
 .pagination-controls { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--color-border, #dfe4ec); color: var(--color-text-muted, #667085); font-size: 13px; }.pagination-controls button { min-height: 34px; border: 1px solid var(--color-border, #dfe4ec); border-radius: 8px; padding: 0 12px; background: var(--color-surface, #fff); color: var(--color-text-primary, #172033); cursor: pointer; font-weight: 700; }.pagination-controls button:disabled { cursor: not-allowed; opacity: .45; }
 .free-panel { max-width: 560px; margin: 34px auto 0; text-align: center; }.free-panel svg { color: var(--color-primary, #3563e9); }.free-panel h2 { margin: 14px 0 8px; }.free-panel p { color: var(--color-text-muted, #667085); line-height: 1.6; }.free-panel .primary-button { margin-top: 12px; max-width: 320px; }
 .state-panel { display: flex; align-items: flex-start; gap: 14px; }.state-panel p { margin: 5px 0 0; color: var(--color-text-muted, #667085); }.error-state { color: #b42318; }

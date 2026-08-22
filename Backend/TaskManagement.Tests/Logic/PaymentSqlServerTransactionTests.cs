@@ -356,6 +356,36 @@ public sealed class PaymentSqlServerTransactionTests
         }
     }
 
+    [Fact]
+    [Trait("Category", "SqlServerIntegration")]
+    public async Task ConcurrentCreateOrderRequestsReuseOneLivePendingOrder()
+    {
+        var databaseName = $"TaskManagement_PaymentHotfix_{Guid.NewGuid():N}";
+        await using var setupContext = CreateContext(databaseName);
+        await setupContext.Database.MigrateAsync();
+        try
+        {
+            var now = DateTime.UtcNow;
+            var user = new User { Id = Guid.NewGuid(), Email = $"checkout-{Guid.NewGuid():N}@test.local", FullName = "Checkout User", PasswordHash = "test", CreatedAt = now, UpdatedAt = now };
+            setupContext.Users.Add(user);
+            setupContext.AiPricingPlans.Add(new AiPricingPlan { Id = Guid.NewGuid(), Code = "concurrent-plus", Name = "Concurrent Plus", MonthlyPriceVnd = 99000, IncludedAiCredits = 1200, IsPublished = true, CreatedAt = now, UpdatedAt = now });
+            await setupContext.SaveChangesAsync();
+
+            var results = await Task.WhenAll(Enumerable.Range(0, 6).Select(async _ =>
+            {
+                await using var context = CreateContext(databaseName);
+                return await new BillingService(context, new AiCreditUsageService(context)).CreateOrderAsync(user.Id, "concurrent-plus");
+            }));
+
+            results.Select(order => order.Id).Distinct().Should().ContainSingle();
+            (await setupContext.PaymentOrders.CountAsync(order => order.UserId == user.Id && order.PlanCode == "concurrent-plus" && order.Status == "Pending")).Should().Be(1);
+        }
+        finally
+        {
+            await setupContext.Database.EnsureDeletedAsync();
+        }
+    }
+
     private static ApplicationDbContext CreateContext(string databaseName)
     {
         return new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()

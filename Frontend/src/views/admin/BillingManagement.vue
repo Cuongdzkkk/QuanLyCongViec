@@ -359,6 +359,7 @@ const actionTitle = computed(() => ({ change: t('Đổi hoặc kích hoạt gói
 const customerById = computed(() => new Map(users.value.map(user => [String(user.userId), user])))
 const customerFor = (order) => customerById.value.get(String(order?.userId))
 const orderNeedsAttention = (order) => {
+  if (order?.status === 'Expired') return true
   if (order?.status === 'Pending') return Boolean(order.hasFulfillmentMismatch || (order.expiresAt && new Date(order.expiresAt) <= new Date()))
   if (order?.status === 'Failed') return true
   return order?.status === 'Paid' && Boolean(order.hasFulfillmentMismatch)
@@ -478,7 +479,7 @@ const statusLabel = (status) => ({ Active: t('Hoạt động', 'Active'), Pendin
 const paymentStatusLabel = (status) => statusLabel(status)
 const statusClass = (status) => String(status || 'unknown').toLowerCase()
 const providerReference = (order) => order?.providerReference || order?.providerTransactionId || order?.sePayTransactionId || ''
-const systemStatusLabel = (order) => { if (order?.status === 'Pending') return order?.hasFulfillmentMismatch ? 'Webhook cần kiểm tra' : orderNeedsAttention(order) ? 'Đơn quá hạn' : 'Chờ thanh toán'; if (order?.status === 'Rejected') return 'Đã từ chối'; if (order?.status === 'Failed') return 'Cần kiểm tra'; if (order?.status !== 'Paid') return 'Chưa có dữ liệu'; if (order?.hasFulfillmentMismatch) return 'Fulfillment lỗi'; if (!usersLoaded.value) return 'Đã ghi nhận'; const customer = customerFor(order); if (!customer) return 'Đã ghi nhận'; return customer.subscriptionStatus === 'Active' && customer.planCode === order.planCode ? 'Hoàn tất' : 'Đã ghi nhận' }
+const systemStatusLabel = (order) => { if (order?.status === 'Expired') return 'Đơn đã hết hạn'; if (order?.status === 'Pending') return order?.hasFulfillmentMismatch ? 'Webhook cần kiểm tra' : orderNeedsAttention(order) ? 'Đơn quá hạn' : 'Chờ thanh toán'; if (order?.status === 'Rejected') return 'Đã từ chối'; if (order?.status === 'Failed') return 'Cần kiểm tra'; if (order?.status !== 'Paid') return 'Chưa có dữ liệu'; if (order?.hasFulfillmentMismatch) return 'Fulfillment lỗi'; if (!usersLoaded.value) return 'Đã ghi nhận'; const customer = customerFor(order); if (!customer) return 'Đã ghi nhận'; return customer.subscriptionStatus === 'Active' && customer.planCode === order.planCode ? 'Hoàn tất' : 'Đã ghi nhận' }
 const systemClass = (order) => orderNeedsAttention(order) ? 'attention' : order?.status === 'Paid' && customerFor(order) ? 'complete' : 'muted'
 onMounted(loadAll)
 </script>
