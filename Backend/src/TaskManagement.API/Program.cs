@@ -4,6 +4,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.API.Extensions;
 
@@ -20,6 +21,7 @@ builder.Services.AddSignalR(options =>
     // Keep the transport alive through a short proxy/network interruption without masking a dead client.
     options.KeepAliveInterval = TimeSpan.FromSeconds(15);
     options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+    options.AddFilter(typeof(TaskManagement.API.Hubs.CallHubInvocationDiagnosticsFilter));
 });
 builder.Services.AddHttpClient();
 builder.Services.AddOpenApi();
