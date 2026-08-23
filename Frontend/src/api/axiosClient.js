@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { clearAuthSession, getStoredAccessToken } from '@/utils/authSession'
 import { ensureAiOperationId } from '@/utils/aiOperationId'
+import { applyAuthHeader, shouldRefreshUnauthorized } from '@/utils/authRequest'
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api';
 
@@ -31,9 +32,7 @@ axiosClient.interceptors.request.use(
     (config) => {
         ensureAiOperationId(config)
         const token = getStoredAccessToken();
-        if (token) {
-            config.headers['Authorization'] = `Bearer ${token}`;
-        }
+        applyAuthHeader(config, token)
         const locale = localStorage.getItem('admin_locale') || 'vi';
         config.headers['Accept-Language'] = locale;
         return config;
@@ -52,26 +51,12 @@ axiosClient.interceptors.response.use(
         if (!originalRequest) {
             return Promise.reject(error);
         }
-        const requestUrl = String(originalRequest.url || '');
-
-        const isAuthRequest = requestUrl.includes('/auth/login') ||
-                              requestUrl.includes('/auth/register') ||
-                              requestUrl.includes('/auth/send-otp') ||
-                              requestUrl.includes('/auth/verify-otp') ||
-                              requestUrl.includes('/auth/reset-password') ||
-                              requestUrl.includes('/auth/refresh-token') ||
-                              requestUrl.includes('/auth/google-login') ||
-                              requestUrl.includes('/auth/github-login') ||
-                              requestUrl.includes('/auth/invite-info') ||
-                              requestUrl.includes('/auth/accept-invite-token');
-
-        if (error.response?.status === 401 && !originalRequest._retry && !isAuthRequest) {
+        if (shouldRefreshUnauthorized(error, originalRequest)) {
             if (isRefreshing) {
                 return new Promise(function (resolve, reject) {
                     failedQueue.push({ resolve, reject });
                 }).then(token => {
-                    originalRequest.headers = originalRequest.headers || {};
-                    originalRequest.headers['Authorization'] = 'Bearer ' + token;
+                    applyAuthHeader(originalRequest, token)
                     return axiosClient(originalRequest);
                 }).catch(err => {
                     return Promise.reject(err);
@@ -99,8 +84,7 @@ axiosClient.interceptors.response.use(
                 localStorage.removeItem('accessToken');
 
                 axiosClient.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
-                originalRequest.headers = originalRequest.headers || {};
-                originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+                applyAuthHeader(originalRequest, newAccessToken)
 
                 processQueue(null, newAccessToken);
                 return axiosClient(originalRequest);

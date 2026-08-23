@@ -11,6 +11,7 @@ import {
   isOrderForPlan,
   isActivePendingOrder,
   isExpiredPendingOrder,
+  mergePaymentOrder,
   selectActivePendingOrder,
   shouldPollPaymentOrder
 } from '../src/utils/billingCheckoutState.js'
@@ -115,4 +116,51 @@ test('polling and copy contracts follow the active payment lifecycle', () => {
   assert.equal(canShowPaymentReceipt({ ...active, status: 'Pending' }, now), false)
   assert.equal(canShowPaymentReceipt({ ...active, status: 'Expired' }, now), false)
   assert.equal(canShowPaymentReceipt({ ...active, status: 'Paid' }, now), true)
+})
+
+test('partial pending order responses preserve the existing payment instructions', () => {
+  const initial = {
+    id: '00000000-0000-4000-8000-000000000001',
+    planCode: 'plus',
+    status: 'Pending',
+    expiresAt: '2026-08-22T10:30:00Z',
+    amountVnd: 99000,
+    transferCode: 'SEVQR TEST',
+    paymentInstructions: {
+      bankCode: 'VALID_BANK',
+      accountName: 'VALID_OWNER',
+      accountNumber: '123456',
+      qrUrl: 'https://example.test/qr',
+      amountVnd: 99000,
+      transferContent: 'SEVQR TEST'
+    }
+  }
+  const partial = { ...initial, paymentInstructions: undefined }
+  const merged = mergePaymentOrder(initial, partial)
+
+  assert.deepEqual(merged.paymentInstructions, initial.paymentInstructions)
+  assert.deepEqual(getPaymentCopyValues(merged), {
+    accountNumber: '123456', amount: 99000, transferContent: 'SEVQR TEST'
+  })
+  assert.equal(isActivePendingOrder(merged, now), true)
+})
+
+test('pending order transitions keep QR data until terminal status, then stop polling', () => {
+  const pending = {
+    id: '00000000-0000-4000-8000-000000000001',
+    planCode: 'plus',
+    status: 'Pending',
+    expiresAt: '2026-08-22T10:30:00Z',
+    paymentInstructions: { qrUrl: 'https://example.test/qr' }
+  }
+  const partial = mergePaymentOrder(pending, { ...pending, paymentInstructions: undefined })
+  const paid = mergePaymentOrder(partial, { ...partial, status: 'Paid', paidAt: '2026-08-22T10:01:00Z' })
+  const expired = mergePaymentOrder(partial, { ...partial, status: 'Expired' })
+
+  assert.equal(getCheckoutState(partial, now), 'Pending')
+  assert.equal(partial.paymentInstructions.qrUrl, 'https://example.test/qr')
+  assert.equal(getCheckoutState(paid, now), 'Paid')
+  assert.equal(shouldPollPaymentOrder(paid, now), false)
+  assert.equal(getCheckoutState(expired, now), 'Expired')
+  assert.equal(shouldPollPaymentOrder(expired, now), false)
 })

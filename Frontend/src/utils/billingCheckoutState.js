@@ -94,6 +94,19 @@ export const selectActivePendingOrder = (orders, planCode, now = Date.now()) => 
 
 export const shouldPollPaymentOrder = (order, now = Date.now()) => isActivePendingOrder(order, now)
 
+export const mergePaymentOrder = (existing, incoming) => {
+  if (!existing) return incoming
+  if (!incoming) return existing
+
+  const merged = { ...existing, ...incoming }
+  if (incoming.paymentInstructions === undefined) {
+    merged.paymentInstructions = existing.paymentInstructions
+  } else if (incoming.paymentInstructions && existing.paymentInstructions) {
+    merged.paymentInstructions = { ...existing.paymentInstructions, ...incoming.paymentInstructions }
+  }
+  return merged
+}
+
 export const getPaymentCopyValues = (order) => ({
   accountNumber: order?.paymentInstructions?.accountNumber || '',
   amount: order?.paymentInstructions?.amountVnd ?? order?.amountVnd ?? '',

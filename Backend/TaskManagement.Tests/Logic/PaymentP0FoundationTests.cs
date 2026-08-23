@@ -28,6 +28,35 @@ public sealed class PaymentP0FoundationTests
     }
 
     [Fact]
+    public void PendingOrderInstructions_ContainConfiguredDestinationAndExactTransferValues()
+    {
+        var order = new PaymentOrder
+        {
+            Id = Guid.NewGuid(), AmountVnd = 99_000, TransferCode = "SEVQR SPA8E897554"
+        };
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["PaymentProviders:SePay:Enabled"] = "true",
+            ["PaymentProviders:SePay:WebhookSecret"] = "test-secret",
+            ["PaymentProviders:SePay:BankCode"] = "VietinBank",
+            ["PaymentProviders:SePay:AccountNumber"] = "0123456789",
+            ["PaymentProviders:SePay:AccountName"] = "SPRINTA TEST"
+        }).Build();
+
+        var instructions = new SePayPaymentProvider(configuration).BuildInstructions(order);
+
+        instructions.BankCode.Should().Be("VietinBank");
+        instructions.AccountName.Should().Be("SPRINTA TEST");
+        instructions.AccountNumber.Should().Be("0123456789");
+        instructions.AmountVnd.Should().Be(99_000);
+        instructions.TransferContent.Should().Be(order.TransferCode);
+        instructions.QrUrl.Should().Contain("bank=VietinBank");
+        instructions.QrUrl.Should().Contain("acc=0123456789");
+        instructions.QrUrl.Should().Contain("amount=99000");
+        instructions.QrUrl.Should().Contain("des=SEVQR%20SPA8E897554");
+    }
+
+    [Fact]
     public async Task SePayWebhook_RequiresIncomingExactAccountAndParsesReference()
     {
         const string body = "{\"id\":12345,\"transferType\":\"in\",\"accountNumber\":\"123456789\",\"transferAmount\":99000,\"content\":\"SEVQR SPA123\",\"referenceCode\":\"FT001\"}";
@@ -134,6 +163,10 @@ public sealed class PaymentP0FoundationTests
         webhook.ProcessedAt!.Value.Kind.Should().Be(DateTimeKind.Utc);
         usage.PlanCode.Should().Be("pro");
         usage.IncludedCredits.Should().Be(3000);
+        var bucket = await context.AiCreditBuckets.SingleAsync();
+        bucket.SourcePaymentOrderId.Should().Be(order.Id);
+        bucket.GrantedCredits.Should().Be(3000);
+        bucket.RemainingCredits.Should().Be(3000);
     }
 
     [Theory]
@@ -317,6 +350,7 @@ public sealed class PaymentP0FoundationTests
         second.Should().BeNull();
         (await context.PaymentTransactions.CountAsync()).Should().Be(1);
         (await context.AiSubscriptions.CountAsync()).Should().Be(1);
+        (await context.AiCreditBuckets.CountAsync(x => x.SourcePaymentOrderId == order.Id)).Should().Be(1);
     }
 
     [Fact]
