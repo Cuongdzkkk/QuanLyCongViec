@@ -3,6 +3,7 @@ const SELFIE_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_
 const PROCESS_WIDTH = 640
 const PROCESS_HEIGHT = 360
 const PROCESS_FPS = 15
+const PERSON_CATEGORY_VALUE = 0
 
 let visionModulePromise = null
 
@@ -27,7 +28,10 @@ const createMaskImage = (mask, context) => {
   const image = context.createImageData(mask.width, mask.height)
   for (let index = 0; index < values.length; index += 1) {
     const offset = index * 4
-    const alpha = values[index] > 0 ? 255 : 0
+    // The selfie segmenter category mask uses 0 for the person and 255 for
+    // the background. Keep the subject opaque so only the background blur is
+    // composited over the live camera frame.
+    const alpha = values[index] === PERSON_CATEGORY_VALUE ? 255 : 0
     image.data[offset] = 255
     image.data[offset + 1] = 255
     image.data[offset + 2] = 255
