@@ -125,7 +125,7 @@
               </div>
 
               <dl class="detail-list">
-                <div><dt>{{ t('Ngân hàng', 'Bank') }}</dt><dd>{{ activeInstructions?.bankCode || t('Chưa cấu hình', 'Not configured') }}</dd></div>
+                <div><dt>{{ t('Ngân hàng', 'Bank') }}</dt><dd>{{ activeInstructions.bankName || activeInstructions.bankCode || t('Chưa cấu hình', 'Not configured') }}</dd></div>
                 <div><dt>{{ t('Chủ tài khoản', 'Account holder') }}</dt><dd>{{ activeInstructions?.accountName || t('Chưa cấu hình', 'Not configured') }}</dd></div>
                 <div class="copy-detail"><dt>{{ t('Số tài khoản', 'Account number') }}</dt><dd><strong>{{ activeInstructions?.accountNumber || '-' }}</strong><button type="button" :disabled="!activeInstructions?.accountNumber" :aria-label="t('Sao chép số tài khoản', 'Copy account number')" @click="copyText(activeInstructions?.accountNumber, t('Đã sao chép số tài khoản.', 'Account number copied.'))"><Copy :size="15" /></button></dd></div>
                 <div class="copy-detail"><dt>{{ t('Số tiền', 'Amount') }}</dt><dd><strong>{{ priceLabel(activePaymentValues.amount) }}</strong><button type="button" :aria-label="t('Sao chép số tiền', 'Copy amount')" @click="copyText(activePaymentValues.amount, t('Đã sao chép số tiền.', 'Amount copied.'))"><Copy :size="15" /></button></dd></div>
@@ -258,11 +258,14 @@ import {
   getOrderDisplayStatus,
   getOrderRemainingSeconds,
   getPaymentCopyValues,
+  isPaymentInstructionsAvailable,
   isActivePendingOrder,
   isKnownPaymentOrderStatus,
   isOrderForPlan,
   mergePaymentOrder,
+  normalizePaymentInstructions,
   selectActivePendingOrder,
+  shouldFetchPaymentOrderDetails,
   shouldPollPaymentOrder
 } from '@/utils/billingCheckoutState'
 
@@ -330,9 +333,10 @@ const paymentState = computed(() => {
   return activeOrder.value ? 'Pending' : getCheckoutState(latestOrder.value, clock.value)
 })
 const paidOrder = computed(() => paymentState.value === 'Paid' ? latestOrder.value : null)
-const activeInstructions = computed(() => activeOrder.value?.paymentInstructions || null)
+const activeInstructions = computed(() => normalizePaymentInstructions(activeOrder.value))
+const paymentInstructionsAvailable = computed(() => isPaymentInstructionsAvailable(activeOrder.value))
 const activePaymentValues = computed(() => getPaymentCopyValues(activeOrder.value))
-const qrImagePath = computed(() => qrFailed.value ? '' : (activeInstructions.value?.qrUrl || ''))
+const qrImagePath = computed(() => qrFailed.value || !paymentInstructionsAvailable.value ? '' : activeInstructions.value.qrUrl)
 const remainingSeconds = computed(() => getOrderRemainingSeconds(activeOrder.value, clock.value))
 const remainingTime = computed(() => formatRemainingTime(remainingSeconds.value))
 const historyTotalPages = computed(() => Math.max(1, Math.ceil(historyTotal.value / historyPageSize)))
@@ -372,13 +376,14 @@ const isTrustedHandoffOrder = (order) => Boolean(
 const resolveHandoffOrder = async (knownOrders) => {
   if (!routeOrderId.value) return null
   const knownOrder = knownOrders.find(isTrustedHandoffOrder)
-  if (knownOrder) return knownOrder
+  if (knownOrder && !shouldFetchPaymentOrderDetails(knownOrder, clock.value)) return knownOrder
   try {
     const details = unwrapBillingData(await billingApi.getOrderDetails(routeOrderId.value))
     const order = details?.order
-    return isTrustedHandoffOrder(order) ? order : null
+    if (isTrustedHandoffOrder(order)) return order
+    return knownOrder || null
   } catch {
-    return null
+    return knownOrder || null
   }
 }
 

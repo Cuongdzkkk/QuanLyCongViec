@@ -48,7 +48,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        navigateFallbackDenylist: [/^\/api/, /^\/kanban-hub/, /^\/auth/, /^\/hubs/, /^\/signalr/]
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
+        navigateFallbackDenylist: [/^\/api/, /^\/kanban-hub/, /^\/auth/, /^\/hubs/, /^\/signalr/, /^\/billing\/checkout/]
       }
     })
   ],

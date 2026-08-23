@@ -94,12 +94,49 @@ export const selectActivePendingOrder = (orders, planCode, now = Date.now()) => 
 
 export const shouldPollPaymentOrder = (order, now = Date.now()) => isActivePendingOrder(order, now)
 
+const firstPaymentValue = (instructions, order, keys) => {
+  for (const source of [instructions, order]) {
+    for (const key of keys) {
+      const value = source?.[key]
+      if (value !== undefined && value !== null && String(value).trim() !== '') return value
+    }
+  }
+  return ''
+}
+
+export const normalizePaymentInstructions = (order) => {
+  const instructions = order?.paymentInstructions
+  const bankCode = firstPaymentValue(instructions, order, ['bankCode', 'BankCode'])
+  return {
+    bankCode,
+    bankName: firstPaymentValue(instructions, order, ['bankName', 'BankName', 'bank', 'Bank']) || bankCode,
+    accountName: firstPaymentValue(instructions, order, ['accountName', 'AccountName', 'accountOwner', 'AccountOwner']),
+    accountNumber: firstPaymentValue(instructions, order, ['accountNumber', 'AccountNumber']),
+    qrUrl: firstPaymentValue(instructions, order, ['qrUrl', 'QrUrl', 'QRUrl']),
+    amountVnd: firstPaymentValue(instructions, order, ['amountVnd', 'AmountVnd']) || order?.amountVnd || '',
+    transferCode: firstPaymentValue(instructions, order, ['transferContent', 'TransferContent', 'transferCode', 'TransferCode']) || order?.transferCode || ''
+  }
+}
+
+export const isPaymentInstructionsAvailable = (order) => {
+  const instructions = normalizePaymentInstructions(order)
+  return Boolean(
+    String(instructions.accountNumber).trim() &&
+    String(instructions.bankCode || instructions.bankName).trim() &&
+    String(instructions.qrUrl).trim()
+  )
+}
+
+export const shouldFetchPaymentOrderDetails = (order, now = Date.now()) => (
+  getCheckoutState(order, now) === 'Pending' && !isPaymentInstructionsAvailable(order)
+)
+
 export const mergePaymentOrder = (existing, incoming) => {
   if (!existing) return incoming
   if (!incoming) return existing
 
   const merged = { ...existing, ...incoming }
-  if (incoming.paymentInstructions === undefined) {
+  if (incoming.paymentInstructions == null) {
     merged.paymentInstructions = existing.paymentInstructions
   } else if (incoming.paymentInstructions && existing.paymentInstructions) {
     merged.paymentInstructions = { ...existing.paymentInstructions, ...incoming.paymentInstructions }
@@ -107,10 +144,13 @@ export const mergePaymentOrder = (existing, incoming) => {
   return merged
 }
 
-export const getPaymentCopyValues = (order) => ({
-  accountNumber: order?.paymentInstructions?.accountNumber || '',
-  amount: order?.paymentInstructions?.amountVnd ?? order?.amountVnd ?? '',
-  transferContent: order?.paymentInstructions?.transferContent || order?.transferCode || ''
-})
+export const getPaymentCopyValues = (order) => {
+  const instructions = normalizePaymentInstructions(order)
+  return {
+    accountNumber: instructions.accountNumber,
+    amount: instructions.amountVnd,
+    transferContent: instructions.transferCode
+  }
+}
 
 export const isKnownPaymentOrderStatus = (status) => VALID_ORDER_STATUSES.has(status)

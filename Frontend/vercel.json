@@ -1,13 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "redirects": [
-    {
-      "source": "/((?!videos/).*)",
-      "has": [{ "type": "host", "value": "www.sprinta.id.vn" }],
-      "destination": "https://sprinta.id.vn/$1",
-      "permanent": true
-    }
-  ],
   "rewrites": [
     {
       "source": "/((?!videos/).*)",

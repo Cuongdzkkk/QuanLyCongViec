@@ -6,13 +6,16 @@ import {
   formatRemainingTime,
   getCheckoutState,
   getPaymentCopyValues,
+  isPaymentInstructionsAvailable,
   getOrderDisplayStatus,
   getOrderRemainingSeconds,
   isOrderForPlan,
   isActivePendingOrder,
   isExpiredPendingOrder,
   mergePaymentOrder,
+  normalizePaymentInstructions,
   selectActivePendingOrder,
+  shouldFetchPaymentOrderDetails,
   shouldPollPaymentOrder
 } from '../src/utils/billingCheckoutState.js'
 
@@ -143,6 +146,62 @@ test('partial pending order responses preserve the existing payment instructions
     accountNumber: '123456', amount: 99000, transferContent: 'SEVQR TEST'
   })
   assert.equal(isActivePendingOrder(merged, now), true)
+})
+
+test('production payment DTOs normalize to one usable instruction shape', () => {
+  const order = {
+    amountVnd: 99000,
+    transferCode: 'SEVQR TEST',
+    paymentInstructions: {
+      provider: 'sepay',
+      bankCode: 'VietinBank',
+      accountName: 'SPRINTA TEST',
+      accountNumber: '102880579767',
+      amountVnd: 99000,
+      transferContent: 'SEVQR TEST',
+      qrUrl: 'https://vietqr.app/img?acc=102880579767&bank=VietinBank'
+    }
+  }
+
+  assert.deepEqual(normalizePaymentInstructions(order), {
+    bankCode: 'VietinBank',
+    bankName: 'VietinBank',
+    accountName: 'SPRINTA TEST',
+    accountNumber: '102880579767',
+    qrUrl: 'https://vietqr.app/img?acc=102880579767&bank=VietinBank',
+    amountVnd: 99000,
+    transferCode: 'SEVQR TEST'
+  })
+  assert.equal(isPaymentInstructionsAvailable(order), true)
+  assert.deepEqual(getPaymentCopyValues(order), {
+    accountNumber: '102880579767', amount: 99000, transferContent: 'SEVQR TEST'
+  })
+})
+
+test('history null instructions cannot erase a usable pending order', () => {
+  const existing = {
+    status: 'Pending',
+    paymentInstructions: {
+      bankCode: 'VietinBank', accountNumber: '102880579767', qrUrl: 'https://example.test/qr'
+    }
+  }
+  const merged = mergePaymentOrder(existing, { ...existing, paymentInstructions: null })
+
+  assert.equal(isPaymentInstructionsAvailable(merged), true)
+  assert.deepEqual(merged.paymentInstructions, existing.paymentInstructions)
+})
+
+test('partial pending history requires an authoritative order-detail fetch', () => {
+  const pending = {
+    status: 'Pending', expiresAt: '2026-08-22T10:30:00Z', paymentInstructions: null
+  }
+  const complete = {
+    ...pending,
+    paymentInstructions: { bankCode: 'VietinBank', accountNumber: '102880579767', qrUrl: 'https://example.test/qr' }
+  }
+
+  assert.equal(shouldFetchPaymentOrderDetails(pending, now), true)
+  assert.equal(shouldFetchPaymentOrderDetails(complete, now), false)
 })
 
 test('pending order transitions keep QR data until terminal status, then stop polling', () => {
