@@ -216,6 +216,23 @@ public sealed class CallRoomRegistryTests
     }
 
     [Fact]
+    public void EmptyRoomEndsSessionAndRejoiningCreatesANewCallSession()
+    {
+        var registry = new CallRoomRegistry();
+        var roomId = "project:room:voice:general";
+        var userId = Guid.NewGuid();
+        var participant = new CallRoomParticipant(roomId, "connection", userId, "Caller", null, true, false, false);
+
+        var first = registry.Join(participant);
+        var firstSession = first.Snapshot.AiState.CallSessionId;
+        registry.Leave(roomId, participant.ConnectionId).Should().NotBeNull();
+
+        var second = registry.Join(participant);
+
+        second.Snapshot.AiState.CallSessionId.Should().NotBe(firstSession);
+    }
+
+    [Fact]
     public void ReconnectingUserReplacesTransportWithoutDuplicatingParticipant()
     {
         var registry = new CallRoomRegistry();
