@@ -10,7 +10,10 @@ public sealed record CallRoomParticipant(
     string? AvatarUrl,
     bool MicrophoneEnabled,
     bool CameraEnabled,
-    bool ScreenSharing);
+    bool ScreenSharing,
+    bool HandRaised = false,
+    bool IsSpeaking = false,
+    string Role = "participant");
 
 public sealed record CallRoomJoinResult(
     bool Accepted,
@@ -48,6 +51,10 @@ public interface ICallRoomRegistry
         CallParticipantMediaStateDto state,
         out CallRoomParticipant participant);
 
+    bool TryUpdateHand(string roomId, string connectionId, bool raised, out CallRoomParticipant participant);
+    bool TryUpdateSpeaking(string roomId, string connectionId, bool speaking, out CallRoomParticipant participant);
+    bool IsHostOrCoHost(string roomId, string connectionId);
+
     bool IsParticipantInRoom(string roomId, string connectionId);
 
     IReadOnlyList<CallRoomParticipant> GetRoomParticipants(string roomId);
@@ -79,5 +86,8 @@ public interface ICallRoomRegistry
         participant.AvatarUrl,
         participant.MicrophoneEnabled,
         participant.CameraEnabled,
-        participant.ScreenSharing);
+        participant.ScreenSharing,
+        participant.HandRaised,
+        participant.IsSpeaking,
+        participant.Role);
 }

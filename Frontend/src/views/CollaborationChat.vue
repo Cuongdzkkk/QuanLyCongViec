@@ -450,10 +450,25 @@
                 <i class="fa-solid fa-desktop" :style="{ color: isSharingScreen ? '#22c55e' : '#dbdee1' }"></i>
               </button>
 
-              <button type="button" class="call-control-label-btn call-control-future-slot" disabled aria-label="Tùy chọn khác — sắp có" title="Tùy chọn khác — sắp có">
-                <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
-                <span>Thêm</span>
+              <button type="button" class="call-control-circle-btn" :class="{ active: callHandRaised }" :aria-pressed="callHandRaised" aria-label="Giơ tay" title="Giơ tay" @click="toggleRaiseHand">
+                <i class="fa-solid fa-hand" aria-hidden="true"></i>
               </button>
+
+              <div class="camera-effects-control">
+                <button type="button" class="call-control-label-btn" aria-haspopup="menu" :aria-expanded="showMoreMenu" aria-label="Mở thêm tùy chọn" @click="showMoreMenu = !showMoreMenu">
+                  <i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span>Thêm</span>
+                </button>
+                <div v-if="showMoreMenu" class="camera-effects-menu" role="menu" aria-label="Tùy chọn cuộc gọi">
+                  <button v-for="emoji in ['👍', '👏', '😂', '❤️', '🎉', '😮']" :key="emoji" type="button" role="menuitem" @click="sendCallReaction(emoji)">{{ emoji }} Gửi reaction</button>
+                  <button type="button" role="menuitem" @click="toggleCallPictureInPicture">Picture-in-picture</button>
+                  <button type="button" role="menuitem" @click="loadCallDevices">Thiết bị ({{ callDevices.length || 0 }})</button>
+                  <div v-if="callDevices.length" class="call-device-list" aria-label="Thiết bị khả dụng">
+                    <button v-for="device in callDevices" :key="device.deviceId || device.kind" type="button" role="menuitem" @click="switchCallDevice(device)">{{ device.label || device.kind }}</button>
+                  </div>
+                  <button type="button" role="menuitem" @click="showMoreMenu = false; showCameraEffectsMenu = !showCameraEffectsMenu">Hiệu ứng camera</button>
+                  <small>Phím tắt: Ctrl/Cmd+D microphone · Ctrl/Cmd+E camera</small>
+                </div>
+              </div>
 
               <button 
                 class="call-control-circle-btn hang-up" 
@@ -465,6 +480,10 @@
               </button>
             </div>
           </div>
+          <div class="call-reaction-overlay" aria-live="polite">
+            <span v-for="reaction in callReactions" :key="reaction.id" class="call-reaction-bubble">{{ reaction.emoji }} <small>{{ reaction.displayName }}</small></span>
+          </div>
+          <div class="sr-only" aria-live="polite">{{ callLiveNotice }}</div>
           <aside v-if="callChatOpen" class="call-chat-panel" aria-label="Call chat">
             <div class="call-chat-panel-header">
               <div><span class="context-kicker">CALL CHAT</span><strong>{{ activeChannel?.name || 'Tin nhắn cuộc gọi' }}</strong></div>
@@ -1374,6 +1393,11 @@ const cameraBackgroundEffect = ref('none')
 const cameraEffectPending = ref(false)
 const cameraEffectNotice = ref('')
 const showCameraEffectsMenu = ref(false)
+const showMoreMenu = ref(false)
+const callHandRaised = ref(false)
+const callReactions = ref([])
+const callLiveNotice = ref('')
+const callDevices = ref([])
 const presentationStage = ref(null)
 const presentationFocused = ref(false)
 const presentationIsFullscreen = ref(false)
@@ -1629,11 +1653,48 @@ const createCallSessionForVoiceChannel = (voiceChannel) => createCallMediaSessio
     await nextTick()
     syncCallVideoElements()
   },
+  onHandChanged: ({ connectionId, handRaised }) => {
+    if (connectionId === callConnectionId.value) callHandRaised.value = handRaised
+  },
+  onReaction: reaction => {
+    callReactions.value = [...callReactions.value.filter(item => item.id !== reaction.id), { ...reaction, expiresAt: Date.now() + 4000 }]
+    window.setTimeout(() => { callReactions.value = callReactions.value.filter(item => item.id !== reaction.id) }, 4100)
+  },
+  onForceMute: async () => {
+    if (callSession.value && callMicrophoneEnabled.value) { await callSession.value.setMicrophoneEnabled(false); callMicrophoneEnabled.value = false; callLiveNotice.value = 'Bạn đã được tắt microphone bởi host.' }
+  },
+  onForceRemoved: async () => { callLiveNotice.value = 'Bạn đã được mời khỏi cuộc gọi.'; await leaveVoiceChannel(false) },
   onAiState: handleCallAiState,
   onTranscriptChunk: handleTranscriptChunk,
   onTranscriptInterim: handleTranscriptInterim,
   onTranscriptionError: handleTranscriptionError
 })
+
+const toggleRaiseHand = async () => {
+  if (!callSession.value) return
+  const nextValue = !callHandRaised.value
+  try { await callSession.value.setRaiseHand(nextValue); callHandRaised.value = nextValue } catch (error) { handleCallError(error) }
+}
+const sendCallReaction = async emoji => { try { await callSession.value?.sendReaction(emoji); showMoreMenu.value = false } catch (error) { handleCallError(error) } }
+const loadCallDevices = async () => { callDevices.value = await callSession.value?.enumerateDevices?.() || [] }
+const switchCallDevice = async device => {
+  try {
+    if (device.kind === 'audioinput') await callSession.value?.setMicrophoneDevice(device.deviceId)
+    if (device.kind === 'videoinput') await callSession.value?.setCameraDevice(device.deviceId)
+    await loadCallDevices()
+  } catch (error) { handleCallError(error) }
+}
+const toggleCallPictureInPicture = async () => {
+  const element = presentationVideoElement.value || [...localVideoElements.values()][0] || [...remoteVideoElements.values()][0]?.element
+  if (!element?.requestPictureInPicture) { callLiveNotice.value = 'Picture-in-picture chưa được trình duyệt hỗ trợ.'; return }
+  try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else await element.requestPictureInPicture(); showMoreMenu.value = false } catch (error) { handleCallError(error) }
+}
+const handleCallShortcut = event => {
+  if (!showVoiceCallMain.value || event.target?.matches?.('input, textarea, [contenteditable="true"]')) return
+  if (!(event.ctrlKey || event.metaKey)) return
+  if (event.key.toLowerCase() === 'd') { event.preventDefault(); void toggleCallMicrophone() }
+  if (event.key.toLowerCase() === 'e') { event.preventDefault(); void toggleCallCameraReal() }
+}
 
 const requestCallAi = async () => {
   if (!callSession.value) return
@@ -1732,6 +1793,7 @@ const joinVoiceChannel = async (vc) => {
   callError.value = ''
   try {
     await session.start()
+    await loadCallDevices()
     activeVoiceChannel.value = vc
     showVoiceCallMain.value = true
     await loadCallTranscript(vc)
@@ -3232,6 +3294,7 @@ const initializeCollaborationContext = async ({ forceProjects = false } = {}) =>
 
 onMounted(() => {
   componentMounted = true
+  window.addEventListener('keydown', handleCallShortcut)
   document.addEventListener('fullscreenchange', syncPresentationFullscreen)
   registerRealtimeHandlers()
   void initializeCollaborationContext()
@@ -3283,6 +3346,7 @@ watch(projectOptions, (projects) => {
 
 onBeforeUnmount(() => {
   componentMounted = false
+  window.removeEventListener('keydown', handleCallShortcut)
   document.removeEventListener('fullscreenchange', syncPresentationFullscreen)
   collaborationContextVersion += 1
   realtimeUnsubscribers.splice(0).forEach(unsubscribe => unsubscribe())
@@ -5499,6 +5563,11 @@ const fetchProjectMembers = async () => {
 .call-camera-stage.layout-camera_focus { grid-template-columns: minmax(0, min(760px, 100%)); justify-content: center; }
 .call-camera-stage.layout-camera_grid { grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
 .call-control-future-slot:disabled { cursor: not-allowed; opacity: .6; }
+.call-reaction-overlay { position: absolute; z-index: 12; right: 18px; bottom: 92px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; }
+.call-reaction-bubble { padding: 6px 10px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px; background: rgba(15,23,42,.9); color: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.2); animation: call-reaction-rise 4s ease-out both; }
+.call-reaction-bubble small { margin-left: 4px; color: #b8c6d4; font-size: 10px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@keyframes call-reaction-rise { from { opacity: 0; transform: translateY(8px) scale(.92); } 12%, 78% { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-12px) scale(1.04); } }
 .call-control-circle-btn:focus-visible,
 .call-control-label-btn:focus-visible,
 .presentation-control:focus-visible,

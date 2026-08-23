@@ -16,6 +16,9 @@ const normalizeParticipant = (value) => ({
   microphoneEnabled: read(value, 'microphoneEnabled', 'MicrophoneEnabled') !== false,
   cameraEnabled: read(value, 'cameraEnabled', 'CameraEnabled') === true,
   screenSharing: read(value, 'screenSharing', 'ScreenSharing') === true
+  ,handRaised: read(value, 'handRaised', 'HandRaised') === true
+  ,isSpeaking: read(value, 'isSpeaking', 'IsSpeaking') === true
+  ,role: read(value, 'role', 'Role') || 'participant'
 })
 
 const mediaError = (error, fallbackCode) => {
@@ -39,7 +42,7 @@ const getIceServers = async () => {
   }))
 }
 
-export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams, onAiState, onTranscriptChunk, onTranscriptInterim, onTranscriptionError }) => {
+export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams, onAiState, onTranscriptChunk, onTranscriptInterim, onTranscriptionError, onHandChanged, onReaction, onSpeakerChanged, onForceMute, onForceRemoved }) => {
   let connection = null
   let roomId = null
   let localStream = null
@@ -312,6 +315,9 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   }
 
   const syncPeerMedia = async entry => {
+    const audioTrack = localStream?.getAudioTracks?.()[0] || null
+    if (audioTrack && !entry.audioSender) entry.audioSender = entry.pc.addTrack(audioTrack, localStream)
+    if (entry.audioSender && entry.audioSender.track !== audioTrack) await entry.audioSender.replaceTrack(audioTrack)
     await syncVideoSender(entry, 'cameraSender', cameraTrack, cameraStream)
     await syncVideoSender(entry, 'screenSender', screenTrack, screenStream)
   }
@@ -333,6 +339,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       ignoreOffer: false,
       isSettingRemoteAnswerPending: false,
       polite: isPolite(connectionId),
+      audioSender: null,
       cameraSender: null,
       screenSender: null,
       remoteMediaSources: new Map(),
@@ -349,7 +356,6 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       if (['failed', 'disconnected'].includes(entry.pc.connectionState)) void recoverPeer(connectionId)
       if (entry.pc.connectionState === 'connected') recoveryAttempts = 0
     }
-    for (const track of localStream?.getAudioTracks() ?? []) entry.pc.addTrack(track, localStream)
     await syncPeerMedia(entry)
     return entry
   }
@@ -434,6 +440,26 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       })
       emitParticipants()
     })
+    connection.on('ParticipantHandChanged', event => {
+      const connectionId = read(event, 'connectionId', 'ConnectionId')
+      const participant = participants.get(connectionId)
+      const raised = read(event, 'handRaised', 'HandRaised') === true
+      if (participant) { participants.set(connectionId, { ...participant, handRaised: raised }); emitParticipants() }
+      onHandChanged?.({ connectionId, handRaised: raised })
+    })
+    connection.on('CallReactionAdded', event => onReaction?.({
+      id: read(event, 'id', 'Id'), connectionId: read(event, 'connectionId', 'ConnectionId'),
+      userId: read(event, 'userId', 'UserId'), displayName: read(event, 'displayName', 'DisplayName'), emoji: read(event, 'emoji', 'Emoji')
+    }))
+    connection.on('ParticipantSpeakerChanged', event => {
+      const connectionId = read(event, 'connectionId', 'ConnectionId')
+      const participant = participants.get(connectionId)
+      const speaking = read(event, 'isSpeaking', 'IsSpeaking') === true
+      if (participant) { participants.set(connectionId, { ...participant, isSpeaking: speaking }); emitParticipants() }
+      onSpeakerChanged?.({ connectionId, isSpeaking: speaking })
+    })
+    connection.on('ForceMuteParticipant', () => onForceMute?.())
+    connection.on('ForceRemovedFromCall', () => onForceRemoved?.())
     connection.on('CallAiStateChanged', event => handleAiState(read(event, 'state', 'State')))
     connection.on('AiConsentRequested', event => handleAiState(read(event, 'state', 'State')))
     connection.on('AiParticipantAccepted', event => handleAiState(read(event, 'state', 'State')))
@@ -545,6 +571,38 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     emit('media')
   }
 
+  const enumerateDevices = async () => (navigator.mediaDevices?.enumerateDevices ? navigator.mediaDevices.enumerateDevices() : [])
+
+  const setMicrophoneDevice = async deviceId => {
+    const next = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false })
+    const previous = localStream
+    localStream = next
+    for (const entry of peers.values()) await syncPeerMedia(entry)
+    previous?.getTracks().forEach(track => track.stop())
+    emit('media')
+  }
+
+  const setCameraDevice = async deviceId => {
+    if (!cameraEnabled) return
+    const next = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
+    const previousRaw = rawCameraTrack
+    rawCameraTrack = next.getVideoTracks()[0]
+    const previousOutput = cameraTrack
+    cameraTrack = await getCameraOutputTrack()
+    cameraStream = new MediaStream([cameraTrack])
+    previousOutput?.stop()
+    previousRaw?.stop()
+    for (const entry of peers.values()) await syncPeerMedia(entry)
+    emit('media')
+  }
+
+  const setRaiseHand = async raised => connection?.invoke('SetRaiseHand', roomId, Boolean(raised))
+  const sendReaction = async emoji => connection?.invoke('SendCallReaction', roomId, emoji)
+  const publishSpeakerState = async speaking => connection?.invoke('PublishSpeakerState', roomId, Boolean(speaking))
+  const muteParticipant = async id => connection?.invoke('MuteParticipant', roomId, id)
+  const lowerParticipantHand = async id => connection?.invoke('LowerParticipantHand', roomId, id)
+  const removeParticipant = async id => connection?.invoke('RemoveParticipant', roomId, id)
+
   const setCameraBackgroundEffect = async effect => {
     const nextEffect = normalizeBackgroundEffect(effect)
     if (nextEffect === backgroundEffect && (!nextEffect || backgroundProcessor?.isActive?.())) return
@@ -648,6 +706,15 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     start,
     leave,
     setMicrophoneEnabled,
+    enumerateDevices,
+    setMicrophoneDevice,
+    setCameraDevice,
+    setRaiseHand,
+    sendReaction,
+    publishSpeakerState,
+    muteParticipant,
+    lowerParticipantHand,
+    removeParticipant,
     setCameraEnabled,
     setCameraBackgroundEffect,
     toggleScreenShare,

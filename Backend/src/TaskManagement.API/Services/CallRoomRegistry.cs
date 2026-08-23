@@ -23,6 +23,8 @@ public sealed class CallRoomRegistry : ICallRoomRegistry
                 return new(false, true, Snapshot(participant.RoomId, room), null);
 
             room.Participants[participant.ConnectionId] = participant;
+            if (room.Participants.Count == 1)
+                room.Participants[participant.ConnectionId] = participant with { Role = "host" };
             if (room.AiState == CallAiStates.Active && isNewUser)
             {
                 room.ConsentGeneration++;
@@ -100,6 +102,28 @@ public sealed class CallRoomRegistry : ICallRoomRegistry
     public bool IsParticipantInRoom(string roomId, string connectionId)
     {
         lock (_gate) return _rooms.TryGetValue(roomId, out var room) && room.Participants.ContainsKey(connectionId);
+    }
+
+    public bool TryUpdateHand(string roomId, string connectionId, bool raised, out CallRoomParticipant participant) =>
+        TryUpdateParticipant(roomId, connectionId, current => current with { HandRaised = raised }, out participant);
+
+    public bool TryUpdateSpeaking(string roomId, string connectionId, bool speaking, out CallRoomParticipant participant) =>
+        TryUpdateParticipant(roomId, connectionId, current => current with { IsSpeaking = speaking }, out participant);
+
+    public bool IsHostOrCoHost(string roomId, string connectionId)
+    {
+        lock (_gate) return _rooms.TryGetValue(roomId, out var room) && room.Participants.TryGetValue(connectionId, out var participant) && participant.Role is "host" or "cohost";
+    }
+
+    private bool TryUpdateParticipant(string roomId, string connectionId, Func<CallRoomParticipant, CallRoomParticipant> update, out CallRoomParticipant participant)
+    {
+        lock (_gate)
+        {
+            if (!_rooms.TryGetValue(roomId, out var room) || !room.Participants.TryGetValue(connectionId, out var current)) { participant = null!; return false; }
+            participant = update(current);
+            room.Participants[connectionId] = participant;
+            return true;
+        }
     }
 
     public IReadOnlyList<CallRoomParticipant> GetRoomParticipants(string roomId)

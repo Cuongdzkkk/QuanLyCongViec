@@ -87,6 +87,53 @@ public sealed class CallHub : Hub
             Context.ConnectionAborted);
     }
 
+    public async Task SetRaiseHand(string? roomId, bool raised)
+    {
+        var normalizedRoomId = NormalizeRoomId(roomId);
+        if (!_rooms.TryUpdateHand(normalizedRoomId, Context.ConnectionId, raised, out var participant)) throw new HubException("NOT_IN_CALL_ROOM");
+        await Clients.Group(normalizedRoomId).SendAsync(CallRealtimeEvents.ParticipantHandChanged,
+            new CallParticipantHandChangedDto(participant.ConnectionId, participant.UserId, participant.HandRaised), Context.ConnectionAborted);
+    }
+
+    public async Task SendCallReaction(string? roomId, string? emoji)
+    {
+        var normalizedRoomId = NormalizeRoomId(roomId);
+        var allowed = new[] { "👍", "👏", "😂", "❤️", "🎉", "😮" };
+        if (string.IsNullOrWhiteSpace(emoji) || !allowed.Contains(emoji)) throw new HubException("INVALID_REACTION");
+        if (!_rooms.TryGetParticipant(normalizedRoomId, Context.ConnectionId, out var participant)) throw new HubException("NOT_IN_CALL_ROOM");
+        await Clients.Group(normalizedRoomId).SendAsync(CallRealtimeEvents.CallReactionAdded,
+            new CallReactionDto(Guid.NewGuid().ToString("N"), participant.ConnectionId, participant.UserId, participant.DisplayName, emoji, DateTimeOffset.UtcNow), Context.ConnectionAborted);
+    }
+
+    public async Task PublishSpeakerState(string? roomId, bool speaking)
+    {
+        var normalizedRoomId = NormalizeRoomId(roomId);
+        if (!_rooms.TryUpdateSpeaking(normalizedRoomId, Context.ConnectionId, speaking, out var participant)) throw new HubException("NOT_IN_CALL_ROOM");
+        await Clients.OthersInGroup(normalizedRoomId).SendAsync(CallRealtimeEvents.ParticipantSpeakerChanged,
+            new CallParticipantSpeakerChangedDto(participant.ConnectionId, participant.UserId, participant.IsSpeaking), Context.ConnectionAborted);
+    }
+
+    public async Task MuteParticipant(string? roomId, string? targetConnectionId)
+    {
+        var normalizedRoomId = NormalizeRoomId(roomId);
+        if (!_rooms.IsHostOrCoHost(normalizedRoomId, Context.ConnectionId) || string.IsNullOrWhiteSpace(targetConnectionId) || !_rooms.IsParticipantInRoom(normalizedRoomId, targetConnectionId)) throw new HubException("CALL_HOST_REQUIRED");
+        await Clients.Client(targetConnectionId).SendAsync(CallRealtimeEvents.ForceMuteParticipant, Context.ConnectionAborted);
+    }
+
+    public async Task LowerParticipantHand(string? roomId, string? targetConnectionId)
+    {
+        var normalizedRoomId = NormalizeRoomId(roomId);
+        if (!_rooms.IsHostOrCoHost(normalizedRoomId, Context.ConnectionId) || string.IsNullOrWhiteSpace(targetConnectionId) || !_rooms.TryUpdateHand(normalizedRoomId, targetConnectionId, false, out var target)) throw new HubException("CALL_HOST_REQUIRED");
+        await Clients.Group(normalizedRoomId).SendAsync(CallRealtimeEvents.ParticipantHandChanged, new CallParticipantHandChangedDto(target.ConnectionId, target.UserId, false), Context.ConnectionAborted);
+    }
+
+    public async Task RemoveParticipant(string? roomId, string? targetConnectionId)
+    {
+        var normalizedRoomId = NormalizeRoomId(roomId);
+        if (!_rooms.IsHostOrCoHost(normalizedRoomId, Context.ConnectionId) || string.IsNullOrWhiteSpace(targetConnectionId) || !_rooms.IsParticipantInRoom(normalizedRoomId, targetConnectionId)) throw new HubException("CALL_HOST_REQUIRED");
+        await Clients.Client(targetConnectionId).SendAsync(CallRealtimeEvents.ForceRemovedFromCall, Context.ConnectionAborted);
+    }
+
     public async Task RequestAiTranscription(string? roomId)
     {
         var normalizedRoomId = NormalizeRoomId(roomId);
