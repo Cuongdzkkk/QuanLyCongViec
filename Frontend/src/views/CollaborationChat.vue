@@ -126,7 +126,7 @@
               <button 
                 class="list-item voice-item w-full text-left" 
                 :class="{ active: activeVoiceChannel?.id === vc.id }"
-                @click="joinVoiceChannel(vc)"
+                @click="openPreJoinVoiceChannel(vc)"
                 style="display: flex; align-items: center;"
               >
                 <span class="item-icon"><i class="fa-solid fa-volume-high"></i></span>
@@ -221,6 +221,23 @@
 
     <!-- Active Chat Area -->
     <div class="chat-main">
+      <section v-if="preJoinVoiceChannel" class="call-prejoin-panel" aria-labelledby="call-prejoin-title">
+        <div class="call-prejoin-copy">
+          <span class="context-kicker">PRE-JOIN</span>
+          <h2 id="call-prejoin-title">Tham gia {{ preJoinVoiceChannel.name }}</h2>
+          <p>Kiểm tra thiết bị trước khi vào phòng. Bạn có thể tham gia khi tắt microphone và camera.</p>
+        </div>
+        <video v-if="preJoinCameraEnabled" ref="preJoinVideo" class="call-prejoin-video" autoplay muted playsinline aria-label="Xem trước camera"></video>
+        <div class="call-prejoin-controls">
+          <button type="button" class="call-prejoin-toggle" :class="{ active: preJoinMicEnabled }" @click="preJoinMicEnabled = !preJoinMicEnabled"><i :class="preJoinMicEnabled ? 'fa-solid fa-microphone' : 'fa-solid fa-microphone-slash'"></i>{{ preJoinMicEnabled ? 'Microphone bật' : 'Microphone tắt' }}</button>
+          <button type="button" class="call-prejoin-toggle" :class="{ active: preJoinCameraEnabled }" @click="togglePreJoinCamera"><i :class="preJoinCameraEnabled ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'"></i>{{ preJoinCameraEnabled ? 'Camera bật' : 'Camera tắt' }}</button>
+        </div>
+        <div class="call-prejoin-device-grid">
+          <label>Microphone<select v-model="preJoinMicrophoneId"><option value="">Thiết bị mặc định</option><option v-for="device in audioInputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Microphone' }}</option></select></label>
+          <label>Camera<select v-model="preJoinCameraId" @change="switchPreJoinCamera"><option value="">Thiết bị mặc định</option><option v-for="device in videoInputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Camera' }}</option></select></label>
+        </div>
+        <div class="call-prejoin-actions"><button type="button" class="secondary-button" @click="cancelPreJoin">Hủy</button><button type="button" class="primary-button" :disabled="callJoinPromise" @click="confirmJoinVoiceChannel">Tham gia</button></div>
+      </section>
       
       <!-- Embedded Voice Call View (Discord Style) -->
       <template v-if="showVoiceCallMain && activeVoiceChannel">
@@ -473,7 +490,7 @@
                 <i class="fa-solid fa-table-cells" aria-hidden="true"></i><span>Thu về lưới</span>
               </button>
 
-              <button type="button" class="call-control-label-btn" aria-label="Mở chat cuộc gọi" title="Chat" :aria-pressed="callChatOpen" @click="callChatOpen = !callChatOpen">
+              <button type="button" class="call-control-label-btn" aria-label="Mở chat cuộc gọi" title="Chat" :aria-pressed="callChatOpen" @click="openVoiceChannelChat">
                 <i class="fa-solid fa-message" aria-hidden="true"></i><span>Chat</span>
               </button>
 
@@ -488,7 +505,7 @@
                 <div v-if="showMoreMenu" class="call-more-menu" role="menu" aria-label="Tùy chọn cuộc gọi">
                   <template v-if="!moreMenuSection">
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'reactions'"><span>Phản ứng</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
-                    <button type="button" class="call-more-menu-item" role="menuitem" @click="openCallDevicesMenu"><span>Thiết bị âm thanh và video</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+                    <button type="button" class="call-more-menu-item" role="menuitem" @click="openCallDevicesMenu"><span>Thiết bị</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'effects'"><span>Hiệu ứng hình ảnh</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="toggleCallPictureInPicture">Picture-in-picture</button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="togglePresentationFullscreen">{{ presentationIsFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình' }}</button>
@@ -504,8 +521,11 @@
                       </div>
                     </div>
                     <div v-else-if="moreMenuSection === 'devices'" class="call-device-panel">
-                      <span class="call-more-section-label">Thiết bị khả dụng</span>
-                      <button v-for="device in callDevices" :key="device.deviceId || device.kind" type="button" class="call-device-option" role="menuitem" @click="switchCallDevice(device)">{{ device.label || device.kind }}</button>
+                      <span class="call-more-section-label">Thiết bị cuộc gọi</span>
+                      <label class="call-device-select">Microphone<select v-model="selectedCallMicrophoneId" @change="switchCallDevice('audioinput', selectedCallMicrophoneId)"><option value="">Thiết bị mặc định</option><option v-for="device in audioInputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Microphone' }}</option></select></label>
+                      <label class="call-device-select">Camera<select v-model="selectedCallCameraId" @change="switchCallDevice('videoinput', selectedCallCameraId)"><option value="">Thiết bị mặc định</option><option v-for="device in videoInputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Camera' }}</option></select></label>
+                      <label v-if="speakerSelectionSupported" class="call-device-select">Loa<select v-model="selectedCallSpeakerId" @change="switchCallSpeaker"><option value="">Loa mặc định</option><option v-for="device in audioOutputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Loa' }}</option></select></label>
+                      <span v-else class="call-more-empty">Trình duyệt chưa cho phép chọn loa.</span>
                       <span v-if="!callDevices.length" class="call-more-empty">Chưa tìm thấy thiết bị.</span>
                     </div>
                     <div v-else class="call-effects-panel">
@@ -540,19 +560,19 @@
               <button type="button" class="context-close" aria-label="Đóng chat cuộc gọi" title="Đóng chat cuộc gọi" @click="callChatOpen = false"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
             </div>
             <div ref="callChatThread" class="call-chat-thread">
-              <div v-for="msg in activeMessages.slice(-40)" :key="`call-${msg.messageId}`" class="call-chat-message" :class="{ 'is-own': msg.senderId === currentUser.id }">
+              <div v-for="msg in callChatMessages.slice(-40)" :key="`call-${msg.messageId || msg.clientMessageId}`" class="call-chat-message" :class="{ 'is-own': `${msg.senderId}` === `${currentUser.id}`, 'is-pending': msg.status === 'pending', 'is-failed': msg.status === 'failed' }">
                 <el-avatar :size="30" :src="msg.senderAvatar" :alt="`${msg.senderName} avatar`">
                   {{ msg.senderName?.charAt(0) || '?' }}
                 </el-avatar>
                 <div class="call-chat-message-body">
-                  <div class="call-chat-message-meta"><strong>{{ msg.senderName }}</strong><small>{{ formatTime(msg.sentAt) }}</small></div>
+                  <div class="call-chat-message-meta"><strong>{{ msg.senderName }}</strong><small>{{ msg.status === 'pending' ? 'Đang gửi…' : msg.status === 'failed' ? 'Gửi lại' : formatTime(msg.sentAt) }}</small></div>
                   <p>{{ msg.content }}</p>
                 </div>
               </div>
-              <span v-if="!activeMessages.length" class="channel-utility-empty">Chưa có tin nhắn trong phòng này.</span>
+              <span v-if="!callChatMessages.length" class="channel-utility-empty">Chưa có tin nhắn trong phòng này.</span>
             </div>
             <form class="call-chat-composer" @submit.prevent="sendCallChatMessage">
-              <textarea v-model="callChatDraft" :disabled="callChatSending || !activeChannel?.canSend" maxlength="4000" rows="1" aria-label="Nội dung chat cuộc gọi" placeholder="Gửi tin nhắn..." @keydown.enter.exact.prevent="sendCallChatMessage"></textarea>
+              <textarea v-model="callChatDraft" :disabled="callChatSending || !callChatConnected" maxlength="4000" rows="1" aria-label="Nội dung chat cuộc gọi" placeholder="Gửi tin nhắn..." @keydown.enter.exact.prevent="sendCallChatMessage"></textarea>
               <button v-if="callChatDraft" type="button" class="call-chat-clear" aria-label="Xóa nội dung đang nhập" title="Xóa nội dung đang nhập" @click="callChatDraft = ''"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
               <button type="submit" :disabled="callChatSending || !callChatDraft.trim()" aria-label="Gửi tin nhắn cuộc gọi" title="Gửi tin nhắn cuộc gọi"><i :class="callChatSending ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'" aria-hidden="true"></i></button>
             </form>
@@ -1500,10 +1520,26 @@ const presentationVideoElement = ref(null)
 const remoteVideoElements = new Map()
 const remoteAudioElements = new Map()
 const focusedParticipantConnectionId = ref('')
+const preJoinVoiceChannel = ref(null)
+const preJoinMicEnabled = ref(true)
+const preJoinCameraEnabled = ref(false)
+const preJoinVideo = ref(null)
+const preJoinPreviewStream = ref(null)
+const preJoinMicrophoneId = ref('')
+const preJoinCameraId = ref('')
 const callChatOpen = ref(false)
 const callChatDraft = ref('')
 const callChatSending = ref(false)
 const callChatThread = ref(null)
+const callChatMessages = ref([])
+const selectedCallMicrophoneId = ref('')
+const selectedCallCameraId = ref('')
+const selectedCallSpeakerId = ref('')
+const speakerSelectionSupported = ref(false)
+const audioInputDevices = computed(() => callDevices.value.filter(device => device.kind === 'audioinput'))
+const videoInputDevices = computed(() => callDevices.value.filter(device => device.kind === 'videoinput'))
+const audioOutputDevices = computed(() => callDevices.value.filter(device => device.kind === 'audiooutput'))
+const callChatConnected = computed(() => Boolean(callSession.value && callState.value === 'connected' && callConnectionId.value))
 const channelUtilityOpen = ref(false)
 const channelUtilityMode = ref('search')
 const channelSearchQuery = ref('')
@@ -1706,12 +1742,53 @@ const describeCallError = (error) => ({
   MIC_UNAVAILABLE: 'Không thể khởi động microphone cho cuộc gọi.',
   CAMERA_UNAVAILABLE: 'Không thể bật camera cho cuộc gọi.',
   SCREEN_SHARE_UNAVAILABLE: 'Không thể chia sẻ màn hình.',
-  SCREEN_SHARE_BUSY: 'Một người khác đang chia sẻ màn hình. Hãy đợi họ dừng chia sẻ.'
+  SCREEN_SHARE_BUSY: 'Một người khác đang chia sẻ màn hình. Hãy đợi họ dừng chia sẻ.',
+  CALL_NOT_CONNECTED: 'Cuộc gọi đang kết nối lại. Vui lòng thử lại sau giây lát.',
+  NOT_IN_CALL_ROOM: 'Bạn không còn ở trong phòng thoại. Đang kết nối lại…',
+  INVALID_CALL_MESSAGE: 'Tin nhắn cuộc gọi không hợp lệ.'
 }[error?.code] || (error?.message?.includes('CALL_ROOM_FULL') ? 'Phòng thoại đã đủ 6 người.' : null) || error?.message || 'Không thể kết nối cuộc gọi.')
 
 const handleCallError = (error, showMessage = true) => {
   callError.value = describeCallError(error)
-  if (showMessage) ElMessage.error(callError.value)
+  if (showMessage && !error?.silent) ElMessage.error(callError.value)
+}
+
+const normalizeCallChatMessage = value => ({
+  messageId: value?.messageId ?? value?.MessageId ?? null,
+  callSessionId: value?.callSessionId ?? value?.CallSessionId ?? '',
+  roomId: value?.roomId ?? value?.RoomId ?? '',
+  senderId: value?.senderUserId ?? value?.SenderUserId ?? value?.senderId ?? value?.SenderId ?? '',
+  senderName: value?.senderName ?? value?.SenderName ?? 'SprintA user',
+  senderAvatar: value?.senderAvatar ?? value?.SenderAvatar ?? null,
+  content: value?.content ?? value?.Content ?? '',
+  sentAt: value?.createdAt ?? value?.CreatedAt ?? value?.sentAt ?? value?.SentAt ?? new Date().toISOString(),
+  clientMessageId: value?.clientMessageId ?? value?.ClientMessageId ?? null,
+  status: value?.status ?? 'sent'
+})
+
+const handleCallChatHistory = items => {
+  callChatMessages.value = (Array.isArray(items) ? items : []).map(normalizeCallChatMessage)
+  void nextTick().then(() => {
+    if (callChatThread.value) callChatThread.value.scrollTop = callChatThread.value.scrollHeight
+  })
+}
+
+const handleCallChatMessage = value => {
+  const message = normalizeCallChatMessage(value)
+  const clientMessageId = message.clientMessageId
+  const existingIndex = callChatMessages.value.findIndex(item =>
+    (message.messageId && item.messageId === message.messageId) ||
+    (clientMessageId && item.clientMessageId === clientMessageId))
+  if (existingIndex >= 0) {
+    const next = [...callChatMessages.value]
+    next[existingIndex] = { ...next[existingIndex], ...message, status: 'sent' }
+    callChatMessages.value = next
+  } else {
+    callChatMessages.value = [...callChatMessages.value, message]
+  }
+  void nextTick().then(() => {
+    if (callChatThread.value) callChatThread.value.scrollTop = callChatThread.value.scrollHeight
+  })
 }
 
 const syncLocalCallPreview = async () => {
@@ -1722,9 +1799,13 @@ const syncLocalCallPreview = async () => {
   syncCallVideoElements()
 }
 
-const createCallSessionForVoiceChannel = (voiceChannel) => createCallMediaSession({
+const createCallSessionForVoiceChannel = (voiceChannel, options = {}) => createCallMediaSession({
   projectId: activeProjectId.value,
   voiceChannelId: `${voiceChannel.name}`.trim().toLocaleLowerCase(),
+  initialMicrophoneEnabled: options.initialMicrophoneEnabled ?? true,
+  initialMicrophoneStream: options.initialMicrophoneStream || null,
+  initialCameraEnabled: options.initialCameraEnabled === true,
+  initialCameraStream: options.initialCameraStream || null,
   onState: async ({ state, error }) => {
     callState.value = state
     if (error) handleCallError(error, state === 'error')
@@ -1764,6 +1845,8 @@ const createCallSessionForVoiceChannel = (voiceChannel) => createCallMediaSessio
     if (callSession.value && callMicrophoneEnabled.value) { await callSession.value.setMicrophoneEnabled(false); callMicrophoneEnabled.value = false; callLiveNotice.value = 'Bạn đã được tắt microphone bởi host.' }
   },
   onForceRemoved: async () => { callLiveNotice.value = 'Bạn đã được mời khỏi cuộc gọi.'; await leaveVoiceChannel(false) },
+  onCallMessage: handleCallChatMessage,
+  onCallHistory: handleCallChatHistory,
   onAiState: handleCallAiState,
   onTranscriptChunk: handleTranscriptChunk,
   onTranscriptInterim: handleTranscriptInterim,
@@ -1776,17 +1859,117 @@ const toggleRaiseHand = async () => {
   try { await callSession.value.setRaiseHand(nextValue); callHandRaised.value = nextValue } catch (error) { handleCallError(error) }
 }
 const sendCallReaction = async emoji => { try { await callSession.value?.sendReaction(emoji); showMoreMenu.value = false; moreMenuSection.value = '' } catch (error) { handleCallError(error) } }
-const loadCallDevices = async () => { callDevices.value = await callSession.value?.enumerateDevices?.() || [] }
+const loadCallDevices = async () => {
+  callDevices.value = await callSession.value?.enumerateDevices?.() || []
+  const microphones = audioInputDevices.value
+  const cameras = videoInputDevices.value
+  if (!selectedCallMicrophoneId.value && microphones[0]) selectedCallMicrophoneId.value = microphones[0].deviceId
+  if (!selectedCallCameraId.value && cameras[0]) selectedCallCameraId.value = cameras[0].deviceId
+  const mediaElements = [
+    ...remoteAudioElements.values(),
+    ...[...remoteVideoElements.values()].map(item => item.element),
+    presentationVideoElement.value
+  ].filter(Boolean)
+  speakerSelectionSupported.value = mediaElements.some(element => typeof element.setSinkId === 'function')
+  if (!selectedCallSpeakerId.value && audioOutputDevices.value[0]) selectedCallSpeakerId.value = audioOutputDevices.value[0].deviceId
+}
 const openCallDevicesMenu = async () => {
   await loadCallDevices()
   moreMenuSection.value = 'devices'
 }
-const switchCallDevice = async device => {
+const switchCallDevice = async (kind, deviceId) => {
   try {
-    if (device.kind === 'audioinput') await callSession.value?.setMicrophoneDevice(device.deviceId)
-    if (device.kind === 'videoinput') await callSession.value?.setCameraDevice(device.deviceId)
+    if (kind === 'audioinput') await callSession.value?.setMicrophoneDevice(deviceId)
+    if (kind === 'videoinput') await callSession.value?.setCameraDevice(deviceId)
     await loadCallDevices()
   } catch (error) { handleCallError(error) }
+}
+const switchCallSpeaker = async () => {
+  const elements = [
+    ...remoteAudioElements.values(),
+    ...[...remoteVideoElements.values()].map(item => item.element),
+    presentationVideoElement.value
+  ].filter(Boolean)
+  const supported = elements.filter(element => typeof element.setSinkId === 'function')
+  if (!supported.length) {
+    speakerSelectionSupported.value = false
+    return
+  }
+  try {
+    await Promise.all(supported.map(element => element.setSinkId(selectedCallSpeakerId.value || '')))
+    speakerSelectionSupported.value = true
+  } catch (error) {
+    handleCallError(error)
+  }
+}
+
+const refreshPreJoinDevices = async () => {
+  if (!navigator.mediaDevices?.enumerateDevices) return
+  const devices = await navigator.mediaDevices.enumerateDevices()
+  callDevices.value = devices
+  if (!preJoinMicrophoneId.value) preJoinMicrophoneId.value = devices.find(device => device.kind === 'audioinput')?.deviceId || ''
+  if (!preJoinCameraId.value) preJoinCameraId.value = devices.find(device => device.kind === 'videoinput')?.deviceId || ''
+}
+
+const syncPreJoinPreview = async () => {
+  await nextTick()
+  bindMediaElement(preJoinVideo.value, preJoinPreviewStream.value, true)
+}
+
+const stopPreJoinPreview = () => {
+  preJoinPreviewStream.value?.getTracks?.().forEach(track => track.stop())
+  preJoinPreviewStream.value = null
+}
+
+const togglePreJoinCamera = async () => {
+  if (preJoinCameraEnabled.value) {
+    preJoinCameraEnabled.value = false
+    stopPreJoinPreview()
+    return
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    handleCallError({ code: 'UNSUPPORTED_BROWSER' })
+    return
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: preJoinCameraId.value ? { deviceId: { exact: preJoinCameraId.value } } : true,
+      audio: false
+    })
+    stopPreJoinPreview()
+    preJoinPreviewStream.value = stream
+    preJoinCameraEnabled.value = true
+    await syncPreJoinPreview()
+    await refreshPreJoinDevices()
+  } catch (error) {
+    handleCallError(error)
+  }
+}
+
+const switchPreJoinCamera = async () => {
+  if (!preJoinCameraEnabled.value) return
+  preJoinCameraEnabled.value = false
+  await togglePreJoinCamera()
+}
+
+const openPreJoinVoiceChannel = async voiceChannel => {
+  if (activeVoiceChannel.value?.id === voiceChannel.id) {
+    showVoiceCallMain.value = true
+    return
+  }
+  if (callSession.value) await leaveVoiceChannel(false)
+  stopPreJoinPreview()
+  preJoinVoiceChannel.value = voiceChannel
+  preJoinMicEnabled.value = true
+  preJoinCameraEnabled.value = false
+  preJoinMicrophoneId.value = ''
+  preJoinCameraId.value = ''
+  await refreshPreJoinDevices()
+}
+
+const cancelPreJoin = () => {
+  stopPreJoinPreview()
+  preJoinVoiceChannel.value = null
 }
 const toggleCallPictureInPicture = async () => {
   const element = presentationVideoElement.value || [...localVideoElements.values()][0] || [...remoteVideoElements.values()][0]?.element
@@ -1885,7 +2068,7 @@ const toggleScreenShare = async () => {
   }
 }
 
-const joinVoiceChannel = async (vc) => {
+const joinVoiceChannel = async (vc, options = {}) => {
   if (callJoinPromise) return callJoinPromise
   if (activeVoiceChannel.value?.id === vc.id) {
     showVoiceCallMain.value = true
@@ -1894,10 +2077,12 @@ const joinVoiceChannel = async (vc) => {
   callJoinPromise = (async () => {
     if (callSession.value) await leaveVoiceChannel(false)
 
-    const session = createCallSessionForVoiceChannel(vc)
+    const session = createCallSessionForVoiceChannel(vc, options)
     callSession.value = session
     callError.value = ''
     try {
+      if (options.microphoneDeviceId) await session.setMicrophoneDevice(options.microphoneDeviceId)
+      if (options.cameraDeviceId) await session.setCameraDevice(options.cameraDeviceId)
       await session.start()
       await loadCallDevices()
       activeVoiceChannel.value = vc
@@ -1917,8 +2102,29 @@ const joinVoiceChannel = async (vc) => {
   return callJoinPromise
 }
 
+const confirmJoinVoiceChannel = async () => {
+  const voiceChannel = preJoinVoiceChannel.value
+  if (!voiceChannel) return
+  const previewStream = preJoinPreviewStream.value
+  const options = {
+    initialMicrophoneEnabled: preJoinMicEnabled.value,
+    initialCameraEnabled: preJoinCameraEnabled.value,
+    initialCameraStream: previewStream,
+    microphoneDeviceId: preJoinMicrophoneId.value,
+    cameraDeviceId: preJoinCameraId.value
+  }
+  preJoinPreviewStream.value = null
+  preJoinVoiceChannel.value = null
+  try {
+    await joinVoiceChannel(voiceChannel, options)
+  } catch {
+    previewStream?.getTracks?.().forEach(track => track.stop())
+  }
+}
+
 const leaveVoiceChannel = async (showMessage = true) => {
   const current = activeVoiceChannel.value
+  cancelPreJoin()
   if (callSession.value) await callSession.value.leave()
   callSession.value = null
   callParticipants.value = []
@@ -1939,6 +2145,7 @@ const leaveVoiceChannel = async (showMessage = true) => {
   showVoiceCallMain.value = false
   callChatOpen.value = false
   callChatDraft.value = ''
+  callChatMessages.value = []
   if (showMessage && current) ElMessage.info(`Đã ngắt kết nối khỏi kênh thoại: ${current.name}`)
 }
 
@@ -1977,51 +2184,16 @@ watch(activePresenter, async presenter => {
 })
 
 const openVoiceChannelChat = async () => {
-  if (!activeVoiceChannel.value || !activeProjectId.value) return
-  const voiceVc = activeVoiceChannel.value
-  const targetDesc = `__voice_chat_channel__:${voiceVc.id}`
-
-  if (callChatOpen.value && activeChannel.value?.desc === targetDesc) {
+  if (!activeVoiceChannel.value || !callSession.value) return
+  if (callChatOpen.value) {
     callChatOpen.value = false
     return
   }
-  
-  let targetChannel = channels.value.find(ch => ch.desc === targetDesc)
-  
-  if (!targetChannel) {
-    try {
-      ElMessage.info('Đang mở kết nối kênh chat cho phòng thoại...')
-      const cleanName = voiceVc.name
-        .replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g, '')
-        .replace(/[^a-zA-Z0-9\sÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂĐÊÔƠưăâđêôơ]/g, '')
-        .trim() || 'Kênh thoại'
-      
-      const result = await collaborationApi.createProjectChannel(
-        activeProjectId.value,
-        {
-          name: cleanName,
-          description: targetDesc,
-          visibility: 'Private'
-        },
-        {
-          idempotencyKey: makeChannelIdempotencyKey()
-        }
-      )
-      targetChannel = mapChannel(result, activeProjectId.value)
-      channels.value.push(targetChannel)
-      channelPagination.value.totalCount += 1
-    } catch (error) {
-      console.error('Failed to create voice channel chat:', error)
-      const details = error?.response?.data?.message || error?.message || 'Lỗi không xác định'
-      ElMessage.error(`Không thể kết nối kênh chat cho phòng thoại này: ${details}`)
-      return
-    }
-  }
-  
-  if (targetChannel) {
-    await selectChat(targetChannel, 'channel')
-    showVoiceCallMain.value = true
-    callChatOpen.value = true
+  callChatOpen.value = true
+  try {
+    handleCallChatHistory(await callSession.value.getCallChatHistory())
+  } catch (error) {
+    handleCallError(error)
   }
 }
 
@@ -2533,19 +2705,30 @@ const searchChannelMessages = async () => {
 }
 
 const sendCallChatMessage = async () => {
-  const channel = activeChannel.value
   const content = callChatDraft.value.trim()
-  if (callChatSending.value || !channel?.canSend || !content) return
+  if (callChatSending.value || !callChatConnected.value || !content) return
+  const clientMessageId = typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  const pending = normalizeCallChatMessage({
+    messageId: null,
+    clientMessageId,
+    senderUserId: currentUser.value?.id,
+    senderName: currentUser.value?.name || 'Bạn',
+    content,
+    createdAt: new Date().toISOString(),
+    status: 'pending'
+  })
+  callChatMessages.value = [...callChatMessages.value, pending]
+  callChatDraft.value = ''
   callChatSending.value = true
   try {
-    const result = await collaborationApi.sendChannelMessage(channel.id, { content })
-    const message = mapChannelMessage(result, channel.id)
-    activeMessages.value = mergeMessages(activeMessages.value, [message])
-    callChatDraft.value = ''
-    await nextTick()
-    if (callChatThread.value) callChatThread.value.scrollTop = callChatThread.value.scrollHeight
+    await callSession.value.sendCallMessage(content, clientMessageId)
   } catch (error) {
-    ElMessage.error(apiErrorMessage(error, 'Không thể gửi tin nhắn cuộc gọi.'))
+    callChatMessages.value = callChatMessages.value.map(item => item.clientMessageId === clientMessageId
+      ? { ...item, status: 'failed' }
+      : item)
+    handleCallError(error)
   } finally {
     callChatSending.value = false
   }
@@ -5290,6 +5473,114 @@ const fetchProjectMembers = async () => {
 .call-device-option {
   justify-content: flex-start;
   min-height: 36px;
+}
+
+.call-device-select {
+  display: grid;
+  gap: 5px;
+  color: #cbd5e1;
+  font-size: 11px;
+}
+
+.call-device-select select,
+.call-prejoin-device-grid select {
+  min-width: 180px;
+  max-width: 260px;
+  min-height: 34px;
+  padding: 0 8px;
+  color: #e2e8f0;
+  background: #111827;
+  border: 1px solid #334155;
+  border-radius: 7px;
+}
+
+.call-prejoin-panel {
+  display: grid;
+  gap: 18px;
+  max-width: 760px;
+  margin: auto;
+  padding: clamp(22px, 5vw, 48px);
+  color: #e2e8f0;
+  background: linear-gradient(145deg, #111827, #172033);
+  border: 1px solid #334155;
+  border-radius: 18px;
+  box-shadow: 0 18px 50px rgba(2, 6, 23, .25);
+}
+
+.call-prejoin-copy h2 {
+  margin: 6px 0 8px;
+  font-size: clamp(22px, 4vw, 32px);
+}
+
+.call-prejoin-copy p {
+  margin: 0;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.call-prejoin-video {
+  width: min(100%, 520px);
+  aspect-ratio: 16 / 9;
+  margin: auto;
+  object-fit: cover;
+  background: #020617;
+  border: 1px solid #475569;
+  border-radius: 12px;
+}
+
+.call-prejoin-controls,
+.call-prejoin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.call-prejoin-toggle,
+.call-prejoin-actions button {
+  min-height: 38px;
+  padding: 0 14px;
+  color: #cbd5e1;
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.call-prejoin-toggle.active {
+  color: #d1fae5;
+  border-color: #34d399;
+  background: rgba(16, 185, 129, .16);
+}
+
+.call-prejoin-device-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.call-prejoin-device-grid label {
+  display: grid;
+  gap: 6px;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.call-prejoin-actions {
+  justify-content: flex-end;
+}
+
+.call-chat-message.is-pending {
+  opacity: .68;
+}
+
+.call-chat-message.is-failed {
+  color: #fecaca;
+}
+
+@media (max-width: 620px) {
+  .call-prejoin-device-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .call-workspace-body.is-focus-mode .call-presentation-stage {

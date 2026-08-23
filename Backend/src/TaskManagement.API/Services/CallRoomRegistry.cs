@@ -158,6 +158,20 @@ public sealed class CallRoomRegistry : ICallRoomRegistry
         lock (_gate) return _rooms.TryGetValue(roomId, out var room) ? room.Participants.Values.ToArray() : [];
     }
 
+    public bool TryGetCallSessionId(string roomId, string connectionId, out Guid callSessionId)
+    {
+        lock (_gate)
+        {
+            if (_rooms.TryGetValue(roomId, out var room) && room.Participants.ContainsKey(connectionId))
+            {
+                callSessionId = room.CallSessionId;
+                return true;
+            }
+            callSessionId = Guid.Empty;
+            return false;
+        }
+    }
+
     public CallAiSessionSnapshot GetAiState(string roomId)
     {
         lock (_gate)

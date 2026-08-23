@@ -18,6 +18,7 @@ public sealed class CallHubDiActivationTests
         services.AddSingleton<ICallRoomAuthorizationService>(Mock.Of<ICallRoomAuthorizationService>());
         services.AddSingleton<ICallTranscriptionProvider>(Mock.Of<ICallTranscriptionProvider>());
         services.AddSingleton<ICallTranscriptService>(Mock.Of<ICallTranscriptService>());
+        services.AddSingleton<ICallChatService>(Mock.Of<ICallChatService>());
 
         using var provider = services.BuildServiceProvider();
         typeof(CallHub).GetConstructors(BindingFlags.Instance | BindingFlags.Public)

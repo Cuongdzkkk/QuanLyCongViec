@@ -25,6 +25,7 @@ public static class CallRealtimeEvents
     public const string CallAiStateChanged = nameof(CallAiStateChanged);
     public const string CallTranscriptChunkAdded = nameof(CallTranscriptChunkAdded);
     public const string CallTranscriptInterim = nameof(CallTranscriptInterim);
+    public const string CallMessageCreated = nameof(CallMessageCreated);
 }
 
 public sealed record CallTranscriptionErrorDto(string Code, string Message);

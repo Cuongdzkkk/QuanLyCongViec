@@ -52,8 +52,14 @@ for (const needle of [
 ]) assert.ok(source.includes(needle), `missing remote track merge contract: ${needle}`)
 
 for (const needle of [
-  'cameraSender',
-  'screenSender',
+  'cameraTransceiver',
+  'screenTransceiver',
+  'audioTransceiver',
+  'addTransceiver',
+  'joinedAck',
+  'pendingInboundSignals',
+  'GetCallChatHistory',
+  'SendCallMessage',
   'cameraStream',
   'screenStream',
   'mediaSources',

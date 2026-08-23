@@ -60,6 +60,8 @@ public interface ICallRoomRegistry
 
     IReadOnlyList<CallRoomParticipant> GetRoomParticipants(string roomId);
 
+    bool TryGetCallSessionId(string roomId, string connectionId, out Guid callSessionId);
+
     CallAiSessionSnapshot GetAiState(string roomId);
 
     CallAiSessionSnapshot RequestAiTranscription(string roomId, string connectionId);

@@ -54,6 +54,7 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<ICollaborationReadStateService, CollaborationReadStateService>();
             services.AddScoped<ICollaborationRealtimeAuthorizationService, CollaborationRealtimeAuthorizationService>();
             services.AddScoped<ICallRoomAuthorizationService, CallRoomAuthorizationService>();
+            services.AddScoped<ICallChatService, CallChatService>();
             services.AddSingleton<ICallRoomRegistry, TaskManagement.API.Services.CallRoomRegistry>();
             services.AddScoped<ICallTranscriptService, CallTranscriptService>();
             var callTranscriptionOptions = configuration
