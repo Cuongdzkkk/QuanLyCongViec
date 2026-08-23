@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Json;
+using TaskManagement.Application.Common;
 using TaskManagement.Infrastructure.Data;
 
 namespace TaskManagement.API.Hubs
@@ -95,6 +96,19 @@ namespace TaskManagement.API.Hubs
             if (!Guid.TryParse(userIdValue, out var userId))
             {
                 throw new HubException("Authentication is required.");
+            }
+
+            if (ProjectAccessPolicy.IsUnrestricted)
+            {
+                var projectExists = await _context.Projects
+                    .AsNoTracking()
+                    .AnyAsync(project => project.Id == projectGuid && project.Status && !project.IsDeleted);
+                if (!projectExists)
+                {
+                    throw new HubException("Project does not exist.");
+                }
+
+                return projectGuid;
             }
 
             var isMember = await _context.ProjectMembers

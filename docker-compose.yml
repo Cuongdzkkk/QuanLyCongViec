@@ -24,6 +24,34 @@ services:
       Cors__AllowedOrigins__1: "https://www.sprinta.id.vn"
       Frontend__BaseUrl: "${FRONTEND_URL}"
 
+      PaymentProviders__SePay__Enabled: "${SEPAY_ENABLED:-false}"
+      PaymentProviders__SePay__WebhookSecret: "${SEPAY_WEBHOOK_SECRET:-}"
+      PaymentProviders__SePay__BankCode: "${SEPAY_BANK_CODE:-}"
+      PaymentProviders__SePay__AccountNumber: "${SEPAY_ACCOUNT_NUMBER:-}"
+      PaymentProviders__SePay__AccountName: "${SEPAY_ACCOUNT_NAME:-}"
+      # Configure STUN/TURN URLs and the coturn shared secret outside git.
+      # The API exchanges only short-lived TURN REST credentials with clients.
+      WebRtc__Enabled: "${TURN_ENABLED:-false}"
+      WebRtc__IceServers__0__Urls__0: "${WEBRTC_STUN_URL:-stun:stun.l.google.com:19302}"
+      WebRtc__IceServers__1__Urls__0: "${WEBRTC_TURN_URL:-}"
+      WebRtc__IceServers__1__SharedSecret: "${WEBRTC_TURN_SHARED_SECRET:-}"
+      WebRtc__IceServers__1__CredentialTtlSeconds: "${WEBRTC_TURN_CREDENTIAL_TTL_SECONDS:-3600}"
+
+      IntegrationOAuth__GoogleCalendar__Enabled: "${GOOGLE_CALENDAR_OAUTH_ENABLED:-false}"
+      IntegrationOAuth__GoogleCalendar__ClientId: "${GOOGLE_CALENDAR_OAUTH_CLIENT_ID}"
+      IntegrationOAuth__GoogleCalendar__ClientSecret: "${GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET}"
+      IntegrationOAuth__GoogleCalendar__RedirectUri: "${GOOGLE_CALENDAR_OAUTH_REDIRECT_URI}"
+
+      IntegrationOAuth__Gmail__Enabled: "${GMAIL_OAUTH_ENABLED:-false}"
+      IntegrationOAuth__Gmail__ClientId: "${GMAIL_OAUTH_CLIENT_ID}"
+      IntegrationOAuth__Gmail__ClientSecret: "${GMAIL_OAUTH_CLIENT_SECRET}"
+      IntegrationOAuth__Gmail__RedirectUri: "${GMAIL_OAUTH_REDIRECT_URI}"
+
+      IntegrationOAuth__Slack__Enabled: "${SLACK_OAUTH_ENABLED:-false}"
+      IntegrationOAuth__Slack__ClientId: "${SLACK_OAUTH_CLIENT_ID}"
+      IntegrationOAuth__Slack__ClientSecret: "${SLACK_OAUTH_CLIENT_SECRET}"
+      IntegrationOAuth__Slack__RedirectUri: "${SLACK_OAUTH_REDIRECT_URI}"
+
       Features__AIEnabled: "true"
       Google__Enabled: "true"
       Google__ClientId: "${GOOGLE_CLIENT_ID}"
@@ -43,6 +71,29 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
+
+  turn:
+    image: coturn/coturn:4.6.3
+    profiles: ["turn"]
+    command:
+      - "--no-cli"
+      - "--no-tls"
+      - "--no-dtls"
+      - "--fingerprint"
+      - "--use-auth-secret"
+      - "--static-auth-secret=${TURN_SHARED_SECRET}"
+      - "--realm=${TURN_REALM}"
+      - "--listening-port=${TURN_PORT:-3478}"
+      - "--min-port=${TURN_MIN_PORT:-49160}"
+      - "--max-port=${TURN_MAX_PORT:-49260}"
+      - "--external-ip=${TURN_EXTERNAL_IP}"
+      - "--no-multicast-peers"
+      - "--log-file=stdout"
+    ports:
+      - "${TURN_PORT:-3478}:${TURN_PORT:-3478}/udp"
+      - "${TURN_PORT:-3478}:${TURN_PORT:-3478}/tcp"
+      - "${TURN_MIN_PORT:-49160}-${TURN_MAX_PORT:-49260}:${TURN_MIN_PORT:-49160}-${TURN_MAX_PORT:-49260}/udp"
+    restart: unless-stopped
 
 volumes:
   mssql_data:

@@ -17,6 +17,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Moq;
 using TaskManagement.API.Controllers;
+using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 using TaskStatusEntity = TaskManagement.Domain.Entities.TaskStatus;
@@ -168,7 +169,9 @@ public sealed class P0ModuleAuthorizationTests
             context,
             configuration,
             Mock.Of<IHttpClientFactory>(),
-            new EphemeralDataProtectionProvider())
+            new EphemeralDataProtectionProvider(),
+            Mock.Of<IGoogleCalendarIntegrationService>(),
+            Mock.Of<IOAuthStateStore>())
         {
             ControllerContext = ControllerContextFor(userId)
         };

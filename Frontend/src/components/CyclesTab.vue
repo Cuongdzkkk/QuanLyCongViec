@@ -4,7 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useSprintStore } from '@/store/useSprintStore'
 import { useProjectStore } from '@/store/useProjectStore'
-import { hasProjectWritePermission, normalizeProjectRole } from '@/utils/permissions'
+import { hasProjectWritePermission, normalizeProjectRole, hasSystemAdminAccess } from '@/utils/permissions'
+import { getStoredUserSession } from '@/utils/authSession'
 import { getSprintErrorMessage, getSprintStateMeta, SPRINT_STATE } from '@/utils/sprintState'
 import { useI18n } from '@/composables/useI18n'
 import axiosClient from '@/api/axiosClient'
@@ -81,6 +82,7 @@ const currentProject = computed(() => {
   return (projectStore.allProjects || []).find(project => `${project.id}` === `${props.projectId}`) || null
 })
 const canManageSprint = computed(() => {
+  if (hasSystemAdminAccess(getStoredUserSession())) return true
   const role = normalizeProjectRole(
     currentProject.value?.myRole
     || currentProject.value?.MyRole
@@ -722,14 +724,14 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <ProjectPageContainer>
+  <ProjectPageContainer scrollable>
     <ProjectPageHeader 
         icon="fa-solid fa-rotate" 
         :title="t('cyclesTab.cycles', 'Cycles')" 
         :description="t('cyclesTab.cyclesDesc', 'Manage project sprints and iterations')"
       >
         <template #actions>
-          <button v-if="canManageSprint" class="nexus-btn-primary" type="button" @click="showCreateModal = true">
+          <button class="nexus-btn-primary" type="button" @click="showCreateModal = true" :disabled="!canManageSprint" :title="!canManageSprint ? t('cyclesTab.noPermissionToAddCycle', 'You do not have permission to add a cycle') : ''">
             <i class="fa-solid fa-plus"></i> {{ t('cyclesTab.addCycle', 'Add cycle') }}
           </button>
         </template>
@@ -1760,15 +1762,20 @@ onUnmounted(() => {
 }
 
 .empty-state.text-muted {
-  width: fit-content;
-  max-width: 100%;
-  margin: 8px 0 2px;
-  padding: 12px 14px;
-  border: 1px dashed color-mix(in srgb, var(--color-border) 86%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--color-surface-hover) 42%, transparent);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 54px !important;
+  height: 54px !important;
+  background: transparent !important;
+  border: none !important;
   color: var(--color-text-secondary) !important;
-  font-weight: 650;
+  font-weight: 550;
+  box-shadow: none !important;
+  box-sizing: border-box;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 .progress-ring {
@@ -1855,8 +1862,7 @@ onUnmounted(() => {
 
 [data-theme='dark'] .date-range,
 [data-theme='dark'] .tab-row,
-[data-theme='dark'] .cycle-work-item,
-[data-theme='dark'] .empty-state.text-muted {
+[data-theme='dark'] .cycle-work-item {
   background: rgba(30, 41, 59, 0.72) !important;
   border-color: rgba(148, 163, 184, 0.18) !important;
 }

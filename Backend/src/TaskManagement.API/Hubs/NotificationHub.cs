@@ -11,6 +11,8 @@ namespace TaskManagement.API.Hubs
     [Authorize]
     public class NotificationHub : Hub
     {
+        public const string Route = "/notification-hub";
+
         private static string GetUserGroup(Guid userId) => $"user_{userId}";
 
         public override async Task OnConnectedAsync()

@@ -18,32 +18,12 @@ namespace TaskManagement.Infrastructure.Migrations
                 rowVersion: true,
                 nullable: false);
 
-            migrationBuilder.CreateTable(
-                name: "AiCreditReservations",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    IdempotencyKey = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    RequestedCredits = table.Column<int>(type: "int", nullable: false),
-                    ReservedCredits = table.Column<int>(type: "int", nullable: false),
-                    FinalizedCredits = table.Column<int>(type: "int", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    ExpiresAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    FinalizedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    ReleasedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_AiCreditReservations", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_AiCreditReservations_Users_UserId",
-                        column: x => x.UserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+            migrationBuilder.AddColumn<int>(name: "RequestedCredits", table: "AiCreditReservations", type: "int", nullable: false, defaultValue: 0);
+            migrationBuilder.AddColumn<int>(name: "ReservedCredits", table: "AiCreditReservations", type: "int", nullable: false, defaultValue: 0);
+            migrationBuilder.AddColumn<int>(name: "FinalizedCredits", table: "AiCreditReservations", type: "int", nullable: false, defaultValue: 0);
+            migrationBuilder.AddColumn<DateTime>(name: "FinalizedAt", table: "AiCreditReservations", type: "datetime2", nullable: true);
+            migrationBuilder.AddColumn<DateTime>(name: "ReleasedAt", table: "AiCreditReservations", type: "datetime2", nullable: true);
+            migrationBuilder.Sql("UPDATE AiCreditReservations SET RequestedCredits = Credits, ReservedCredits = Credits WHERE RequestedCredits = 0");
 
             migrationBuilder.CreateTable(
                 name: "AiCreditReservationAllocations",
@@ -97,8 +77,11 @@ namespace TaskManagement.Infrastructure.Migrations
             migrationBuilder.DropTable(
                 name: "AiCreditReservationAllocations");
 
-            migrationBuilder.DropTable(
-                name: "AiCreditReservations");
+            migrationBuilder.DropColumn(name: "RequestedCredits", table: "AiCreditReservations");
+            migrationBuilder.DropColumn(name: "ReservedCredits", table: "AiCreditReservations");
+            migrationBuilder.DropColumn(name: "FinalizedCredits", table: "AiCreditReservations");
+            migrationBuilder.DropColumn(name: "FinalizedAt", table: "AiCreditReservations");
+            migrationBuilder.DropColumn(name: "ReleasedAt", table: "AiCreditReservations");
 
             migrationBuilder.DropColumn(
                 name: "RowVersion",

@@ -8,6 +8,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.Tasks;
 using TaskManagement.Application.DTOs.Project;
+using TaskManagement.Application.Common;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Domain.Entities;
@@ -18,20 +19,16 @@ namespace TaskManagement.Infrastructure.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly IHttpContextAccessor _httpContextAccessor;
-        private static readonly string[] FullAccessRoles =
-        {
-            "superadmin",
-            "admin",
-            "system admin",
-            "organization admin",
-            "accessadmin",
-            "access admin"
-        };
+        private readonly IResourceAuthorizationService _authorization;
 
-        public ProjectService(ApplicationDbContext context, IHttpContextAccessor httpContextAccessor)
+        public ProjectService(
+            ApplicationDbContext context,
+            IHttpContextAccessor httpContextAccessor,
+            IResourceAuthorizationService authorization)
         {
             _context = context;
             _httpContextAccessor = httpContextAccessor;
+            _authorization = authorization;
         }
 
         private static string BuildProjectUiConfig(string? existingConfig, string? cover, string? icon)
@@ -118,11 +115,14 @@ namespace TaskManagement.Infrastructure.Services
                 return new List<ProjectResponseDto>();
             }
 
-            var projects = await _context.Projects
+            var accessibleProjectIds = await _authorization.GetAccessibleProjectIdsAsync(userId);
+            var query = _context.Projects
                 .AsNoTracking()
                 .Include(p => p.Creator)
                 .Include(p => p.Department)
-                .Where(p => !p.IsDeleted && p.ProjectMembers.Any(pm => pm.UserId == userId && pm.Status))
+                .Where(p => accessibleProjectIds.Contains(p.Id));
+
+            var projects = await query
                 .Select(p => new ProjectResponseDto
                 {
                     Id = p.Id,
@@ -180,13 +180,7 @@ namespace TaskManagement.Infrastructure.Services
                 return new List<ProjectDiscoveryDto>();
             }
 
-            var normalizedRoles = await _context.UserRoles
-                .AsNoTracking()
-                .Where(ur => ur.UserId == userId)
-                .Select(ur => ur.Role.Name.Trim().ToLower())
-                .ToListAsync();
-
-            var canAccessAllProjects = normalizedRoles.Any(role => FullAccessRoles.Contains(role));
+            var accessibleProjectIds = await _authorization.GetAccessibleProjectIdsAsync(userId);
 
             var query = _context.Projects
                 .AsNoTracking()
@@ -194,16 +188,7 @@ namespace TaskManagement.Infrastructure.Services
                 .Include(p => p.Department)
                 .Where(p => !p.IsDeleted && !p.IsArchived && p.Status);
 
-            if (!canAccessAllProjects)
-            {
-                var assignedProjectIds = await _context.ProjectMembers
-                    .AsNoTracking()
-                    .Where(pm => pm.UserId == userId && pm.Status)
-                    .Select(pm => pm.ProjectId)
-                    .ToListAsync();
-
-                query = query.Where(p => assignedProjectIds.Contains(p.Id));
-            }
+            query = query.Where(p => accessibleProjectIds.Contains(p.Id));
 
             var projects = await query
                 .Select(p => new ProjectDiscoveryDto
@@ -244,7 +229,7 @@ namespace TaskManagement.Infrastructure.Services
                     Cover = p.NavigationConfig,
                     CreatedAt = p.CreatedAt,
                     UpdatedAt = p.UpdatedAt,
-                    IsMember = canAccessAllProjects || p.ProjectMembers.Any(pm => pm.UserId == userId && pm.Status),
+                    IsMember = p.ProjectMembers.Any(pm => pm.UserId == userId && pm.Status),
                     MyRole = p.ProjectMembers
                         .Where(pm => pm.UserId == userId && pm.Status)
                         .Select(pm => pm.ProjectRole)
@@ -264,13 +249,7 @@ namespace TaskManagement.Infrastructure.Services
                 return new List<ProjectDiscoveryDto>();
             }
 
-            var normalizedRoles = await _context.UserRoles
-                .AsNoTracking()
-                .Where(ur => ur.UserId == userId)
-                .Select(ur => ur.Role.Name.Trim().ToLower())
-                .ToListAsync();
-
-            var canAccessAllProjects = normalizedRoles.Any(role => FullAccessRoles.Contains(role));
+            var accessibleProjectIds = await _authorization.GetAccessibleProjectIdsAsync(userId, includeArchived: true);
 
             var query = _context.Projects
                 .AsNoTracking()
@@ -278,16 +257,7 @@ namespace TaskManagement.Infrastructure.Services
                 .Include(p => p.Department)
                 .Where(p => !p.IsDeleted && p.IsArchived);
 
-            if (!canAccessAllProjects)
-            {
-                var assignedProjectIds = await _context.ProjectMembers
-                    .AsNoTracking()
-                    .Where(pm => pm.UserId == userId && pm.Status)
-                    .Select(pm => pm.ProjectId)
-                    .ToListAsync();
-
-                query = query.Where(p => assignedProjectIds.Contains(p.Id));
-            }
+            query = query.Where(p => accessibleProjectIds.Contains(p.Id));
 
             var projects = await query
                 .Select(p => new ProjectDiscoveryDto
@@ -323,7 +293,7 @@ namespace TaskManagement.Infrastructure.Services
                     Cover = p.NavigationConfig,
                     CreatedAt = p.CreatedAt,
                     UpdatedAt = p.UpdatedAt,
-                    IsMember = canAccessAllProjects || p.ProjectMembers.Any(pm => pm.UserId == userId && pm.Status),
+                    IsMember = p.ProjectMembers.Any(pm => pm.UserId == userId && pm.Status),
                     MyRole = p.ProjectMembers
                         .Where(pm => pm.UserId == userId && pm.Status)
                         .Select(pm => pm.ProjectRole)
@@ -398,37 +368,52 @@ namespace TaskManagement.Infrastructure.Services
                     throw new ArgumentException("PhĂ²ng ban khĂ´ng tá»“n táº¡i.");
             }
 
-            // Resolve WorkspaceId: user pháº£i thuá»™c Ă­t nháº¥t 1 workspace
-            var workspaceMembership = await _context.WorkspaceMembers
-                .FirstOrDefaultAsync(wm => wm.UserId == creatorId && wm.IsActive);
-            
             Guid workspaceId;
-            if (workspaceMembership != null)
+            if (dto.WorkspaceId.HasValue && dto.WorkspaceId.Value != Guid.Empty)
             {
-                workspaceId = workspaceMembership.WorkspaceId;
+                var requestedMembership = await _context.WorkspaceMembers
+                    .FirstOrDefaultAsync(wm =>
+                        wm.WorkspaceId == dto.WorkspaceId.Value &&
+                        wm.UserId == creatorId &&
+                        wm.IsActive);
+
+                if (requestedMembership == null)
+                    throw new ArgumentException("Bạn không có quyền tạo dự án trong workspace này.");
+
+                workspaceId = requestedMembership.WorkspaceId;
             }
             else
             {
-                // Auto-create a default workspace for the user if none exists
-                var defaultWorkspace = new Workspace
+                var workspaceMembership = await _context.WorkspaceMembers
+                    .FirstOrDefaultAsync(wm => wm.UserId == creatorId && wm.IsActive);
+
+                if (workspaceMembership != null)
                 {
-                    Id = Guid.NewGuid(),
-                    Slug = "workspace-" + Guid.NewGuid().ToString("N").Substring(0, 8),
-                    Name = "Default Workspace",
-                    OwnerId = creatorId,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                };
-                _context.Workspaces.Add(defaultWorkspace);
-                _context.WorkspaceMembers.Add(new WorkspaceMember
+                    workspaceId = workspaceMembership.WorkspaceId;
+                }
+                else
                 {
-                    WorkspaceId = defaultWorkspace.Id,
-                    UserId = creatorId,
-                    WorkspaceRole = "OWNER",
-                    JoinedAt = DateTime.UtcNow,
-                    IsActive = true
-                });
-                workspaceId = defaultWorkspace.Id;
+                    // Auto-create a default workspace for the user if none exists
+                    var defaultWorkspace = new Workspace
+                    {
+                        Id = Guid.NewGuid(),
+                        Slug = "workspace-" + Guid.NewGuid().ToString("N").Substring(0, 8),
+                        Name = "Default Workspace",
+                        OwnerId = creatorId,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    _context.Workspaces.Add(defaultWorkspace);
+                    _context.WorkspaceMembers.Add(new WorkspaceMember
+                    {
+                        WorkspaceId = defaultWorkspace.Id,
+                        UserId = creatorId,
+                        WorkspaceRole = "OWNER",
+                        JoinedAt = DateTime.UtcNow,
+                        IsActive = true
+                    });
+                    workspaceId = defaultWorkspace.Id;
+                }
             }
 
             // Generate Identifier: láº¥y 3-4 kĂ½ tá»± Ä‘áº§u viáº¿t hoa tá»« tĂªn project
@@ -714,13 +699,7 @@ namespace TaskManagement.Infrastructure.Services
                 return new List<ProjectDiscoveryDto>();
             }
 
-            var normalizedRoles = await _context.UserRoles
-                .AsNoTracking()
-                .Where(ur => ur.UserId == userId)
-                .Select(ur => ur.Role.Name.Trim().ToLower())
-                .ToListAsync();
-
-            var canAccessAllProjects = normalizedRoles.Any(role => FullAccessRoles.Contains(role));
+            var accessibleProjectIds = await _authorization.GetAccessibleProjectIdsAsync(userId, includeDeleted: true);
 
             var query = _context.Projects
                 .IgnoreQueryFilters()
@@ -729,16 +708,7 @@ namespace TaskManagement.Infrastructure.Services
                 .Include(p => p.Department)
                 .Where(p => p.IsDeleted);
 
-            if (!canAccessAllProjects)
-            {
-                var assignedProjectIds = await _context.ProjectMembers
-                    .AsNoTracking()
-                    .Where(pm => pm.UserId == userId && pm.Status)
-                    .Select(pm => pm.ProjectId)
-                    .ToListAsync();
-
-                query = query.Where(p => assignedProjectIds.Contains(p.Id));
-            }
+            query = query.Where(p => accessibleProjectIds.Contains(p.Id));
 
             var projects = await query
                 .Select(p => new ProjectDiscoveryDto
@@ -770,7 +740,7 @@ namespace TaskManagement.Infrastructure.Services
                     Cover = p.NavigationConfig,
                     CreatedAt = p.CreatedAt,
                     UpdatedAt = p.UpdatedAt,
-                    IsMember = canAccessAllProjects || p.ProjectMembers.Any(pm => pm.UserId == userId && pm.Status),
+                    IsMember = p.ProjectMembers.Any(pm => pm.UserId == userId && pm.Status),
                     MyRole = p.ProjectMembers
                         .Where(pm => pm.UserId == userId && pm.Status)
                         .Select(pm => pm.ProjectRole)
@@ -1131,4 +1101,3 @@ namespace TaskManagement.Infrastructure.Services
         }
 }
 }
-

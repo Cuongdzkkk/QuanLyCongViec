@@ -2,7 +2,18 @@
   <div class="projects-wrapper">
     <header class="module-header">
       <div class="header-content">
-        <h1>{{ pageTitle }}</h1>
+        <div class="app-shell-title-wrap">
+          <h1>{{ pageTitle }}</h1>
+          <div class="app-shell-header-help">
+            <span class="app-shell-header-help-btn" :aria-label="`About ${pageTitle}`">
+              <i class="fa-solid fa-question"></i>
+            </span>
+            <div class="app-shell-header-help-popover" role="tooltip">
+              <span>{{ pageTitle }}</span>
+              <p>{{ labels.searchProjects }}</p>
+            </div>
+          </div>
+        </div>
         <div class="header-actions">
           <button class="primary-btn" @click="openCreateModal">{{ labels.createProject }}</button>
         </div>
@@ -203,7 +214,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { useStarredStore } from '@/store/useStarredStore'
@@ -436,6 +447,21 @@ onMounted(async () => {
   window.addEventListener('global-create-click', openCreateModal)
 })
 
+watch(
+  () => siteStore.activeSite?.id || siteStore.activeSite?.Id || null,
+  async (workspaceId, previousWorkspaceId) => {
+    if (!workspaceId || !previousWorkspaceId || `${workspaceId}` === `${previousWorkspaceId}`) return
+    currentTab.value = 'all'
+    searchQuery.value = ''
+    clearFilters()
+    projectStore.clearWorkspaceData(workspaceId)
+    await projectStore.initializeRealtime()
+    await projectStore.fetchProjects()
+    await starredStore.fetchStarredItems({ page: 1, pageSize: 100 })
+    await followerStore.fetchFollowedItems()
+  }
+)
+
 onUnmounted(() => {
   window.removeEventListener('global-create-click', openCreateModal)
 })
@@ -552,22 +578,25 @@ const isCompletedStatus = (status) => {
 }
 
 .module-header {
-  padding: 32px 40px 0;
+  padding: var(--app-shell-header-top, 32px) var(--app-shell-page-x, 40px) 0;
   background-color: #FFFFFF;
 }
 
 .header-content {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 24px;
 }
 
-.header-content h1 {
-  font-size: 24px;
-  font-weight: 500;
-  color: #172B4D;
-  margin: 0;
+.header-content .app-shell-title-wrap h1 {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-size: 26px !important;
+  font-weight: 900 !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0 !important;
+  color: var(--color-text-primary, #172B4D) !important;
+  margin: 0 !important;
 }
 
 .primary-btn {

@@ -50,11 +50,11 @@
         <el-table v-else :data="filteredMembers" style="width: 100%" class="nexus-table">
           <el-table-column label="Thành viên" min-width="200">
             <template #default="{ row }">
-              <div class="member-info">
-                <UserAvatar :user="row" :size="32" :fontSize="13" />
+              <div class="member-info cursor-pointer flex items-center gap-3" @click="goToMemberProfile(row.userId)">
+                <UserAvatar :user="row" :size="32" :fontSize="13" :clickable="false" />
                 <div class="member-details">
-                  <span class="member-name">{{ row.fullName || row.email }}</span>
-                  <span class="member-email">{{ row.email }}</span>
+                  <span class="member-name hover:text-blue-600 hover:underline" style="font-weight: 600; font-size: 13.5px; color: #172B4D;">{{ row.fullName || row.email }}</span>
+                  <span class="member-email" style="font-size: 12px; color: #5E6C84;">{{ row.email }}</span>
                 </div>
               </div>
             </template>
@@ -169,9 +169,9 @@
 
           <el-table-column label="Quản lý" width="200">
             <template #default="{ row }">
-              <div class="flex items-center gap-2" v-if="row.manager">
-                <UserAvatar :user="row.manager" :size="24" :fontSize="10" />
-                <span class="text-sm text-gray-700">{{ row.manager.name }}</span>
+              <div class="flex items-center gap-2 cursor-pointer" v-if="row.manager" @click="goToMemberProfile(row.manager.id || row.manager.userId)">
+                <UserAvatar :user="row.manager" :size="24" :fontSize="10" :clickable="false" />
+                <span class="text-sm text-gray-700 hover:text-blue-600 hover:underline">{{ row.manager.name }}</span>
               </div>
               <span v-else class="text-sm text-gray-400 italic">Chưa có</span>
             </template>
@@ -233,7 +233,7 @@
                 style="height: auto; padding: 4px 8px;"
               >
                 <div class="flex items-center">
-                  <UserAvatar :user="user" :size="26" :fontSize="10" />
+                  <UserAvatar :user="user" :size="26" :fontSize="10" :clickable="false" />
                   <div class="flex flex-col leading-none ml-4">
                     <span class="text-[13px] text-gray-800 font-medium">{{ user.fullName || user.email }}</span>
                     <span class="text-[11px] text-gray-500 mt-1" v-if="user.fullName">{{ user.email }}</span>
@@ -349,6 +349,12 @@ const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
 const projectId = computed(() => route.params.id)
+
+const goToMemberProfile = (userId) => {
+  if (!userId) return
+  router.push(`/space/${route.params.spaceSlug}/${projectId.value}/profile/${userId}`)
+}
+
 const currentUser = getStoredUser()
 const { isVietnamese } = useI18n()
 

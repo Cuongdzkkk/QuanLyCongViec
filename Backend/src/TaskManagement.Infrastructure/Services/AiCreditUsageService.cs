@@ -5,6 +5,7 @@ using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 using System.Data;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Data.SqlClient;
 
 namespace TaskManagement.Infrastructure.Services;
@@ -32,18 +33,9 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
             !string.Equals(subscription.PlanCode, "free", StringComparison.OrdinalIgnoreCase) &&
             subscription.CurrentPeriodEnd <= now)
         {
-            if (subscription.AutoRenew)
-            {
-                while (subscription.CurrentPeriodEnd <= now)
-                {
-                    subscription.CurrentPeriodStart = subscription.CurrentPeriodEnd;
-                    subscription.CurrentPeriodEnd = subscription.CurrentPeriodEnd.AddMonths(1);
-                }
-            }
-            else
-            {
-                subscription.Status = "Expired";
-            }
+            // AutoRenew is only a preference until a verified provider payment exists.
+            // Never extend paid entitlement without a successful payment event.
+            subscription.Status = "Expired";
 
             subscription.UpdatedAt = now;
             await _context.SaveChangesAsync(cancellationToken);
@@ -141,8 +133,8 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
             AdjustmentCredits = adjustmentCredits,
             HasConfiguredEntitlement = plan != null,
             TotalTokens = totalTokens,
-            CurrentPeriodStart = periodStart,
-            CurrentPeriodEnd = periodEnd,
+            CurrentPeriodStart = DateTime.SpecifyKind(periodStart, DateTimeKind.Utc),
+            CurrentPeriodEnd = DateTime.SpecifyKind(periodEnd, DateTimeKind.Utc),
             SubscriptionStatus = subscription?.Status ?? "Active"
         };
     }
@@ -177,7 +169,7 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
         if (string.IsNullOrWhiteSpace(idempotencyKey)) throw new ArgumentException("AI credit idempotency key is required.");
         if (credits <= 0) return new AiCreditReservationResult(Guid.Empty, true, "NotApplicable", 0);
         if (!await _context.AiCreditBuckets.AnyAsync(x => x.UserId == userId, cancellationToken))
-            return new AiCreditReservationResult(Guid.Empty, true, "NotApplicable", 0);
+            return await ReserveLegacyDetailedAsync(userId, credits, idempotencyKey, cancellationToken);
 
         AiCreditReservationResult? result = null;
         try
@@ -238,6 +230,9 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
         }
         return result!;
     }
+
+    public Task<AiCreditReservationResult> ReserveDetailedAsync(Guid userId, int credits, string idempotencyKey, CancellationToken cancellationToken = default)
+        => ReserveAsync(userId, credits, idempotencyKey, cancellationToken);
 
     public async Task FinalizeAsync(Guid reservationId, int actualCredits, CancellationToken cancellationToken = default)
     {
@@ -429,6 +424,102 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
         exception.InnerException is SqlException sql && (sql.Number is 2601 or 2627);
 
     private static DateTime MonthStart(DateTime value) => new(value.Year, value.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    public async Task<Guid> ReserveLegacyAsync(Guid userId, int credits, string idempotencyKey, CancellationToken cancellationToken = default)
+        => (await ReserveLegacyDetailedAsync(userId, credits, idempotencyKey, cancellationToken)).ReservationId;
+
+    public async Task<AiCreditReservationResult> ReserveLegacyDetailedAsync(Guid userId, int credits, string idempotencyKey, CancellationToken cancellationToken = default)
+    {
+        if (credits <= 0) throw new ArgumentOutOfRangeException(nameof(credits));
+        if (string.IsNullOrWhiteSpace(idempotencyKey)) throw new ArgumentException("Idempotency key is required.", nameof(idempotencyKey));
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await ReserveOnceAsync(userId, credits, idempotencyKey, cancellationToken);
+            }
+            catch (Exception exception) when (attempt < 3 && IsDeadlock(exception))
+            {
+                foreach (var entry in _context.ChangeTracker.Entries<AiCreditReservation>().Where(entry => entry.State == EntityState.Added).ToList())
+                    entry.State = EntityState.Detached;
+                await Task.Delay(TimeSpan.FromMilliseconds(25 * attempt), cancellationToken);
+            }
+        }
+    }
+
+    private async Task<AiCreditReservationResult> ReserveOnceAsync(Guid userId, int credits, string idempotencyKey, CancellationToken cancellationToken)
+    {
+        await using IDbContextTransaction? transaction = _context.Database.IsRelational()
+            ? await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken) : null;
+        if (_context.Database.IsSqlServer())
+        {
+            await _context.Users
+                .FromSqlInterpolated($"SELECT * FROM [Users] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {userId}")
+                .AsNoTracking()
+                .SingleOrDefaultAsync(cancellationToken);
+        }
+        var existing = await _context.AiCreditReservations.SingleOrDefaultAsync(x => x.IdempotencyKey == idempotencyKey, cancellationToken);
+        var now = DateTime.UtcNow;
+        if (existing != null)
+        {
+            if (existing.Status == "Finalized")
+                return new(existing.Id, false, existing.Status);
+            if (existing.Status == "Reserved" && existing.ExpiresAt > now)
+                return new(existing.Id, false, existing.Status);
+
+            existing.Credits = credits;
+            existing.Status = "Reserved";
+            existing.ExpiresAt = now.AddMinutes(10);
+            existing.CompletedAt = null;
+            existing.CreatedAt = now;
+            await _context.SaveChangesAsync(cancellationToken);
+            if (transaction != null) await transaction.CommitAsync(cancellationToken);
+            return new(existing.Id, true, existing.Status);
+        }
+        var usage = await GetUsageAsync(userId, DateTime.MinValue, DateTime.MaxValue, cancellationToken);
+        var reserved = await _context.AiCreditReservations
+            .Where(x => x.UserId == userId && x.Status == "Reserved" && x.ExpiresAt > now)
+            .SumAsync(x => (int?)x.Credits, cancellationToken) ?? 0;
+        if (!usage.HasConfiguredEntitlement || usage.RemainingCredits - reserved < credits)
+            throw new AiCreditsExhaustedException(usage.IncludedCredits, usage.UsedCredits + reserved, Math.Max(0, usage.RemainingCredits - reserved));
+        var reservation = new AiCreditReservation
+        {
+            Id = Guid.NewGuid(), UserId = userId, Credits = credits, IdempotencyKey = idempotencyKey,
+            Status = "Reserved", ExpiresAt = now.AddMinutes(10), CreatedAt = now
+        };
+        _context.AiCreditReservations.Add(reservation);
+        await _context.SaveChangesAsync(cancellationToken);
+        if (transaction != null) await transaction.CommitAsync(cancellationToken);
+        return new(reservation.Id, true, reservation.Status);
+    }
+
+    private static bool IsDeadlock(Exception exception)
+    {
+        for (var current = exception; current != null; current = current.InnerException)
+            if (current is SqlException { Number: 1205 }) return true;
+        return false;
+    }
+
+    public Task FinalizeReservationLegacyAsync(Guid reservationId, CancellationToken cancellationToken = default)
+        => CompleteReservationAsync(reservationId, "Finalized", cancellationToken);
+
+    public Task ReleaseReservationLegacyAsync(Guid reservationId, CancellationToken cancellationToken = default)
+        => CompleteReservationAsync(reservationId, "Released", cancellationToken);
+
+    public Task FinalizeReservationAsync(Guid reservationId, CancellationToken cancellationToken = default)
+        => FinalizeReservationLegacyAsync(reservationId, cancellationToken);
+
+    public Task ReleaseReservationAsync(Guid reservationId, CancellationToken cancellationToken = default)
+        => ReleaseReservationLegacyAsync(reservationId, cancellationToken);
+
+    private async Task CompleteReservationAsync(Guid reservationId, string status, CancellationToken cancellationToken)
+    {
+        var reservation = await _context.AiCreditReservations.SingleOrDefaultAsync(x => x.Id == reservationId, cancellationToken);
+        if (reservation == null || reservation.Status != "Reserved") return;
+        reservation.Status = status;
+        reservation.CompletedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 
     private static int EstimateCredits(long tokensUsed)
         => tokensUsed <= 0 ? 0 : (int)Math.Ceiling(tokensUsed / 1000.0);

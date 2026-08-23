@@ -1,12 +1,13 @@
 <template>
   <AdminLayout>
-    <div class="admin-page-container">
+    <div class="admin-page">
       <div class="page-header">
         <div class="breadcrumb">
-          <i class="fa-solid fa-shield-halved"></i> Security / Change Password
+          <i class="fa-solid fa-shield-halved"></i>
+          <span>SECURITY / CHANGE PASSWORD</span>
         </div>
-        <h1 class="page-title">{{ t('Change Password', 'Đổi mật khẩu') }}</h1>
-        <p class="page-subtitle">{{ t('Keep your account safe by creating a strong and unique password.', 'Đảm bảo an toàn tài khoản bằng cách tạo một mật khẩu mạnh và duy nhất.') }}</p>
+        <h1 class="text-hero">{{ t('Change Password', 'Đổi mật khẩu') }}</h1>
+        <p class="text-desc">{{ t('Keep your account safe by creating a strong and unique password.', 'Đảm bảo an toàn tài khoản bằng cách tạo một mật khẩu mạnh và duy nhất.') }}</p>
       </div>
 
       <div class="form-container">
@@ -345,30 +346,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 24px;
-}
 
-.breadcrumb {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 4px;
-}
-
-.page-subtitle {
-  font-size: 14px;
-  color: var(--color-text-muted);
-}
 
 .settings-card {
   background-color: var(--color-surface);

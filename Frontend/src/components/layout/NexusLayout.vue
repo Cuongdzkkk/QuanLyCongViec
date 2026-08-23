@@ -16,7 +16,7 @@
 
       <NexusSidebar v-if="!hideSidebar" :isVisible="sidebarVisible" @close-mobile="sidebarVisible = false" />
 
-      <main class="content-area">
+      <main class="content-area" :class="{ 'is-project-context': route.path.startsWith('/space/') }">
         <div class="content-wrapper">
           <slot></slot>
         </div>
@@ -39,17 +39,43 @@
       <img class="ai-pet-image" :src="petAsset" alt="" aria-hidden="true" draggable="false" />
     </button>
 
-    <div class="global-utility-rail" aria-label="Công cụ nhanh">
+    <div
+      ref="stickyLauncherRef"
+      class="global-utility-rail"
+      :class="{ 'is-dragging': stickyLauncherDragging }"
+      :style="stickyLauncherStyle"
+      aria-label="Công cụ nhanh"
+    >
       <button
+        class="sticky-launcher-handle"
+        type="button"
+        title="Kéo để di chuyển ghi chú"
+        aria-label="Kéo để di chuyển launcher ghi chú theo chiều dọc"
+        @pointerdown="beginStickyLauncherDrag"
+      >
+        <i class="fa-solid fa-grip-lines-vertical" aria-hidden="true"></i>
+      </button>
+      <button
+        class="sticky-launcher-main"
         type="button"
         :class="{ active: notesVisible }"
         title="Mở ghi chú nhanh"
         aria-controls="global-stickies-drawer"
         :aria-expanded="notesVisible"
-        @click="toggleNotes"
+        @click="openNotesFromLauncher"
       >
-        <i class="fa-solid fa-note-sticky"></i>
-        <span>Notes</span>
+        <i class="fa-solid fa-note-sticky" aria-hidden="true"></i>
+        <span>Ghi chú</span>
+      </button>
+      <button
+        class="sticky-launcher-add"
+        type="button"
+        title="Tạo ghi chú mới"
+        aria-label="Tạo ghi chú mới"
+        :disabled="stickyLauncherCreating"
+        @click="quickCreateSticky"
+      >
+        <i :class="stickyLauncherCreating ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-plus'" aria-hidden="true"></i>
       </button>
     </div>
 
@@ -97,27 +123,15 @@
                 <span class="ai-credit-label">AI CREDITS</span>
                 <strong>{{ aiPlanLabel }}</strong>
               </div>
-
               <strong>{{ aiRemainingCredits }} / {{ aiIncludedCredits }}</strong>
             </div>
-
             <div class="ai-credit-progress" aria-hidden="true">
               <span :style="{ width: `${aiCreditPercent}%` }"></span>
             </div>
-
-            <p v-if="aiCreditsExhausted" class="ai-credit-message">
-              Bạn đã sử dụng hết AI Credits trong tháng này.
-            </p>
-
-            <p v-else-if="aiCreditsLow" class="ai-credit-message">
-              AI Credits sắp hết. Bạn còn {{ aiRemainingCredits }} credits.
-            </p>
-
-            <p v-else class="ai-credit-message">
-              Còn {{ aiRemainingCredits }} AI Credits trong tháng này.
-            </p>
+            <p v-if="aiCreditsExhausted" class="ai-credit-message">Bạn đã sử dụng hết AI Credits trong tháng này.</p>
+            <p v-else-if="aiCreditsLow" class="ai-credit-message">AI Credits sắp hết. Bạn còn {{ aiRemainingCredits }} credits.</p>
+            <p v-else class="ai-credit-message">Còn {{ aiRemainingCredits }} AI Credits trong tháng này.</p>
           </div>
-
           <button class="ai-pin-toggle" type="button" @click="togglePetPinned">
             <i :class="petPinned ? 'fa-solid fa-thumbtack' : 'fa-solid fa-location-dot'"></i>
             {{ petPinned ? 'Đã ghim vị trí' : 'Thả cho pet di chuyển' }}
@@ -580,8 +594,20 @@ import { useWorkTaskStore } from '@/store/useWorkTaskStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useGoalStore } from '@/store/useGoalStore'
 import { useSprintStore } from '@/store/useSprintStore'
-import { getStoredUserSession } from '@/utils/authSession'
+import { AUTH_SESSION_CHANGED, getStoredUserSession } from '@/utils/authSession'
 import { getDefaultPermissionMatrix, hasPermission } from '@/utils/permissionGuard'
+import { buildSpacePath } from '@/utils/spaceRoute'
+import { MAX_FLOATING_STICKIES, useStickyStore } from '@/store/useStickyStore'
+import { getRandomPaletteColor } from '@/utils/colors'
+import { getStickyAccountId } from '@/utils/stickyAccountIsolation'
+import {
+  STICKY_LAUNCHER_DRAG_THRESHOLD,
+  clampStickyLauncherY,
+  getStickyLauncherDragY,
+  hasStickyLauncherDragged,
+  readStickyLauncherY,
+  writeStickyLauncherY
+} from '@/utils/stickyLauncher'
 
 const props = defineProps({
   hideSidebar: {
@@ -597,10 +623,16 @@ const workTaskStore = useWorkTaskStore()
 const projectStore = useProjectStore()
 const goalStore = useGoalStore()
 const sprintStore = useSprintStore()
+const stickyStore = useStickyStore()
 const sidebarVisible = ref(window.innerWidth > 1024)
 const aiPetStore = useAiPetStore()
 const aiVisible = computed({ get: () => aiPetStore.isPanelOpen, set: value => aiPetStore.setPanelOpen(value) })
 const notesVisible = ref(false)
+const stickyLauncherRef = ref(null)
+const stickyLauncherY = ref(null)
+const stickyLauncherDragging = ref(false)
+const stickyLauncherCreating = ref(false)
+let stickyLauncherDragState = null
 const createVisible = ref(false)
 const createSpaceVisible = ref(false)
 const isMobile = ref(window.innerWidth <= 1024)
@@ -609,64 +641,129 @@ const aiSending = ref(false)
 const aiUsage = ref(null)
 const aiContentRef = ref(null)
 
-const aiIncludedCredits = computed(() =>
-  Math.max(0, Number(aiUsage.value?.includedCredits || 0))
-)
-
-const aiUsedCredits = computed(() =>
-  Math.max(0, Number(aiUsage.value?.usedCredits || 0))
-)
-
-const aiRemainingCredits = computed(() =>
-  Math.max(
-    0,
-    Number(
-      aiUsage.value?.remainingCredits
-      ?? aiUsage.value?.remainingIncludedCredits
-      ?? (aiIncludedCredits.value - aiUsedCredits.value)
-    )
-  )
-)
-
-const aiCreditPercent = computed(() => {
-  if (aiIncludedCredits.value <= 0) return 0
-
-  return Math.max(
-    0,
-    Math.min(
-      100,
-      Math.round((aiRemainingCredits.value / aiIncludedCredits.value) * 100)
-    )
-  )
-})
-
-const aiCreditsExhausted = computed(() =>
-  Boolean(
-    aiUsage.value
-    && aiIncludedCredits.value > 0
-    && aiRemainingCredits.value <= 0
-  )
-)
-
-const aiCreditsLow = computed(() =>
-  Boolean(
-    aiUsage.value
-    && !aiCreditsExhausted.value
-    && aiIncludedCredits.value > 0
-    && aiCreditPercent.value <= 20
-  )
-)
-
+const aiIncludedCredits = computed(() => Math.max(0, Number(aiUsage.value?.includedCredits || 0)))
+const aiUsedCredits = computed(() => Math.max(0, Number(aiUsage.value?.usedCredits || 0)))
+const aiRemainingCredits = computed(() => Math.max(0, Number(
+  aiUsage.value?.remainingCredits
+  ?? aiUsage.value?.remainingIncludedCredits
+  ?? (aiIncludedCredits.value - aiUsedCredits.value)
+)))
+const aiCreditPercent = computed(() => aiIncludedCredits.value <= 0
+  ? 0
+  : Math.max(0, Math.min(100, Math.round((aiRemainingCredits.value / aiIncludedCredits.value) * 100))))
+const aiCreditsExhausted = computed(() => Boolean(
+  aiUsage.value && aiIncludedCredits.value > 0 && aiRemainingCredits.value <= 0
+))
+const aiCreditsLow = computed(() => Boolean(
+  aiUsage.value && !aiCreditsExhausted.value && aiIncludedCredits.value > 0 && aiCreditPercent.value <= 20
+))
 const aiPlanLabel = computed(() => {
   const plan = String(aiUsage.value?.planCode || 'free').trim()
-  return plan
-    ? plan.charAt(0).toUpperCase() + plan.slice(1)
-    : 'Free'
+  return plan ? plan.charAt(0).toUpperCase() + plan.slice(1) : 'Free'
 })
 const selectedText = ref('')
 const selectionPopover = ref({ visible: false, left: 0, top: 0 })
 const petPinned = computed({ get: () => aiPetStore.isPinned, set: value => aiPetStore.setPinned(value) })
 const petPosition = computed({ get: () => aiPetStore.position, set: value => aiPetStore.setPosition(value) })
+const stickyLauncherStyle = computed(() => ({ top: `${stickyLauncherY.value ?? Math.round(window.innerHeight * 0.5)}px` }))
+const stickyLauncherAccountId = () => getStickyAccountId(getStoredUserSession())
+const getStickyLauncherBounds = () => {
+  const launcherHeight = stickyLauncherRef.value?.offsetHeight || 42
+  const topInset = Math.max(12, Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sa-topbar-height')) || 52) + 12
+  return { launcherHeight, topInset }
+}
+const clampStickyLauncherPosition = y => {
+  const { launcherHeight, topInset } = getStickyLauncherBounds()
+  return clampStickyLauncherY(y, window.innerHeight, launcherHeight, topInset)
+}
+const restoreStickyLauncherPosition = () => {
+  const { launcherHeight, topInset } = getStickyLauncherBounds()
+  const accountId = stickyLauncherAccountId()
+  const stored = readStickyLauncherY(window.localStorage, accountId, window.innerHeight, launcherHeight, topInset)
+  stickyLauncherY.value = stored ?? clampStickyLauncherY((window.innerHeight - launcherHeight) / 2, window.innerHeight, launcherHeight, topInset)
+}
+const persistStickyLauncherPosition = () => {
+  stickyLauncherY.value = clampStickyLauncherPosition(stickyLauncherY.value)
+  writeStickyLauncherY(window.localStorage, stickyLauncherAccountId(), stickyLauncherY.value)
+}
+const beginStickyLauncherDrag = event => {
+  if (event.button !== undefined && event.button !== 0) return
+  event.preventDefault()
+  event.stopPropagation()
+  stickyLauncherDragState = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    originY: stickyLauncherY.value ?? clampStickyLauncherPosition(window.innerHeight / 2),
+    moved: false
+  }
+  event.currentTarget?.setPointerCapture?.(event.pointerId)
+  window.addEventListener('pointermove', moveStickyLauncher)
+  window.addEventListener('pointerup', endStickyLauncherDrag)
+  window.addEventListener('pointercancel', cancelStickyLauncherDrag)
+}
+const moveStickyLauncher = event => {
+  const state = stickyLauncherDragState
+  if (!state || event.pointerId !== state.pointerId) return
+  if (!state.moved && !hasStickyLauncherDragged(state.startX, state.startY, event.clientX, event.clientY, STICKY_LAUNCHER_DRAG_THRESHOLD)) return
+  state.moved = true
+  stickyLauncherDragging.value = true
+  const { launcherHeight, topInset } = getStickyLauncherBounds()
+  stickyLauncherY.value = getStickyLauncherDragY(state.originY, event.clientY - state.startY, window.innerHeight, launcherHeight, topInset)
+}
+const clearStickyLauncherDrag = () => {
+  window.removeEventListener('pointermove', moveStickyLauncher)
+  window.removeEventListener('pointerup', endStickyLauncherDrag)
+  window.removeEventListener('pointercancel', cancelStickyLauncherDrag)
+  stickyLauncherDragging.value = false
+  stickyLauncherDragState = null
+}
+const endStickyLauncherDrag = event => {
+  const state = stickyLauncherDragState
+  if (!state || event.pointerId !== state.pointerId) return
+  if (state.moved) persistStickyLauncherPosition()
+  clearStickyLauncherDrag()
+}
+const cancelStickyLauncherDrag = event => {
+  const state = stickyLauncherDragState
+  if (!state || event.pointerId !== state.pointerId) return
+  stickyLauncherY.value = state.originY
+  clearStickyLauncherDrag()
+}
+const focusCreatedSticky = async note => {
+  await nextTick()
+  const floatingTitle = document.querySelector(`[data-floating-note-id="${note.id}"] input[aria-label="Tiêu đề ghi chú"]`)
+  const drawerTitle = document.querySelector('#global-stickies-drawer input[aria-label="Tiêu đề ghi chú"]')
+  ;(floatingTitle || drawerTitle)?.focus()
+  ;(floatingTitle || drawerTitle)?.select?.()
+}
+const quickCreateSticky = async () => {
+  if (stickyLauncherCreating.value) return
+  if (!stickyStore.canAddFloating) {
+    ElMessage.warning(`Bạn chỉ có thể dán tối đa ${MAX_FLOATING_STICKIES} ghi chú. Hãy gỡ một ghi chú khỏi màn hình trước.`)
+    openNotesFromLauncher()
+    return
+  }
+  stickyLauncherCreating.value = true
+  try {
+    const created = await stickyStore.createNote({
+      ...stickyContext.value,
+      title: 'Ghi chú mới',
+      content: '',
+      color: getRandomPaletteColor(stickyStore.notes[0]?.color),
+      isPinned: false
+    })
+    const launcherX = Math.max(12, window.innerWidth - 324)
+    const launcherY = clampStickyLauncherPosition(stickyLauncherY.value - 92)
+    await stickyStore.setFloatingState(created, { isFloating: true, positionX: launcherX, positionY: launcherY })
+    closeNotes()
+    await focusCreatedSticky(created)
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Không thể tạo ghi chú.')
+  } finally {
+    stickyLauncherCreating.value = false
+  }
+}
 const petDragging = ref(false)
 const petMoved = ref(false)
 const petDragOffset = ref({ x: 0, y: 0 })
@@ -1696,6 +1793,8 @@ const closeUtilitiesForIntegrationDetail = () => {
 
 onMounted(() => {
   window.addEventListener('resize', updateSize)
+  window.addEventListener('resize', restoreStickyLauncherPosition)
+  window.addEventListener(AUTH_SESSION_CHANGED, restoreStickyLauncherPosition)
   window.addEventListener('online', updateOnlineStatus)
   window.addEventListener('offline', updateOnlineStatus)
   document.addEventListener('mouseup', captureSelectedText)
@@ -1704,12 +1803,17 @@ onMounted(() => {
   window.addEventListener('integration-detail-opened', closeUtilitiesForIntegrationDetail)
   window.addEventListener('pointermove', movePet)
   window.addEventListener('pointerup', endPetDrag)
-  nextTick(() => window.setTimeout(normalizePetPosition, 120))
+  nextTick(() => {
+    restoreStickyLauncherPosition()
+    window.setTimeout(normalizePetPosition, 120)
+  })
   startPetWandering()
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateSize)
+  window.removeEventListener('resize', restoreStickyLauncherPosition)
+  window.removeEventListener(AUTH_SESSION_CHANGED, restoreStickyLauncherPosition)
   window.removeEventListener('online', updateOnlineStatus)
   window.removeEventListener('offline', updateOnlineStatus)
   document.removeEventListener('mouseup', captureSelectedText)
@@ -1718,6 +1822,7 @@ onUnmounted(() => {
   window.removeEventListener('integration-detail-opened', closeUtilitiesForIntegrationDetail)
   window.removeEventListener('pointermove', movePet)
   window.removeEventListener('pointerup', endPetDrag)
+  clearStickyLauncherDrag()
   stopPetWandering()
   cancelVoiceInput()
   clearPendingAttachments()
@@ -1931,17 +2036,19 @@ const refreshAfterAiAction = async (action, result) => {
 
 const navigateToAiEntity = async ({ entityId, entityType, projectId }) => {
   if (!entityId) return
-  if (entityType === 'project') return router.push(`/space/${entityId}/dashboard`)
+  const project = projectStore.allProjects.find(item => `${item.id}` === `${projectId || entityId || currentProjectId.value}`)
+  const projectTarget = project || projectId || entityId || currentProjectId.value
+  if (entityType === 'project') return router.push(buildSpacePath(projectTarget, 'work-items'))
   if (entityType === 'worktask' || entityType === 'task') {
-    return router.push({ path: `/space/${projectId || currentProjectId.value}/work-items`, query: { task: entityId } })
+    return router.push({ path: buildSpacePath(projectTarget, 'work-items'), query: { task: entityId } })
   }
   if (entityType === 'goal') return router.push(`/home/goals/${entityId}`)
-  if (['cycle', 'sprint'].includes(entityType)) return router.push(`/space/${projectId || currentProjectId.value}/cycles`)
-  if (entityType === 'module') return router.push(`/space/${projectId || currentProjectId.value}/modules`)
-  if (entityType === 'page') return router.push(`/space/${projectId || currentProjectId.value}/pages`)
-  if (entityType === 'view') return router.push(`/space/${projectId || currentProjectId.value}/views`)
-  if (entityType === 'intake' || entityType === 'intake_request') return router.push(`/space/${projectId || currentProjectId.value}/intakes`)
-  if (entityType === 'report') return router.push(`/space/${projectId || currentProjectId.value}/reports`)
+  if (['cycle', 'sprint'].includes(entityType)) return router.push(buildSpacePath(projectTarget, 'cycles'))
+  if (entityType === 'module') return router.push(buildSpacePath(projectTarget, 'modules'))
+  if (entityType === 'page') return router.push(buildSpacePath(projectTarget, 'pages'))
+  if (entityType === 'view') return router.push(buildSpacePath(projectTarget, 'views'))
+  if (entityType === 'intake' || entityType === 'intake_request') return router.push(buildSpacePath(projectTarget, 'intakes'))
+  if (entityType === 'report') return router.push(buildSpacePath(projectTarget, 'reports'))
 }
 
 const normalizeTaskTitle = (title = '') => `${title}`.trim().replace(/\s+/g, ' ').toLocaleUpperCase('vi-VN')
@@ -1985,6 +2092,14 @@ const toggleNotes = () => {
   }
 }
 
+const openNotesFromLauncher = event => {
+  if (stickyLauncherDragState?.moved) {
+    event?.preventDefault?.()
+    return
+  }
+  toggleNotes()
+}
+
 const closeNotes = () => {
   notesVisible.value = false
   if (!aiVisible.value) startPetWandering()
@@ -1993,8 +2108,9 @@ const closeNotes = () => {
 const openDuplicateTask = (action, edit) => {
   const task = action.duplicateCandidate
   if (!task?.id) return
+  const project = projectStore.allProjects.find(item => `${item.id}` === `${currentProjectId.value}`) || currentProjectId.value
   return router.push({
-    path: `/space/${currentProjectId.value}/work-items`,
+    path: buildSpacePath(project, 'work-items'),
     query: { task: task.id, ...(edit ? { edit: '1' } : {}) }
   })
 }
@@ -2014,7 +2130,6 @@ const confirmDuplicateCreation = async (action) => {
     if (error !== 'cancel' && error !== 'close') ElMessage.error('Không thể xác nhận thao tác.')
   }
 }
-
 const executeAiAction = async (action) => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
   const duplicate = await findDuplicateTask(action)
@@ -2038,7 +2153,7 @@ const executeAiAction = async (action) => {
         payload: actionPayload(action)
       })
       action.serverActionId = previewResponse.data?.data?.actionId
-      if (!action.serverActionId) throw new Error('Backend không tạo được action preview.')
+      if (!action.serverActionId) throw new Error('Backend khÃ´ng táº¡o Ä‘Æ°á»£c action preview.')
       await persistConversation()
     }
     const response = await axiosClient.post(`/ai/actions/${action.serverActionId}/confirm`)
@@ -2607,12 +2722,10 @@ const uploadPendingAttachments = async (conversationId) => {
 const sendAiMessage = async () => {
   const outgoing = aiInput.value.trim()
   const hasAttachments = pendingAttachments.value.length > 0
-
   if (aiCreditsExhausted.value) {
     ElMessage.warning('Bạn đã sử dụng hết AI Credits trong tháng này.')
     return
   }
-
   if ((!outgoing && !hasAttachments) || aiSending.value) return
 
   aiSending.value = true
@@ -2651,7 +2764,6 @@ const sendAiMessage = async () => {
         content: responseData?.answer || aiCopy.value.emptyResponse,
         citations: responseData?.citations || []
       })
-
       await loadAiUsage()
       return
     }
@@ -2694,7 +2806,6 @@ const sendAiMessage = async () => {
       })),
       suggestedActions: responseData?.suggestedActions || []
     })
-
     await loadAiUsage()
   } catch (error) {
     if (loadingAdded && chatHistory.value.at(-1)?.loading) chatHistory.value.pop()
@@ -2743,7 +2854,7 @@ const sendAiMessage = async () => {
 
 const handleSpaceCreated = (newSpace) => {
   if (newSpace && newSpace.id) {
-    window.location.href = `/space/${newSpace.id}`
+    window.location.href = buildSpacePath(newSpace, 'work-items')
   } else {
     window.location.reload()
   }
@@ -2757,10 +2868,12 @@ const handleProjectCreated = (newProject) => {
 <style scoped>
 .dashboard-layout {
   height: 100dvh;
-  max-height: 100vh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--sa-bg);
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--sa-primary) 8%, transparent), transparent 34%),
+    var(--sa-bg);
   color: var(--color-text-primary);
   overflow: hidden;
   font-family: 'Be Vietnam Pro', 'Inter', system-ui, sans-serif;
@@ -2771,6 +2884,7 @@ const handleProjectCreated = (newProject) => {
   flex: 1;
   overflow: hidden;
   position: relative;
+  min-height: 0;
   background: var(--sa-bg);
 }
 
@@ -2802,13 +2916,66 @@ const handleProjectCreated = (newProject) => {
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2);
 }
 
+.content-area.is-project-context {
+  overflow: hidden;
+}
+
 .content-wrapper {
+  --app-shell-page-x: 18px;
+  --app-shell-header-top: 18px;
+  --app-shell-header-bottom: 18px;
   width: 100%;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
   background: transparent;
+}
+
+.content-wrapper :deep(.app-shell-page-header) {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 20px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: var(--app-shell-header-top) var(--app-shell-page-x) var(--app-shell-header-bottom) !important;
+  background: transparent !important;
+  border-top: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-left: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.content-wrapper :deep(.app-shell-page-header > div:first-child) {
+  min-width: 0;
+}
+
+.content-wrapper :deep(.app-shell-page-header .eyebrow) {
+  display: block;
+}
+
+.content-wrapper :deep(.app-shell-page-header h1) {
+  margin: 0 !important;
+  font-size: 26px !important;
+  line-height: 1.15 !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+}
+
+.content-wrapper :deep(.app-shell-page-header p) {
+  margin: 0 !important;
+  font-size: 12px !important;
+}
+
+.content-wrapper :deep(.app-shell-page-header + .page-content) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 18px !important;
+  box-sizing: border-box !important;
 }
 
 @media (max-width: 1024px) {
@@ -2872,34 +3039,76 @@ const handleProjectCreated = (newProject) => {
 .global-utility-rail {
   position: fixed;
   z-index: 1510;
-  top: 50%;
   right: 10px;
-  transform: translateY(-50%);
+  display: flex;
+  align-items: stretch;
+  min-height: 42px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  user-select: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.global-utility-rail.is-dragging {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-lg, var(--shadow-md));
 }
 
 .global-utility-rail button {
-  width: 46px;
-  min-height: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 3px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface);
+  min-height: 40px;
+  border: 0;
+  background: transparent;
   color: var(--color-text-muted);
-  box-shadow: var(--shadow-md);
   cursor: pointer;
 }
 
-.global-utility-rail button:hover,
-.global-utility-rail button.active {
-  border-color: var(--color-accent);
+.sticky-launcher-handle {
+  width: 24px;
+  display: grid;
+  place-items: center;
+  border-right: 1px solid var(--color-border) !important;
+  cursor: ns-resize !important;
+  touch-action: none;
+}
+
+.sticky-launcher-handle i { font-size: 12px; }
+.sticky-launcher-main {
+  min-width: 78px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sticky-launcher-add {
+  width: 30px;
+  display: grid;
+  place-items: center;
+  border-left: 1px solid var(--color-border) !important;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.sticky-launcher-main:hover,
+.sticky-launcher-main.active,
+.sticky-launcher-add:hover:not(:disabled),
+.sticky-launcher-handle:hover,
+.sticky-launcher-handle:focus-visible,
+.sticky-launcher-add:focus-visible,
+.sticky-launcher-main:focus-visible {
+  background: var(--color-surface-hover);
   color: var(--color-accent);
 }
 
-.global-utility-rail span { font-size: 9px; font-weight: 700; }
+.global-utility-rail button:active:not(:disabled) { transform: scale(.97); }
+.global-utility-rail button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.global-utility-rail button:disabled { cursor: wait; opacity: .7; }
 
 .ai-floating-btn.is-dragging { cursor: grabbing; filter: brightness(1.08); }
 .ai-floating-btn.is-dragging .ai-pet-image { animation: none; }
@@ -2967,7 +3176,7 @@ const handleProjectCreated = (newProject) => {
 .ai-sidebar {
   position: fixed;
   right: 16px;
-  top: 68px;
+  top: calc(var(--sa-topbar-height, 52px) + 16px);
   bottom: 16px;
   width: min(456px, calc(100vw - 32px));
   background: var(--color-surface);
@@ -3104,6 +3313,7 @@ const handleProjectCreated = (newProject) => {
 
 .ai-action-controls { justify-content: flex-end; }
 .ai-action-controls button {
+  min-width: 72px;
   min-height: 30px;
   padding: 6px 11px;
   border-radius: 8px;
@@ -3829,7 +4039,7 @@ const handleProjectCreated = (newProject) => {
 
 .ai-input-wrapper {
   align-items: flex-end;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid color-mix(in srgb, var(--color-border) 84%, var(--sa-primary));
   border-radius: 16px;
   background: var(--color-surface);
@@ -3955,13 +4165,10 @@ const handleProjectCreated = (newProject) => {
   }
 
   .global-utility-rail {
-    top: auto;
     right: 8px;
-    bottom: 82px;
-    transform: none;
   }
 
-  .global-utility-rail button { width: 42px; min-height: 44px; }
+  .sticky-launcher-main { min-width: 72px; padding: 0 8px; }
 
   .ai-pet-image {
     width: 58px;
@@ -4018,15 +4225,13 @@ const handleProjectCreated = (newProject) => {
     animation: none;
   }
 }
-</style>
 
-<style scoped>
 .ai-credit-card {
   margin-top: 12px;
   padding: 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: var(--bg-secondary);
+  background: var(--color-surface-hover);
 }
 
 .ai-credit-head {
@@ -4043,48 +4248,39 @@ const handleProjectCreated = (newProject) => {
 }
 
 .ai-credit-label {
+  color: var(--color-text-muted);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: .08em;
-  opacity: .7;
 }
 
-.ai-credit-head strong {
-  font-size: 12px;
-}
+.ai-credit-head strong { font-size: 12px; }
 
 .ai-credit-progress {
   height: 6px;
   margin-top: 10px;
   overflow: hidden;
   border-radius: 999px;
-  background: var(--bg-tertiary);
+  background: color-mix(in srgb, var(--color-border) 78%, transparent);
 }
 
 .ai-credit-progress > span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--accent-color);
+  background: var(--color-accent);
   transition: width .25s ease;
 }
 
 .ai-credit-message {
   margin: 8px 0 0;
+  color: var(--color-text-secondary);
   font-size: 11px;
   line-height: 1.4;
-  opacity: .8;
 }
 
-.ai-credit-card.is-low {
-  border-color: #d9a441;
-}
-
-.ai-credit-card.is-empty {
-  border-color: #d25b5b;
-}
-
-.ai-credit-card.is-empty .ai-credit-progress > span {
-  width: 0 !important;
-}
+.ai-credit-card.is-low { border-color: #d9a441; }
+.ai-credit-card.is-low .ai-credit-progress > span { background: #d9a441; }
+.ai-credit-card.is-empty { border-color: #d25b5b; }
+.ai-credit-card.is-empty .ai-credit-progress > span { width: 0 !important; background: #d25b5b; }
 </style>

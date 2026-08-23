@@ -17,6 +17,7 @@ import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import { DEFAULT_PROJECT_BACKGROUND, DEFAULT_PROJECT_ICON } from '@/config/projectAppearance'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const route = useRoute()
 const router = useRouter()
@@ -452,7 +453,7 @@ onBeforeUnmount(() => {
               v-for="space in sortedSpaces.slice(0, 4)" 
               :key="space.id" 
               class="space-card"
-              @click="router.push(`/space/${space.id}`)"
+              @click="router.push(buildSpacePath(space, 'work-items'))"
             >
               <ProjectAvatar class="recommended-project-avatar" :icon="space.icon" :background="space.cover" size="sm" />
               <div class="sc-info">

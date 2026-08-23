@@ -127,6 +127,18 @@ export function canUpdateTask(permissionMatrix, userRole) {
   return hasPermission(permissionMatrix, userRole, 'task.update')
 }
 
+export function canAssignTask(permissionMatrix, userRole) {
+  return hasPermission(permissionMatrix, userRole, 'task.assign')
+}
+
+export function canChangeTaskStatus(permissionMatrix, userRole) {
+  return hasPermission(permissionMatrix, userRole, 'task.changeStatus')
+}
+
+export function hasAssigneeOnlyTaskAccess(permissionMatrix, userRole) {
+  return hasPermission(permissionMatrix, userRole, 'task.assigneeOnly')
+}
+
 export function canDeleteTask(permissionMatrix, userRole) {
   return hasPermission(permissionMatrix, userRole, 'task.delete')
 }

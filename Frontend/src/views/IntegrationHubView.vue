@@ -1,15 +1,23 @@
 <template>
   <section class="integration-page">
-    <header class="page-header">
-      <div class="hero-copy">
+    <header class="page-header app-shell-page-header">
+      <div class="hero-copy app-shell-title-wrap">
         <span class="eyebrow">INTEGRATION HUB</span>
         <h1>{{ t('Trung tâm tích hợp công việc', 'Work Integration Hub') }}</h1>
-        <p class="hero-subtitle">
-          {{ t(
-            'Kết nối Google Calendar thật để đưa cuộc họp, deadline và lịch sprint vào một inbox công việc có thể tạo task ngay.',
-            'Connect real Google Calendar events into a work inbox that can turn signals into tasks.'
-          ) }}
-        </p>
+        <div class="app-shell-header-help">
+          <span class="app-shell-header-help-btn" aria-label="About Integration Hub">
+            <i class="fa-solid fa-question"></i>
+          </span>
+          <div class="app-shell-header-help-popover" role="tooltip">
+            <span>INTEGRATION HUB</span>
+            <p>
+              {{ t(
+                'Kết nối Google Calendar thật để đưa cuộc họp, deadline và lịch sprint vào một inbox công việc có thể tạo task ngay.',
+                'Connect real Google Calendar events into a work inbox that can turn signals into tasks.'
+              ) }}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div class="hero-action-card" :class="{ connected: connectedProviders.length > 0 }">
@@ -107,7 +115,7 @@
               v-for="provider in renderedProviders"
               :key="provider.provider"
               class="provider-card"
-              :class="[provider.status, { featured: provider.provider === 'google-calendar' }]"
+              :class="[providerUiStatus(provider), { featured: provider.provider === 'google-calendar' }]"
             >
               <div class="provider-icon" :class="provider.source">
                 <i :class="providerIcon(provider.provider)"></i>
@@ -116,30 +124,32 @@
               <div class="provider-body">
                 <div class="provider-top">
                   <strong>{{ provider.name }}</strong>
-                  <span class="status-badge" :class="provider.status">{{ providerStatus(provider) }}</span>
+                  <span class="status-badge" :class="providerUiStatus(provider)">{{ providerStatus(provider) }}</span>
                 </div>
                 <p>{{ providerDescription(provider) }}</p>
                 <div class="provider-meta">
                   <span v-if="provider.accountEmail"><i class="fa-regular fa-user"></i>{{ provider.accountEmail }}</span>
                   <span v-if="provider.lastSyncedAt"><i class="fa-regular fa-clock"></i>{{ formatDate(provider.lastSyncedAt) }}</span>
                   <span v-if="provider.status === 'coming_soon'"><i class="fa-solid fa-hourglass-half"></i>{{ t('Sắp ra mắt', 'Coming soon') }}</span>
-                  <span v-if="provider.status === 'not_connected'"><i class="fa-solid fa-link-slash"></i>{{ t('Chưa kết nối', 'Not connected') }}</span>
+                  <span v-if="providerUiStatus(provider) === 'not_connected'"><i class="fa-solid fa-link-slash"></i>{{ t('Chưa kết nối', 'Not connected') }}</span>
+                  <span v-if="providerUiStatus(provider) === 'unconfigured'"><i class="fa-solid fa-lock"></i>{{ t('Chưa được cấu hình', 'Not configured') }}</span>
+                  <span v-if="providerUiStatus(provider) === 'reconnect_required'"><i class="fa-solid fa-rotate"></i>{{ t('Cần kết nối lại', 'Reconnect required') }}</span>
                 </div>
               </div>
 
               <div class="provider-actions">
                 <button
-                  v-if="provider.supportsConnect !== false && provider.status !== 'connected' && provider.status !== 'coming_soon'"
+                  v-if="provider.supportsConnect !== false && providerUiStatus(provider) !== 'connected' && provider.status !== 'coming_soon'"
                   class="primary small"
                   type="button"
                   :disabled="connecting"
                   @click="connectProvider(provider)"
                 >
                   <i :class="connecting ? 'fa-solid fa-circle-notch fa-spin' : providerIcon(provider.provider)"></i>
-                  {{ connecting ? t('Đang mở...', 'Opening...') : t(`Kết nối ${provider.name}`, `Connect ${provider.name}`) }}
+                  {{ connecting ? t('Đang mở...', 'Opening...') : providerUiStatus(provider) === 'reconnect_required' ? t('Kết nối lại', 'Reconnect') : t(`Kết nối ${provider.name}`, `Connect ${provider.name}`) }}
                 </button>
 
-                <template v-if="provider.status === 'connected'">
+                <template v-if="providerUiStatus(provider) === 'connected'">
                   <button class="primary small" type="button" :disabled="syncingProviders[provider.provider] || syncing" @click="syncProvider(provider)">
                     <i class="fa-solid fa-rotate" :class="{ 'fa-spin': syncingProviders[provider.provider] }"></i>
                     {{ syncingProviders[provider.provider] ? t('Đang đồng bộ', 'Syncing') : t('Đồng bộ ngay', 'Sync now') }}
@@ -161,12 +171,12 @@
                 </button>
 
                 <button
-                  v-if="provider.supportsConnect === false && provider.status !== 'connected' && provider.status !== 'coming_soon'"
+                  v-if="provider.supportsConnect === false && providerUiStatus(provider) !== 'connected' && provider.status !== 'coming_soon'"
                   class="ghost small"
                   type="button"
                   disabled
                 >
-                  {{ t('Backend chưa bật OAuth', 'OAuth backend not enabled') }}
+                  {{ t('Chưa được cấu hình', 'Not configured') }}
                 </button>
               </div>
             </article>
@@ -524,6 +534,8 @@ import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 import { useI18nStore } from '@/store/useI18nStore'
 import { getScopedCurrentProjectId } from '@/utils/projectContext'
+import { AUTH_SESSION_CHANGED, getStoredUserSession } from '@/utils/authSession'
+import { createIntegrationRequestEpoch, getIntegrationAccountId, isReconnectRequiredMessage } from '@/utils/integrationState'
 
 const route = useRoute()
 const router = useRouter()
@@ -532,6 +544,9 @@ const i18nStore = useI18nStore()
 const providers = ref([])
 const syncHistory = ref([])
 const inboxItems = ref([])
+const accountId = ref(getIntegrationAccountId(getStoredUserSession()))
+const requestEpoch = createIntegrationRequestEpoch()
+const reconnectRequiredProviders = ref({})
 let inboxRealtimeTimer = null
 const handleInboxRealtime = event => {
   if (`${event?.entityType || ''}`.toLowerCase() !== 'inboxitem') return
@@ -559,6 +574,32 @@ const inboxError = ref('')
 const notice = ref(null)
 const activeStatus = ref('all') // all | unread | read | converted
 const syncingProviders = ref({})
+
+const captureRequest = () => requestEpoch.capture(accountId.value)
+const isCurrentRequest = request => requestEpoch.isCurrent(request, accountId.value)
+
+const clearIntegrationState = () => {
+  requestEpoch.invalidate()
+  providers.value = []
+  syncHistory.value = []
+  inboxItems.value = []
+  reconnectRequiredProviders.value = {}
+  selectedItemId.value = ''
+  selectedBulkIds.value = []
+  projectOptions.value = []
+  selectedProjectId.value = ''
+  integrationsError.value = ''
+  inboxError.value = ''
+  notice.value = null
+  loadingIntegrations.value = false
+  loadingInbox.value = false
+  loadingProjectOptions.value = false
+  connecting.value = false
+  syncing.value = false
+  creatingTask.value = false
+  bulkCreating.value = false
+  syncingProviders.value = {}
+}
 
 const t = (vi, en) => i18nStore.locale === 'en' ? en : vi
 
@@ -645,7 +686,6 @@ const selectedItem = computed(() => inboxItems.value.find(item => item.id === se
 const visibleCreatableItems = computed(() => filteredInbox.value.filter(item => !item.createdTaskId))
 const selectedBulkItems = computed(() => inboxItems.value.filter(item => selectedBulkIds.value.includes(item.id) && !item.createdTaskId))
 const allVisibleCreatableSelected = computed(() => visibleCreatableItems.value.length > 0 && visibleCreatableItems.value.every(item => selectedBulkIds.value.includes(item.id)))
-const googleStatusLabel = computed(() => isGoogleConnected.value ? t('Đã kết nối', 'Connected') : t('Chưa kết nối', 'Not connected'))
 const integrationNotifications = computed(() => {
   const failedSync = syncHistory.value
     .filter(log => log.status === 'error')
@@ -711,41 +751,60 @@ const asArray = (value) => {
 }
 
 const loadIntegrations = async () => {
+  const request = captureRequest()
   loadingIntegrations.value = true
   integrationsError.value = ''
   try {
     const response = await axiosClient.get('/integrations')
+    if (!isCurrentRequest(request)) return false
     const data = getPayload(response)
     providers.value = asArray(data?.providers)
     syncHistory.value = asArray(data?.syncHistory)
+    providers.value.forEach(provider => {
+      if (provider.status === 'connected' && reconnectRequiredProviders.value[provider.provider]) {
+        const next = { ...reconnectRequiredProviders.value }
+        delete next[provider.provider]
+        reconnectRequiredProviders.value = next
+      }
+    })
+    return true
   } catch (error) {
+    if (!isCurrentRequest(request)) return false
     integrationsError.value = error.response?.data?.message || t('Không tải được Integration Hub.', 'Could not load Integration Hub.')
+    return false
   } finally {
-    loadingIntegrations.value = false
+    if (isCurrentRequest(request)) loadingIntegrations.value = false
   }
 }
 
 const loadInbox = async () => {
+  const request = captureRequest()
   loadingInbox.value = true
   inboxError.value = ''
   try {
     const response = await axiosClient.get('/inbox')
+    if (!isCurrentRequest(request)) return false
     inboxItems.value = asArray(getPayload(response))
     if (selectedItemId.value && !inboxItems.value.some(item => item.id === selectedItemId.value)) {
       selectedItemId.value = ''
     }
+    return true
   } catch (error) {
+    if (!isCurrentRequest(request)) return false
     inboxError.value = error.response?.data?.message || t('Không tải được Unified Inbox.', 'Could not load Unified Inbox.')
+    return false
   } finally {
-    loadingInbox.value = false
+    if (isCurrentRequest(request)) loadingInbox.value = false
   }
 }
 
 const loadCreateTaskOptions = async () => {
+  const request = captureRequest()
   loadingProjectOptions.value = true
   projectOptionsError.value = ''
   try {
     const response = await axiosClient.get('/inbox/create-task-options')
+    if (!isCurrentRequest(request)) return false
     const projects = asArray(getPayload(response)?.projects)
     projectOptions.value = projects
 
@@ -757,30 +816,39 @@ const loadCreateTaskOptions = async () => {
     } else if (selectedProjectId.value && !projects.some(project => project.id === selectedProjectId.value)) {
       selectedProjectId.value = ''
     }
+    return true
   } catch (error) {
+    if (!isCurrentRequest(request)) return false
     projectOptions.value = []
     selectedProjectId.value = ''
     projectOptionsError.value = error.response?.data?.message || t('Không tải được danh sách project.', 'Could not load projects.')
   } finally {
-    loadingProjectOptions.value = false
+    if (isCurrentRequest(request)) loadingProjectOptions.value = false
   }
 }
 
 const connectProvider = async (provider) => {
+  if (provider?.supportsConnect === false) {
+    notice.value = { type: 'error', message: t(`${provider.name} chưa được cấu hình.`, `${provider.name} is not configured yet.`) }
+    return
+  }
+  const request = captureRequest()
   connecting.value = true
   notice.value = null
   try {
     const response = await axiosClient.get(`/integrations/${provider.provider}/connect`)
     const payload = getPayload(response)
     const authorizationUrl = payload?.authorizationUrl || payload?.authUrl
+    if (!isCurrentRequest(request)) return
     if (!authorizationUrl) {
       throw new Error(t('Backend không trả URL OAuth.', 'Backend did not return an OAuth URL.'))
     }
     window.location.href = authorizationUrl
   } catch (error) {
+    if (!isCurrentRequest(request)) return
     notice.value = { type: 'error', message: error.response?.data?.message || error.message }
   } finally {
-    connecting.value = false
+    if (isCurrentRequest(request)) connecting.value = false
   }
 }
 
@@ -800,18 +868,19 @@ const completeGoogleOAuth = async () => {
   const providerName = providerNameById(provider)
 
   if (route.query.connected === 'success' && provider) {
+    const loaded = await loadIntegrations()
+    if (!loaded) return
     notice.value = { type: 'success', message: t(`Đã kết nối ${providerName} thành công.`, `${providerName} connected successfully.`) }
     ElMessage.success(notice.value.message)
-    await loadIntegrations()
     router.replace('/integrations').catch(() => {})
     return
   }
 
   if (route.query.connected === 'error' && provider) {
     const message = route.query.message || t(`Không kết nối được ${providerName}.`, `Could not connect ${providerName}.`)
+    await loadIntegrations()
     notice.value = { type: 'error', message }
     ElMessage.error(message)
-    await loadIntegrations()
     router.replace('/integrations').catch(() => {})
     return
   }
@@ -833,15 +902,17 @@ const completeGoogleOAuth = async () => {
 }
 
 const syncProvider = async (provider) => {
-  if (provider.status !== 'connected') {
+  if (providerUiStatus(provider) !== 'connected') {
     notice.value = { type: 'error', message: t(`Bạn cần kết nối ${provider.name} trước.`, `Connect ${provider.name} first.`) }
     return
   }
 
+  const request = captureRequest()
   syncingProviders.value[provider.provider] = true
   try {
     const response = await axiosClient.post(`/integrations/${provider.provider}/sync`)
     const imported = getPayload(response)?.imported ?? 0
+    if (!isCurrentRequest(request)) return
     notice.value = {
       type: 'success',
       message: t(`Đã đồng bộ ${imported} mục thật từ ${provider.name}.`, `Synced ${imported} real items from ${provider.name}.`)
@@ -849,16 +920,23 @@ const syncProvider = async (provider) => {
     ElMessage.success(notice.value.message)
     await Promise.all([loadIntegrations(), loadInbox()])
   } catch (error) {
+    if (!isCurrentRequest(request)) return
     const detail = error.response?.data?.message || error.message || ''
+    const reconnectRequired = isReconnectRequiredMessage(detail)
+    if (reconnectRequired) {
+      reconnectRequiredProviders.value = { ...reconnectRequiredProviders.value, [provider.provider]: true }
+    }
     const isOauthNotConfigured = detail.includes('chưa được cấu hình') || detail.includes('not configured')
     const errorMsg = isOauthNotConfigured 
       ? t(`OAuth của ${provider.name} chưa được cấu hình.`, `OAuth for ${provider.name} is not configured yet.`)
-      : t(`Không đồng bộ được ${provider.name}.`, `Could not sync ${provider.name}.`)
+      : reconnectRequired
+        ? t(`${provider.name} cần kết nối lại.`, `${provider.name} requires reconnect.`)
+        : t(`Không đồng bộ được ${provider.name}.`, `Could not sync ${provider.name}.`)
     
     notice.value = { type: 'error', message: errorMsg }
     ElMessage.error(errorMsg)
   } finally {
-    syncingProviders.value[provider.provider] = false
+    if (isCurrentRequest(request)) syncingProviders.value[provider.provider] = false
   }
 }
 
@@ -873,12 +951,14 @@ const syncAllConnected = async () => {
     return
   }
 
+  const request = captureRequest()
   syncing.value = true
   let totalImported = 0
   const failed = []
 
   try {
     for (const provider of connectedProviders.value) {
+      if (!isCurrentRequest(request)) return
       syncingProviders.value[provider.provider] = true
       try {
         const response = await axiosClient.post(`/integrations/${provider.provider}/sync`)
@@ -890,6 +970,7 @@ const syncAllConnected = async () => {
       }
     }
 
+    if (!isCurrentRequest(request)) return
     notice.value = failed.length
       ? { type: 'error', message: t(`Đã đồng bộ ${totalImported} mục, nhưng lỗi: ${failed.join(', ')}.`, `Synced ${totalImported} items, but failed: ${failed.join(', ')}.`) }
       : { type: 'success', message: t(`Đã đồng bộ ${totalImported} mục thật từ tất cả ứng dụng.`, `Synced ${totalImported} real items from all connected apps.`) }
@@ -901,18 +982,22 @@ const syncAllConnected = async () => {
     }
     await Promise.all([loadIntegrations(), loadInbox()])
   } finally {
-    syncing.value = false
+    if (isCurrentRequest(request)) syncing.value = false
   }
 }
 
 const disconnect = async (id) => {
   if (!id) return
+  const request = captureRequest()
   try {
     await axiosClient.delete(`/integrations/${id}`)
+    if (!isCurrentRequest(request)) return
+    reconnectRequiredProviders.value = {}
     notice.value = { type: 'success', message: t('Đã ngắt kết nối Google Calendar.', 'Google Calendar disconnected.') }
     ElMessage.success(notice.value.message)
     await Promise.all([loadIntegrations(), loadInbox()])
   } catch (error) {
+    if (!isCurrentRequest(request)) return
     notice.value = { type: 'error', message: error.response?.data?.message || t('Không ngắt kết nối được.', 'Could not disconnect.') }
   }
 }
@@ -1087,9 +1172,20 @@ const sourceLabel = (source) => ({
   system: t('Hệ thống', 'System')
 }[source] || source)
 
+const providerUiStatus = (provider) => {
+  if (provider.status === 'connected') return 'connected'
+  if (provider.status === 'coming_soon') return 'coming_soon'
+  if (reconnectRequiredProviders.value[provider.provider]) return 'reconnect_required'
+  if (provider.supportsConnect === false) return 'unconfigured'
+  return 'not_connected'
+}
+
 const providerStatus = (provider) => {
-  if (provider.status === 'connected') return t('Đã kết nối', 'Connected')
-  if (provider.status === 'coming_soon') return t('Sẽ hỗ trợ sau', 'Coming soon')
+  const status = providerUiStatus(provider)
+  if (status === 'connected') return t('Đã kết nối', 'Connected')
+  if (status === 'coming_soon') return t('Sẽ hỗ trợ sau', 'Coming soon')
+  if (status === 'unconfigured') return t('Chưa được cấu hình', 'Not configured')
+  if (status === 'reconnect_required') return t('Cần kết nối lại', 'Reconnect required')
   return t('Chưa kết nối', 'Not connected')
 }
 
@@ -1149,10 +1245,22 @@ const formatFullDate = (value) => {
   })
 }
 
+const handleAuthSessionChanged = () => {
+  const nextAccountId = getIntegrationAccountId(getStoredUserSession())
+  if (nextAccountId === accountId.value) return
+
+  accountId.value = nextAccountId
+  clearIntegrationState()
+  if (nextAccountId) {
+    void Promise.all([loadIntegrations(), loadInbox(), loadCreateTaskOptions()])
+  }
+}
+
 onMounted(async () => {
   signalRService.on('EntityChanged', handleInboxRealtime)
   window.addEventListener('keydown', handleDetailKeydown)
   window.addEventListener('global-utility-drawer-opened', closeDetailForOtherUtility)
+  window.addEventListener(AUTH_SESSION_CHANGED, handleAuthSessionChanged)
   await Promise.all([loadIntegrations(), loadInbox(), loadCreateTaskOptions()])
   await completeGoogleOAuth()
 })
@@ -1162,6 +1270,7 @@ onUnmounted(() => {
   if (inboxRealtimeTimer) clearTimeout(inboxRealtimeTimer)
   window.removeEventListener('keydown', handleDetailKeydown)
   window.removeEventListener('global-utility-drawer-opened', closeDetailForOtherUtility)
+  window.removeEventListener(AUTH_SESSION_CHANGED, handleAuthSessionChanged)
 })
 </script>
 
@@ -1220,7 +1329,11 @@ onUnmounted(() => {
 }
 
 .page-content {
-  padding: 18px var(--sa-page-x, 24px) 28px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 18px;
+  box-sizing: border-box;
 }
 
 .hero-copy {
@@ -1443,8 +1556,9 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: stretch;
-  max-width: 1420px;
-  margin: 0 auto 10px;
+  width: 100%;
+  max-width: none;
+  margin: 0 0 10px;
   gap: 10px;
 }
 
@@ -1479,9 +1593,10 @@ button:disabled {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(280px, .32fr) minmax(0, .68fr);
-  max-width: 1420px;
-  margin: 0 auto;
+  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+  width: 100%;
+  max-width: none;
+  margin: 0;
   align-items: start;
   gap: 10px;
 }
@@ -1505,7 +1620,8 @@ button:disabled {
 }
 
 .inbox-panel {
-  flex: 1;
+  width: 100%;
+  justify-self: stretch;
 }
 
 .panel-head {
@@ -1673,6 +1789,12 @@ button:disabled {
 }
 
 .status-badge.coming_soon {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+}
+
+.status-badge.unconfigured,
+.status-badge.reconnect_required {
   color: var(--color-warning);
   background: var(--color-warning-bg);
 }

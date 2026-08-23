@@ -13,10 +13,16 @@ public interface IAiCreditUsageService
     Task EnsureWithinQuotaAsync(Guid userId, CancellationToken cancellationToken = default);
     Task EnsureLegacyCutoverAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<AiCreditReservationResult> ReserveAsync(Guid userId, int credits, string idempotencyKey, CancellationToken cancellationToken = default);
+    Task<AiCreditReservationResult> ReserveDetailedAsync(Guid userId, int credits, string idempotencyKey, CancellationToken cancellationToken = default);
+    Task FinalizeReservationAsync(Guid reservationId, CancellationToken cancellationToken = default);
+    Task ReleaseReservationAsync(Guid reservationId, CancellationToken cancellationToken = default);
     Task FinalizeAsync(Guid reservationId, int actualCredits, CancellationToken cancellationToken = default);
     Task ReleaseAsync(Guid reservationId, CancellationToken cancellationToken = default);
     Task ExpireAsync(Guid reservationId, CancellationToken cancellationToken = default);
     Task ConsumeAsync(Guid userId, int credits, string? idempotencyKey = null, CancellationToken cancellationToken = default);
 }
 
-public sealed record AiCreditReservationResult(Guid ReservationId, bool Acquired, string Status, int ReservedCredits);
+public sealed record AiCreditReservationResult(Guid ReservationId, bool Acquired, string Status, int ReservedCredits = 0)
+{
+    public static implicit operator Guid(AiCreditReservationResult value) => value.ReservationId;
+}

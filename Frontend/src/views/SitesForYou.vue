@@ -33,6 +33,12 @@
               <div class="app-info">
                 <div class="app-name">SprintA</div>
                 <div class="app-url">{{ site.name }}</div>
+                <div class="app-meta">
+                  <span v-if="site.ownerName" class="site-owner">Owner: {{ site.ownerName }}</span>
+                  <span v-if="site.workspaceRole" class="site-role" :class="roleClass(site.workspaceRole)">
+                    {{ formatWorkspaceRole(site.workspaceRole) }}
+                  </span>
+                </div>
               </div>
             </div>
             <div class="app-card create-new" @click="openCreateModal">
@@ -211,6 +217,16 @@ const filteredSites = computed(() => {
   return siteStore.sites
 })
 
+const formatWorkspaceRole = (role) => {
+  const normalized = String(role || '').trim().toUpperCase()
+  if (!normalized) return ''
+  return ['OWNER', 'ADMIN'].includes(normalized) ? normalized : 'MEMBER'
+}
+
+const roleClass = (role) => {
+  return String(role || '').trim().toUpperCase() === 'OWNER' ? 'owner-role' : 'member-role'
+}
+
 const fetchRecentViews = async () => {
   await starredStore.fetchRecentItems({ page: 1, pageSize: 8 }).catch(() => {})
 }
@@ -258,7 +274,7 @@ const goToSite = (siteOrId) => {
   if (!id) return
   const site = typeof siteOrId === 'object' ? siteOrId : siteStore.sites.find(s => s.id === id)
   siteStore.setRecentSite(site || { id })
-  router.push(`/space/${id}`)
+  router.push('/dashboard')
 }
 
 const goToProject = (project) => {
@@ -439,6 +455,42 @@ const submitCreateSite = async () => {
 .app-url {
   font-size: 11px;
   color: #5E6C84;
+}
+
+.app-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  min-height: 18px;
+}
+
+.site-owner {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--home-muted, #5E6C84);
+}
+
+.site-role {
+  border-radius: 999px;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.site-role.owner-role {
+  background: rgba(14, 165, 233, 0.14);
+  color: #0369a1;
+}
+
+.site-role.member-role {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
 }
 
 /* Recent Access */

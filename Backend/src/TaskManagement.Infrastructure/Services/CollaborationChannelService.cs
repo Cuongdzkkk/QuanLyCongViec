@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Data;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,7 @@ public sealed class CollaborationChannelService : ICollaborationChannelService
     public const string ProjectDiscussionScope = "ProjectDiscussion";
     private const string ProjectDiscussionProvisioningKey = "__project_discussion__";
     private const string ProjectDiscussionName = "Project Discussion";
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> ProjectDiscussionGates = new();
     public const string Ordering = "name_asc,createdAt_asc,channelId_asc";
 
     private readonly ApplicationDbContext _context;
@@ -120,6 +122,8 @@ public sealed class CollaborationChannelService : ICollaborationChannelService
     {
         var workspaceId = await GetActiveProjectWorkspaceIdAsync(projectId, cancellationToken);
         await AuthorizeReadAsync(workspaceId, projectId, userId);
+        var gate = ProjectDiscussionGates.GetOrAdd(projectId, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
 
         try
         {
@@ -145,6 +149,10 @@ public sealed class CollaborationChannelService : ICollaborationChannelService
             var concurrent = await FindProjectDiscussionAsync(projectId, cancellationToken);
             if (concurrent == null) throw;
             return new(ToDto(concurrent, canManage: false, canSend: true), false);
+        }
+        finally
+        {
+            gate.Release();
         }
     }
 

@@ -17,5 +17,10 @@ namespace TaskManagement.Application.Interfaces
             Guid userId,
             Guid projectId,
             string permissionCode);
+
+        Task<List<Guid>> GetAccessibleProjectIdsAsync(
+            Guid userId,
+            bool includeArchived = false,
+            bool includeDeleted = false);
     }
 }

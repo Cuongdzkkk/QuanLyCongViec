@@ -120,7 +120,7 @@ const viewAllRecent = () => {
 .quick-panel {
   width: min(340px, calc(100vw - 24px));
   min-width: 0;
-  min-height: 344px;
+  min-height: min(520px, calc(100dvh - 32px));
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -155,7 +155,7 @@ const viewAllRecent = () => {
 .panel-search input:focus-visible { border-color: var(--color-accent, #0c66e4); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, #0c66e4) 18%, transparent); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-.panel-body { min-height: 230px; max-height: 320px; flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+.panel-body { min-height: 260px; max-height: min(560px, calc(100dvh - 150px)); flex: 1; overflow-y: auto; padding: 0 8px 8px; }
 .panel-state { min-height: 230px; padding: 24px 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; text-align: center; }
 .panel-state h4 { margin: 0 0 6px; font-size: 14px; font-weight: 800; }
 .panel-state p { max-width: 250px; margin: 0; color: var(--color-text-muted, #6b778c); font-size: 12px; line-height: 1.5; }

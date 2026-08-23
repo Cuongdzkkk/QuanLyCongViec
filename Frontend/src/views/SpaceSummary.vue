@@ -111,7 +111,7 @@
 
         <template #filters>
 
-          <div class="filter-dropdown-wrapper">
+          <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
             <button class="timeline-filter-trigger" type="button" @click.stop="toggleFilterDropdown" :class="{ active: showFilterDropdown || activeTaskFilters.length }">
             <i class="fa-solid fa-filter"></i>
             <span>{{ tr('Filters', 'Bộ lọc') }}</span>
@@ -120,6 +120,8 @@
           <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
             <FilterBar
               v-model:filters="activeTaskFilters"
+              :status-options="taskStatusOptions"
+              :active="showFilterDropdown"
               @apply="applyTaskFilters"
               @remove="removeTaskFilter"
               @clear="clearTaskFilters"
@@ -127,16 +129,26 @@
           </div>
         </div>
 
-          <div class="display-dropdown-wrapper">
-             <button class="plane-toolbar-btn" @click.stop="toggleDisplayDropdown" :class="{ 'active': showDisplayDropdown }">{{ t('Display') }}</button>
-             <div class="plane-dropdown-menu" v-show="showDisplayDropdown" @click.stop>
+          <div class="display-dropdown-wrapper js-toolbar-popup-scope">
+             <button class="plane-toolbar-btn display-trigger" @click.stop="toggleDisplayDropdown" :class="{ 'active': showDisplayDropdown }">{{ t('Display') }}</button>
+             <div class="plane-dropdown-menu display-dropdown-menu" v-show="showDisplayDropdown" @click.stop>
                 <div class="nexus-display-properties-dropdown dd-section">
                    <div class="dd-title">
                       <span>{{ t('Display Properties') }}</span>
                       <i class="fa-solid fa-chevron-up"></i>
                    </div>
                    <div class="dd-btns">
-                      <button class="dd-tag active">ID</button>
+                      <button
+                        v-for="property in displayPropertyOptions"
+                        :key="property.key"
+                        class="dd-tag"
+                        type="button"
+                        :class="{ active: displayProperties[property.key] }"
+                        @click="toggleDisplayProperty(property.key)"
+                      >
+                        <i :class="property.icon"></i>
+                        <span>{{ property.label }}</span>
+                      </button>
                    </div>
                 </div>
                 <div class="dd-section border-top">
@@ -164,15 +176,6 @@
           <button class="plane-toolbar-btn" @click="showAnalyticsSidebar = true">{{ t('Analytics') }}</button>
         </template>
       </ProjectPageToolbar>
-
-      <div class="work-filter-row" v-if="!activeModuleFilterId && (showFilterPanel || activeTaskFilters.length)">
-        <FilterBar
-          v-model:filters="activeTaskFilters"
-          @apply="applyTaskFilters"
-          @remove="removeTaskFilter"
-          @clear="clearTaskFilters"
-        />
-      </div>
 
       <!-- Global Empty State for Work Items (List/Board views) -->
       <div v-if="!activeModuleFilterId && !store.loading && filteredTasksList.length === 0 && (currentTab === 'list' || currentTab === 'board')" class="empty-state-global" style="padding: 60px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--color-surface); border-radius: 12px; border: 1px dashed var(--color-border); margin: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);">
@@ -235,7 +238,7 @@
                  </div>
                  <div class="tr-right" @click.stop>
                    <div class="pill-group">
-                     <el-dropdown :disabled="!isTaskEditableByAssignee(task)" trigger="click" @command="(val) => updateTask(task, 'statusName', val, task.statusName)">
+                     <el-dropdown :disabled="!canMoveTaskStatus(task)" trigger="click" @command="(val) => updateTask(task, 'statusName', val, task.statusName)">
                        <div class="pill pill-status cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--pill-color': getStatusColor(task.statusName) }">
                          <i :class="getBoardStatusIcon(task.statusName)" :style="{ color: getStatusColor(task.statusName) }"></i>
                          {{ normalizeStatusLabel(task.statusName) }}
@@ -250,7 +253,7 @@
                        </template>
                      </el-dropdown>
 
-                     <el-dropdown :disabled="!isTaskEditableByAssignee(task)" trigger="click" @command="(val) => updateTask(task, 'priority', val, task.priority)">
+                     <el-dropdown :disabled="!canEditTaskDetails(task)" trigger="click" @command="(val) => updateTask(task, 'priority', val, task.priority)">
                        <div class="pill pill-priority cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--pill-color': getPriorityColor(task.priority) }">
                          <i :class="getPriorityIcon(task.priority)"></i>
                        </div>
@@ -265,7 +268,7 @@
                        </template>
                      </el-dropdown>
 
-                     <el-popover :disabled="!isTaskEditableByAssignee(task)" placement="bottom" trigger="click" width="260" popper-class="plane-popover">
+                     <el-popover :disabled="!canAssignTaskMember()" placement="bottom" trigger="click" width="260" popper-class="plane-popover">
                        <template #reference>
                          <div class="pill pill-user cursor-pointer hover:bg-[var(--color-border)]">
                            <div class="avatar-xxs" style="border: none; padding: 0;">
@@ -278,14 +281,17 @@
                          </div>
                        </template>
                        <div class="popover-content" style="padding-top: 8px;">
-                         <input type="text" class="popover-search mb-2" v-model="assigneeSearch" placeholder="Search members" />
+                         <label class="assignee-search-field mb-2">
+                           <i class="fa-solid fa-magnifying-glass assignee-search-icon"></i>
+                           <input type="text" class="assignee-search-input" v-model="assigneeSearch" placeholder="Search members" />
+                         </label>
                          <div class="popover-list mt-1">
                            <div
                              v-for="member in filteredProjectMembers"
                              :key="member.userId || member.id"
                              class="popover-item flex items-center justify-between transition-colors cursor-pointer"
                              @click.stop="toggleTaskAssignee(task, member.userId || member.id)"
-                             :class="getTaskAssigneeIds(task).includes(member.userId || member.id) ? 'bg-green-100 hover:bg-green-200 text-green-900 border-l-4 border-green-500 rounded-sm' : 'hover:bg-gray-100'"
+                             :class="getTaskAssigneeIds(task).includes(member.userId || member.id) ? 'assignee-option-selected' : 'hover:bg-gray-100'"
                            >
                              <div class="flex items-center truncate max-w-[75%] pl-2">
                                <UserAvatar :user="member" :size="22" :fontSize="10" class="mr-2" />
@@ -407,14 +413,17 @@
                       </button>
                     </template>
                     <div class="popover-content" style="padding-top: 8px;">
-                      <input type="text" class="popover-search mb-2" v-model="assigneeSearch" placeholder="Search members" />
+                      <label class="assignee-search-field mb-2">
+                        <i class="fa-solid fa-magnifying-glass assignee-search-icon"></i>
+                        <input type="text" class="assignee-search-input" v-model="assigneeSearch" placeholder="Search members" />
+                      </label>
                       <div class="popover-list mt-1">
                         <div
                           v-for="member in filteredProjectMembers"
                           :key="member.userId || member.id"
                           class="popover-item flex items-center justify-between transition-colors cursor-pointer"
                           @click.stop="() => { const id = member.userId || member.id; const idx = inlineAssigneeIds.indexOf(id); if (idx > -1) inlineAssigneeIds.splice(idx, 1); else inlineAssigneeIds.push(id); }"
-                          :class="inlineAssigneeIds.includes(member.userId || member.id) ? 'bg-green-100 hover:bg-green-200 text-green-900 border-l-4 border-green-500 rounded-sm' : 'hover:bg-gray-100'"
+                          :class="inlineAssigneeIds.includes(member.userId || member.id) ? 'assignee-option-selected' : 'hover:bg-gray-100'"
                         >
                           <div class="flex items-center truncate max-w-[75%] pl-2">
                             <UserAvatar :user="member" :size="22" :fontSize="10" class="mr-2" />
@@ -496,7 +505,7 @@
                 >
                   <div class="issue-card-header">
                     <div class="issue-card-heading-copy">
-                      <p class="issue-sequence">{{ element.sequenceId || element.id.substring(0,8).toUpperCase() }}</p>
+                      <p v-if="displayProperties.id" class="issue-sequence">{{ element.sequenceId || element.id.substring(0,8).toUpperCase() }}</p>
                       <p class="issue-title" :title="element.title" :style="element.statusName === 'DONE' ? { textDecoration: 'line-through', color: 'var(--color-text-muted)' } : {}">
                         <span v-if="element.title && element.title.startsWith('[DỰ PHÒNG]')" class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold mr-1 border border-blue-200 uppercase tracking-wider relative top-[-1px]">Dự phòng</span>
                         {{ element.title && element.title.startsWith('[DỰ PHÒNG]') ? element.title.substring(11).trim() : element.title }}
@@ -504,6 +513,7 @@
                     </div>
                     <div class="card-top-right">
                       <span
+                        v-if="displayProperties.dueDate"
                         class="card-due-badge card-due-compact"
                         :class="{ 'card-due-overdue': (element.plannedEndDate || element.dueDate) && new Date(element.plannedEndDate || element.dueDate) < new Date() && element.statusName !== 'DONE', 'card-due-empty': !(element.plannedStartDate || element.plannedEndDate || element.dueDate) }"
                         :title="element.plannedEndDate || element.dueDate || element.plannedStartDate ? new Date(element.plannedEndDate || element.dueDate || element.plannedStartDate).toLocaleDateString('vi-VN') : tr('No deadline', 'Chưa có hạn')"
@@ -512,6 +522,7 @@
                         <span>{{ element.plannedEndDate || element.dueDate || element.plannedStartDate ? new Date(element.plannedEndDate || element.dueDate || element.plannedStartDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Date' }}</span>
                       </span>
                       <button
+                        v-if="displayProperties.star"
                         class="star-task-btn small"
                         type="button"
                         :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.WORK_TASK, element.id)"
@@ -520,10 +531,44 @@
                       >
                         <i :class="isTaskStarred(element.id) ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'"></i>
                       </button>
+                      <el-popover v-if="displayProperties.assignee" :disabled="!canAssignTaskMember()" placement="bottom" trigger="click" width="260" popper-class="plane-popover assignee-plane-popover">
+                        <template #reference>
+                          <button type="button" class="card-assignee-trigger" v-if="getTaskAssigneeSummary(element).label" :title="getTaskAssigneeSummary(element).label">
+                            <UserAvatar v-if="getTaskAssigneeIds(element).length === 1" :user="getAssigneeUser(element)" :size="32" :fontSize="12" />
+                            <span v-else class="card-assignee-count">+{{ getTaskAssigneeIds(element).length }}</span>
+                          </button>
+                          <button type="button" class="card-assignee-trigger is-empty" v-else :title="tr('No assignee', 'Chưa có người thực hiện')">
+                            <i class="fa-solid fa-question"></i>
+                          </button>
+                        </template>
+                        <div class="popover-content assignee-popover-content">
+                          <label class="assignee-search-field mb-2">
+                            <i class="fa-solid fa-magnifying-glass assignee-search-icon"></i>
+                            <input type="text" class="assignee-search-input" v-model="assigneeSearch" placeholder="Search members" />
+                          </label>
+                          <div class="popover-list mt-1">
+                            <div
+                              v-for="member in filteredProjectMembers"
+                              :key="member.userId || member.id"
+                              class="popover-item flex items-center justify-between transition-colors cursor-pointer"
+                              @click.stop="toggleTaskAssignee(element, member.userId || member.id)"
+                              :class="getTaskAssigneeIds(element).includes(member.userId || member.id) ? 'assignee-option-selected' : 'hover:bg-gray-100'"
+                            >
+                              <div class="flex items-center truncate max-w-[75%] pl-2">
+                                <UserAvatar :user="member" :size="22" :fontSize="10" class="mr-2" />
+                                <span class="truncate" :class="getTaskAssigneeIds(element).includes(member.userId || member.id) ? 'font-semibold' : ''">{{ member.fullName || member.name || member.email }}</span>
+                              </div>
+                              <div class="flex items-center flex-shrink-0 pr-2">
+                                <span v-if="member.taskPercentage !== undefined" class="text-[11px] px-1.5 py-0.5 rounded text-gray-500">{{ member.taskPercentage }}%</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </el-popover>
                     </div>
                   </div>
                   <div class="issue-meta mt-2" style="display:flex; align-items:center; gap:8px;" @click.stop>
-                     <el-dropdown :disabled="!isTaskEditableByAssignee(element)" trigger="click" @command="(val) => updateTask(element, 'statusName', val, element.statusName)">
+                     <el-dropdown v-if="displayProperties.status" :disabled="!canMoveTaskStatus(element)" trigger="click" @command="(val) => updateTask(element, 'statusName', val, element.statusName)">
                        <div class="badge status-badge cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--badge-color': getStatusColor(element.statusName) }">
                          <i :class="getBoardStatusIcon(element.statusName)" :style="{ color: getStatusColor(element.statusName) }"></i>
                          <span>{{ normalizeStatusLabel(element.statusName) }}</span>
@@ -538,7 +583,7 @@
                        </template>
                      </el-dropdown>
 
-                     <el-dropdown :disabled="!isTaskEditableByAssignee(element)" trigger="click" @command="(val) => updateTask(element, 'priority', val, element.priority)">
+                     <el-dropdown v-if="displayProperties.priority" :disabled="!canEditTaskDetails(element)" trigger="click" @command="(val) => updateTask(element, 'priority', val, element.priority)">
                       <div class="badge priority-badge cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--badge-color': getPriorityColor(element.priority) }">
                         <i :class="getPriorityIcon(element.priority)"></i>
                         <span>{{ getPriorityLabel(element.priority) }}</span>
@@ -553,40 +598,6 @@
                          </el-dropdown-menu>
                        </template>
                      </el-dropdown>
-
-                     <el-popover :disabled="!isTaskEditableByAssignee(element)" placement="bottom" trigger="click" width="260" popper-class="plane-popover">
-                       <template #reference>
-                         <div class="avatar-xs card-assignee-trigger cursor-pointer hover:bg-[var(--color-border)]" style="border: none; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center;" v-if="getTaskAssigneeSummary(element).label">
-                           <UserAvatar v-if="getTaskAssigneeIds(element).length === 1" :user="getAssigneeUser(element)" :size="24" :fontSize="11" />
-                           <div v-else style="width: 24px; height: 24px; border-radius: 50%; background: #0c66e4; color: white; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">
-                             +{{ getTaskAssigneeIds(element).length }}
-                           </div>
-                         </div>
-                         <div class="avatar-xs card-assignee-trigger cursor-pointer hover:bg-[var(--color-border)]" style="border: 1px dashed var(--color-text-muted); background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center;" v-else>
-                           <i class="fa-solid fa-question text-xs"></i>
-                         </div>
-                       </template>
-                       <div class="popover-content" style="padding-top: 8px;">
-                         <input type="text" class="popover-search mb-2" v-model="assigneeSearch" placeholder="Search members" />
-                         <div class="popover-list mt-1">
-                           <div
-                             v-for="member in filteredProjectMembers"
-                             :key="member.userId || member.id"
-                             class="popover-item flex items-center justify-between transition-colors cursor-pointer"
-                             @click.stop="toggleTaskAssignee(element, member.userId || member.id)"
-                             :class="getTaskAssigneeIds(element).includes(member.userId || member.id) ? 'bg-green-100 hover:bg-green-200 text-green-900 border-l-4 border-green-500 rounded-sm' : 'hover:bg-gray-100'"
-                           >
-                             <div class="flex items-center truncate max-w-[75%] pl-2">
-                               <UserAvatar :user="member" :size="22" :fontSize="10" class="mr-2" />
-                               <span class="truncate" :class="getTaskAssigneeIds(element).includes(member.userId || member.id) ? 'font-semibold' : ''">{{ member.fullName || member.name || member.email }}</span>
-                             </div>
-                             <div class="flex items-center flex-shrink-0 pr-2">
-                               <span v-if="member.taskPercentage !== undefined" class="text-[11px] px-1.5 py-0.5 rounded text-gray-500">{{ member.taskPercentage }}%</span>
-                             </div>
-                           </div>
-                         </div>
-                       </div>
-                     </el-popover>
                   </div>
                 </div>
               </template>
@@ -688,14 +699,17 @@
                        </div>
                      </template>
                      <div class="popover-content" style="padding-top: 8px;">
-                       <input type="text" class="popover-search mb-2" v-model="assigneeSearch" placeholder="Search members" />
+                       <label class="assignee-search-field mb-2">
+                         <i class="fa-solid fa-magnifying-glass assignee-search-icon"></i>
+                         <input type="text" class="assignee-search-input" v-model="assigneeSearch" placeholder="Search members" />
+                       </label>
                        <div class="popover-list mt-1">
                          <div
                            v-for="member in filteredProjectMembers"
                            :key="member.userId || member.id"
                            class="popover-item flex items-center justify-between transition-colors cursor-pointer"
                            @click.stop="() => { const id = member.userId || member.id; const idx = inlineAssigneeIds.indexOf(id); if (idx > -1) inlineAssigneeIds.splice(idx, 1); else inlineAssigneeIds.push(id); }"
-                           :class="inlineAssigneeIds.includes(member.userId || member.id) ? 'bg-green-100 hover:bg-green-200 text-green-900 border-l-4 border-green-500 rounded-sm' : 'hover:bg-gray-100'"
+                           :class="inlineAssigneeIds.includes(member.userId || member.id) ? 'assignee-option-selected' : 'hover:bg-gray-100'"
                          >
                            <div class="flex items-center truncate max-w-[75%] pl-2">
                              <UserAvatar :user="member" :size="22" :fontSize="10" class="mr-2" />
@@ -730,12 +744,16 @@
       :projectId="getProjectId()"
       :projectMembers="projectMembers"
       :currentProjectRole="currentProjectRole"
+      :canEditTaskDetails="canEditTaskDetails(selectedTask)"
+      :canMoveTaskStatus="canMoveTaskStatus(selectedTask)"
+      :canAssignTaskMember="canAssignTaskMember()"
       :canGoBack="taskDetailHistory.length > 0"
       @close="closeTaskDetail"
       @back="goBackTaskDetail"
       @open-task="openTaskDetailFromModal"
       @updateTask="updateTask"
-      @refresh-tasks="fetchTasks"
+      @refresh-tasks="fetchTasks({ preserveExisting: true, reset: false })"
+      @created="handleTaskCreated"
     />
 
     <!-- Analytics Sidebar Overlay -->
@@ -874,12 +892,16 @@ import { downloadResponseFile, csvWithBom } from '@/utils/downloadFile'
 import { broadcastAdminRealtime, subscribeAdminRealtime } from '@/utils/adminRealtime'
 import { getStoredUserSession } from '@/utils/authSession'
 import { getScopedCurrentProjectId, setScopedCurrentProjectId } from '@/utils/projectContext'
+import { buildSpacePath } from '@/utils/spaceRoute'
 import { signalRService } from '@/api/signalrService'
 import { hasSystemAdminAccess, normalizeProjectRole } from '@/utils/permissions'
 import { 
   getDefaultPermissionMatrix,
   canCreateTask,
   canUpdateTask,
+  canAssignTask,
+  canChangeTaskStatus,
+  hasAssigneeOnlyTaskAccess,
   canDeleteTask 
 } from '@/utils/permissionGuard'
 
@@ -896,6 +918,7 @@ import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { useI18nStore } from '@/store/useI18nStore';
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { getProjectBackgroundStyle } from '@/config/projectAppearance'
+import { projectAccessRestrictionsEnabled } from '@/config/projectAccess'
 
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
@@ -932,7 +955,8 @@ function toggleDisplayDropdown() {
   }
 }
 
-function handleGlobalDropdownClick() {
+function handleGlobalDropdownClick(event) {
+  if (event?.target?.closest?.('.js-toolbar-popup-scope')) return
   showFilterDropdown.value = false
   showDisplayDropdown.value = false
 }
@@ -957,7 +981,7 @@ async function handleExportTasks() {
 
 const router = useRouter()
 const route = useRoute()
-const currentProjectId = computed(() => route.params.id || getScopedCurrentProjectId() || null)
+const currentProjectId = computed(() => route.params.id ? `${route.params.id}` : null)
 const store = useWorkTaskStore();
 const projectStore = useProjectStore()
 const starredStore = useStarredStore()
@@ -1042,6 +1066,23 @@ const searchQuery = ref('')
 const activeFilters = ref({ assignee: null })
 const activeTaskFilters = ref([])
 const displayOrder = ref('manual')
+const defaultDisplayProperties = {
+  id: true,
+  dueDate: true,
+  star: true,
+  status: true,
+  priority: true,
+  assignee: true
+}
+const displayProperties = ref({ ...defaultDisplayProperties })
+const displayPropertyOptions = computed(() => [
+  { key: 'id', label: 'ID', icon: 'fa-solid fa-hashtag' },
+  { key: 'dueDate', label: tr('Due date', 'Ngày hạn'), icon: 'fa-regular fa-calendar' },
+  { key: 'star', label: tr('Star', 'Đánh dấu'), icon: 'fa-regular fa-star' },
+  { key: 'status', label: tr('Status', 'Trạng thái'), icon: 'fa-regular fa-circle-dot' },
+  { key: 'priority', label: tr('Priority', 'Độ ưu tiên'), icon: 'fa-solid fa-signal' },
+  { key: 'assignee', label: tr('Assignee', 'Người thực hiện'), icon: 'fa-regular fa-user' }
+])
 const groupBy = ref('status')
 const analyticsInsightMode = ref('priority')
 const analyticsTheme = ref(document.documentElement.getAttribute('data-theme') || 'light')
@@ -1092,6 +1133,7 @@ const activeCarryOverSprintId = computed(() => route.query.carryOverFromSprintId
 const carryOverTaskIds = ref([])
 const projectBadge = computed(() => project.value?.icon || project.value?.identifier?.charAt(0)?.toUpperCase() || project.value?.name?.charAt(0)?.toUpperCase() || 'P')
 const getShowSubtasksStorageKey = (projectId = currentProjectId.value || getProjectId()) => `space-summary:${projectId || 'default'}:show-subtasks`
+const getDisplayPropertiesStorageKey = (projectId = currentProjectId.value || getProjectId()) => `space-summary:${projectId || 'default'}:display-properties`
 const loadShowSubtasksPreference = (projectId = currentProjectId.value || getProjectId()) => {
   try {
     return localStorage.getItem(getShowSubtasksStorageKey(projectId)) === 'true'
@@ -1104,6 +1146,30 @@ const persistShowSubtasksPreference = (value, projectId = currentProjectId.value
     localStorage.setItem(getShowSubtasksStorageKey(projectId), value ? 'true' : 'false')
   } catch {
     // ignore storage failures
+  }
+}
+const loadDisplayPropertiesPreference = (projectId = currentProjectId.value || getProjectId()) => {
+  try {
+    const raw = localStorage.getItem(getDisplayPropertiesStorageKey(projectId))
+    if (!raw) return { ...defaultDisplayProperties }
+    const parsed = JSON.parse(raw)
+    return { ...defaultDisplayProperties, ...(parsed && typeof parsed === 'object' ? parsed : {}) }
+  } catch {
+    return { ...defaultDisplayProperties }
+  }
+}
+const persistDisplayPropertiesPreference = (value, projectId = currentProjectId.value || getProjectId()) => {
+  try {
+    localStorage.setItem(getDisplayPropertiesStorageKey(projectId), JSON.stringify({ ...defaultDisplayProperties, ...value }))
+  } catch {
+    // ignore storage failures
+  }
+}
+const toggleDisplayProperty = (key) => {
+  if (!(key in defaultDisplayProperties)) return
+  displayProperties.value = {
+    ...displayProperties.value,
+    [key]: !displayProperties.value[key]
   }
 }
 
@@ -1172,7 +1238,8 @@ const recoverFromForbiddenProject = async (forbiddenProjectId) => {
 
   dynamicProjectId = fallbackProjectId
   setScopedCurrentProjectId(fallbackProjectId)
-  await router.replace(`/space/${fallbackProjectId}`)
+  const fallbackProject = projectStore.allProjects.find(item => `${item.id}` === `${fallbackProjectId}`) || fallbackProjectId
+  await router.replace(buildSpacePath(fallbackProject, 'work-items'))
   return true
 }
 
@@ -1204,14 +1271,37 @@ const getCurrentUserId = () => {
   return user?.id || user?.userId || null
 }
 
-const isTaskEditableByAssignee = (task) => {
+const isCurrentUserAssignedToTask = (task) => {
   if (!task || task.isNew) return true
 
   const assigneeIds = getTaskAssigneeIds(task)
-  if (!assigneeIds.length) return true
+  if (!assigneeIds.length) return false
 
   const currentUserId = getCurrentUserId()
   return Boolean(currentUserId && assigneeIds.some(id => `${id}` === `${currentUserId}`))
+}
+
+const isAssigneeOnlyTaskAccessEnabled = computed(() => {
+  if (!projectAccessRestrictionsEnabled) return false
+  if (hasSystemAdminAccess(getStoredUserSession())) return false
+  return hasAssigneeOnlyTaskAccess(permissionMatrix.value, currentProjectRole.value)
+})
+
+const canEditTaskDetails = (task) => {
+  if (hasSystemAdminAccess(getStoredUserSession())) return true
+  if (!canUpdateTask(permissionMatrix.value, currentProjectRole.value)) return false
+  return !isAssigneeOnlyTaskAccessEnabled.value || isCurrentUserAssignedToTask(task)
+}
+
+const canMoveTaskStatus = (task) => {
+  if (hasSystemAdminAccess(getStoredUserSession())) return true
+  if (!canChangeTaskStatus(permissionMatrix.value, currentProjectRole.value)) return false
+  return !isAssigneeOnlyTaskAccessEnabled.value || isCurrentUserAssignedToTask(task)
+}
+
+const canAssignTaskMember = () => {
+  if (hasSystemAdminAccess(getStoredUserSession())) return true
+  return canAssignTask(permissionMatrix.value, currentProjectRole.value)
 }
 
 const notifyAssignmentLock = () => {
@@ -1219,14 +1309,29 @@ const notifyAssignmentLock = () => {
 }
 
 const canEditTaskByAssignment = (task) => {
-  const canEdit = isTaskEditableByAssignee(task)
+  const canEdit = canEditTaskDetails(task)
   if (!canEdit) notifyAssignmentLock()
   return canEdit
 }
 
+const canApplyTaskUpdate = (task, payload) => {
+  const keys = Object.keys(payload || {})
+  if (keys.length > 0 && keys.every(key => key === 'statusName' || key === 'taskStatusId')) {
+    const canMove = canMoveTaskStatus(task)
+    if (!canMove) notifyAssignmentLock()
+    return canMove
+  }
+  if (keys.length > 0 && keys.every(key => ['assigneeId', 'assigneeIds', 'assignedUserId'].includes(key))) {
+    const canAssign = canAssignTaskMember()
+    if (!canAssign) ElMessage.warning('Ban khong co quyen giao cong viec.')
+    return canAssign
+  }
+  return canEditTaskByAssignment(task)
+}
+
 const canMoveAssignedTask = (event) => {
   const task = event?.draggedContext?.element
-  return isTaskEditableByAssignee(task) || (notifyAssignmentLock(), false)
+  return canMoveTaskStatus(task) || (notifyAssignmentLock(), false)
 }
 
 const getTaskAssigneeSummary = (task) => {
@@ -1680,7 +1785,7 @@ const taskMatchesFilter = (task, filter) => {
 
 let dynamicProjectId = null;
 const getProjectId = () => {
-    let p = dynamicProjectId || currentProjectId.value || getScopedCurrentProjectId();
+    let p = currentProjectId.value || dynamicProjectId;
     return p === 'default' ? null : p;
 }
 
@@ -2013,17 +2118,10 @@ const loadInitialData = async (options = {}) => {
   const { preserveExisting = false } = options
   let pid = getProjectId()
   if(!pid) {
-      try {
-          const res = await axiosClient.get('/projects');
-          if (res.data?.data?.length > 0) {
-              pid = res.data.data[0].id;
-              dynamicProjectId = pid;
-              setScopedCurrentProjectId(pid);
-          }
-      } catch (err) {
-          console.error('Cannot resolve valid projectId', err);
-          return;
-      }
+      rawTasks.value = []
+      allTasks.value = []
+      store.clearTasks(null)
+      return
   }
 
   const requestId = ++initialDataRequestId
@@ -2031,9 +2129,11 @@ const loadInitialData = async (options = {}) => {
   try {
     setScopedCurrentProjectId(pid)
     showSubtasks.value = loadShowSubtasksPreference(pid)
+    displayProperties.value = loadDisplayPropertiesPreference(pid)
     if (!preserveExisting) {
       rawTasks.value = []
       allTasks.value = []
+      store.clearTasks(pid)
       selectedTask.value = null
       projectMembers.value = []
       project.value = {}
@@ -2171,8 +2271,22 @@ const fetchTasks = async (options = {}) => {
 
   clearModuleDetailState()
   try {
+      const previousTasks = options.preserveExisting ? [...(allTasks.value || [])] : []
       const tasks = await store.fetchTasks(pid, options);
-      allTasks.value = Array.isArray(tasks) ? tasks : []
+      const fetchedTasks = Array.isArray(tasks) ? tasks : []
+      allTasks.value = options.preserveExisting
+        ? [...previousTasks, ...fetchedTasks].reduce((items, task) => {
+            const normalizedTask = store.normalizeTaskRecord(task, pid)
+            if (!normalizedTask?.id || `${normalizedTask.projectId || pid}` !== `${pid}`) return items
+            const index = items.findIndex(item => `${item.id}` === `${normalizedTask.id}`)
+            if (index >= 0) items.splice(index, 1, { ...items[index], ...normalizedTask })
+            else items.push(normalizedTask)
+            return items
+          }, [])
+        : fetchedTasks
+      if (options.preserveExisting) {
+        store.tasks = allTasks.value
+      }
 
       // Auto update selectedTask if open
       if (selectedTask.value) {
@@ -2183,6 +2297,31 @@ const fetchTasks = async (options = {}) => {
   } catch(error) {
     console.error('Lỗi load tasks:', error)
   }
+}
+
+const upsertTaskIntoCurrentList = (task) => {
+  const pid = getProjectId()
+  if (!pid || !task) return null
+
+  const normalizedTask = store.normalizeTaskRecord(task, pid)
+  if (!normalizedTask?.id || `${normalizedTask.projectId || pid}` !== `${pid}`) return null
+
+  const nextTasks = [...(allTasks.value || [])]
+  const index = nextTasks.findIndex(item => `${item.id}` === `${normalizedTask.id}`)
+  if (index >= 0) {
+    nextTasks.splice(index, 1, { ...nextTasks[index], ...normalizedTask })
+  } else {
+    nextTasks.push(normalizedTask)
+  }
+
+  allTasks.value = nextTasks
+  store.upsertTask(normalizedTask, pid)
+  return normalizedTask
+}
+
+const handleTaskCreated = async (createdTask) => {
+  upsertTaskIntoCurrentList(createdTask)
+  await fetchTasks({ reset: false, preserveExisting: true })
 }
 
 const openTaskDetail = (task) => {
@@ -2277,10 +2416,10 @@ watch(
 const updateTask = async (task, field, value, previousValue = task ? task[field] : undefined) => {
   const pid = getProjectId()
   if (!pid || !task?.id) return
-  if (!canEditTaskByAssignment(task)) return
 
   const isBatchPayload = field && typeof field === 'object' && !Array.isArray(field)
   const payloadOverrides = isBatchPayload ? field : { [field]: value }
+  if (!canApplyTaskUpdate(task, payloadOverrides)) return
   const previousValues = Object.fromEntries(
     Object.keys(payloadOverrides).map(key => [key, task?.[key]])
   )
@@ -2419,13 +2558,14 @@ const submitInlineTask = async (col) => {
          payload.dueDate = inlineDueDate.value;
       }
       if (inlineAssigneeIds.value.length) payload.assigneeIds = inlineAssigneeIds.value
-      await axiosClient.post(`/projects/${getProjectId()}/WorkTasks`, payload);
+      const response = await axiosClient.post(`/projects/${getProjectId()}/WorkTasks`, payload);
+      upsertTaskIntoCurrentList(response.data?.data || response.data);
       inlineTaskTitle.value = '';
       inlineDueDate.value = '';
       inlineDateRange.value = [];
       inlineAssigneeIds.value = [];
       inlineCreateColId.value = null;
-      fetchTasks();
+      fetchTasks({ reset: false, preserveExisting: true });
       ElMessage.success('Đã tạo công việc thành công.');
    } catch (e) {
       console.error(e);
@@ -2437,14 +2577,15 @@ const handleListTaskCreate = async (payload) => {
    const pid = getProjectId();
    if (!pid) return;
    try {
-      await axiosClient.post(`/projects/${pid}/WorkTasks`, {
+      const response = await axiosClient.post(`/projects/${pid}/WorkTasks`, {
          title: payload.title,
          description: '',
          statusName: payload.statusName || 'BACKLOG',
           priority: payload.priority || 3,
           sprintId: activeSprintFilterId.value || null
       });
-      fetchTasks();
+      upsertTaskIntoCurrentList(response.data?.data || response.data);
+      fetchTasks({ reset: false, preserveExisting: true });
    } catch (error) {
       console.error(error);
       ElMessage.error(error.response?.data?.message || 'Khong the tao cong viec');
@@ -2652,6 +2793,9 @@ const startTaskRealtime = async (projectId) => {
   if (signalRProjectEventHandler) {
     signalRService.off('ProjectRealtimeEvent', signalRProjectEventHandler)
   }
+  if (signalREntityChangedHandler) {
+    signalRService.off('EntityChanged', signalREntityChangedHandler)
+  }
 
   await signalRService.startConnection(projectId)
   signalRTaskUpdatedHandler = handleRealtimeTaskUpdated
@@ -2675,7 +2819,7 @@ const startTaskRealtime = async (projectId) => {
 }
 
 onMounted(() => {
-  window.addEventListener('click', handleGlobalDropdownClick)
+  window.addEventListener('click', handleGlobalDropdownClick, true)
   startTaskRealtime(getProjectId())
   unsubscribeAdminRealtime = subscribeAdminRealtime(async ({ type, payload }) => {
     const pid = getProjectId()
@@ -2705,6 +2849,7 @@ watch(
     clearModuleDetailState()
     rawTasks.value = []
     allTasks.value = []
+    store.clearTasks(projectId)
     selectedTask.value = null
     dynamicProjectId = projectId
     showAnalyticsSidebar.value = false
@@ -2720,6 +2865,10 @@ watch(
 watch(showSubtasks, (value) => {
   persistShowSubtasksPreference(value)
 })
+
+watch(displayProperties, (value) => {
+  persistDisplayPropertiesPreference(value)
+}, { deep: true })
 
 watch(
   () => [route.query.tab, route.query.sprintId, route.query.moduleId, route.params.cycleId, route.query.carryOverFromSprintId],
@@ -2741,7 +2890,7 @@ watch(
 )
 
 onUnmounted(() => {
-  window.removeEventListener('click', handleGlobalDropdownClick)
+  window.removeEventListener('click', handleGlobalDropdownClick, true)
   window.removeEventListener('global-create-task', handleGlobalCreate)
   analyticsThemeObserver?.disconnect()
   moduleDetailAbortController?.abort()
@@ -2757,6 +2906,9 @@ onUnmounted(() => {
   }
   if (signalRProjectEventHandler) {
     signalRService.off('ProjectRealtimeEvent', signalRProjectEventHandler)
+  }
+  if (signalREntityChangedHandler) {
+    signalRService.off('EntityChanged', signalREntityChangedHandler)
   }
   unsubscribeAdminRealtime?.()
 })
@@ -3250,12 +3402,13 @@ onUnmounted(() => {
 .kanban-retry-btn:hover { background: #dc2626; }
 
 .issue-card-header {
-  min-height: 28px;
+  position: relative;
+  min-height: 56px;
   margin-bottom: 6px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 36px;
   align-items: start;
-  gap: 8px;
+  gap: 10px;
 }
 
 .issue-card-heading-copy {
@@ -3266,13 +3419,22 @@ onUnmounted(() => {
 }
 
 .card-top-right {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 22px 34px;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  justify-items: end;
+  row-gap: 4px;
+  min-width: 36px;
+  overflow: visible;
 }
 
 .issue-card-header .star-task-btn.small {
+  position: absolute;
+  top: 1px;
+  right: 0;
   width: 20px;
   height: 20px;
   min-width: 20px;
@@ -3303,12 +3465,17 @@ onUnmounted(() => {
   color: var(--color-text-muted);
   border-style: dashed !important;
   background: color-mix(in srgb, var(--color-surface-hover) 62%, transparent) !important;
+  width: 64px !important;
 }
 .card-due-compact {
+  position: absolute;
+  top: 1px;
+  right: 25px;
   min-height: 20px;
-  max-width: 88px;
+  width: auto;
+  max-width: none;
   margin-left: 0;
-  padding: 1px 5px;
+  padding: 1px 6px;
   flex: 0 0 auto;
   font-size: 10.5px;
   line-height: 1;
@@ -3317,13 +3484,56 @@ onUnmounted(() => {
 }
 
 .card-due-compact span {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .card-assignee-trigger {
-  flex: 0 0 22px;
-  margin-left: auto;
+  grid-column: 1;
+  grid-row: 2;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.card-assignee-trigger:hover {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+}
+
+.card-assignee-trigger.is-empty {
+  border: 1px dashed var(--color-text-muted);
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.card-assignee-count {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  border: 2px solid var(--color-surface);
 }
 @keyframes pulse-overdue {
   0%, 100% { opacity: 1; }
@@ -3575,25 +3785,53 @@ onUnmounted(() => {
     inset 0 1px 0 rgba(255, 255, 255, 0.74);
   transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 180ms ease, box-shadow 180ms ease;
 }
+
 .issue-card::before {
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
   width: 4px;
   background: var(--task-status-color);
+  z-index: 1;
+  transition: width 180ms ease, opacity 180ms ease;
 }
+
+.issue-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--task-status-color);
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  clip-path: polygon(0 0, 4px 0, 4px 100%, 0 100%);
+  transition: clip-path 240ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 160ms ease;
+}
+
 .issue-card:hover {
   transform: translateY(-2px);
   border-color: color-mix(in srgb, var(--task-status-color) 48%, var(--color-border));
   box-shadow:
-    0 18px 42px rgba(15, 23, 42, 0.12),
-    0 0 0 3px color-mix(in srgb, var(--task-status-color) 10%, transparent);
+    0 12px 28px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
+
+.issue-card:hover::before,
+.issue-card.active-card::before {
+  width: 2px;
+}
+
+.issue-card:hover::after,
+.issue-card.active-card::after {
+  opacity: 1;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+}
+
 .issue-card.active-card {
   border-color: color-mix(in srgb, var(--task-status-color) 72%, var(--color-border));
   box-shadow:
-    0 20px 46px rgba(15, 23, 42, 0.13),
-    0 0 0 3px color-mix(in srgb, var(--task-status-color) 18%, transparent);
+    0 12px 28px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
 
 [data-theme='dark'] .issue-card {
@@ -3632,7 +3870,7 @@ onUnmounted(() => {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  margin: 0;
+  margin: 5px 0 0;
   font-size: 13px;
   font-weight: 800;
   color: var(--color-text-primary);
@@ -3699,8 +3937,8 @@ onUnmounted(() => {
 /* Kanban edge-to-edge layout fixes */
 :deep(.project-page-inner) {
   --sa-page-x: 18px;
-  padding-left: var(--sa-page-x) !important;
-  padding-right: var(--sa-page-x) !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
   max-width: 100%;
   overflow-x: hidden;
 }
@@ -3711,13 +3949,19 @@ onUnmounted(() => {
 }
 
 .plane-board-container > .project-page-header,
-.plane-board-container > .project-page-toolbar,
 .plane-board-container > .work-filter-row,
 .plane-board-container > .list-wrapper,
 .plane-board-container > .calendar-wrapper,
 .plane-board-container > .timeline-wrapper {
-  padding-left: 0 !important;
-  padding-right: 0 !important;
+  padding-left: var(--sa-page-x) !important;
+  padding-right: var(--sa-page-x) !important;
+}
+
+.plane-board-container > .project-page-toolbar {
+  width: calc(100% - (var(--sa-page-x) * 2)) !important;
+  margin-left: var(--sa-page-x) !important;
+  margin-right: var(--sa-page-x) !important;
+  box-sizing: border-box !important;
 }
 
 .ic-top {
@@ -3793,15 +4037,88 @@ onUnmounted(() => {
 .filter-dropdown-menu {
   left: 0;
   right: auto;
-  width: 380px;
+  width: 640px;
   max-width: calc(100vw - 32px);
+  max-height: none;
+  overflow: visible;
+  padding: 0;
 }
 .filter-dropdown-menu .filter-bar-container {
   border: none;
   background: transparent;
-  padding: 4px;
+  padding: 8px;
   min-height: auto;
   box-shadow: none;
+  overflow: visible;
+}
+
+.display-trigger:hover,
+.display-trigger.active {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--color-accent) 9%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.12);
+}
+
+.display-dropdown-menu {
+  right: auto;
+  left: 0;
+  width: 720px;
+  max-width: calc(100vw - 32px);
+  display: grid;
+  grid-template-columns: 240px minmax(280px, 1fr) 160px;
+  align-items: stretch;
+  gap: 0;
+  overflow: visible;
+  padding: 8px;
+}
+
+.display-dropdown-menu .dd-section {
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.display-dropdown-menu .dd-section.border-top {
+  border-top: 0;
+  border-left: 1px solid var(--color-border);
+}
+
+.display-dropdown-menu .dd-title {
+  min-height: 24px;
+}
+
+.display-dropdown-menu .dd-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.display-dropdown-menu .dd-item {
+  min-height: 34px;
+  padding: 7px 9px;
+  white-space: nowrap;
+}
+
+.display-dropdown-menu .dd-item.checkbox {
+  min-height: 74px;
+  align-items: flex-start;
+  white-space: normal;
+}
+
+.display-dropdown-menu .dd-tag {
+  min-width: 0;
+  height: 34px;
+  border-radius: 9px;
+  font-weight: 750;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+}
+
+.display-dropdown-menu .dd-tag i {
+  font-size: 11px;
 }
 
 .dd-section { padding: 8px; }
@@ -4010,10 +4327,76 @@ onUnmounted(() => {
 :global(.plane-popover) {
   background: var(--bg-secondary) !important;
   border: 1px solid var(--border-color) !important;
-  padding: 12px !important;
+  padding: 8px !important;
   box-shadow: var(--shadow-lg) !important;
-  border-radius: var(--radius-input) !important;
+  border-radius: 10px !important;
   color: var(--text-primary) !important;
+}
+
+:global(.assignee-plane-popover),
+:global(.plane-popover.assignee-plane-popover) {
+  border-radius: 10px !important;
+  padding: 8px !important;
+}
+
+.assignee-popover-content {
+  padding-top: 0;
+}
+
+.assignee-search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  height: 34px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  padding: 0 12px;
+  color: var(--color-text-muted);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.assignee-search-icon {
+  position: static;
+  transform: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.assignee-search-input {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--color-text-primary) !important;
+  padding: 0 !important;
+  outline: none !important;
+  font-size: 13.5px !important;
+  line-height: 34px !important;
+  text-indent: 0 !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.assignee-search-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.assignee-search-field:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.14);
 }
 
 :global(.plane-dropdown .el-dropdown-menu__item) {
@@ -4033,6 +4416,26 @@ onUnmounted(() => {
 :global(.plane-popover .el-popper__arrow::before) {
   background: var(--bg-secondary) !important;
   border: 1px solid var(--border-color) !important;
+}
+
+:global(.plane-popover .popover-item) {
+  width: calc(100% - 8px);
+  margin: 0 4px;
+  border-left: 4px solid transparent;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+:global(.plane-popover .popover-item.assignee-option-selected) {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)) !important;
+  border-left-color: var(--color-accent);
+  border-radius: 8px;
+  color: var(--color-accent) !important;
+}
+
+:global(.plane-popover .popover-item.assignee-option-selected:hover) {
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
 }
 
 
@@ -4725,14 +5128,21 @@ onUnmounted(() => {
 .kanban-wrapper {
   display: flex !important;
   gap: 14px !important;
+  width: 100% !important;
   margin-left: 0 !important;
   margin-right: 0 !important;
-  padding: 12px 16px 16px !important;
-  scroll-padding-inline: 16px;
+  padding: 12px 0 16px !important;
+  scroll-padding-inline: var(--sa-page-x, 18px);
   scroll-behavior: smooth;
   overscroll-behavior-x: contain;
   touch-action: pan-x pan-y;
   box-sizing: border-box !important;
+}
+
+.kanban-wrapper::before,
+.kanban-wrapper::after {
+  content: "";
+  flex: 0 0 var(--sa-page-x, 18px);
 }
 
 .kanban-col:last-child {

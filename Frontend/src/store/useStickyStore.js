@@ -1,9 +1,44 @@
 import { defineStore } from 'pinia'
 import axiosClient from '@/api/axiosClient'
 import { signalRService } from '@/api/signalrService'
+import { AUTH_SESSION_CHANGED, getStoredAccessToken, getStoredUserSession } from '@/utils/authSession'
+import { getStickyAccountId, hasStickyAccountChanged } from '@/utils/stickyAccountIsolation'
 
 let stickyRealtimeRegistered = false
+let stickyAuthRegistered = false
 let activeStickyStore = null
+
+const getCurrentAccountId = () => {
+  if (!getStoredAccessToken()) return ''
+  return getStickyAccountId(getStoredUserSession())
+}
+
+const clearStickyState = (store, accountId = '') => {
+  store.accountId = accountId
+  store.requestEpoch += 1
+  store.notes = []
+  store.floatingNotes = []
+  store.page = 1
+  store.total = 0
+  store.search = ''
+  store.pinnedOnly = false
+  store.loading = false
+  store.loadingMore = false
+  store.savingIds = []
+  store.floatingSavingIds = []
+  store.draggingNoteId = ''
+  store.floatingLoading = false
+  store.floatingError = ''
+  store.error = ''
+}
+
+const handleStickyAuthSessionChanged = () => {
+  if (!activeStickyStore) return
+  const nextAccountId = getCurrentAccountId()
+  if (hasStickyAccountChanged(activeStickyStore.accountId, nextAccountId)) {
+    activeStickyStore.resetForAccountChange(nextAccountId)
+  }
+}
 
 const handleStickyRealtime = event => {
   if (`${event?.entityType || ''}`.toLowerCase() !== 'stickynote' || !event?.entityId) return
@@ -43,6 +78,8 @@ const toPayload = note => ({
 
 export const useStickyStore = defineStore('stickies', {
   state: () => ({
+    accountId: '',
+    requestEpoch: 0,
     notes: [],
     floatingNotes: [],
     page: 1,
@@ -68,7 +105,25 @@ export const useStickyStore = defineStore('stickies', {
   },
 
   actions: {
+    registerAuthSession() {
+      activeStickyStore = this
+      if (!stickyAuthRegistered && typeof window !== 'undefined') {
+        window.addEventListener(AUTH_SESSION_CHANGED, handleStickyAuthSessionChanged)
+        stickyAuthRegistered = true
+      }
+
+      const currentAccountId = getCurrentAccountId()
+      if (hasStickyAccountChanged(this.accountId, currentAccountId)) {
+        this.resetForAccountChange(currentAccountId)
+      }
+    },
+
+    resetForAccountChange(accountId = '') {
+      clearStickyState(this, accountId)
+    },
+
     registerRealtime() {
+      this.registerAuthSession()
       activeStickyStore = this
       if (stickyRealtimeRegistered) return
       signalRService.on('EntityChanged', handleStickyRealtime)
@@ -85,6 +140,7 @@ export const useStickyStore = defineStore('stickies', {
         this.loadingMore = true
       }
 
+      const requestEpoch = this.requestEpoch
       this.error = ''
       try {
         const response = await axiosClient.get('/stickies', {
@@ -95,6 +151,7 @@ export const useStickyStore = defineStore('stickies', {
             pinned: this.pinnedOnly ? true : undefined
           }
         })
+        if (requestEpoch !== this.requestEpoch) return []
         const data = unwrap(response)
         const items = Array.isArray(data?.items) ? data.items : []
         this.notes = reset
@@ -103,35 +160,44 @@ export const useStickyStore = defineStore('stickies', {
         items.filter(item => item.isFloating).forEach(item => this.upsertFloatingNote(item))
         this.total = Number(data?.total || 0)
       } catch (error) {
+        if (requestEpoch !== this.requestEpoch) return []
         if (!reset) this.page = Math.max(1, this.page - 1)
         this.error = error.response?.data?.message || error.response?.data?.data?.message || 'Không thể tải ghi chú.'
         throw error
       } finally {
-        this.loading = false
-        this.loadingMore = false
+        if (requestEpoch === this.requestEpoch) {
+          this.loading = false
+          this.loadingMore = false
+        }
       }
     },
 
     async fetchFloatingNotes() {
       this.registerRealtime()
+      const requestEpoch = this.requestEpoch
       this.floatingLoading = true
       this.floatingError = ''
       try {
         const response = await axiosClient.get('/stickies/floating')
+        if (requestEpoch !== this.requestEpoch) return []
         const data = unwrap(response)
         this.floatingNotes = Array.isArray(data) ? data.slice(0, MAX_FLOATING_STICKIES) : []
         return this.floatingNotes
       } catch (error) {
+        if (requestEpoch !== this.requestEpoch) return []
         this.floatingError = error.response?.data?.message || error.response?.data?.data?.message || 'Không thể tải ghi chú nổi.'
         throw error
       } finally {
-        this.floatingLoading = false
+        if (requestEpoch === this.requestEpoch) this.floatingLoading = false
       }
     },
 
     async createNote(note) {
+      this.registerAuthSession()
+      const requestEpoch = this.requestEpoch
       const response = await axiosClient.post('/stickies', toPayload(note))
       const created = unwrap(response)
+      if (requestEpoch !== this.requestEpoch) return created
       const index = this.notes.findIndex(item => item.id === created.id)
       if (index >= 0) this.notes[index] = created
       else {
@@ -142,29 +208,38 @@ export const useStickyStore = defineStore('stickies', {
     },
 
     async updateNote(note) {
-      if (!note?.id || this.savingIds.includes(note.id)) return note
+      if (!note?.id || this.savingIds.includes(note.id) || !this.findNote(note.id)) return note
+      this.registerAuthSession()
+      const requestEpoch = this.requestEpoch
       this.savingIds.push(note.id)
       try {
         const response = await axiosClient.put(`/stickies/${note.id}`, toPayload(note))
         const updated = unwrap(response)
+        if (requestEpoch !== this.requestEpoch) return updated
         this.replaceNote(updated)
         return updated
       } finally {
-        this.savingIds = this.savingIds.filter(id => id !== note.id)
+        if (requestEpoch === this.requestEpoch) this.savingIds = this.savingIds.filter(id => id !== note.id)
       }
     },
 
     async setPinned(note, isPinned) {
-      if (!note?.id) return
+      if (!note?.id || !this.findNote(note.id)) return
+      this.registerAuthSession()
+      const requestEpoch = this.requestEpoch
       const response = await axiosClient.patch(`/stickies/${note.id}/pin`, { isPinned })
       const updated = unwrap(response)
+      if (requestEpoch !== this.requestEpoch) return updated
       this.replaceNote(updated)
       this.notes.sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || new Date(b.updatedAt) - new Date(a.updatedAt))
       return updated
     },
 
     async deleteNote(id) {
+      this.registerAuthSession()
+      const requestEpoch = this.requestEpoch
       await axiosClient.delete(`/stickies/${id}`)
+      if (requestEpoch !== this.requestEpoch) return
       this.notes = this.notes.filter(note => note.id !== id)
       this.floatingNotes = this.floatingNotes.filter(note => note.id !== id)
       this.total = Math.max(0, this.total - 1)
@@ -183,7 +258,9 @@ export const useStickyStore = defineStore('stickies', {
     },
 
     async setFloatingState(note, state) {
-      if (!note?.id || this.floatingSavingIds.includes(note.id)) return note
+      if (!note?.id || this.floatingSavingIds.includes(note.id) || !this.findNote(note.id)) return note
+      this.registerAuthSession()
+      const requestEpoch = this.requestEpoch
       if (state.isFloating && !note.isFloating && this.floatingNotes.length >= MAX_FLOATING_STICKIES) {
         const error = new Error('FLOATING_LIMIT')
         error.code = 'FLOATING_LIMIT'
@@ -210,14 +287,17 @@ export const useStickyStore = defineStore('stickies', {
           positionY: optimistic.positionY
         })
         const updated = unwrap(response)
+        if (requestEpoch !== this.requestEpoch) return updated
         this.replaceNote(updated)
         return updated
       } catch (error) {
-        if (previous) this.upsertFloatingNote(previous)
-        else this.floatingNotes = this.floatingNotes.filter(item => item.id !== note.id)
+        if (requestEpoch === this.requestEpoch) {
+          if (previous) this.upsertFloatingNote(previous)
+          else this.floatingNotes = this.floatingNotes.filter(item => item.id !== note.id)
+        }
         throw error
       } finally {
-        this.floatingSavingIds = this.floatingSavingIds.filter(id => id !== note.id)
+        if (requestEpoch === this.requestEpoch) this.floatingSavingIds = this.floatingSavingIds.filter(id => id !== note.id)
       }
     },
 

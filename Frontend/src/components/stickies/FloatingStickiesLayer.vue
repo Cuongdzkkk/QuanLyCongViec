@@ -19,6 +19,7 @@
     <article
       v-for="(note, index) in floatingNotes"
       :key="note.id"
+      :data-floating-note-id="note.id"
       class="floating-sticky"
       :class="{ moving: movingNoteId === note.id }"
       :style="floatingStyle(note, index)"
@@ -33,7 +34,15 @@
         >
           <i class="fa-solid fa-grip-vertical"></i>
         </button>
-        <strong>{{ note.title || 'Ghi chú' }}</strong>
+        <input
+          v-model="note.title"
+          class="floating-sticky-title"
+          type="text"
+          maxlength="180"
+          aria-label="Tiêu đề ghi chú"
+          placeholder="Tiêu đề ghi chú"
+          @input="scheduleNoteSave(note)"
+        />
         <button
           class="floating-close"
           type="button"
@@ -46,7 +55,14 @@
         </button>
       </header>
 
-      <p class="floating-sticky-content">{{ note.content || 'Ghi chú chưa có nội dung.' }}</p>
+      <textarea
+        v-model="note.content"
+        class="floating-sticky-content"
+        maxlength="10000"
+        aria-label="Nội dung ghi chú"
+        placeholder="Nhập nội dung..."
+        @input="scheduleNoteSave(note)"
+      ></textarea>
 
       <footer class="floating-sticky-footer">
         <span>{{ formatUpdated(note.updatedAt) }}</span>
@@ -72,6 +88,7 @@ const NOTE_HEIGHT = 220
 const GUTTER = 12
 let moveState = null
 let resizeTimer = null
+const saveTimers = new Map()
 
 const getContentBounds = () => {
   const content = document.querySelector('.content-area')
@@ -111,6 +128,27 @@ const floatingStyle = (note, index) => {
 
 const floatingLimitMessage = () => {
   ElMessage.warning(`Bạn chỉ có thể dán tối đa ${MAX_FLOATING_STICKIES} ghi chú. Hãy gỡ một ghi chú khỏi màn hình trước.`)
+}
+
+const scheduleNoteSave = note => {
+  stickyStore.replaceNote(note)
+  const previousTimer = saveTimers.get(note.id)
+  if (previousTimer) clearTimeout(previousTimer)
+  saveTimers.set(note.id, window.setTimeout(() => {
+    saveTimers.delete(note.id)
+    stickyStore.updateNote(note).catch(error => {
+      ElMessage.error(error.response?.data?.message || 'Không thể lưu ghi chú.')
+    })
+  }, 850))
+}
+
+const flushNoteSaves = () => {
+  for (const [noteId, timer] of saveTimers) {
+    clearTimeout(timer)
+    const note = floatingNotes.value.find(item => item.id === noteId)
+    if (note) stickyStore.updateNote(note)
+  }
+  saveTimers.clear()
 }
 
 const loadFloatingNotes = async () => {
@@ -268,6 +306,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  flushNoteSaves()
   clearTimeout(resizeTimer)
   clearMoveListeners()
   stickyStore.endDrawerDrag()
@@ -353,12 +392,21 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid color-mix(in srgb, var(--floating-note-color) 50%, var(--color-border));
 }
 
-.floating-sticky-head strong {
+.floating-sticky-title {
   overflow: hidden;
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 700;
 }
+
+.floating-sticky-title:focus { border-bottom-color: currentColor; }
 
 .floating-move-handle,
 .floating-close {
@@ -397,13 +445,23 @@ onBeforeUnmount(() => {
 .floating-sticky-content {
   min-height: 0;
   flex: 1;
+  width: 100%;
   margin: 0;
   padding: 12px;
   overflow-y: auto;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
 }
+
+.floating-sticky-content::placeholder,
+.floating-sticky-title::placeholder { color: currentColor; opacity: .62; }
 
 .floating-sticky-footer {
   min-height: 32px;

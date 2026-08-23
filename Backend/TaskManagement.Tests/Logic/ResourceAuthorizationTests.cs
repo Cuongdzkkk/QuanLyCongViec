@@ -17,6 +17,7 @@ using TaskManagement.Infrastructure.Services;
 
 namespace TaskManagement.Tests.Logic;
 
+[Collection("ProjectAccessPolicy")]
 public sealed class ResourceAuthorizationTests
 {
     [Theory]

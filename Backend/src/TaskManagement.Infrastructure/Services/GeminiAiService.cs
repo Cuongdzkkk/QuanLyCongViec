@@ -87,6 +87,11 @@ namespace TaskManagement.Infrastructure.Services
                 return localResponse;
             }
 
+            if (IsAiAccountInfoIntent(message))
+            {
+                return await BuildAiAccountInfoResponseAsync(userId);
+            }
+
             await EnsureQuotaAsync(userId);
 
             var selectedText = Limit(request.SelectedText, 4000);
@@ -489,6 +494,88 @@ namespace TaskManagement.Infrastructure.Services
                     new AiContextChatResponseDto { Answer = "Mình có thể giúp bạn tra cứu, tóm tắt và lập kế hoạch công việc trong SprintA." },
                 _ => null
             };
+        }
+
+        private async Task<AiContextChatResponseDto> BuildAiAccountInfoResponseAsync(Guid userId)
+        {
+            var now = DateTime.UtcNow;
+            var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var usage = await _aiCreditUsageService.GetUsageAsync(userId, monthStart, now);
+            var answer = new StringBuilder()
+                .AppendLine($"Bạn đang dùng gói {FormatPlanDisplayName(usage.PlanCode)}.")
+                .AppendLine()
+                .AppendLine("AI Credits tháng này:")
+                .AppendLine($"- Tổng: {usage.IncludedCredits}")
+                .AppendLine($"- Đã dùng: {usage.UsedCredits}")
+                .Append($"- Còn lại: {usage.RemainingCredits}");
+
+            if (usage.HasConfiguredEntitlement && usage.RemainingCredits == 0)
+            {
+                answer.AppendLine()
+                    .AppendLine()
+                    .Append("AI Credits tháng này đã hết.");
+            }
+
+            return new AiContextChatResponseDto { Answer = answer.ToString() };
+        }
+
+        private static bool IsAiAccountInfoIntent(string message)
+        {
+            var normalized = message.Trim().ToLowerInvariant();
+            var hasCreditTerm = new[] { "credit", "credits" }
+                .Any(term => ContainsProjectReference(normalized, term));
+            var hasProjectTerm = new[] { "project", "du an" }
+                .Any(term => ContainsProjectReference(normalized, term));
+            var asksForSummary = new[] { "tóm tắt", "tom tat", "summarize", "mô tả", "mo ta", "describe" }
+                .Any(term => ContainsProjectReference(normalized, term));
+
+            if (normalized.Contains("credit card", StringComparison.Ordinal) ||
+                normalized.Contains("credit risk", StringComparison.Ordinal) ||
+                hasProjectTerm && hasCreditTerm && asksForSummary)
+            {
+                return false;
+            }
+
+            var hasPersonalReference = new[]
+            {
+                "tôi", "toi", "mình", "minh", "của tôi", "cua toi", "của mình", "cua minh",
+                "my", "i", "do i", "am i"
+            }.Any(term => ContainsProjectReference(normalized, term));
+            var hasBalanceOrUsageQuestion = new[]
+            {
+                "bao nhiêu", "bao nhieu", "còn", "con", "còn lại", "con lai", "đã dùng", "da dung",
+                "số dư", "so du", "hạn mức", "han muc", "balance", "remaining", "left", "used", "usage",
+                "limit", "quota", "how many", "how much"
+            }.Any(term => ContainsProjectReference(normalized, term));
+            var hasExplicitAiCreditTerm = new[]
+            {
+                "ai credit", "ai credits", "sprinta credit", "sprinta credits"
+            }.Any(term => ContainsProjectReference(normalized, term));
+
+            if (hasCreditTerm && hasBalanceOrUsageQuestion &&
+                (hasExplicitAiCreditTerm || hasPersonalReference && !hasProjectTerm))
+            {
+                return true;
+            }
+
+            var hasPlanTerm = new[] { "gói", "goi", "plan" }
+                .Any(term => ContainsProjectReference(normalized, term));
+            var hasPlanQuestion = new[]
+            {
+                "đang dùng", "dang dung", "hiện tại", "hien tai", "gì", "gi", "nào", "nao",
+                "current", "which", "what", "using", "on"
+            }.Any(term => ContainsProjectReference(normalized, term));
+            return hasPlanTerm && hasPersonalReference && hasPlanQuestion;
+        }
+
+        private static string FormatPlanDisplayName(string planCode)
+        {
+            var normalized = Limit(planCode, 40);
+            if (string.IsNullOrWhiteSpace(normalized)) return "Chưa xác định";
+
+            return string.Join(" ", normalized
+                .Split(new[] { '-', '_' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(part => char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant()));
         }
 
         private static bool HasSprintAContextIntent(
@@ -1358,6 +1445,9 @@ namespace TaskManagement.Infrastructure.Services
                 throw new InvalidOperationException("Chưa cấu hình Gemini API key. Hãy nhập key vào appsettings.json tại Gemini:ApiKey.");
             }
 
+            var reservationId = await _aiCreditUsageService.ReserveAsync(userId, 1, $"ai-attachment-image:{Guid.NewGuid():N}");
+            try
+            {
             var model = _configuration["Gemini:Model"] ?? "gemini-1.5-flash";
             var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={Uri.EscapeDataString(apiKey)}";
             var parts = new List<object> { new { text = prompt.ToString() } };
@@ -1411,7 +1501,15 @@ namespace TaskManagement.Infrastructure.Services
             });
             await _context.SaveChangesAsync();
 
+            await _aiCreditUsageService.FinalizeReservationAsync(reservationId.ReservationId);
+
             return result.Text;
+            }
+            catch
+            {
+                await _aiCreditUsageService.ReleaseReservationAsync(reservationId.ReservationId);
+                throw;
+            }
         }
 
         public async Task<string> TranscribeAudioAsync(
@@ -1429,6 +1527,9 @@ namespace TaskManagement.Infrastructure.Services
                 throw new InvalidOperationException("Chưa cấu hình Gemini API key.");
             }
 
+            var reservationId = await _aiCreditUsageService.ReserveAsync(userId, 1, $"ai-transcription:{Guid.NewGuid():N}", cancellationToken);
+            try
+            {
             var languageRule = languageMode switch
             {
                 "vi" => "The speech is Vietnamese. Transcribe it in Vietnamese and preserve Vietnamese diacritics.",
@@ -1489,7 +1590,15 @@ namespace TaskManagement.Infrastructure.Services
             });
             await _context.SaveChangesAsync(cancellationToken);
 
+            await _aiCreditUsageService.FinalizeReservationAsync(reservationId.ReservationId, cancellationToken);
+
             return transcript;
+            }
+            catch
+            {
+                await _aiCreditUsageService.ReleaseReservationAsync(reservationId.ReservationId, cancellationToken);
+                throw;
+            }
         }
 
         private GeminiResult ParseGeminiResponse(string responseBody)
@@ -2366,6 +2475,9 @@ namespace TaskManagement.Infrastructure.Services
 
         private async Task<GeminiResult> GenerateMultimodalTextAsync(Guid userId, string featureCode, string prompt, string mimeType, byte[] fileBytes)
         {
+            var reservationId = await _aiCreditUsageService.ReserveAsync(userId, 1, $"ai-gemini-multimodal:{Guid.NewGuid():N}");
+            try
+            {
             var apiKey = _configuration["Gemini:ApiKey"];
             if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Contains("PASTE_YOUR_GEMINI_API_KEY_HERE", StringComparison.OrdinalIgnoreCase))
             {
@@ -2423,7 +2535,15 @@ namespace TaskManagement.Infrastructure.Services
             });
             await _context.SaveChangesAsync();
 
+            await _aiCreditUsageService.FinalizeReservationAsync(reservationId.ReservationId);
+
             return result;
+            }
+            catch
+            {
+                await _aiCreditUsageService.ReleaseReservationAsync(reservationId.ReservationId);
+                throw;
+            }
         }
 
         private string ExtractTextFromDocx(byte[] bytes)

@@ -4,7 +4,7 @@
       <div class="page-header">
         <div class="breadcrumb">
           <i class="fa-solid fa-server"></i>
-          <span>Admin / Instance / General</span>
+          <span>INSTANCE / GENERAL</span>
         </div>
         <h1 class="text-hero">Instance general settings</h1>
         <p class="text-desc">
@@ -140,17 +140,7 @@ onMounted(loadSettings)
 </script>
 
 <style scoped>
-.breadcrumb {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 8px;
-}
+
 
 .field {
   display: flex;

@@ -50,6 +50,11 @@ export default [
             component: () => import('../views/HomeSite/Teams/TeamKudos.vue')
           },
           {
+            path: 'people',
+            name: 'HomeTeamPeople',
+            component: () => import('../views/HomeSite/People/PeopleDirectory.vue')
+          },
+          {
             path: ':id',
             name: 'HomeTeamDetail',
             component: () => import('../views/HomeSite/Teams/TeamDetail.vue')

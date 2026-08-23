@@ -158,6 +158,48 @@ Production:
 - Nếu config bắt buộc thiếu, fail an toàn hoặc disable provider với lý do rõ.
 - Không commit secret.
 
+### Google Calendar OAuth configuration
+
+The Google Calendar client secret is backend-only. Docker accepts these environment variables,
+with the provider disabled by default:
+
+```text
+GOOGLE_CALENDAR_OAUTH_ENABLED=false
+GOOGLE_CALENDAR_OAUTH_CLIENT_ID=
+GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET=
+GOOGLE_CALENDAR_OAUTH_REDIRECT_URI=
+```
+
+The corresponding application configuration keys are:
+
+```text
+IntegrationOAuth__GoogleCalendar__Enabled
+IntegrationOAuth__GoogleCalendar__ClientId
+IntegrationOAuth__GoogleCalendar__ClientSecret
+IntegrationOAuth__GoogleCalendar__RedirectUri
+```
+
+Local callback:
+`http://localhost:5136/api/integrations/google-calendar/callback`
+
+Production callback:
+`https://api.sprinta.id.vn/api/integrations/google-calendar/callback`
+
+The production API origin was verified separately from repository source using a
+safe unauthenticated request: `https://api.sprinta.id.vn/api/integrations` responds
+with HTTP 401, while the frontend host serves the SPA. Configure the Google OAuth
+redirect URI to the backend/API callback above. After a successful callback, the
+API redirects the browser to the frontend UI at `https://www.sprinta.id.vn/integrations`;
+these are different URLs.
+
+### OAuth state deployment scope
+
+OAuth flows in progress are instance-local; multi-instance deployment requires
+distributed state storage. `IOAuthStateStore` is currently registered as a singleton
+`OAuthStateStore` backed by in-memory state, which is correct for the current
+single-instance deployment. Before scaling the API out, replace it with an
+`IDistributedCache` or another shared store.
+
 ---
 
 ## 7. Sync Strategy

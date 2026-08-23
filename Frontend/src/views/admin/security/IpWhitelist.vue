@@ -1,12 +1,13 @@
 <template>
   <AdminLayout>
-    <div class="admin-page-container">
+    <div class="admin-page">
       <div class="page-header">
         <div class="breadcrumb">
-          <i class="fa-solid fa-shield-halved"></i> {{ t('Security / IP Whitelist', 'Bảo mật / Danh sách IP cho phép') }}
+          <i class="fa-solid fa-shield-halved"></i>
+          <span>SECURITY / IP WHITELIST</span>
         </div>
-        <h1 class="page-title">{{ t('Allowed IP List', 'Danh sách IP cho phép') }}</h1>
-        <p class="page-subtitle">{{ t('Advanced security control: Limit system access only from trusted networks.', 'Kiểm soát bảo mật nâng cao: Giới hạn truy cập hệ thống chỉ từ các mạng được tin tưởng.') }}</p>
+        <h1 class="text-hero">{{ t('Allowed IP List', 'Danh sách IP cho phép') }}</h1>
+        <p class="text-desc">{{ t('Advanced security control: Limit system access only from trusted networks.', 'Kiểm soát bảo mật nâng cao: Giới hạn truy cập hệ thống chỉ từ các mạng được tin tưởng.') }}</p>
       </div>
 
       <div class="settings-card mb-24">
@@ -238,30 +239,7 @@ const removeIp = (idx) => {
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 24px;
-}
 
-.breadcrumb {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 4px;
-}
-
-.page-subtitle {
-  font-size: 14px;
-  color: var(--color-text-muted);
-}
 
 .settings-card {
   background-color: var(--color-surface);

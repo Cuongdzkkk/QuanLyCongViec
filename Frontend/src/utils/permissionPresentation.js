@@ -94,6 +94,7 @@ const DESCRIPTION_LABELS = Object.freeze({
   'space.work_items.delete': 'Delete a work item',
   'space.work_items.assign': 'Assign work to a team member',
   'space.work_items.change_status': 'Move a work item to another status',
+  'space.work_items.assignee_only': 'Assignee-only task access',
   'space.work_items.comment': 'Add comments to work items',
   'space.work_items.attachment': 'Add or manage work item attachments'
 })

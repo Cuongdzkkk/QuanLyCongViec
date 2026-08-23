@@ -1,17 +1,18 @@
 <template>
   <AdminLayout>
-    <div class="admin-page-container">
-    <div class="page-header">
-      <div class="breadcrumb">
-        <i class="fa-solid fa-address-book"></i> Organization / Contact Discovery
+    <div class="admin-page">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <i class="fa-solid fa-address-book"></i>
+          <span>ORGANIZATION / CONTACT CONFIGURATION</span>
+        </div>
+        <h1 class="text-hero">{{ t('Organization Contact Configuration', 'Cấu hình Liên hệ Tổ chức') }}</h1>
+        <p class="text-desc">{{ t('Manage how your organization is discovered and contacted from outside the system.', 'Quản lý cách tổ chức của bạn được tìm thấy và liên hệ từ bên ngoài hệ thống.') }}</p>
       </div>
-      <h1 class="page-title">{{ t('Organization Contact Configuration', 'Cấu hình Liên hệ Tổ chức') }}</h1>
-      <p class="page-subtitle">{{ t('Manage how your organization is discovered and contacted from outside the system.', 'Quản lý cách tổ chức của bạn được tìm thấy và liên hệ từ bên ngoài hệ thống.') }}</p>
-    </div>
 
-    <div class="form-container" v-loading="isLoading">
-      <div class="settings-card">
-        <h2 class="card-title">{{ t('Discovery Settings', 'Khả năng khám phá') }}</h2>
+      <div class="form-container" v-loading="isLoading">
+        <div class="settings-card">
+          <h2 class="card-title">{{ t('Discovery Settings', 'Khả năng khám phá') }}</h2>
         
         <div class="setting-row">
           <div class="setting-info">
@@ -139,30 +140,7 @@ const saveSettings = async () => {
 
 <style scoped>
 
-.page-header {
-  margin-bottom: 24px;
-}
 
-.breadcrumb {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 4px;
-}
-
-.page-subtitle {
-  font-size: 14px;
-  color: var(--color-text-muted);
-}
 
 .settings-card {
   background-color: var(--color-surface);

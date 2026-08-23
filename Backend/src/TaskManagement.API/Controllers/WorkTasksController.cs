@@ -34,6 +34,11 @@ namespace TaskManagement.API.Controllers
         private readonly ApplicationDbContext? _context;
         private static readonly string[] BaselineManagerRoles = { "PM", "PO", "SM", "PA", "PROJECT_MANAGER", "SCRUM_MASTER", "PROJECT_ADMIN" };
         private const string TaskVisibilitySettingGroup = "TaskVisibility";
+        private const string ProjectPermissionsSettingGroup = "ProjectPermissions";
+        private const string TaskEditPermission = "task.update";
+        private const string TaskAssignPermission = "task.assign";
+        private const string TaskChangeStatusPermission = "task.changeStatus";
+        private const string TaskAssigneeOnlyPermission = "task.assigneeOnly";
 
         public WorkTasksController(
             IWorkTaskService workTaskService,
@@ -224,6 +229,127 @@ namespace TaskManagement.API.Controllers
             {
                 return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
             }
+        }
+
+        private static string MapProjectRoleToPermissionPreset(string? role)
+        {
+            var normalized = ProjectExecutionRuleHelper.NormalizeProjectRole(role);
+            return normalized switch
+            {
+                "owner" => "Owner",
+                "admin" => "Admin",
+                "pm" or "po" or "project_manager" or "project_lead" or "lead" or "manager" => "Manager",
+                "viewer" or "guest" or "client" or "stakeholder" or "readonly" => "Viewer",
+                _ => "Member"
+            };
+        }
+
+        private static HashSet<string> DefaultTaskPermissionsForPreset(string preset)
+        {
+            var all = new[]
+            {
+                "project.view", "project.create", "project.update", "project.delete",
+                "task.view", "task.create", TaskEditPermission, "task.delete", TaskAssignPermission, TaskChangeStatusPermission,
+                "goal.view", "goal.create", "goal.update", "goal.delete",
+                "people.view", "people.invite", "people.updateRole", "people.remove",
+                "report.view", "report.export",
+                "setting.view", "setting.update",
+                "permission.view", "permission.update"
+            };
+
+            return preset switch
+            {
+                "Owner" => new HashSet<string>(all, StringComparer.OrdinalIgnoreCase),
+                "Admin" => new HashSet<string>(all.Where(item => item != "project.delete" && item != "permission.update"), StringComparer.OrdinalIgnoreCase),
+                "Manager" => new HashSet<string>(new[]
+                {
+                    "project.view", "project.update",
+                    "task.view", "task.create", TaskEditPermission, TaskAssignPermission, TaskChangeStatusPermission,
+                    "goal.view", "goal.create", "goal.update",
+                    "people.view",
+                    "report.view", "report.export",
+                    "setting.view"
+                }, StringComparer.OrdinalIgnoreCase),
+                "Viewer" => new HashSet<string>(new[] { "project.view", "task.view", "goal.view", "people.view", "report.view" }, StringComparer.OrdinalIgnoreCase),
+                _ => new HashSet<string>(new[]
+                {
+                    "project.view",
+                    "task.view", "task.create", TaskEditPermission, TaskChangeStatusPermission,
+                    "goal.view",
+                    "people.view",
+                    "report.view"
+                }, StringComparer.OrdinalIgnoreCase)
+            };
+        }
+
+        private static async Task<HashSet<string>> LoadProjectPermissionSetAsync(ApplicationDbContext context, Guid projectId, string? projectRole)
+        {
+            var preset = MapProjectRoleToPermissionPreset(projectRole);
+            var defaults = DefaultTaskPermissionsForPreset(preset);
+            var setting = await context.SystemSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(item => item.SettingGroup == ProjectPermissionsSettingGroup && item.Key == $"ProjectPermissions:{projectId}");
+            if (setting == null || string.IsNullOrWhiteSpace(setting.Value))
+            {
+                return defaults;
+            }
+
+            try
+            {
+                var matrix = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(setting.Value);
+                return matrix != null && matrix.TryGetValue(preset, out var permissions)
+                    ? new HashSet<string>(permissions, StringComparer.OrdinalIgnoreCase)
+                    : defaults;
+            }
+            catch
+            {
+                return defaults;
+            }
+        }
+
+        private static bool IsAssignedToUser(WorkTask task, Guid userId)
+        {
+            return task.AssignedUserId == userId ||
+                task.TaskAssignments.Any(assignment => assignment.UserId == userId && assignment.Status);
+        }
+
+        private static async Task<(bool Allowed, string Message)> AuthorizeTaskMutationAsync(
+            ApplicationDbContext context,
+            WorkTask task,
+            Guid userId,
+            string requiredPermission)
+        {
+            if (ProjectAccessPolicy.IsUnrestricted)
+            {
+                return (true, string.Empty);
+            }
+
+            var membership = await context.ProjectMembers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(member => member.ProjectId == task.ProjectId && member.UserId == userId && member.Status);
+            if (membership == null)
+            {
+                return (false, "Ban khong phai thanh vien cua du an nay.");
+            }
+
+            var permissions = await LoadProjectPermissionSetAsync(context, task.ProjectId, membership.ProjectRole);
+            if (!permissions.Contains(requiredPermission))
+            {
+                return (false, requiredPermission == TaskChangeStatusPermission
+                    ? "Ban khong co quyen chuyen trang thai cong viec."
+                    : requiredPermission == TaskAssignPermission
+                        ? "Ban khong co quyen giao cong viec."
+                        : "Ban khong co quyen chinh sua chi tiet cong viec.");
+            }
+
+            if (requiredPermission is TaskEditPermission or TaskChangeStatusPermission &&
+                permissions.Contains(TaskAssigneeOnlyPermission) &&
+                !IsAssignedToUser(task, userId))
+            {
+                return (false, "Assignee-only Task Access dang bat. Ban chi duoc thao tac tren cong viec duoc giao.");
+            }
+
+            return (true, string.Empty);
         }
 
         private static async Task<TaskVisibilityDto> LoadTaskVisibilityAsync(ApplicationDbContext context, Guid taskId)
@@ -839,10 +965,17 @@ namespace TaskManagement.API.Controllers
                 var previousTask = await context.WorkTasks
                     .AsNoTracking()
                     .Include(wt => wt.TaskStatus)
+                    .Include(wt => wt.TaskAssignments)
                     .FirstOrDefaultAsync(wt => wt.Id == id && wt.ProjectId == projectId && !wt.IsDeleted);
                 if (previousTask == null)
                 {
                     return NotFound(new { statusCode = 404, message = "Task khong ton tai trong du an nay." });
+                }
+
+                var statusAuthorization = await AuthorizeTaskMutationAsync(context, previousTask, userId, TaskChangeStatusPermission);
+                if (!statusAuthorization.Allowed)
+                {
+                    return StatusCode(403, new { statusCode = 403, message = statusAuthorization.Message });
                 }
 
                 await _workTaskService.UpdateTaskStatusAsync(id, userId, request);
@@ -934,6 +1067,15 @@ namespace TaskManagement.API.Controllers
                     }
                 }
 
+                if (previousTask != null)
+                {
+                    var editAuthorization = await AuthorizeTaskMutationAsync(context, previousTask, userId, TaskEditPermission);
+                    if (!editAuthorization.Allowed)
+                    {
+                        return StatusCode(403, new { statusCode = 403, message = editAuthorization.Message });
+                    }
+                }
+
                 var result = await _workTaskService.UpdateAsync(id, userId, dto);
 
                 var updatedTask = await context.WorkTasks
@@ -1022,7 +1164,7 @@ namespace TaskManagement.API.Controllers
 
                 var isProjectMember = await context.ProjectMembers
                     .AnyAsync(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status);
-                if (!isProjectMember)
+                if (!isProjectMember && ProjectAccessPolicy.RestrictionsEnabled)
                 {
                     return StatusCode(403, new { statusCode = 403, message = "Ban khong phai thanh vien cua du an nay." });
                 }
@@ -1065,20 +1207,35 @@ namespace TaskManagement.API.Controllers
 
                 var membership = await context.ProjectMembers
                     .FirstOrDefaultAsync(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status);
-                if (membership == null)
+                if (membership == null && ProjectAccessPolicy.RestrictionsEnabled)
                 {
                     return StatusCode(403, new { statusCode = 403, message = "Ban khong phai thanh vien cua du an nay." });
                 }
 
-                var canUpdateTask = ResourcePermissionPolicy.ProjectRoleHasPermission(
-                        membership.ProjectRole,
-                        ResourcePermissionCodes.ProjectWrite)
-                    || task.ReporterId == userId
-                    || task.AssignedUserId == userId
-                    || task.TaskAssignments.Any(ta => ta.UserId == userId && ta.Status);
-                if (!canUpdateTask)
+                var requestedPermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var property in updates.EnumerateObject())
                 {
-                    return StatusCode(403, new { statusCode = 403, message = "Ban khong co quyen sua tac vu nay." });
+                    if (property.NameEquals("statusName") || property.NameEquals("taskStatusId"))
+                    {
+                        requestedPermissions.Add(TaskChangeStatusPermission);
+                    }
+                    else if (property.NameEquals("assigneeId") || property.NameEquals("assigneeIds") || property.NameEquals("assignedUserId"))
+                    {
+                        requestedPermissions.Add(TaskAssignPermission);
+                    }
+                    else
+                    {
+                        requestedPermissions.Add(TaskEditPermission);
+                    }
+                }
+
+                foreach (var permission in requestedPermissions)
+                {
+                    var authorization = await AuthorizeTaskMutationAsync(context, task, userId, permission);
+                    if (!authorization.Allowed)
+                    {
+                        return StatusCode(403, new { statusCode = 403, message = authorization.Message });
+                    }
                 }
                 var oldStatusName = task.TaskStatus?.Name;
                 string? newStatusName = null;
@@ -1523,7 +1680,7 @@ namespace TaskManagement.API.Controllers
 
                 var membership = await context.ProjectMembers
                     .FirstOrDefaultAsync(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status);
-                if (membership == null)
+                if (membership == null && ProjectAccessPolicy.RestrictionsEnabled)
                 {
                     return StatusCode(403, new { statusCode = 403, message = "Ban khong phai thanh vien cua du an nay." });
                 }
@@ -1654,20 +1811,18 @@ namespace TaskManagement.API.Controllers
                 var completedAssigneeRewards = new List<(Guid AssigneeId, double OldProgress)>();
                 var membership = await context.ProjectMembers
                     .FirstOrDefaultAsync(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status);
-                if (membership == null)
+                if (membership == null && ProjectAccessPolicy.RestrictionsEnabled)
                 {
                     return StatusCode(403, new { statusCode = 403, message = "Ban khong phai thanh vien cua du an nay." });
                 }
 
-                var canUpdateTask = ResourcePermissionPolicy.ProjectRoleHasPermission(
-                        membership.ProjectRole,
-                        ResourcePermissionCodes.ProjectWrite)
-                    || task.ReporterId == userId
-                    || task.AssignedUserId == userId
-                    || task.TaskAssignments.Any(ta => ta.UserId == userId && ta.Status);
-                if (!canUpdateTask)
+                var reorderPermission = string.IsNullOrWhiteSpace(dto.NewStatusName)
+                    ? TaskEditPermission
+                    : TaskChangeStatusPermission;
+                var reorderAuthorization = await AuthorizeTaskMutationAsync(context, task, userId, reorderPermission);
+                if (!reorderAuthorization.Allowed)
                 {
-                    return StatusCode(403, new { statusCode = 403, message = "Ban khong co quyen sap xep tac vu nay." });
+                    return StatusCode(403, new { statusCode = 403, message = reorderAuthorization.Message });
                 }
 
                 task.SortOrder = dto.SortOrder;
@@ -2962,4 +3117,3 @@ namespace TaskManagement.API.Controllers
         public string TaskTitle { get; set; } = string.Empty;
     }
 }
-

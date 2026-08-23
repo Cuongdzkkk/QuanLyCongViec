@@ -3,8 +3,14 @@
     <div class="directory-page" :class="{ 'is-dimmed': showInvitePanel || showExportModal }" @click="closePageMenus">
       <div class="page-header">
         <div class="header-copy">
-          <div class="breadcrumb">ADMIN / USER DIRECTORY</div>
+          <div class="breadcrumb">
+            <i class="fa-solid fa-users-gear"></i>
+            <span>ADMIN / USER DIRECTORY</span>
+          </div>
           <h1 class="text-hero">{{ t('Users', 'Người dùng') }}</h1>
+          <p class="text-desc">
+            {{ t('Manage system accounts, map project roles, and organize team members into departments.', 'Quản lý tài khoản hệ thống, thiết lập vai trò dự án và phân chia thành viên theo phòng ban.') }}
+          </p>
         </div>
 
         <div class="page-actions">
@@ -1940,21 +1946,7 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-}
 
-.page-title {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: 28px;
-  font-weight: 700;
-}
 
 .page-subtitle {
   max-width: 760px;

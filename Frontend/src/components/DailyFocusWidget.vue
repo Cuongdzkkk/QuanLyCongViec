@@ -108,6 +108,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
 import { useI18n } from '@/composables/useI18n'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -232,7 +233,7 @@ const deadlineClass = (item) => {
 // ── Actions ───────────────────────────────────────────────────────────
 const openTask = (task) => {
   if (task.projectId) {
-    router.push(`/space/${task.projectId}`)
+    router.push(buildSpacePath(task.projectId, 'work-items'))
   }
 }
 

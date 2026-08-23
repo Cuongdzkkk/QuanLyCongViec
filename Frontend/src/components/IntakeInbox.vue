@@ -8,6 +8,7 @@ import { signalRService } from '@/api/signalrService'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const props = defineProps({
   projectId: { type: String, required: true }
@@ -152,8 +153,7 @@ function viewDetail(item) {
 function navigateToTask(taskId) {
   if (!taskId) return
   router.push({
-    name: 'SpaceSummary',
-    params: { id: props.projectId },
+    path: buildSpacePath(props.projectId, 'work-items'),
     query: { task: taskId }
   })
 }

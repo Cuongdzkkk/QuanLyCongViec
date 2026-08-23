@@ -2,9 +2,7 @@
   <div class="admin-layout">
     <AdminSidebar />
     <main class="admin-content">
-      <div class="content-wrapper">
-        <slot></slot>
-      </div>
+      <slot></slot>
     </main>
   </div>
 </template>
@@ -25,14 +23,9 @@ import AdminSidebar from './AdminSidebar.vue'
 .admin-content {
   flex: 1;
   background-color: var(--color-bg);
-  padding: 32px 48px;
+  padding: 32px;
   overflow-y: auto;
   height: 100vh;
-}
-
-.content-wrapper {
-  max-width: 1200px;
-  margin: 0 auto;
 }
 </style>
 

@@ -37,11 +37,14 @@
 
         <div v-else class="notifications-list">
           <div class="time-group-title">{{ t('homeSite.notifications.latest') }}</div>
-          <button
+          <div
             class="notification-item"
+            role="button"
+            tabindex="0"
             v-for="notification in visibleNotifications"
             :key="notification.id"
             @click="openNotification(notification)"
+            @keydown.enter="openNotification(notification)"
           >
             <UserAvatar
               :user="{ fullName: notification.triggeredByName || notification.title, avatarUrl: notification.triggeredByAvatar }"
@@ -55,9 +58,16 @@
               </div>
               <div class="notif-link">{{ notification.content }}</div>
               <div class="notif-meta">{{ notification.notificationType || t('homeSite.notifications.notification') }}</div>
+              <div v-if="isPendingInvitation(notification)" class="invitation-actions" @click.stop>
+                <button type="button" @click="acceptInvitation(notification)">Chấp nhận</button>
+                <button type="button" @click="declineInvitation(notification)">Từ chối</button>
+              </div>
+              <div v-else-if="isResolvedInvitation(notification)" class="invitation-resolved">
+                {{ notification.actionState === 'Accepted' ? 'Bạn đã tham gia dự án này.' : 'Bạn đã từ chối lời mời tham gia dự án này.' }}
+              </div>
             </div>
             <div v-if="!notification.isRead" class="notif-status unread"></div>
-          </button>
+          </div>
         </div>
       </main>
     </div>
@@ -70,6 +80,13 @@ import { useRouter } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useI18nStore } from '@/store/useI18nStore'
+import { ElMessage } from 'element-plus'
+import {
+  isPendingInvitation,
+  isResolvedInvitation,
+  navigateNotification,
+  normalizeNotification
+} from '@/utils/notificationNavigation'
 
 const router = useRouter()
 const i18nStore = useI18nStore()
@@ -78,6 +95,7 @@ const notifications = ref([])
 const loading = ref(false)
 const filter = ref('all')
 const showUnreadOnly = ref(false)
+const invitationActionId = ref(null)
 let notificationRequestId = 0
 let notificationAbortController = null
 
@@ -97,7 +115,8 @@ const fetchNotifications = async () => {
       signal: controller.signal
     })
     if (requestId !== notificationRequestId) return
-    notifications.value = response.data?.data || response.data || []
+    const rows = response.data?.data || response.data || []
+    notifications.value = (Array.isArray(rows) ? rows : []).map(normalizeNotification)
   } catch (error) {
     if (error?.code !== 'ERR_CANCELED') throw error
   } finally {
@@ -114,14 +133,54 @@ const markAllAsRead = async () => {
 }
 
 const openNotification = async (notification) => {
-  if (!notification.isRead) {
-    await axiosClient.put(`/notifications/${notification.id}/read`)
+  try {
+    if (!notification.isRead) {
+      await axiosClient.put(`/notifications/${notification.id}/read`)
+      notification.isRead = true
+    }
+    await navigateNotification(router, notification, {
+      fetchProject: async projectId => {
+        const response = await axiosClient.get(`/projects/${projectId}`)
+        return response.data?.data || response.data
+      },
+      onDenied: () => ElMessage.warning('Bạn không còn quyền truy cập dự án này.'),
+      onInvalid: () => ElMessage.info('Thông báo này không còn liên kết hợp lệ.')
+    })
+  } catch (error) {
+    if (error?.response?.status === 403) {
+      ElMessage.warning('Bạn không còn quyền truy cập dự án này.')
+      return
+    }
+    ElMessage.error('Không thể mở thông báo này.')
   }
-  if (notification.linkUrl) {
-    router.push(notification.linkUrl)
-    return
+}
+
+const acceptInvitation = async (notification) => {
+  if (!isPendingInvitation(notification) || invitationActionId.value) return
+  invitationActionId.value = notification.id
+  try {
+    await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/accept`)
+    notification.actionState = 'Accepted'
+    notification.isRead = true
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Không thể chấp nhận lời mời.')
+  } finally {
+    invitationActionId.value = null
   }
-  await fetchNotifications()
+}
+
+const declineInvitation = async (notification) => {
+  if (!isPendingInvitation(notification) || invitationActionId.value) return
+  invitationActionId.value = notification.id
+  try {
+    await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/decline`)
+    notification.actionState = 'Declined'
+    notification.isRead = true
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Không thể từ chối lời mời.')
+  } finally {
+    invitationActionId.value = null
+  }
 }
 
 const formatTime = (value) => {

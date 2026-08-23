@@ -29,7 +29,7 @@
     </div>
 
     <div class="nav-center" ref="searchWrapperRef">
-      <div class="search-input-wrapper">
+      <div class="search-input-wrapper" :class="{ 'is-empty': !searchQuery.trim() }">
         <i class="fa-solid fa-magnifying-glass search-icon"></i>
         <input type="text" :placeholder="isSpaceContext ? t('Search work items...') : t('Search')" v-model="searchQuery" @input="handleSearchInput" />
         <div v-if="showSearchDropdown" class="search-dropdown">
@@ -75,10 +75,7 @@
         </button>
       </div>
 
-      <NotificationsDropdown v-if="isSpaceContext" />
-      <button class="icon-btn" @click="goToNotifications" v-else>
-        <i class="fa-regular fa-bell"></i>
-      </button>
+      <NotificationsDropdown />
 
       <button
         class="icon-btn theme-toggle-btn hidden-mobile"
@@ -117,6 +114,7 @@ import { useI18nStore } from '@/store/useI18nStore'
 import { toggleTheme, currentTheme } from '@/utils/theme'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
+import { buildSpacePath } from '@/utils/spaceRoute'
 
 const emit = defineEmits(['toggle-sidebar', 'toggle-ai', 'toggle-create'])
 
@@ -134,13 +132,6 @@ const demoText = (value) => translateDemoText(value, i18nStore.locale)
 
 const isHomeContext = computed(() => route.path.startsWith('/home') || route.path.startsWith('/sites'))
 const isSpaceContext = computed(() => route.path.startsWith('/space/'))
-
-const isModule = (moduleName) => {
-  if (moduleName === 'people') {
-    return route.path.includes('/home/people') || route.path.includes('/home/profile')
-  }
-  return route.path.includes(`/home/${moduleName}`)
-}
 
 const searchQuery = ref('')
 const searchResults = ref([])
@@ -160,7 +151,6 @@ const activeProject = computed(() => (
     : null
 ))
 const workspaceName = computed(() => demoText(activeProject.value?.name) || 'SprintA')
-const workspaceBadge = computed(() => activeProject.value?.icon || workspaceName.value.charAt(0).toUpperCase())
 const showSearchDropdown = computed(() => searchQuery.value.trim().length > 0 && (searching.value || searchResults.value.length > 0))
 
 const runSearch = async () => {
@@ -229,7 +219,8 @@ const openSearchResult = (result) => {
     return
   }
 
-  router.push(`/space/${result.projectId}?task=${result.id}`)
+  const project = projectStore.allProjects.find(item => `${item.id}` === `${result.projectId}`) || result.projectId
+  router.push({ path: buildSpacePath(project, 'work-items'), query: { task: result.id } })
 }
 
 const handleClickOutside = (e) => {
@@ -243,12 +234,6 @@ const handleEscKey = (e) => {
   if (e.key === 'Escape') {
     searchResults.value = []
     searchQuery.value = ''
-  }
-}
-
-const goToNotifications = () => {
-  if (isHomeContext.value) {
-    router.push('/home/notifications')
   }
 }
 
@@ -527,9 +512,14 @@ onUnmounted(() => {
 }
 
 .search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
   color: rgba(226, 239, 255, 0.78);
   font-size: 13px;
-  margin-right: 8px;
+  margin-right: 0;
+  pointer-events: none;
 }
 
 .search-input-wrapper input {
@@ -540,8 +530,13 @@ onUnmounted(() => {
   width: 100%;
   outline: none;
   height: auto !important;
-  padding: 0 !important;
+  padding: 0 28px !important;
   box-shadow: none !important;
+  text-align: left;
+}
+
+.search-input-wrapper.is-empty input {
+  text-align: center;
 }
 
 .search-input-wrapper input::placeholder {
