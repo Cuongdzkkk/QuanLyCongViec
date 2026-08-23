@@ -297,7 +297,6 @@
                   :ref="el => setRemoteVideoElement(el, user.connectionId)"
                   autoplay
                   playsinline
-                  muted
                 ></video>
                 <el-avatar v-else :size="44" :src="user.connectionId === callConnectionId ? currentUser.avatar : user.avatarUrl">
                   {{ (user.connectionId === callConnectionId ? currentUser.name : user.displayName)?.charAt(0) }}
@@ -1339,6 +1338,10 @@ const callSession = ref(null)
 const callAiState = ref({ state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] })
 const callTranscriptChunks = ref([])
 const callTranscriptInterim = ref({ text: '', startedAt: '', speakerDisplayName: '' })
+const localVideoElement = ref(null)
+const presentationVideoElement = ref(null)
+const remoteVideoElements = new Map()
+const remoteAudioElements = new Map()
 const callChatOpen = ref(false)
 const callChatDraft = ref('')
 const callChatSending = ref(false)
@@ -1371,20 +1374,49 @@ const activePresenterStream = () => {
     : remoteStreams.value.get(presenter.connectionId) || null
 }
 
+const bindMediaElement = (element, stream, muted = false) => {
+  if (!element) return
+  element.muted = muted
+  element.autoplay = true
+  element.playsInline = true
+  if (element.srcObject !== stream) element.srcObject = stream || null
+  if (stream) {
+    const playback = element.play?.()
+    if (playback?.catch) void playback.catch(() => {})
+  }
+}
+
+const syncCallVideoElements = () => {
+  bindMediaElement(localVideoElement.value, localCallStream.value, true)
+  for (const [connectionId, element] of remoteVideoElements) {
+    bindMediaElement(element, remoteStreams.value.get(connectionId), false)
+  }
+  for (const [connectionId, element] of remoteAudioElements) {
+    bindMediaElement(element, remoteStreams.value.get(connectionId), false)
+  }
+  bindMediaElement(presentationVideoElement.value, activePresenterStream(), true)
+}
+
 const setLocalVideoElement = (element) => {
-  if (element) element.srcObject = localCallStream.value
+  localVideoElement.value = element
+  bindMediaElement(element, localCallStream.value, true)
 }
 
 const setRemoteVideoElement = (element, connectionId) => {
-  if (element) element.srcObject = remoteStreams.value.get(connectionId) || null
+  if (element) remoteVideoElements.set(connectionId, element)
+  else remoteVideoElements.delete(connectionId)
+  bindMediaElement(element, remoteStreams.value.get(connectionId), false)
 }
 
 const setRemoteAudioElement = (element, connectionId) => {
-  if (element) element.srcObject = remoteStreams.value.get(connectionId) || null
+  if (element) remoteAudioElements.set(connectionId, element)
+  else remoteAudioElements.delete(connectionId)
+  bindMediaElement(element, remoteStreams.value.get(connectionId), false)
 }
 
 const setPresentationVideoElement = (element) => {
-  if (element) element.srcObject = activePresenterStream()
+  presentationVideoElement.value = element
+  bindMediaElement(element, activePresenterStream(), true)
 }
 
 const callAiStateLabel = computed(() => ({
@@ -1485,8 +1517,7 @@ const syncLocalCallPreview = async () => {
   localCallStream.value = callSession.value?.getLocalStream?.() || null
   callConnectionId.value = callSession.value?.getConnectionId?.() || ''
   await nextTick()
-  const localVideo = document.querySelector('.group-video-grid .local-user video')
-  if (localVideo) localVideo.srcObject = localCallStream.value
+  syncCallVideoElements()
 }
 
 const createCallSessionForVoiceChannel = (voiceChannel) => createCallMediaSession({
@@ -1510,11 +1541,15 @@ const createCallSessionForVoiceChannel = (voiceChannel) => createCallMediaSessio
       ElMessage.warning(cameraEffectNotice.value)
     }
   },
-  onParticipants: (items) => {
+  onParticipants: async (items) => {
     callParticipants.value = items
+    await nextTick()
+    syncCallVideoElements()
   },
-  onRemoteStreams: (items) => {
+  onRemoteStreams: async (items) => {
     remoteStreams.value = items
+    await nextTick()
+    syncCallVideoElements()
   },
   onAiState: handleCallAiState,
   onTranscriptChunk: handleTranscriptChunk,

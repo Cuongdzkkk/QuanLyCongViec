@@ -43,4 +43,11 @@ for (const needle of required) assert.ok(source.includes(needle), `missing ${nee
 assert.equal(source.includes('MediaRecorder'), false)
 assert.equal(source.includes('SpeechRecognition'), false)
 
-console.log(`callMediaService.test.mjs: ${required.length} media foundation checks passed`)
+for (const needle of [
+  'const updateRemoteStream',
+  'new MediaStream()',
+  'stream.removeTrack(previousTrack)',
+  'entry.pc.ontrack = ({ streams, track }) => updateRemoteStream'
+]) assert.ok(source.includes(needle), `missing remote track merge contract: ${needle}`)
+
+console.log(`callMediaService.test.mjs: ${required.length + 4} media foundation checks passed`)

@@ -16,6 +16,8 @@ const expects = [
   ['AI entry points are truthful for text and calls', 'AI đang OFF', 'Sắp ra mắt'],
   ['AI is explicitly staged off', "const aiAnalysisOpen = ref(false)", 'AI đang OFF'],
   ['voice controls remain available', 'Voice connected', 'leaveVoiceChannel', 'callMicrophoneEnabled', 'isCallCameraOn'],
+  ['camera streams use explicit video element binding', 'bindMediaElement', 'srcObject', 'syncCallVideoElements', 'playsInline'],
+  ['remote video stays audible', ':ref="el => setRemoteVideoElement(el, user.connectionId)"', 'const setRemoteVideoElement = (element, connectionId)'],
   ['participant layout is dense and responsive', 'group-video-grid', 'grid-auto-flow: dense', '@media (max-width: 760px)'],
   ['call context tabs are present', 'class="context-tabs"', 'role="tablist"'],
   ['realtime and attachment services remain in use', 'collaborationRealtime', 'collaborationApi.downloadAttachment'],
