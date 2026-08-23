@@ -80,8 +80,16 @@
 
         <section v-if="billing" class="current-entitlement">
           <div><span>{{ t('Gói hiện tại', 'Current plan') }}</span><strong>{{ billing.planName }}</strong></div>
-          <div><span>{{ t('AI credits còn lại', 'AI credits remaining') }}</span><strong>{{ billing.remainingCredits }} / {{ billing.includedCredits + (billing.adjustmentCredits || 0) }}</strong></div>
+          <div><span>{{ t('Ví AI còn lại', 'AI credit wallet') }}</span><strong>{{ billing.totalRemainingCredits ?? billing.remainingCredits }}</strong></div>
           <div><span>{{ t('Kết thúc kỳ', 'Period ends') }}</span><strong>{{ formatDate(billing.currentPeriodEnd) }}</strong></div>
+        </section>
+        <section v-if="billing?.creditBuckets?.length" class="credit-buckets">
+          <div class="bucket-heading"><strong>{{ t('Chi tiết credit', 'Credit details') }}</strong><span>{{ t('Tự động dùng bucket sắp hết hạn trước', 'Soonest-expiring bucket is used first') }}</span></div>
+          <div v-for="bucket in billing.creditBuckets" :key="bucket.id" class="bucket-row">
+            <strong>{{ String(bucket.sourcePlan || '').toUpperCase() }}</strong>
+            <span>{{ bucket.remaining }} / {{ bucket.granted }}</span>
+            <small>{{ t('Hết hạn', 'Expires') }} {{ formatDate(bucket.expiresAt) }}</small>
+          </div>
         </section>
       </template>
     </section>
@@ -191,6 +199,7 @@ dl { margin: 22px 0; }dl > div { display: flex; justify-content: space-between; 
 .summary-line { display: flex; justify-content: space-between; gap: 20px; margin: 28px 0 18px; padding: 16px 0; border-top: 1px solid var(--color-border, #dfe4ec); border-bottom: 1px solid var(--color-border, #dfe4ec); }
 .primary-button, .secondary-button { min-height: 42px; border-radius: 9px; padding: 0 17px; font-weight: 750; cursor: pointer; transition: transform .15s ease, opacity .15s ease; }.primary-button { width: 100%; border: 1px solid var(--color-primary, #3563e9); background: var(--color-primary, #3563e9); color: #fff; }.secondary-button { border: 1px solid var(--color-border, #dfe4ec); background: transparent; color: var(--color-text-primary, #172033); }.primary-button:active, .secondary-button:active { transform: translateY(1px); }.primary-button:disabled { opacity: .58; cursor: wait; }
 .current-entitlement { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 24px; border-top: 1px solid var(--color-border, #dfe4ec); border-bottom: 1px solid var(--color-border, #dfe4ec); }.current-entitlement > div { display: grid; gap: 7px; padding: 18px 20px; border-right: 1px solid var(--color-border, #dfe4ec); }.current-entitlement > div:last-child { border-right: 0; }.current-entitlement span { color: var(--color-text-muted, #667085); font-size: 13px; }
+.credit-buckets { margin-top: 16px; border: 1px solid var(--color-border, #dfe4ec); border-radius: 12px; background: var(--color-surface, #fff); overflow: hidden; }.bucket-heading { display: flex; justify-content: space-between; gap: 16px; padding: 15px 18px; border-bottom: 1px solid var(--color-border, #dfe4ec); }.bucket-heading span, .bucket-row small { color: var(--color-text-muted, #667085); font-size: 12px; }.bucket-row { display: grid; grid-template-columns: 90px 1fr auto; gap: 16px; align-items: center; padding: 13px 18px; border-bottom: 1px solid var(--color-border, #dfe4ec); }.bucket-row:last-child { border-bottom: 0; }.bucket-row strong { color: var(--color-primary, #3563e9); }
 .free-panel { max-width: 560px; margin: 34px auto 0; text-align: center; }.free-panel svg { color: var(--color-primary, #3563e9); }.free-panel h2 { margin: 14px 0 8px; }.free-panel p { color: var(--color-text-muted, #667085); line-height: 1.6; }.free-panel .primary-button { margin-top: 12px; max-width: 320px; }
 .state-panel { display: flex; align-items: flex-start; gap: 14px; }.state-panel p { margin: 5px 0 0; color: var(--color-text-muted, #667085); }.error-state { color: #b42318; }
 @media (max-width: 760px) { .checkout-shell { padding-top: 28px; }.checkout-heading { grid-template-columns: auto 1fr; }.price-block { grid-column: 2; text-align: left; }.payment-grid { grid-template-columns: 1fr; }.current-entitlement { grid-template-columns: 1fr; }.current-entitlement > div { border-right: 0; border-bottom: 1px solid var(--color-border, #dfe4ec); }.current-entitlement > div:last-child { border-bottom: 0; } }

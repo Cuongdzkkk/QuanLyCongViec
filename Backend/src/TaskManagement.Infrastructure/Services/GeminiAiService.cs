@@ -4,8 +4,10 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Http;
 using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.AI;
 using TaskManagement.Application.DTOs.WorkTask;
@@ -24,6 +26,7 @@ namespace TaskManagement.Infrastructure.Services
         private readonly IWorkTaskService _workTaskService;
         private readonly IAiCreditUsageService _aiCreditUsageService;
         private readonly IConfiguration _configuration;
+        private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
         private static readonly string[] RepositoryExecutionProjectRoles = { "PM", "PO", "SM", "Project Lead", "PROJECT_MANAGER", "PROJECT_LEAD", "Admin" };
         private static readonly string[] AssigneeSuggestionProjectRoles = { "PM", "PO", "SM", "Project Lead", "PROJECT_MANAGER", "PROJECT_LEAD", "SCRUM_MASTER", "Admin" };
@@ -35,7 +38,8 @@ namespace TaskManagement.Infrastructure.Services
             ZenMuxAiClient zenMuxAiClient,
             IWorkTaskService workTaskService,
             IAiCreditUsageService aiCreditUsageService,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IHttpContextAccessor? httpContextAccessor = null)
         {
             _context = context;
             _httpClient = httpClient;
@@ -43,6 +47,7 @@ namespace TaskManagement.Infrastructure.Services
             _workTaskService = workTaskService;
             _aiCreditUsageService = aiCreditUsageService;
             _configuration = configuration;
+            _httpContextAccessor = httpContextAccessor;
         }
 
         public async Task<string> ChatAsync(Guid userId, AiChatRequestDto request)
@@ -1264,29 +1269,45 @@ namespace TaskManagement.Infrastructure.Services
         {
             prompt = AiSafetyGuard.RedactSecrets(prompt);
             var effectiveSystemInstruction = systemInstruction ?? "You must follow the user requested output format exactly.";
-            var result = await _zenMuxAiClient.GenerateTextAsync(
-                prompt,
-                effectiveSystemInstruction,
-                forceJson,
-                forceJson ? 0.2 : 0.5,
-                cancellationToken,
-                maxCompletionTokens);
-            var fallbackTokenEstimate = Math.Max(
-                1,
-                (effectiveSystemInstruction.Length + prompt.Length + result.Text.Length) / 4);
-
-            _context.AITokenUsages.Add(new AITokenUsage
+            var operationKey = BuildCreditOperationKey(userId, ResolveOperationId(), featureCode);
+            var reservation = await _aiCreditUsageService.ReserveAsync(userId, 1, operationKey, cancellationToken);
+            if (!reservation.Acquired)
+                throw new AiCreditsExhaustedException(reservation.ReservedCredits, reservation.ReservedCredits, 0);
+            try
             {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                FeatureCode = featureCode,
-                TokensUsed = result.TotalTokens > 0 ? result.TotalTokens : fallbackTokenEstimate,
-                CreatedAt = DateTime.UtcNow
-            });
-            await _context.SaveChangesAsync(cancellationToken);
-
-            return new GeminiResult(result.Text, result.TotalTokens);
+                var result = await _zenMuxAiClient.GenerateTextAsync(
+                    prompt, effectiveSystemInstruction, forceJson, forceJson ? 0.2 : 0.5,
+                    cancellationToken, maxCompletionTokens);
+                var fallbackTokenEstimate = Math.Max(1, (effectiveSystemInstruction.Length + prompt.Length + result.Text.Length) / 4);
+                var actualCredits = EstimateCredits(result.TotalTokens > 0 ? result.TotalTokens : fallbackTokenEstimate);
+                _context.AITokenUsages.Add(new AITokenUsage
+                {
+                    Id = Guid.NewGuid(), UserId = userId, FeatureCode = featureCode,
+                    TokensUsed = result.TotalTokens > 0 ? result.TotalTokens : fallbackTokenEstimate,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync(cancellationToken);
+                await _aiCreditUsageService.FinalizeAsync(reservation.ReservationId, actualCredits, cancellationToken);
+                return new GeminiResult(result.Text, result.TotalTokens);
+            }
+            catch
+            {
+                await _aiCreditUsageService.ReleaseAsync(reservation.ReservationId, cancellationToken);
+                throw;
+            }
         }
+
+        private static int EstimateCredits(long tokens) => tokens <= 0 ? 1 : (int)Math.Ceiling(tokens / 1000d);
+        private Guid ResolveOperationId()
+        {
+            var raw = _httpContextAccessor?.HttpContext?.Request.Headers["X-AI-Operation-Id"].FirstOrDefault();
+            return Guid.TryParse(raw, out var operationId) && operationId != Guid.Empty
+                ? operationId
+                : Guid.NewGuid();
+        }
+
+        private static string BuildCreditOperationKey(Guid userId, Guid operationId, string featureCode)
+            => $"gemini:{userId:N}:{operationId:N}:{featureCode}";
 
         public async Task<string> ChatWithAttachmentsAsync(
             Guid userId,

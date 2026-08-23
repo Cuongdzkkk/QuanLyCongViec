@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using TaskManagement.Application.DTOs.Billing;
@@ -22,6 +23,27 @@ public sealed class BillingService : IBillingService
     public async Task<BillingSummaryDto> GetSummaryAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var usage = await _creditUsageService.GetUsageAsync(userId, DateTime.MinValue, DateTime.MaxValue, cancellationToken);
+        var now = DateTime.UtcNow;
+        var bucketRows = await _context.AiCreditBuckets.AsNoTracking().Where(x => x.UserId == userId)
+            .OrderBy(x => x.ExpiresAt).ThenBy(x => x.CreatedAt).ThenBy(x => x.Id).ToListAsync(cancellationToken);
+        var bucketIds = bucketRows.Select(x => x.Id).ToList();
+        var reservedByBucket = await _context.AiCreditReservationAllocations.AsNoTracking()
+            .Where(x => bucketIds.Contains(x.CreditBucketId) && x.AllocatedCredits > 0)
+            .GroupBy(x => x.CreditBucketId)
+            .Select(x => new { BucketId = x.Key, Reserved = x.Sum(item => item.AllocatedCredits) })
+            .ToDictionaryAsync(x => x.BucketId, x => x.Reserved, cancellationToken);
+        var buckets = bucketRows.Select(x =>
+        {
+            var reserved = reservedByBucket.GetValueOrDefault(x.Id);
+            var status = x.ValidFrom > now ? "Future" : x.ExpiresAt <= now ? "Expired" : x.RemainingCredits <= 0 && reserved <= 0 ? "Consumed" : "Active";
+            return new CreditBucketDto
+            {
+                Id = x.Id, SourcePlan = x.PlanCode, Granted = x.GrantedCredits,
+                Remaining = Math.Max(0, x.RemainingCredits), Reserved = reserved,
+                Consumed = Math.Max(0, x.GrantedCredits - x.RemainingCredits - reserved),
+                ValidFrom = x.ValidFrom, ExpiresAt = x.ExpiresAt, SourceReference = x.SourceReference, Status = status
+            };
+        }).ToList();
         var planName = await _context.AiPricingPlans.AsNoTracking()
             .Where(plan => plan.Code == usage.PlanCode)
             .Select(plan => plan.Name)
@@ -43,6 +65,8 @@ public sealed class BillingService : IBillingService
             AdjustmentCredits = usage.AdjustmentCredits,
             UsedCredits = usage.UsedCredits,
             RemainingCredits = usage.RemainingCredits,
+            TotalRemainingCredits = usage.TotalRemainingCredits > 0 ? usage.TotalRemainingCredits : usage.RemainingCredits,
+            CreditBuckets = buckets,
             CurrentPeriodStart = usage.CurrentPeriodStart,
             CurrentPeriodEnd = usage.CurrentPeriodEnd,
             PendingOrder = pendingOrder == null ? null : await ToOrderDtoAsync(pendingOrder, cancellationToken)
@@ -90,7 +114,8 @@ public sealed class BillingService : IBillingService
             AmountVnd = plan.MonthlyPriceVnd.Value,
             Status = "Pending",
             TransferCode = await CreateTransferCodeAsync(cancellationToken),
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            IncludedAiCreditsSnapshot = plan.IncludedAiCredits
         };
         _context.PaymentOrders.Add(order);
         await _context.SaveChangesAsync(cancellationToken);
@@ -253,7 +278,7 @@ public sealed class BillingService : IBillingService
         Guid orderId, Guid adminUserId, string? note, CancellationToken cancellationToken = default)
     {
         await using IDbContextTransaction? transaction = _context.Database.IsRelational()
-            ? await _context.Database.BeginTransactionAsync(cancellationToken)
+            ? await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
             : null;
         var order = await _context.PaymentOrders.Include(item => item.User)
             .SingleOrDefaultAsync(item => item.Id == orderId, cancellationToken)
@@ -265,6 +290,15 @@ public sealed class BillingService : IBillingService
         if (order.Status != "Pending") throw new InvalidOperationException("Chỉ có thể duyệt đơn đang chờ.");
 
         var now = DateTime.UtcNow;
+        await _creditUsageService.EnsureLegacyCutoverAsync(order.UserId, cancellationToken);
+        var previousPlanCode = (await _context.AiSubscriptions.AsNoTracking()
+            .Where(x => x.UserId == order.UserId)
+            .Select(x => x.PlanCode)
+            .SingleOrDefaultAsync(cancellationToken)) ?? "free";
+        var previousPeriodEnd = await _context.AiSubscriptions.AsNoTracking()
+            .Where(x => x.UserId == order.UserId)
+            .Select(x => (DateTime?)x.CurrentPeriodEnd)
+            .SingleOrDefaultAsync(cancellationToken);
         order.Status = "Paid";
         order.PaidAt = now;
         order.ApprovedByUserId = adminUserId;
@@ -277,6 +311,20 @@ public sealed class BillingService : IBillingService
         subscription.ActivatedAt = now;
         subscription.CancelledAt = null;
         subscription.AutoRenew = false;
+        if (order.IncludedAiCreditsSnapshot > 0 && !await _context.AiCreditBuckets.AnyAsync(x => x.SourcePaymentOrderId == order.Id, cancellationToken))
+        {
+            var isRenewal = string.Equals(previousPlanCode, order.PlanCode, StringComparison.OrdinalIgnoreCase)
+                && previousPeriodEnd > now;
+            var validFrom = isRenewal ? subscription.CurrentPeriodEnd : now;
+            var expiresAt = validFrom.AddMonths(1);
+            _context.AiCreditBuckets.Add(new AiCreditBucket
+            {
+                Id = Guid.NewGuid(), UserId = order.UserId, PlanCode = order.PlanCode,
+                GrantedCredits = order.IncludedAiCreditsSnapshot, RemainingCredits = order.IncludedAiCreditsSnapshot,
+                ValidFrom = DateTime.SpecifyKind(validFrom, DateTimeKind.Utc), ExpiresAt = DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc),
+                SourceType = "PaymentOrder", SourcePaymentOrderId = order.Id, SourceReference = order.TransferCode, CreatedAt = now
+            });
+        }
         subscription.UpdatedAt = now;
         AddAudit(adminUserId, "PAYMENT_ORDER_APPROVE", order.UserId, new { orderId, order.PlanCode, order.AmountVnd, note });
         await _context.SaveChangesAsync(cancellationToken);
@@ -350,6 +398,7 @@ public sealed class BillingService : IBillingService
         PaidAt = order.PaidAt,
         ApprovedByUserId = order.ApprovedByUserId,
         AdminNote = order.AdminNote
+        ,IncludedAiCredits = order.IncludedAiCreditsSnapshot
     };
 
     private void AddAudit(Guid adminUserId, string action, Guid targetUserId, object details)

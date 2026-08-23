@@ -6,6 +6,7 @@ public class PaymentOrder
     public Guid UserId { get; set; }
     public string PlanCode { get; set; } = string.Empty;
     public decimal AmountVnd { get; set; }
+    public int IncludedAiCreditsSnapshot { get; set; }
     public string Status { get; set; } = "Pending";
     public string TransferCode { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
@@ -15,4 +16,5 @@ public class PaymentOrder
 
     public User User { get; set; } = null!;
     public User? ApprovedByUser { get; set; }
+    public ICollection<AiCreditBucket> AiCreditBuckets { get; set; } = new List<AiCreditBucket>();
 }

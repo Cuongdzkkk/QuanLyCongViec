@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaskManagement.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using TaskManagement.Infrastructure.Data;
 namespace TaskManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260823031856_AddAiCreditBuckets")]
+    partial class AddAiCreditBuckets
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -435,12 +438,6 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Property<int>("RemainingCredits")
                         .HasColumnType("int");
 
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
                     b.Property<Guid?>("SourcePaymentOrderId")
                         .HasColumnType("uniqueidentifier");
 
@@ -465,94 +462,11 @@ namespace TaskManagement.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[SourcePaymentOrderId] IS NOT NULL");
 
-                    b.HasIndex("SourceType", "SourceReference")
-                        .IsUnique()
-                        .HasFilter("[SourceReference] IS NOT NULL");
-
                     b.HasIndex("UserId", "ExpiresAt", "CreatedAt");
 
                     b.HasIndex("UserId", "ValidFrom", "ExpiresAt");
 
                     b.ToTable("AiCreditBuckets");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditReservation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("FinalizedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("FinalizedCredits")
-                        .HasColumnType("int");
-
-                    b.Property<string>("IdempotencyKey")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<DateTime?>("ReleasedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("RequestedCredits")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ReservedCredits")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "IdempotencyKey")
-                        .IsUnique();
-
-                    b.ToTable("AiCreditReservations");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditReservationAllocation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("AllocatedCredits")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ConsumedCredits")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("CreditBucketId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("ReservationId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreditBucketId");
-
-                    b.HasIndex("ReservationId", "CreditBucketId")
-                        .IsUnique();
-
-                    b.ToTable("AiCreditReservationAllocations");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditRule", b =>
@@ -4175,36 +4089,6 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditReservation", b =>
-                {
-                    b.HasOne("TaskManagement.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditReservationAllocation", b =>
-                {
-                    b.HasOne("TaskManagement.Domain.Entities.AiCreditBucket", "CreditBucket")
-                        .WithMany("ReservationAllocations")
-                        .HasForeignKey("CreditBucketId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("TaskManagement.Domain.Entities.AiCreditReservation", "Reservation")
-                        .WithMany("Allocations")
-                        .HasForeignKey("ReservationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CreditBucket");
-
-                    b.Navigation("Reservation");
-                });
-
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiSubscription", b =>
                 {
                     b.HasOne("TaskManagement.Domain.Entities.User", "User")
@@ -5795,16 +5679,6 @@ namespace TaskManagement.Infrastructure.Migrations
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiAttachment", b =>
                 {
                     b.Navigation("Chunks");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditBucket", b =>
-                {
-                    b.Navigation("ReservationAllocations");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditReservation", b =>
-                {
-                    b.Navigation("Allocations");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ChannelMessage", b =>

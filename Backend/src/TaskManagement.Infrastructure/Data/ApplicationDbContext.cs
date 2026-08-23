@@ -77,6 +77,9 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<AiUsageLedger> AiUsageLedgerEntries { get; set; }
         public DbSet<AiSubscription> AiSubscriptions { get; set; }
         public DbSet<AiCreditAdjustment> AiCreditAdjustments { get; set; }
+        public DbSet<AiCreditBucket> AiCreditBuckets { get; set; }
+        public DbSet<AiCreditReservation> AiCreditReservations { get; set; }
+        public DbSet<AiCreditReservationAllocation> AiCreditReservationAllocations { get; set; }
         public DbSet<PaymentOrder> PaymentOrders { get; set; }
         public DbSet<AIFeedback> AIFeedbacks { get; set; }
         public DbSet<AITrainingDataset> AITrainingDatasets { get; set; }
@@ -770,10 +773,35 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<PaymentOrder>().Property(x => x.TransferCode).HasMaxLength(64);
             modelBuilder.Entity<PaymentOrder>().Property(x => x.AmountVnd).HasPrecision(18, 2);
             modelBuilder.Entity<PaymentOrder>().Property(x => x.AdminNote).HasMaxLength(1000);
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.IncludedAiCreditsSnapshot).IsRequired();
             modelBuilder.Entity<PaymentOrder>()
                 .HasOne(x => x.User).WithMany(x => x.PaymentOrders).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<PaymentOrder>()
                 .HasOne(x => x.ApprovedByUser).WithMany().HasForeignKey(x => x.ApprovedByUserId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<AiCreditBucket>().HasIndex(x => new { x.UserId, x.ValidFrom, x.ExpiresAt });
+            modelBuilder.Entity<AiCreditBucket>().HasIndex(x => new { x.UserId, x.ExpiresAt, x.CreatedAt });
+            modelBuilder.Entity<AiCreditBucket>().HasIndex(x => x.SourcePaymentOrderId).IsUnique()
+                .HasFilter("[SourcePaymentOrderId] IS NOT NULL");
+            modelBuilder.Entity<AiCreditBucket>().HasIndex(x => new { x.SourceType, x.SourceReference }).IsUnique()
+                .HasFilter("[SourceReference] IS NOT NULL");
+            modelBuilder.Entity<AiCreditBucket>().Property(x => x.PlanCode).HasMaxLength(64);
+            modelBuilder.Entity<AiCreditBucket>().Property(x => x.SourceType).HasMaxLength(32);
+            modelBuilder.Entity<AiCreditBucket>().Property(x => x.SourceReference).HasMaxLength(200);
+            modelBuilder.Entity<AiCreditBucket>().Property(x => x.RowVersion).IsRowVersion();
+            modelBuilder.Entity<AiCreditBucket>().HasOne(x => x.User).WithMany()
+                .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<AiCreditBucket>().HasOne(x => x.SourcePaymentOrder).WithMany(x => x.AiCreditBuckets)
+                .HasForeignKey(x => x.SourcePaymentOrderId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<AiCreditReservation>().HasIndex(x => new { x.UserId, x.IdempotencyKey }).IsUnique();
+            modelBuilder.Entity<AiCreditReservation>().Property(x => x.IdempotencyKey).HasMaxLength(200);
+            modelBuilder.Entity<AiCreditReservation>().Property(x => x.Status).HasMaxLength(32);
+            modelBuilder.Entity<AiCreditReservation>().HasOne(x => x.User).WithMany()
+                .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<AiCreditReservationAllocation>().HasIndex(x => new { x.ReservationId, x.CreditBucketId }).IsUnique();
+            modelBuilder.Entity<AiCreditReservationAllocation>().HasOne(x => x.Reservation).WithMany(x => x.Allocations)
+                .HasForeignKey(x => x.ReservationId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<AiCreditReservationAllocation>().HasOne(x => x.CreditBucket).WithMany(x => x.ReservationAllocations)
+                .HasForeignKey(x => x.CreditBucketId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<AiActionExecution>().HasIndex(x => new { x.UserId, x.IdempotencyKey }).IsUnique();
             modelBuilder.Entity<AiActionExecution>().HasIndex(x => new { x.UserId, x.State, x.UpdatedAt });
             modelBuilder.Entity<AiActionExecution>().Property(x => x.ActionType).HasMaxLength(128);
