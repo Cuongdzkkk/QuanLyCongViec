@@ -301,6 +301,85 @@ public sealed class CallRoomRegistryTests
     }
 
     [Fact]
+    public async Task DisconnectWithAbortedTokenDoesNotThrow()
+    {
+        var registry = new CallRoomRegistry();
+        var participant = CreateParticipant("room", 1);
+        registry.Join(participant);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var proxy = CreateCanceledProxy();
+        var clients = new Mock<IHubCallerClients>();
+        clients.Setup(item => item.OthersInGroup("room")).Returns(proxy.Object);
+        clients.Setup(item => item.Group("room")).Returns(proxy.Object);
+        var hub = CreateHub(
+            registry,
+            Mock.Of<ICallRoomAuthorizationService>(),
+            participant.ConnectionId,
+            participant.UserId,
+            clients.Object,
+            cancellationToken: cancellation.Token);
+
+        await hub.OnDisconnectedAsync(new TaskCanceledException());
+
+        registry.IsParticipantInRoom("room", participant.ConnectionId).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DisconnectRemovesParticipantAndKeepsRemainingRoomStateWhenNotificationsCancel()
+    {
+        var registry = new CallRoomRegistry();
+        var departing = CreateParticipant("room", 1);
+        var remaining = CreateParticipant("room", 2);
+        registry.Join(departing);
+        var originalSession = registry.Join(remaining).Snapshot.AiState.CallSessionId;
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var proxy = CreateCanceledProxy();
+        var clients = new Mock<IHubCallerClients>();
+        clients.Setup(item => item.OthersInGroup("room")).Returns(proxy.Object);
+        clients.Setup(item => item.Group("room")).Returns(proxy.Object);
+        var hub = CreateHub(
+            registry,
+            Mock.Of<ICallRoomAuthorizationService>(),
+            departing.ConnectionId,
+            departing.UserId,
+            clients.Object,
+            cancellationToken: cancellation.Token);
+
+        await hub.OnDisconnectedAsync(new TaskCanceledException());
+
+        registry.IsParticipantInRoom("room", departing.ConnectionId).Should().BeFalse();
+        registry.IsParticipantInRoom("room", remaining.ConnectionId).Should().BeTrue();
+        registry.TryGetCallSessionId("room", remaining.ConnectionId, out var sessionId).Should().BeTrue();
+        sessionId.Should().Be(originalSession);
+        proxy.Verify(item => item.SendCoreAsync(
+            It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task LastParticipantDisconnectEndsCallSession()
+    {
+        var registry = new CallRoomRegistry();
+        var participant = CreateParticipant("room", 1);
+        registry.Join(participant);
+        var clients = new Mock<IHubCallerClients>();
+        clients.Setup(item => item.OthersInGroup("room")).Returns(new Mock<IClientProxy>().Object);
+        clients.Setup(item => item.Group("room")).Returns(new Mock<IClientProxy>().Object);
+        var hub = CreateHub(
+            registry,
+            Mock.Of<ICallRoomAuthorizationService>(),
+            participant.ConnectionId,
+            participant.UserId,
+            clients.Object);
+
+        await hub.OnDisconnectedAsync(null);
+
+        registry.GetRoomParticipants("room").Should().BeEmpty();
+        registry.TryGetCallSessionId("room", participant.ConnectionId, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void RelayingCanBeGuardedByRoomMembershipLookup()
     {
         var registry = new CallRoomRegistry();
@@ -330,11 +409,12 @@ public sealed class CallRoomRegistryTests
         string connectionId,
         Guid userId,
         IHubCallerClients? clients = null,
-        ICallChatService? callChat = null)
+        ICallChatService? callChat = null,
+        CancellationToken cancellationToken = default)
     {
         var context = new Mock<HubCallerContext>();
         context.SetupGet(item => item.ConnectionId).Returns(connectionId);
-        context.SetupGet(item => item.ConnectionAborted).Returns(CancellationToken.None);
+        context.SetupGet(item => item.ConnectionAborted).Returns(cancellationToken);
         context.SetupGet(item => item.User).Returns(new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "test")));
         var callerClients = clients;
@@ -356,5 +436,14 @@ public sealed class CallRoomRegistryTests
             Groups = new Mock<IGroupManager>().Object,
             Clients = callerClients
         };
+    }
+
+    private static Mock<IClientProxy> CreateCanceledProxy()
+    {
+        var proxy = new Mock<IClientProxy>();
+        proxy.Setup(item => item.SendCoreAsync(
+                It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.FromCanceled(new CancellationToken(true)));
+        return proxy;
     }
 }

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const source = fs.readFileSync(path.join(here, '..', 'src', 'services', 'callMediaService.js'), 'utf8')
+const collaborationChat = fs.readFileSync(path.join(here, '..', 'src', 'views', 'CollaborationChat.vue'), 'utf8')
 
 const required = [
   'navigator.mediaDevices.getUserMedia',
@@ -75,5 +76,17 @@ assert.match(source, /if \(!joinedAck \|\| !connection \|\| connection\.state !=
 assert.match(source, /joinedAck = true[\s\S]{0,220}roomId = read\(snapshot/)
 assert.match(source, /onreconnected\(async \(\) => \{[\s\S]{0,500}JoinVoiceRoom[\s\S]{0,220}refreshSnapshot/)
 assert.match(source, /pendingInboundSignals\.splice\(0\)[\s\S]{0,260}applyOffer[\s\S]{0,160}applyCandidate/)
+assert.match(source, /await syncPeerMedia\(entry\)[\s\S]{0,320}await negotiate\(entry\)/)
+assert.match(source, /callSessionId = read\(aiState, 'callSessionId', 'CallSessionId'\)/)
+assert.match(source, /getCallSessionId: \(\) => callSessionId/)
+assert.match(source, /isJoined: \(\) => joinedAck && Boolean\(callSessionId\)/)
+assert.match(collaborationChat, /callSession\.value\.isJoined\?\.\(\)/)
+assert.match(collaborationChat, /callSession\.value\.getCallSessionId\?\.\(\)/)
+assert.match(collaborationChat, /:disabled="callChatSending \|\| !callChatConnected"/)
+const cameraToggle = source.slice(source.indexOf('const setCameraEnabled'), source.indexOf('const setMicrophoneEnabled'))
+assert.ok(cameraToggle.includes('await syncPeerMedia(entry)'), 'camera toggle must renegotiate existing peers')
+assert.ok(cameraToggle.includes('await sendMediaState()'), 'camera toggle must publish media state')
+assert.equal(cameraToggle.includes('connection.stop()'), false, 'camera toggle must not stop SignalR')
+assert.equal(cameraToggle.includes('JoinVoiceRoom'), false, 'camera toggle must not rejoin SignalR')
 
-console.log(`callMediaService.test.mjs: ${required.length + 12} media foundation checks passed`)
+console.log(`callMediaService.test.mjs: ${required.length + 22} media/chat hotfix checks passed`)

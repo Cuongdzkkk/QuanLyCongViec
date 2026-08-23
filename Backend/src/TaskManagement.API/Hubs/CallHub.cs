@@ -311,10 +311,29 @@ public sealed class CallHub : Hub
         foreach (var participant in _rooms.RemoveConnection(Context.ConnectionId))
         {
             var nextAiState = _rooms.GetAiState(participant.RoomId);
-            await Clients.OthersInGroup(participant.RoomId).SendAsync(
-                CallRealtimeEvents.ParticipantLeft,
-                new CallParticipantLeftDto(participant.ConnectionId, participant.UserId));
-            await PublishAiStateTransitionAsync(participant.RoomId, nextAiState, Context.ConnectionAborted);
+            try
+            {
+                await Clients.OthersInGroup(participant.RoomId).SendAsync(
+                    CallRealtimeEvents.ParticipantLeft,
+                    new CallParticipantLeftDto(participant.ConnectionId, participant.UserId),
+                    CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+                // Teardown notifications are best effort; registry cleanup is authoritative.
+            }
+
+            try
+            {
+                // The disconnect token is already cancelled by the time this callback runs.
+                // Remaining participants still need the room-state transition, so do not use
+                // the departed connection's cancellation token for this broadcast.
+                await PublishAiStateTransitionAsync(participant.RoomId, nextAiState, CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+                // SignalR may close the write side while teardown is notifying the room.
+            }
         }
         await base.OnDisconnectedAsync(exception);
     }

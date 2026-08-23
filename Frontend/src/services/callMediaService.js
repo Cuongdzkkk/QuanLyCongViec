@@ -64,6 +64,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   let recoveryAttempts = 0
   let iceServers = []
   let joinedAck = false
+  let callSessionId = null
   const pendingInboundSignals = []
   let participants = new Map()
   const peers = new Map()
@@ -372,6 +373,10 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       if (entry.pc.connectionState === 'connected') recoveryAttempts = 0
     }
     await syncPeerMedia(entry)
+    // addTransceiver() can raise `negotiationneeded` before the handler is
+    // installed. Explicitly negotiate the freshly-created peer so an
+    // existing presenter offers its camera/screen tracks to late joiners.
+    await negotiate(entry)
     return entry
   }
 
@@ -439,11 +444,13 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const refreshSnapshot = async snapshot => {
     joinedAck = true
     roomId = read(snapshot, 'roomId', 'RoomId')
+    const aiState = read(snapshot, 'aiState', 'AiState')
+    callSessionId = read(aiState, 'callSessionId', 'CallSessionId') || null
     participants = new Map((read(snapshot, 'participants', 'Participants') ?? []).map(item => {
       const participant = normalizeParticipant(item)
       return [participant.connectionId, participant]
     }))
-    handleAiState(read(snapshot, 'aiState', 'AiState'))
+    handleAiState(aiState)
     emitParticipants()
     for (const participant of participants.values()) await createPeer(participant.connectionId)
     const queuedSignals = pendingInboundSignals.splice(0)
@@ -798,6 +805,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         await connection?.stop()
       } finally {
         joinedAck = false
+        callSessionId = null
         pendingInboundSignals.splice(0)
         closeAllPeers()
         screenTrack?.stop()
@@ -851,6 +859,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     getLocalCameraStream: () => cameraStream,
     getLocalScreenStream: () => screenStream,
     getRoomId: () => roomId,
+    getCallSessionId: () => callSessionId,
+    isJoined: () => joinedAck && Boolean(callSessionId),
     getConnectionId: localConnectionId,
     getMediaState: () => ({ microphoneEnabled, cameraEnabled, screenSharing, backgroundEffect })
   }
