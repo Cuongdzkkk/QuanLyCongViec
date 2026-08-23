@@ -1,6 +1,7 @@
 import * as signalR from '@microsoft/signalr'
 import { isExpectedNetworkError } from '@/utils/errorTelemetry'
 import { getStoredAccessToken } from '@/utils/authSession'
+import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 
 class SignalRService {
   constructor() {
@@ -39,17 +40,19 @@ class SignalRService {
   }
 
   async ensureConnection() {
-    if (this.connection?.state === signalR.HubConnectionState.Connected) return true
+    if ([signalR.HubConnectionState.Connected, signalR.HubConnectionState.Connecting, signalR.HubConnectionState.Reconnecting]
+      .includes(this.connection?.state)) {
+      return this.startPromise || true
+    }
     if (this.startPromise) return this.startPromise
 
     const generation = ++this.connectionGeneration
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api'
     const hubBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '')
-    this.connection = new signalR.HubConnectionBuilder()
+    this.connection = configureRealtimeHub(new signalR.HubConnectionBuilder())
       .withUrl(`${hubBaseUrl}/kanban-hub`, {
         accessTokenFactory: () => getStoredAccessToken() || ''
       })
-      .withAutomaticReconnect([0, 2000, 10000, 30000])
       .configureLogging(signalR.LogLevel.None)
       .build()
 

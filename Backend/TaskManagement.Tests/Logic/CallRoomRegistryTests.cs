@@ -185,6 +185,54 @@ public sealed class CallRoomRegistryTests
     }
 
     [Fact]
+    public void ReconnectingUserReplacesTransportWithoutDuplicatingParticipant()
+    {
+        var registry = new CallRoomRegistry();
+        var roomId = "project:room:voice:general";
+        var userId = Guid.NewGuid();
+        var first = new CallRoomParticipant(roomId, "connection-old", userId, "Caller", null, true, false, false);
+        var second = new CallRoomParticipant(roomId, "connection-new", userId, "Caller", null, true, false, false);
+
+        registry.Join(first).Accepted.Should().BeTrue();
+        var result = registry.Join(second);
+
+        result.Accepted.Should().BeTrue();
+        result.ReplacedParticipants.Should().ContainSingle(item => item.ConnectionId == "connection-old");
+        result.Snapshot.Participants.Should().ContainSingle(item => item.ConnectionId == "connection-new");
+        registry.IsParticipantInRoom(roomId, "connection-old").Should().BeFalse();
+        registry.IsParticipantInRoom(roomId, "connection-new").Should().BeTrue();
+
+        var repeated = registry.Join(second);
+        repeated.ReplacedParticipants.Should().BeEmpty();
+        repeated.Snapshot.Participants.Should().ContainSingle(item => item.ConnectionId == "connection-new");
+
+        var other = registry.Join(new CallRoomParticipant(
+            roomId, "connection-other", Guid.NewGuid(), "Other", null, true, false, false));
+        other.Snapshot.Participants.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task RaiseHandAndReactionPublishOneEventEach()
+    {
+        var roomId = "project:room:voice:general";
+        var userId = Guid.NewGuid();
+        var registry = new CallRoomRegistry();
+        registry.Join(new CallRoomParticipant(roomId, "connection", userId, "Caller", null, true, false, false));
+        var groupProxy = new Mock<IClientProxy>();
+        var clients = new Mock<IHubCallerClients>();
+        clients.Setup(item => item.Group(roomId)).Returns(groupProxy.Object);
+        var hub = CreateHub(registry, Mock.Of<ICallRoomAuthorizationService>(), "connection", userId, clients.Object);
+
+        await hub.SetRaiseHand(roomId, true);
+        await hub.SendCallReaction(roomId, "👏");
+
+        groupProxy.Invocations.Should().HaveCount(2);
+        groupProxy.Invocations.Select(invocation => invocation.Arguments[0]).Should().ContainInOrder(
+            CallRealtimeEvents.ParticipantHandChanged,
+            CallRealtimeEvents.CallReactionAdded);
+    }
+
+    [Fact]
     public void MediaStateIsOwnedByConnectionAndDisconnectRemovesParticipant()
     {
         var registry = new CallRoomRegistry();

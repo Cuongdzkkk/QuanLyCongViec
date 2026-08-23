@@ -21,7 +21,7 @@ const expects = [
   ['camera stage is reactive and sized', 'hasVisibleCallVideo', 'call-camera-stage', 'min-height: 310px', 'object-fit: cover'],
   ['placeholder waits for all visual streams', 'v-else-if="hasVisibleCallVideo"', 'v-else class="call-grid-empty"'],
   ['screen share remains dominant', 'v-if="activePresenter"', 'activePresenterStream'],
-  ['derived meeting layout modes stay centralized', 'const callLayoutMode = computed', 'CAMERA_GRID', 'CAMERA_FOCUS', 'PRESENTATION_FOCUS'],
+  ['derived meeting layout modes stay centralized', 'const callLayoutMode = computed', 'getMeetingLayoutMode'],
   ['presentation keeps a participant rail', 'is-presentation-mode', 'grid-template-columns: minmax(0, 1fr) minmax(190px, 240px)', 'object-fit: contain'],
   ['responsive presentation becomes a camera strip', '@media (max-width: 900px)', 'flex-direction: row', 'overflow-x: auto'],
   ['controls expose predictable accessible states', 'Mic đang bật', 'Camera đang bật', 'call-control-future-slot', 'Rời cuộc gọi'],

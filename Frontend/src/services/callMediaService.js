@@ -2,9 +2,11 @@ import * as signalR from '@microsoft/signalr'
 import axiosClient from '@/api/axiosClient'
 import { getStoredAccessToken } from '@/utils/authSession'
 import { createBackgroundBlurProcessor } from '@/services/cameraBackgroundEffect'
+import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 
 const HUB_ROUTE = '/hubs/call'
 const MAX_RECOVERY_ATTEMPTS = 2
+let activeCallSession = null
 
 const read = (value, camel, pascal) => value?.[camel] ?? value?.[pascal]
 
@@ -44,6 +46,8 @@ const getIceServers = async () => {
 
 export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams, onAiState, onTranscriptChunk, onTranscriptInterim, onTranscriptionError, onHandChanged, onReaction, onSpeakerChanged, onForceMute, onForceRemoved }) => {
   let connection = null
+  let startPromise = null
+  let leavePromise = null
   let roomId = null
   let localStream = null
   let cameraStream = null
@@ -656,56 +660,70 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   }
 
   const start = async () => {
-    if (connection) return
-    intentionalLeave = false
-    if (typeof RTCPeerConnection === 'undefined') throw mediaError(null, 'UNSUPPORTED_BROWSER')
-    await acquireMicrophone()
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api'
-    const hubBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '')
-    connection = new signalR.HubConnectionBuilder()
-      .withUrl(`${hubBaseUrl}${HUB_ROUTE}`, { accessTokenFactory: () => getStoredAccessToken() || '' })
-      .withAutomaticReconnect([0, 2000, 10000, 30000])
-      .build()
-    registerHandlers()
-    emit('connecting')
-    iceServers = await getIceServers().catch(() => [])
-    await connection.start()
-    await refreshSnapshot(await connection.invoke('JoinVoiceRoom', projectId, voiceChannelId))
-    emit('connected')
+    if (startPromise) return startPromise
+    if ([signalR.HubConnectionState.Connected, signalR.HubConnectionState.Connecting, signalR.HubConnectionState.Reconnecting]
+      .includes(connection?.state)) return
+    if (activeCallSession && activeCallSession !== session) await activeCallSession.leave()
+    activeCallSession = session
+    startPromise = (async () => {
+      intentionalLeave = false
+      if (typeof RTCPeerConnection === 'undefined') throw mediaError(null, 'UNSUPPORTED_BROWSER')
+      await acquireMicrophone()
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api'
+      const hubBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '')
+      connection = configureRealtimeHub(new signalR.HubConnectionBuilder())
+        .withUrl(`${hubBaseUrl}${HUB_ROUTE}`, { accessTokenFactory: () => getStoredAccessToken() || '' })
+        .build()
+      registerHandlers()
+      emit('connecting')
+      iceServers = await getIceServers().catch(() => [])
+      await connection.start()
+      await refreshSnapshot(await connection.invoke('JoinVoiceRoom', projectId, voiceChannelId))
+      emit('connected')
+    })().finally(() => { startPromise = null })
+    return startPromise
   }
 
   const leave = async () => {
-    intentionalLeave = true
-    try {
-      await stopTranscriptionCapture()
-      if (connection?.state === signalR.HubConnectionState.Connected && roomId) {
-        await connection.invoke('LeaveVoiceRoom', projectId, voiceChannelId)
+    if (leavePromise) return leavePromise
+    leavePromise = (async () => {
+      intentionalLeave = true
+      if (startPromise) {
+        try { await startPromise } catch { /* cleanup below remains authoritative */ }
       }
-      await connection?.stop()
-    } finally {
-      closeAllPeers()
-      screenTrack?.stop()
-      await disposeBackgroundProcessor()
-      cameraTrack?.stop()
-      rawCameraTrack?.stop()
-      localStream?.getTracks().forEach(track => track.stop())
-      localStream = null
-      cameraTrack = null
-      rawCameraTrack = null
-      cameraStream = null
-      screenTrack = null
-      screenStream = null
-      participants.clear()
-      remoteStreams.clear()
-      connection = null
-      roomId = null
-      emitParticipants()
-      emitRemoteStreams()
-      emit('disconnected')
-    }
+      try {
+        await stopTranscriptionCapture()
+        if (connection?.state === signalR.HubConnectionState.Connected && roomId) {
+          await connection.invoke('LeaveVoiceRoom', projectId, voiceChannelId)
+        }
+        await connection?.stop()
+      } finally {
+        closeAllPeers()
+        screenTrack?.stop()
+        await disposeBackgroundProcessor()
+        cameraTrack?.stop()
+        rawCameraTrack?.stop()
+        localStream?.getTracks().forEach(track => track.stop())
+        localStream = null
+        cameraTrack = null
+        rawCameraTrack = null
+        cameraStream = null
+        screenTrack = null
+        screenStream = null
+        participants.clear()
+        remoteStreams.clear()
+        connection = null
+        roomId = null
+        emitParticipants()
+        emitRemoteStreams()
+        emit('disconnected')
+        if (activeCallSession === session) activeCallSession = null
+      }
+    })().finally(() => { leavePromise = null })
+    return leavePromise
   }
 
-  return {
+  const session = {
     start,
     leave,
     setMicrophoneEnabled,
@@ -733,4 +751,5 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     getConnectionId: localConnectionId,
     getMediaState: () => ({ microphoneEnabled, cameraEnabled, screenSharing, backgroundEffect })
   }
+  return session
 }

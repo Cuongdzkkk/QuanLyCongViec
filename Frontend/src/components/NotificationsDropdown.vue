@@ -97,6 +97,7 @@ import { isExpectedNetworkError } from '@/utils/errorTelemetry'
 import { getStoredAccessToken } from '@/utils/authSession'
 import { useAuthStore } from '@/store/useAuthStore'
 import { collaborationRealtime } from '@/services/collaborationRealtime'
+import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 import {
   isPendingInvitation,
   isResolvedInvitation,
@@ -116,6 +117,8 @@ let unsubscribeCollaborationMention = null
 let unsubscribeCollaborationReconnect = null
 let notificationRequestId = 0
 let notificationAbortController = null
+let notificationStartPromise = null
+let notificationLifecycle = 0
 
 const unreadCount = ref(0)
 const invitationActionId = ref(null)
@@ -293,24 +296,31 @@ const declineInvitation = async (notification) => {
   }
 }
 
-const initSignalR = () => {
+const initSignalR = async () => {
   const token = getStoredAccessToken()
   if (!token) return
+  if ([signalR.HubConnectionState.Connected, signalR.HubConnectionState.Connecting, signalR.HubConnectionState.Reconnecting]
+    .includes(connection.value?.state)) return notificationStartPromise
+  if (notificationStartPromise) return notificationStartPromise
+  const lifecycle = ++notificationLifecycle
+  const previousConnection = connection.value
+  connection.value = null
+  if (previousConnection) await previousConnection.stop().catch(() => {})
 
   const hubUrl = new URL(apiBaseUrl, window.location.origin)
   hubUrl.pathname = '/notification-hub'
   hubUrl.search = ''
   hubUrl.hash = ''
 
-  connection.value = new signalR.HubConnectionBuilder()
+  const nextConnection = configureRealtimeHub(new signalR.HubConnectionBuilder())
     .withUrl(hubUrl.toString(), {
         accessTokenFactory: () => getStoredAccessToken() || token
     })
-    .withAutomaticReconnect()
     .configureLogging(signalR.LogLevel.None)
     .build()
+  connection.value = nextConnection
 
-  connection.value.on('ReceiveNotification', (notification) => {
+  nextConnection.on('ReceiveNotification', (notification) => {
     const normalized = {
       ...notification,
       isRead: false,
@@ -325,14 +335,15 @@ const initSignalR = () => {
     }
   })
 
-  connection.value.on('NotificationUpdated', (notification) => {
+  nextConnection.on('NotificationUpdated', (notification) => {
     const index = notifications.value.findIndex(item => item.id === notification.id)
     if (index >= 0) notifications.value[index] = { ...notifications.value[index], ...notification }
     else void fetchNotifications()
     void fetchUnreadCount()
   })
 
-  connection.value.onreconnected(async () => {
+  nextConnection.onreconnected(async () => {
+    if (lifecycle !== notificationLifecycle || connection.value !== nextConnection) return
     try {
       await connection.value.invoke('JoinUserChannel')
     } catch (error) {
@@ -342,13 +353,18 @@ const initSignalR = () => {
     await fetchNotifications()
   })
 
-  connection.value.start()
-    .then(() => connection.value.invoke('JoinUserChannel'))
+  notificationStartPromise = nextConnection.start()
+    .then(() => nextConnection.invoke('JoinUserChannel'))
     .catch((error) => {
       if (!isExpectedNetworkError(error)) {
         console.error('Notification hub connection failed:', error)
       }
+      if (connection.value === nextConnection) connection.value = null
     })
+    .finally(() => {
+      if (lifecycle === notificationLifecycle) notificationStartPromise = null
+    })
+  return notificationStartPromise
 }
 
 let notificationRefreshTimer = null
@@ -368,13 +384,14 @@ watch(() => authStore.token, (token, previousToken) => {
   notificationAbortController?.abort()
   notificationRequestId += 1
   notifications.value = []
-  if (connection.value) {
-    void connection.value.stop()
-    connection.value = null
-  }
+  ++notificationLifecycle
+  const previousConnection = connection.value
+  connection.value = null
+  notificationStartPromise = null
+  if (previousConnection) void previousConnection.stop()
   if (token) {
     void fetchNotifications()
-    initSignalR()
+    void initSignalR()
   }
 })
 

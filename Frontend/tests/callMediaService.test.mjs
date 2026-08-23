@@ -19,7 +19,7 @@ const required = [
   'replaceTrack',
   'screenTrack.onended',
   "LeaveVoiceRoom",
-  'withAutomaticReconnect',
+  'configureRealtimeHub',
   'onconnectionstatechange',
   'MAX_RECOVERY_ATTEMPTS',
   'ontrack',
