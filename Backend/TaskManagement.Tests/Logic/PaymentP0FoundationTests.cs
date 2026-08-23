@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Net;
 using System.Text;
 using System.Globalization;
 using System.Text.Json;
@@ -19,6 +20,76 @@ namespace TaskManagement.Tests.Logic;
 
 public sealed class PaymentP0FoundationTests
 {
+    [Theory]
+    [InlineData("https://sprinta.id.vn")]
+    [InlineData("https://www.sprinta.id.vn")]
+    public async Task Cors_PublicPricing_AllowsConfiguredProductionOrigins(string origin)
+    {
+        await using var factory = new PaymentHttpApplicationFactory();
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/public/pricing");
+        request.Headers.Add("Origin", origin);
+
+        using var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Headers.GetValues("Access-Control-Allow-Origin").Single().Should().Be(origin);
+        response.Headers.GetValues("Access-Control-Allow-Credentials").Single().Should().Be("true");
+    }
+
+    [Fact]
+    public async Task Cors_PublicPricing_RejectsUnknownOrigin()
+    {
+        await using var factory = new PaymentHttpApplicationFactory();
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/public/pricing");
+        request.Headers.Add("Origin", "https://evil.example");
+
+        using var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Cors_PublicPricing_PreflightAllowsLegitimateHeaders()
+    {
+        await using var factory = new PaymentHttpApplicationFactory();
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/api/public/pricing");
+        request.Headers.Add("Origin", "https://www.sprinta.id.vn");
+        request.Headers.Add("Access-Control-Request-Method", "GET");
+        request.Headers.Add("Access-Control-Request-Headers", "authorization,content-type,x-ai-operation-id");
+
+        using var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        response.Headers.GetValues("Access-Control-Allow-Origin").Single().Should().Be("https://www.sprinta.id.vn");
+        response.Headers.GetValues("Access-Control-Allow-Methods").Single().Should().Contain("GET");
+        var allowedHeaders = response.Headers.GetValues("Access-Control-Allow-Headers").Single();
+        allowedHeaders.Should().Contain("authorization");
+        allowedHeaders.Should().Contain("content-type");
+        allowedHeaders.Should().Contain("x-ai-operation-id");
+    }
+
+    [Theory]
+    [InlineData("/api/billing/me")]
+    [InlineData("/api/billing/orders/history")]
+    [InlineData("/api/billing/orders/00000000-0000-4000-8000-000000000001")]
+    public async Task Cors_BillingEndpoints_PreserveCorsHeadersOnUnauthorizedResponses(string path)
+    {
+        await using var factory = new PaymentHttpApplicationFactory();
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Add("Origin", "https://www.sprinta.id.vn");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "invalid");
+
+        using var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.Headers.GetValues("Access-Control-Allow-Origin").Single().Should().Be("https://www.sprinta.id.vn");
+    }
+
     [Fact]
     public async Task SePayWebhook_RejectsInvalidSignature()
     {
@@ -417,7 +488,9 @@ public sealed class PaymentHttpApplicationFactory : WebApplicationFactory<Progra
             ["Database:Provider"] = "InMemory",
             ["Database:InMemoryName"] = _databaseName,
             ["OpenApi:Enabled"] = "false",
-            ["DataProtection:KeysPath"] = Path.Combine(Path.GetTempPath(), $"sprinta-payment-keys-{Guid.NewGuid():N}")
+            ["DataProtection:KeysPath"] = Path.Combine(Path.GetTempPath(), $"sprinta-payment-keys-{Guid.NewGuid():N}"),
+            ["Cors:AllowedOrigins:0"] = "https://sprinta.id.vn",
+            ["Cors:AllowedOrigins:1"] = "https://www.sprinta.id.vn"
             };
             if (!_useEnvironmentKeys)
             {
