@@ -161,7 +161,8 @@ public sealed class CallAi2ConsentTests
             registry,
             new Mock<ICallRoomAuthorizationService>().Object,
             provider,
-            new NoopTranscriptService())
+            new NoopTranscriptService(),
+            Mock.Of<ICallChatService>())
         {
             Context = context.Object,
             Clients = clients.Object

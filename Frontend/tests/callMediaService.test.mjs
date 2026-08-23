@@ -52,8 +52,14 @@ for (const needle of [
 ]) assert.ok(source.includes(needle), `missing remote track merge contract: ${needle}`)
 
 for (const needle of [
-  'cameraSender',
-  'screenSender',
+  'cameraTransceiver',
+  'screenTransceiver',
+  'audioTransceiver',
+  'addTransceiver',
+  'joinedAck',
+  'pendingInboundSignals',
+  'GetCallChatHistory',
+  'SendCallMessage',
   'cameraStream',
   'screenStream',
   'mediaSources',
@@ -64,5 +70,10 @@ for (const needle of [
   'cameraStream: new MediaStream()',
   'screenStream: new MediaStream()'
 ]) assert.ok(source.includes(needle), `missing simultaneous media contract: ${needle}`)
+
+assert.match(source, /if \(!joinedAck \|\| !connection \|\| connection\.state !== signalR\.HubConnectionState\.Connected \|\| !roomId\) return/)
+assert.match(source, /joinedAck = true[\s\S]{0,220}roomId = read\(snapshot/)
+assert.match(source, /onreconnected\(async \(\) => \{[\s\S]{0,500}JoinVoiceRoom[\s\S]{0,220}refreshSnapshot/)
+assert.match(source, /pendingInboundSignals\.splice\(0\)[\s\S]{0,260}applyOffer[\s\S]{0,160}applyCandidate/)
 
 console.log(`callMediaService.test.mjs: ${required.length + 12} media foundation checks passed`)

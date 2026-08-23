@@ -15,17 +15,20 @@ public sealed class CallHub : Hub
     private readonly ICallRoomAuthorizationService _authorization;
     private readonly ICallTranscriptionProvider _transcriptionProvider;
     private readonly ICallTranscriptService _transcripts;
+    private readonly ICallChatService _callChat;
 
     public CallHub(
         ICallRoomRegistry rooms,
         ICallRoomAuthorizationService authorization,
         ICallTranscriptionProvider transcriptionProvider,
-        ICallTranscriptService transcripts)
+        ICallTranscriptService transcripts,
+        ICallChatService callChat)
     {
         _rooms = rooms;
         _authorization = authorization;
         _transcriptionProvider = transcriptionProvider;
         _transcripts = transcripts;
+        _callChat = callChat;
     }
 
     public async Task<CallRoomSnapshotDto> JoinVoiceRoom(string? projectId, string? voiceChannelId)
@@ -86,6 +89,37 @@ public sealed class CallHub : Hub
     public Task SendIceCandidate(string? roomId, string? targetConnectionId, object? candidate) =>
         RelaySignalAsync(roomId, targetConnectionId, candidate, CallRealtimeEvents.IceCandidate,
             (sender, target, payload) => new CallIceCandidateDto(sender.ConnectionId, sender.UserId, target.ConnectionId, payload));
+
+    public async Task<IReadOnlyList<CallChatMessageDto>> GetCallChatHistory(string? roomId, int limit = 100)
+    {
+        var normalizedRoomId = NormalizeRoomId(roomId);
+        if (!_rooms.TryGetCallSessionId(normalizedRoomId, Context.ConnectionId, out var callSessionId))
+            throw new HubException("NOT_IN_CALL_ROOM");
+        return await _callChat.GetHistoryAsync(normalizedRoomId, callSessionId, limit, Context.ConnectionAborted);
+    }
+
+    public async Task SendCallMessage(string? roomId, string? content, string? clientMessageId = null)
+    {
+        var normalizedRoomId = NormalizeRoomId(roomId);
+        if (!_rooms.TryGetParticipant(normalizedRoomId, Context.ConnectionId, out var participant) ||
+            !_rooms.TryGetCallSessionId(normalizedRoomId, Context.ConnectionId, out var callSessionId))
+            throw new HubException("NOT_IN_CALL_ROOM");
+        if (string.IsNullOrWhiteSpace(content) || content.Trim().Length > 4000)
+            throw new HubException("INVALID_CALL_MESSAGE");
+
+        var message = await _callChat.CreateAsync(
+            normalizedRoomId,
+            callSessionId,
+            participant.UserId,
+            participant.DisplayName,
+            content,
+            clientMessageId,
+            Context.ConnectionAborted);
+        await Clients.Group(normalizedRoomId).SendAsync(
+            CallRealtimeEvents.CallMessageCreated,
+            message,
+            Context.ConnectionAborted);
+    }
 
     public async Task PublishParticipantMediaState(string? roomId, CallParticipantMediaStateDto? state)
     {

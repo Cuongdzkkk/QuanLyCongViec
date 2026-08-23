@@ -144,6 +144,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<DirectConversationReadState> DirectConversationReadStates { get; set; }
         public DbSet<CollaborationMessageAttachment> CollaborationMessageAttachments { get; set; }
         public DbSet<CallTranscriptChunk> CallTranscriptChunks { get; set; }
+        public DbSet<CallChatMessage> CallChatMessages { get; set; }
 
         public DbSet<CustomFieldDefinition> CustomFieldDefinitions { get; set; }
         public DbSet<CustomFieldValue> CustomFieldValues { get; set; }
@@ -572,6 +573,17 @@ namespace TaskManagement.Infrastructure.Data
                     .HasForeignKey(n => n.RelatedInvitationId)
                     .OnDelete(DeleteBehavior.NoAction);
                 entity.Property(n => n.ActionState).HasMaxLength(32);
+            });
+
+            modelBuilder.Entity<CallChatMessage>(entity =>
+            {
+                entity.Property(message => message.RoomId).HasMaxLength(300).IsRequired();
+                entity.Property(message => message.Content).HasMaxLength(4000).IsRequired();
+                entity.HasIndex(message => new { message.CallSessionId, message.CreatedAt });
+                entity.HasIndex(message => new { message.RoomId, message.CreatedAt });
+                entity.HasOne<User>().WithMany()
+                    .HasForeignKey(message => message.SenderUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<ProjectInvitation>(entity =>

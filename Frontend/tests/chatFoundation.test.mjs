@@ -28,7 +28,7 @@ const expects = [
   ['participant focus preserves presentation access', 'focusParticipant', 'is-focused-participant', 'Quay lại màn hình chia sẻ'],
   ['presentation consumes separate screen source', 'getLocalScreenStream', 'screenStream', 'cameraStream'],
   ['presentation controls stay in the stage layout', 'presentation-toolbar', 'grid-template-rows: auto minmax(0, 1fr) auto', 'presentation-control'],
-  ['call chat keeps room context and real sender identity', 'activeVoiceChannel?.name', 'msg.senderAvatar', 'msg.senderId === currentUser.id', 'call-chat-channel-name'],
+  ['call chat keeps room context and real sender identity', 'activeVoiceChannel?.name', 'msg.senderAvatar', '`${msg.senderId}` === `${currentUser.id}`', 'call-chat-channel-name'],
   ['call chat composer supports clear, send, and newline behavior', 'call-chat-clear', '@keydown.enter.exact.prevent="sendCallChatMessage"', 'textarea'],
   ['unavailable transcript copy stays truthful', 'Trợ lý cuộc họp chưa sẵn sàng', 'Quản trị viên chưa cấu hình phiên âm cuộc họp.'],
   ['remote camera and screen sources stay separate', '?.cameraStream', '?.screenStream', '?.audioStream'],
@@ -44,5 +44,8 @@ for (const [name, ...needles] of expects) {
 assert.match(view, /const switchTab = \(tab\) =>[\s\S]{0,180}currentTab\.value = tab/)
 assert.ok(view.includes('const openAiAnalysis = (scope = \'text\') =>'))
 assert.ok(view.includes('aiAnalysisOpen.value = true'))
+assert.ok(view.includes('openPreJoinVoiceChannel'))
+const callChatFunction = view.slice(view.indexOf('const openVoiceChannelChat = async () => {'), view.indexOf('const isCanceledRequest'))
+assert.doesNotMatch(callChatFunction, /createProjectChannel/)
 
 console.log(`chatFoundation.test.mjs: ${expects.length} foundation checks passed`)

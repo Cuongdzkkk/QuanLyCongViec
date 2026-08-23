@@ -143,7 +143,8 @@ public sealed class CallRoomRegistryTests
             registry,
             authorization.Object,
             Mock.Of<ICallTranscriptionProvider>(),
-            Mock.Of<ICallTranscriptService>())
+            Mock.Of<ICallTranscriptService>(),
+            Mock.Of<ICallChatService>())
         {
             Context = context.Object,
             Groups = groups.Object,
@@ -166,6 +167,36 @@ public sealed class CallRoomRegistryTests
     }
 
     [Fact]
+    public async Task CallChatRequiresMembershipAndBroadcastsCanonicalMessage()
+    {
+        var registry = new CallRoomRegistry();
+        var authorization = new Mock<ICallRoomAuthorizationService>();
+        var userId = Guid.NewGuid();
+        var roomId = "project:room:voice:general";
+        registry.Join(new CallRoomParticipant(roomId, "caller", userId, "Caller", null, true, false, false));
+        registry.TryGetCallSessionId(roomId, "caller", out var sessionId).Should().BeTrue();
+
+        var chat = new Mock<ICallChatService>();
+        var message = new CallChatMessageDto(Guid.NewGuid(), sessionId, roomId, userId, "Caller", "hello", DateTime.UtcNow, "client-1");
+        chat.Setup(item => item.GetHistoryAsync(roomId, sessionId, 100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([message]);
+        chat.Setup(item => item.CreateAsync(roomId, sessionId, userId, "Caller", "hello", "client-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(message);
+        var group = new Mock<IClientProxy>();
+        var clients = new Mock<IHubCallerClients>();
+        clients.Setup(item => item.Group(roomId)).Returns(group.Object);
+        var hub = CreateHub(registry, authorization.Object, "caller", userId, clients.Object, chat.Object);
+
+        (await hub.GetCallChatHistory(roomId)).Should().ContainSingle();
+        await hub.SendCallMessage(roomId, "hello", "client-1");
+
+        group.Verify(item => item.SendCoreAsync(
+            CallRealtimeEvents.CallMessageCreated,
+            It.IsAny<object?[]>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public void RoomEnforcesSixDistinctParticipantsAndReturnsAuthorizedSnapshot()
     {
         var registry = new CallRoomRegistry();
@@ -182,6 +213,23 @@ public sealed class CallRoomRegistryTests
         full.Accepted.Should().BeFalse();
         full.RoomFull.Should().BeTrue();
         full.Snapshot.Participants.Should().HaveCount(ICallRoomRegistry.MaximumParticipants);
+    }
+
+    [Fact]
+    public void EmptyRoomEndsSessionAndRejoiningCreatesANewCallSession()
+    {
+        var registry = new CallRoomRegistry();
+        var roomId = "project:room:voice:general";
+        var userId = Guid.NewGuid();
+        var participant = new CallRoomParticipant(roomId, "connection", userId, "Caller", null, true, false, false);
+
+        var first = registry.Join(participant);
+        var firstSession = first.Snapshot.AiState.CallSessionId;
+        registry.Leave(roomId, participant.ConnectionId).Should().NotBeNull();
+
+        var second = registry.Join(participant);
+
+        second.Snapshot.AiState.CallSessionId.Should().NotBe(firstSession);
     }
 
     [Fact]
@@ -281,7 +329,8 @@ public sealed class CallRoomRegistryTests
         ICallRoomAuthorizationService authorization,
         string connectionId,
         Guid userId,
-        IHubCallerClients? clients = null)
+        IHubCallerClients? clients = null,
+        ICallChatService? callChat = null)
     {
         var context = new Mock<HubCallerContext>();
         context.SetupGet(item => item.ConnectionId).Returns(connectionId);
@@ -300,7 +349,8 @@ public sealed class CallRoomRegistryTests
             registry,
             authorization,
             Mock.Of<ICallTranscriptionProvider>(),
-            Mock.Of<ICallTranscriptService>())
+            Mock.Of<ICallTranscriptService>(),
+            callChat ?? Mock.Of<ICallChatService>())
         {
             Context = context.Object,
             Groups = new Mock<IGroupManager>().Object,
