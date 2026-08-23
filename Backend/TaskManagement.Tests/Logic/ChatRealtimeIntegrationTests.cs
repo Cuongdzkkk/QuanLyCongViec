@@ -75,6 +75,17 @@ public sealed class ChatRealtimeIntegrationTests
     }
 
     [Fact]
+    public async Task CallHubUsesBounded128KbReceiveMessageLimit()
+    {
+        await using var factory = new ChatApplicationFactory();
+
+        var options = factory.Services.GetRequiredService<IOptions<HubOptions<CallHub>>>().Value;
+
+        options.MaximumReceiveMessageSize.Should().Be(CallHub.MaximumReceiveMessageSize);
+        options.MaximumReceiveMessageSize.Should().Be(131072);
+    }
+
+    [Fact]
     public async Task NotificationHubRequiresAuthAndOnlyDeliversToAuthenticatedUserGroup()
     {
         await using var factory = new ChatApplicationFactory();

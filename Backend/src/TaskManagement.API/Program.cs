@@ -22,7 +22,11 @@ builder.Services.AddSignalR(options =>
     options.KeepAliveInterval = TimeSpan.FromSeconds(15);
     options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
     options.AddFilter(typeof(TaskManagement.API.Hubs.CallHubInvocationDiagnosticsFilter));
-});
+})
+    .AddHubOptions<TaskManagement.API.Hubs.CallHub>(options =>
+    {
+        options.MaximumReceiveMessageSize = TaskManagement.API.Hubs.CallHub.MaximumReceiveMessageSize;
+    });
 builder.Services.AddHttpClient();
 builder.Services.AddOpenApi();
 builder.Services.AddMemoryCache();

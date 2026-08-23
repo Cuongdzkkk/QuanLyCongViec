@@ -12,6 +12,8 @@ namespace TaskManagement.API.Hubs;
 public sealed class CallHub : Hub
 {
     public const string Route = "/hubs/call";
+    public const int MaximumReceiveMessageSize = 128 * 1024;
+    public const int MaximumSdpUtf8Bytes = 96 * 1024;
 
     private readonly ICallRoomRegistry _rooms;
     private readonly ICallRoomAuthorizationService _authorization;
@@ -365,6 +367,10 @@ public sealed class CallHub : Hub
     {
         Trace("SIGNAL_BEGIN", methodName, roomId, payloadSize: EstimatePayloadBytes(payload));
         if (payload == null) throw new HubException("INVALID_SIGNAL");
+        var payloadSize = EstimatePayloadBytes(payload);
+        if ((methodName == nameof(SendWebRtcOffer) || methodName == nameof(SendWebRtcAnswer)) &&
+            payloadSize > MaximumSdpUtf8Bytes)
+            throw new HubException("SIGNAL_DESCRIPTION_TOO_LARGE");
         var normalizedRoomId = NormalizeRoomId(roomId);
         if (string.IsNullOrWhiteSpace(targetConnectionId) ||
             !_rooms.TryGetParticipant(normalizedRoomId, Context.ConnectionId, out var sender) ||
