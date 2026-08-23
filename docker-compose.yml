@@ -20,9 +20,9 @@ services:
       ConnectionStrings__DefaultConnection: "Server=db,1433;Database=TaskManagementDB;User Id=sa;Password=${MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=true;"
 
       Jwt__SecretKey: "${JWT_SECRET}"
-      Cors__AllowedOrigins__0: "${FRONTEND_URL}"
+      Cors__AllowedOrigins__0: "https://sprinta.id.vn"
       Cors__AllowedOrigins__1: "https://www.sprinta.id.vn"
-      Frontend__BaseUrl: "${FRONTEND_URL}"
+      Frontend__BaseUrl: "https://sprinta.id.vn"
 
       PaymentProviders__SePay__Enabled: "${SEPAY_ENABLED:-false}"
       PaymentProviders__SePay__WebhookSecret: "${SEPAY_WEBHOOK_SECRET:-}"
@@ -57,7 +57,7 @@ services:
       Google__ClientId: "${GOOGLE_CLIENT_ID}"
       GitHub__ClientId: "${GITHUB_CLIENT_ID}"
       GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET}"
-      GitHub__RedirectUri: "https://www.sprinta.id.vn/auth/github/callback"
+      GitHub__RedirectUri: "https://sprinta.id.vn/auth/github/callback"
       ZenMux__ApiKey: "${ZENMUX_API_KEY}"
       ZenMux__Model: "deepseek/deepseek-v4-flash"
       ZenMux__TimeoutSeconds: "60"

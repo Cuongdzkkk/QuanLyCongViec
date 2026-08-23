@@ -36,15 +36,27 @@ public sealed class CallHub : Hub
         await _authorization.AuthorizeVoiceRoomJoinAsync(parsedProjectId, userId, Context.ConnectionAborted);
         var profile = await _authorization.GetParticipantProfileAsync(userId, Context.ConnectionAborted);
         var previousAiState = _rooms.GetAiState(roomId);
+        var isExistingConnection = _rooms.IsParticipantInRoom(roomId, Context.ConnectionId);
         var result = _rooms.Join(new CallRoomParticipant(
             roomId, Context.ConnectionId, userId, profile.DisplayName, profile.AvatarUrl, true, false, false));
         if (result.RoomFull) throw new HubException("CALL_ROOM_FULL");
 
         await Groups.AddToGroupAsync(Context.ConnectionId, roomId, Context.ConnectionAborted);
-        await Clients.OthersInGroup(roomId).SendAsync(
-            CallRealtimeEvents.ParticipantJoined,
-            new CallParticipantJoinedDto(result.JoinedParticipant!),
-            Context.ConnectionAborted);
+        foreach (var replaced in result.ReplacedParticipants)
+        {
+            await Groups.RemoveFromGroupAsync(replaced.ConnectionId, roomId, Context.ConnectionAborted);
+            await Clients.Group(roomId).SendAsync(
+                CallRealtimeEvents.ParticipantLeft,
+                new CallParticipantLeftDto(replaced.ConnectionId, replaced.UserId),
+                Context.ConnectionAborted);
+        }
+        if (!isExistingConnection)
+        {
+            await Clients.OthersInGroup(roomId).SendAsync(
+                CallRealtimeEvents.ParticipantJoined,
+                new CallParticipantJoinedDto(result.JoinedParticipant!),
+                Context.ConnectionAborted);
+        }
         var nextAiState = result.Snapshot.AiState;
         if (previousAiState.State == CallAiStates.Active && nextAiState.State == CallAiStates.PausedConsent)
         {

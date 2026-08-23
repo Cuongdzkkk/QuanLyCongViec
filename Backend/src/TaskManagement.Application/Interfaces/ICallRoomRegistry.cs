@@ -19,7 +19,8 @@ public sealed record CallRoomJoinResult(
     bool Accepted,
     bool RoomFull,
     CallRoomSnapshotDto Snapshot,
-    CallParticipantDto? JoinedParticipant);
+    CallParticipantDto? JoinedParticipant,
+    IReadOnlyList<CallParticipantDto> ReplacedParticipants);
 
 public sealed record CallAiSessionSnapshot(
     string State,

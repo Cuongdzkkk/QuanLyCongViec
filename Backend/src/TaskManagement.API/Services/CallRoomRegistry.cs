@@ -18,25 +18,52 @@ public sealed class CallRoomRegistry : ICallRoomRegistry
                 _rooms[participant.RoomId] = room;
             }
 
-            var isNewUser = room.Participants.Values.All(item => item.UserId != participant.UserId);
+            var existingConnections = room.Participants.Values
+                .Where(item => item.UserId == participant.UserId)
+                .ToArray();
+            var isNewUser = existingConnections.Length == 0;
             if (isNewUser && room.Participants.Values.Select(item => item.UserId).Distinct().Count() >= ICallRoomRegistry.MaximumParticipants)
-                return new(false, true, Snapshot(participant.RoomId, room), null);
+                return new(false, true, Snapshot(participant.RoomId, room), null, []);
 
-            room.Participants[participant.ConnectionId] = participant;
-            if (room.Participants.Count == 1)
-                room.Participants[participant.ConnectionId] = participant with { Role = "host" };
+            var previousRole = existingConnections.FirstOrDefault()?.Role;
+            var replacedConnections = existingConnections
+                .Where(existing => existing.ConnectionId != participant.ConnectionId)
+                .ToArray();
+            var previousConsent = existingConnections
+                .Select(existing => room.Consents.TryGetValue(existing.ConnectionId, out var consent) ? consent : null)
+                .FirstOrDefault(consent => consent is not null);
+            foreach (var existing in existingConnections)
+            {
+                room.Participants.Remove(existing.ConnectionId);
+                room.Consents.Remove(existing.ConnectionId);
+            }
+
+            var joinedParticipant = participant with
+            {
+                Role = previousRole ?? (room.Participants.Count == 0 ? "host" : participant.Role)
+            };
+            room.Participants[joinedParticipant.ConnectionId] = joinedParticipant;
             if (room.AiState == CallAiStates.Active && isNewUser)
             {
                 room.ConsentGeneration++;
                 room.AiState = CallAiStates.PausedConsent;
-                room.Consents[participant.ConnectionId] = new ConsentEntry(CallConsentStatuses.Pending, null);
+                room.Consents[joinedParticipant.ConnectionId] = new ConsentEntry(CallConsentStatuses.Pending, null);
             }
             else if (room.AiState == CallAiStates.WaitingForConsent && isNewUser)
             {
-                room.Consents[participant.ConnectionId] = new ConsentEntry(CallConsentStatuses.Pending, null);
+                room.Consents[joinedParticipant.ConnectionId] = new ConsentEntry(CallConsentStatuses.Pending, null);
+            }
+            else if (!isNewUser && previousConsent is not null)
+            {
+                room.Consents[joinedParticipant.ConnectionId] = previousConsent;
             }
 
-            return new(true, false, Snapshot(participant.RoomId, room), ICallRoomRegistry.ToDto(participant));
+            return new(
+                true,
+                false,
+                Snapshot(participant.RoomId, room),
+                ICallRoomRegistry.ToDto(joinedParticipant),
+                replacedConnections.Select(ICallRoomRegistry.ToDto).ToArray());
         }
     }
 
