@@ -7,6 +7,24 @@ import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 const HUB_ROUTE = '/hubs/call'
 const MAX_RECOVERY_ATTEMPTS = 2
 let activeCallSession = null
+let nextCallHubInstanceId = 0
+
+const callHubTraceEnabled = () => {
+  try {
+    return Boolean(import.meta.env?.DEV || globalThis.localStorage?.getItem('debug_call_hub') === '1')
+  } catch {
+    return false
+  }
+}
+
+export const traceCallHubLifecycle = (event, detail = {}) => {
+  if (!callHubTraceEnabled()) return
+  console.info('[CALL_HUB]', {
+    timestamp: new Date().toISOString(),
+    event,
+    ...detail
+  })
+}
 
 const read = (value, camel, pascal) => value?.[camel] ?? value?.[pascal]
 
@@ -73,6 +91,16 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   let transcriptionQueue = Promise.resolve()
   let selectedMicrophoneDeviceId = initialMicrophoneDeviceId || ''
   let selectedCameraDeviceId = initialCameraDeviceId || ''
+  const instanceId = `call-hub-${++nextCallHubInstanceId}`
+  const trace = (event, reason = '') => traceCallHubLifecycle(event, {
+    instanceId,
+    connectionId: connection?.connectionId || '',
+    state: connection?.state || 'Disconnected',
+    roomId: roomId || '',
+    callSessionId: callSessionId || '',
+    ...(reason ? { reason } : {})
+  })
+  trace('INSTANCE_CREATE', 'create-call-media-session')
 
   const emit = (state, detail = {}) => onState?.({ state, ...detail })
   const emitParticipants = () => onParticipants?.([...participants.values()])
@@ -446,6 +474,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     roomId = read(snapshot, 'roomId', 'RoomId')
     const aiState = read(snapshot, 'aiState', 'AiState')
     callSessionId = read(aiState, 'callSessionId', 'CallSessionId') || null
+    trace('JOIN_ACK', 'join-voice-room-ack')
     participants = new Map((read(snapshot, 'participants', 'Participants') ?? []).map(item => {
       const participant = normalizeParticipant(item)
       return [participant.connectionId, participant]
@@ -538,15 +567,20 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       if (!joinedAck) pendingInboundSignals.push({ type: 'candidate', value: event })
       else void applyCandidate(event)
     })
-    connection.onreconnecting(() => emit('reconnecting'))
+    connection.onreconnecting(() => {
+      trace('ON_RECONNECTING', 'signalr-automatic-reconnect')
+      emit('reconnecting')
+    })
     connection.onreconnected(async () => {
       if (intentionalLeave) return
+      trace('ON_RECONNECTED', 'signalr-automatic-reconnect-complete')
       joinedAck = false
       roomId = null
       pendingInboundSignals.splice(0)
       closeAllPeers()
       emit('reconnecting')
       try {
+        trace('JOIN_BEGIN', 'reconnect-rejoin')
         const snapshot = await connection.invoke('JoinVoiceRoom', projectId, voiceChannelId)
         await refreshSnapshot(snapshot)
         emit('connected')
@@ -555,6 +589,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       }
     })
     connection.onclose(error => {
+      trace('ON_CLOSE', error?.message || 'signalr-closed')
       if (!intentionalLeave) emit('disconnected', { error })
     })
   }
@@ -747,6 +782,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       .includes(connection?.state)) return
     if (activeCallSession && activeCallSession !== session) await activeCallSession.leave()
     activeCallSession = session
+    trace('START_BEGIN', 'session-start')
     startPromise = (async () => {
       intentionalLeave = false
       joinedAck = false
@@ -784,7 +820,9 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       emit('connecting')
       iceServers = await getIceServers().catch(() => [])
       await connection.start()
+      trace('JOIN_BEGIN', 'initial-join')
       await refreshSnapshot(await connection.invoke('JoinVoiceRoom', projectId, voiceChannelId))
+      trace('START_OK', 'session-started')
       emit('connected')
     })().finally(() => { startPromise = null })
     return startPromise
@@ -794,6 +832,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     if (leavePromise) return leavePromise
     leavePromise = (async () => {
       intentionalLeave = true
+      trace('LEAVE_BEGIN', 'session-leave')
       if (startPromise) {
         try { await startPromise } catch { /* cleanup below remains authoritative */ }
       }
@@ -802,7 +841,11 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         if (connection?.state === signalR.HubConnectionState.Connected && roomId) {
           await connection.invoke('LeaveVoiceRoom', projectId, voiceChannelId)
         }
-        await connection?.stop()
+        if (connection) {
+          trace('STOP_REQUEST', 'session-leave')
+          await connection.stop()
+          trace('STOP_DONE', 'session-leave')
+        }
       } finally {
         joinedAck = false
         callSessionId = null
@@ -826,6 +869,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         emitParticipants()
         emitRemoteStreams()
         emit('disconnected')
+        trace('LEAVE_DONE', 'session-leave')
         if (activeCallSession === session) activeCallSession = null
       }
     })().finally(() => { leavePromise = null })
