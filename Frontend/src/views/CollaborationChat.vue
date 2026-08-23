@@ -244,8 +244,8 @@
           </div>
         </header>
 
-        <div class="call-workspace-body">
-          <section ref="presentationStage" class="call-presentation-stage" :class="{ 'is-focused': presentationFocused, 'is-fullscreen': presentationIsFullscreen }" aria-label="Presentation stage">
+        <div class="call-workspace-body" :class="callLayoutClasses">
+          <section ref="presentationStage" class="call-presentation-stage" :class="{ 'is-focused': presentationFocused, 'is-fullscreen': presentationIsFullscreen }" :data-layout-mode="callLayoutMode" aria-label="Presentation stage">
             <template v-if="activePresenter">
               <div class="presentation-heading">
                 <span class="presentation-live-dot" aria-hidden="true"></span>
@@ -268,14 +268,25 @@
                   <i class="fa-solid fa-table-cells" aria-hidden="true"></i>
                   <span>Về lưới</span>
                 </button>
+                <button v-if="focusedParticipantConnectionId" type="button" class="presentation-control" title="Quay lại màn hình chia sẻ" @click="returnToPresentation">
+                  <i class="fa-solid fa-display" aria-hidden="true"></i>
+                  <span>Quay lại màn hình chia sẻ</span>
+                </button>
               </div>
             </template>
-            <div v-else-if="hasVisibleCallVideo" class="call-camera-stage" aria-label="Camera participants">
+            <div v-else-if="hasVisibleCallVideo" class="call-camera-stage" :class="`layout-${callLayoutMode.toLowerCase()}`" aria-label="Camera participants">
               <article
                 v-for="user in callParticipants"
-                v-show="isParticipantVideoVisible(user)"
                 :key="`stage-${user.connectionId}`"
+                v-show="isParticipantStageVisible(user)"
                 class="call-camera-stage-tile"
+                :class="{ 'is-focused-participant': focusedParticipantConnectionId === user.connectionId, 'is-speaking': isParticipantSpeaking(user) }"
+                tabindex="0"
+                role="button"
+                :aria-label="`Tập trung vào ${user.displayName}`"
+                @click="focusParticipant(user.connectionId)"
+                @keydown.enter.prevent="focusParticipant(user.connectionId)"
+                @keydown.space.prevent="focusParticipant(user.connectionId)"
               >
                 <video
                   v-if="user.connectionId === callConnectionId"
@@ -305,7 +316,13 @@
               v-for="user in callParticipants"
               :key="user.connectionId"
               class="call-participant-thumb"
-              :class="{ 'is-presenter': activePresenter?.connectionId === user.connectionId }"
+              :class="{ 'is-presenter': activePresenter?.connectionId === user.connectionId, 'is-speaking': isParticipantSpeaking(user), 'is-focused-participant': focusedParticipantConnectionId === user.connectionId }"
+              tabindex="0"
+              role="button"
+              :aria-label="`Tập trung vào ${user.displayName}`"
+              @click="focusParticipant(user.connectionId)"
+              @keydown.enter.prevent="focusParticipant(user.connectionId)"
+              @keydown.space.prevent="focusParticipant(user.connectionId)"
             >
               <div class="call-thumb-media">
                 <video
@@ -388,6 +405,7 @@
                 class="call-control-circle-btn" 
                 :class="{ 'inactive': !callMicrophoneEnabled }"
                 @click="toggleCallMicrophone"
+                :aria-label="callMicrophoneEnabled ? 'Mic đang bật — tắt mic' : 'Mic đã tắt — bật mic'"
                 :title="callMicrophoneEnabled ? 'Tắt Micro' : 'Bật Micro'"
               >
                 <i :class="callMicrophoneEnabled ? 'fa-solid fa-microphone' : 'fa-solid fa-microphone-slash'"></i>
@@ -397,13 +415,14 @@
                 class="call-control-circle-btn" 
                 :class="{ 'inactive': !isCallCameraOn }" 
                 @click="toggleCallCameraReal"
+                :aria-label="isCallCameraOn ? 'Camera đang bật — tắt camera' : 'Camera đang tắt — bật camera'"
                 :title="isCallCameraOn ? 'Tắt Camera' : 'Bật Camera'"
               >
                 <i :class="isCallCameraOn ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'"></i>
               </button>
 
               <div class="camera-effects-control">
-                <button type="button" class="call-control-label-btn" :class="{ active: cameraBackgroundEffect === 'blur' }" title="Hiệu ứng camera" aria-haspopup="menu" :aria-expanded="showCameraEffectsMenu" @click="showCameraEffectsMenu = !showCameraEffectsMenu">
+                <button type="button" class="call-control-label-btn" :class="{ active: cameraBackgroundEffect === 'blur' }" title="Hiệu ứng camera" aria-label="Mở hiệu ứng camera" aria-haspopup="menu" :aria-expanded="showCameraEffectsMenu" @click="showCameraEffectsMenu = !showCameraEffectsMenu">
                   <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
                   <span>Nền</span>
                 </button>
@@ -424,15 +443,22 @@
                 class="call-control-circle-btn" 
                 :class="{ 'active-share': isSharingScreen }" 
                 @click="toggleScreenShare"
+                :aria-label="isSharingScreen ? 'Đang chia sẻ — dừng chia sẻ' : 'Chia sẻ màn hình'"
                 :title="isSharingScreen ? 'Tắt chia sẻ' : 'Chia sẻ màn hình'"
                 style="background-color: #2b2d31; color: white;"
               >
                 <i class="fa-solid fa-desktop" :style="{ color: isSharingScreen ? '#22c55e' : '#dbdee1' }"></i>
               </button>
 
+              <button type="button" class="call-control-label-btn call-control-future-slot" disabled aria-label="Tùy chọn khác — sắp có" title="Tùy chọn khác — sắp có">
+                <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
+                <span>Thêm</span>
+              </button>
+
               <button 
                 class="call-control-circle-btn hang-up" 
                 @click="leaveVoiceChannel"
+                aria-label="Rời cuộc gọi"
                 title="Rời kênh thoại"
               >
                 <i class="fa-solid fa-phone-slash"></i>
@@ -1366,6 +1392,7 @@ const localVideoElements = new Map()
 const presentationVideoElement = ref(null)
 const remoteVideoElements = new Map()
 const remoteAudioElements = new Map()
+const focusedParticipantConnectionId = ref('')
 const callChatOpen = ref(false)
 const callChatDraft = ref('')
 const callChatSending = ref(false)
@@ -1402,7 +1429,24 @@ const hasLiveVideoTrack = stream => stream?.getVideoTracks?.().some(track => tra
 const isParticipantVideoVisible = user => user.connectionId === callConnectionId.value
   ? (isCallCameraOn.value || isSharingScreen.value) && hasLiveVideoTrack(localCallStream.value)
   : (user.cameraEnabled || user.screenSharing) && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId))
-const hasVisibleCallVideo = computed(() => callParticipants.value.some(isParticipantVideoVisible))
+const isParticipantStageVisible = user => isParticipantVideoVisible(user)
+  && (!focusedParticipantConnectionId.value || focusedParticipantConnectionId.value === user.connectionId)
+const isParticipantSpeaking = user => user.isSpeaking === true || user.speaking === true || user.activeSpeaker === true
+const visibleCallParticipants = computed(() => callParticipants.value.filter(isParticipantVideoVisible))
+const hasVisibleCallVideo = computed(() => visibleCallParticipants.value.length > 0)
+const callLayoutMode = computed(() => {
+  if (activePresenter.value) return presentationFocused.value ? 'PRESENTATION_FOCUS' : 'PRESENTATION'
+  return visibleCallParticipants.value.length === 1 ? 'CAMERA_FOCUS' : 'CAMERA_GRID'
+})
+const callLayoutClasses = computed(() => ({
+  'is-presentation-mode': callLayoutMode.value.startsWith('PRESENTATION'),
+  'is-camera-mode': callLayoutMode.value.startsWith('CAMERA')
+}))
+const focusParticipant = connectionId => {
+  const participant = callParticipants.value.find(user => user.connectionId === connectionId)
+  if (!participant || !isParticipantVideoVisible(participant)) return
+  focusedParticipantConnectionId.value = focusedParticipantConnectionId.value === connectionId ? '' : connectionId
+}
 
 const bindMediaElement = (element, stream, muted = false) => {
   if (!element) return
@@ -1730,6 +1774,11 @@ const togglePresentationFocus = () => {
 }
 
 const returnToParticipantGrid = () => {
+  presentationFocused.value = false
+}
+
+const returnToPresentation = () => {
+  focusedParticipantConnectionId.value = ''
   presentationFocused.value = false
 }
 
@@ -4801,6 +4850,10 @@ const fetchProjectMembers = async () => {
 .call-participant-thumb.is-presenter {
   border-color: rgba(74, 222, 128, 0.65);
 }
+.call-participant-thumb.is-focused-participant,
+.call-camera-stage-tile.is-focused-participant { border-color: #63d29f; box-shadow: 0 0 0 2px rgba(99, 210, 159, .2); }
+.call-participant-thumb.is-speaking,
+.call-camera-stage-tile.is-speaking { border-color: rgba(88, 183, 232, .8); }
 
 .call-participant-thumb:hover {
   transform: translateY(-1px);
@@ -5411,6 +5464,61 @@ const fetchProjectMembers = async () => {
 .call-chat-composer { display: flex; gap: 6px; padding: 10px; border-top: 1px solid rgba(148, 163, 184, .12); }
 .call-chat-composer button { width: 31px; border: 0; border-radius: 6px; background: #63d29f; color: #06131c; cursor: pointer; }
 .call-chat-composer button:disabled { cursor: not-allowed; opacity: .45; }
+.call-workspace-body.is-presentation-mode {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 240px);
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  align-items: stretch;
+}
+.call-workspace-body.is-presentation-mode .call-presentation-stage { grid-column: 1; grid-row: 1; min-height: 0; }
+.call-workspace-body.is-presentation-mode .call-participant-rail {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  min-height: 0;
+  max-height: none;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.call-workspace-body.is-presentation-mode .call-participant-thumb { flex: 0 0 auto; }
+.call-workspace-body.is-presentation-mode .call-transcript-panel {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: auto;
+  min-width: 0;
+  max-height: 170px;
+  overflow: auto;
+  border-top: 1px solid rgba(148, 163, 184, .13);
+  border-left: 0;
+}
+.call-workspace-body.is-presentation-mode .call-controls-row { grid-column: 1 / -1; grid-row: 3; }
+.call-camera-stage.layout-camera_focus { grid-template-columns: minmax(0, min(760px, 100%)); justify-content: center; }
+.call-camera-stage.layout-camera_grid { grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
+.call-control-future-slot:disabled { cursor: not-allowed; opacity: .6; }
+.call-control-circle-btn:focus-visible,
+.call-control-label-btn:focus-visible,
+.presentation-control:focus-visible,
+.call-participant-thumb:focus-visible { outline: 2px solid #63d29f; outline-offset: 3px; }
+@media (max-width: 900px) {
+  .call-workspace-body.is-presentation-mode { display: flex; flex-direction: column; }
+  .call-workspace-body.is-presentation-mode .call-presentation-stage { min-height: 240px; }
+  .call-workspace-body.is-presentation-mode .call-participant-rail {
+    display: flex;
+    max-height: none;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .call-workspace-body.is-presentation-mode .call-participant-thumb { width: 170px; min-width: 170px; }
+  .call-workspace-body.is-presentation-mode .call-transcript-panel { max-height: 190px; }
+}
+@media (max-width: 560px) {
+  .call-camera-stage { grid-template-columns: 1fr; min-height: 240px; padding: 8px; }
+  .call-camera-stage-tile video { min-height: 210px; }
+  .call-control-dock { max-width: 100%; overflow-x: auto; }
+  .call-control-future-slot span { display: none; }
+}
 .chat-context-panel { position: absolute; z-index: 4; top: 0; right: 0; bottom: 0; display: flex; width: var(--chat-context-width); flex-direction: column; border-left: 1px solid var(--chat-line); background: #0c1828; }
 .context-panel-header, .ai-surface-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 18px 16px 12px; border-bottom: 1px solid var(--chat-line); }
 .context-panel-header h3, .ai-surface-header h3 { margin: 4px 0 0; color: #e8f4fc; font-size: 14px; }
