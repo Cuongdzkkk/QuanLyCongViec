@@ -247,6 +247,19 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
             if (reservation.Status == "Finalized") return;
             if (reservation.Status is "Released" or "Expired") throw new InvalidOperationException("AI credit reservation is no longer active.");
 
+            // Reservations created through the legacy/free entitlement path do not
+            // have bucket allocations. They still consume the period-based legacy
+            // entitlement and must use the legacy terminal transition here.
+            if (reservation.Allocations.Count == 0)
+            {
+                reservation.FinalizedCredits = actualCredits;
+                reservation.Status = "Finalized";
+                reservation.FinalizedAt = DateTime.UtcNow;
+                reservation.CompletedAt = reservation.FinalizedAt;
+                await _context.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
             var held = reservation.Allocations.Sum(x => x.AllocatedCredits);
             if (actualCredits > held)
             {

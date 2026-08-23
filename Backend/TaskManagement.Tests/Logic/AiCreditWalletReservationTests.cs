@@ -166,6 +166,37 @@ public sealed class AiCreditWalletReservationTests
         result.Status.Should().Be("Exhausted");
     }
 
+    [Fact]
+    public async Task FreeLegacyReservationFinalizesWithoutWalletAllocation()
+    {
+        await using var context = CreateContext();
+        var userId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        context.Users.Add(new User
+        {
+            Id = userId, Email = $"{userId:N}@test.local", FullName = "Legacy Test",
+            PasswordHash = "test", CreatedAt = now, UpdatedAt = now
+        });
+        context.AiPricingPlans.Add(new AiPricingPlan
+        {
+            Id = Guid.NewGuid(), Code = "free", Name = "Free", IncludedAiCredits = 100,
+            MonthlyPriceVnd = 0, IsPublished = true, PricingStatus = "Published",
+            CreatedAt = now, UpdatedAt = now
+        });
+        await context.SaveChangesAsync();
+
+        var service = new AiCreditUsageService(context);
+        var reservation = await service.ReserveAsync(userId, 1, "legacy-free-finalize");
+
+        reservation.Acquired.Should().BeTrue();
+        await service.FinalizeAsync(reservation.ReservationId, 5);
+
+        var saved = await context.AiCreditReservations.SingleAsync(x => x.Id == reservation.ReservationId);
+        saved.Status.Should().Be("Finalized");
+        saved.FinalizedCredits.Should().Be(5);
+        (await context.AiCreditReservationAllocations.CountAsync()).Should().Be(0);
+    }
+
     private static ApplicationDbContext CreateContext() => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options);
 
