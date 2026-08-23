@@ -1134,7 +1134,7 @@ import {
   COLLABORATION_REALTIME_STATES,
   getCollaborationHubErrorCode
 } from '@/services/collaborationRealtime'
-import { createCallMediaSession } from '@/services/callMediaService'
+import { createCallMediaSession, traceCallHubLifecycle } from '@/services/callMediaService'
 import {
   dedupeParticipantsByUser,
   getMeetingLayoutMode,
@@ -1813,7 +1813,15 @@ const createCallSessionForVoiceChannel = (voiceChannel, options = {}) => createC
   initialCameraStream: options.initialCameraStream || null,
   onState: async ({ state, error }) => {
     callState.value = state
-    if (error) handleCallError(error, state === 'error')
+    if (state === 'reconnecting') {
+      callError.value = 'Đang kết nối lại cuộc gọi…'
+    } else if (state === 'connected') {
+      callError.value = ''
+    } else if (state === 'disconnected' && error) {
+      callError.value = 'Cuộc gọi đã mất kết nối. Vui lòng tham gia lại.'
+    } else if (error) {
+      handleCallError(error, state === 'error')
+    }
     if (state === 'connected') await syncLocalCallPreview()
     if (state === 'media' && callSession.value) {
       const mediaState = callSession.value.getMediaState()
@@ -3592,6 +3600,7 @@ const initializeCollaborationContext = async ({ forceProjects = false } = {}) =>
 
 onMounted(() => {
   componentMounted = true
+  traceCallHubLifecycle('COMPONENT_MOUNT', { reason: 'collaboration-chat-mounted' })
   window.addEventListener('keydown', handleCallShortcut)
   document.addEventListener('fullscreenchange', syncPresentationFullscreen)
   registerRealtimeHandlers()
@@ -3644,6 +3653,7 @@ watch(projectOptions, (projects) => {
 
 onBeforeUnmount(() => {
   componentMounted = false
+  traceCallHubLifecycle('COMPONENT_UNMOUNT', { reason: 'collaboration-chat-unmounted' })
   window.removeEventListener('keydown', handleCallShortcut)
   document.removeEventListener('fullscreenchange', syncPresentationFullscreen)
   collaborationContextVersion += 1

@@ -88,5 +88,25 @@ assert.ok(cameraToggle.includes('await syncPeerMedia(entry)'), 'camera toggle mu
 assert.ok(cameraToggle.includes('await sendMediaState()'), 'camera toggle must publish media state')
 assert.equal(cameraToggle.includes('connection.stop()'), false, 'camera toggle must not stop SignalR')
 assert.equal(cameraToggle.includes('JoinVoiceRoom'), false, 'camera toggle must not rejoin SignalR')
+assert.equal((source.match(/new signalR\.HubConnectionBuilder\(\)/g) || []).length, 1, 'CallHub must have one connection owner')
+for (const event of [
+  'INSTANCE_CREATE',
+  'START_BEGIN',
+  'START_OK',
+  'STOP_REQUEST',
+  'STOP_DONE',
+  'ON_RECONNECTING',
+  'ON_RECONNECTED',
+  'ON_CLOSE',
+  'JOIN_BEGIN',
+  'JOIN_ACK',
+  'LEAVE_BEGIN',
+  'LEAVE_DONE'
+]) assert.ok(source.includes(`'${event}'`), `missing CallHub lifecycle trace: ${event}`)
+assert.match(source, /onreconnecting\(\(\) => \{[\s\S]{0,180}emit\('reconnecting'\)/)
+assert.equal(source.includes('onreconnecting(() => connection.start())'), false)
+assert.ok(collaborationChat.includes('Đang kết nối lại cuộc gọi…'))
+assert.ok(collaborationChat.includes('Cuộc gọi đã mất kết nối. Vui lòng tham gia lại.'))
+assert.equal(collaborationChat.includes('Server returned an error on close:'), false)
 
-console.log(`callMediaService.test.mjs: ${required.length + 22} media/chat hotfix checks passed`)
+console.log(`callMediaService.test.mjs: ${required.length + 40} media/chat/lifecycle checks passed`)
