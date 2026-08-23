@@ -19,10 +19,49 @@ export const getMeetingLayoutMode = ({
   visibleParticipantCount
 }) => {
   if (hasPresenter) return presentationFocused ? 'PRESENTATION_FOCUS' : 'PRESENTATION'
-  if (focusedParticipantId && visibleParticipantCount > 1) return 'CAMERA_FOCUS'
-  return visibleParticipantCount === 1 ? 'CAMERA_FOCUS' : 'CAMERA_GRID'
+  if (focusedParticipantId && visibleParticipantCount > 0) return 'CAMERA_FOCUS'
+  return 'CAMERA_GRID'
 }
 
 export const getMeetingVisualRegions = mode => mode.startsWith('PRESENTATION')
   ? ['presentation-stage', 'participant-rail']
-  : ['camera-stage']
+  : mode === 'CAMERA_FOCUS'
+    ? ['camera-stage', 'participant-rail']
+    : ['camera-stage']
+
+export const getMeetingRenderCollections = ({
+  mode,
+  visibleParticipants = [],
+  allParticipants = [],
+  focusedParticipantId = ''
+}) => {
+  const uniqueVisibleParticipants = dedupeParticipantsByUser(visibleParticipants)
+  const uniqueAllParticipants = dedupeParticipantsByUser(allParticipants)
+  const focusedParticipant = uniqueVisibleParticipants.find(participant =>
+    participant.connectionId === focusedParticipantId
+  )
+
+  if (mode === 'CAMERA_FOCUS' && focusedParticipant) {
+    return {
+      cameraStageParticipants: [focusedParticipant],
+      cameraRailParticipants: uniqueVisibleParticipants.filter(participant =>
+        participant.connectionId !== focusedParticipant.connectionId
+      ),
+      presentationRailParticipants: []
+    }
+  }
+
+  if (mode.startsWith('PRESENTATION')) {
+    return {
+      cameraStageParticipants: [],
+      cameraRailParticipants: [],
+      presentationRailParticipants: uniqueAllParticipants
+    }
+  }
+
+  return {
+    cameraStageParticipants: uniqueVisibleParticipants,
+    cameraRailParticipants: [],
+    presentationRailParticipants: []
+  }
+}
