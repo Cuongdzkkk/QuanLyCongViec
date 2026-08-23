@@ -301,6 +301,26 @@ public sealed class CallRoomRegistryTests
     }
 
     [Fact]
+    public async Task MediaStateAfterJoinIsBroadcastWithoutLeavingConnection()
+    {
+        var registry = new CallRoomRegistry();
+        var participant = CreateParticipant("room", 1);
+        registry.Join(participant).Accepted.Should().BeTrue();
+        var others = new Mock<IClientProxy>();
+        var clients = new Mock<IHubCallerClients>();
+        clients.Setup(item => item.OthersInGroup("room")).Returns(others.Object);
+        var hub = CreateHub(registry, Mock.Of<ICallRoomAuthorizationService>(), participant.ConnectionId, participant.UserId, clients.Object);
+
+        await hub.PublishParticipantMediaState("room", new CallParticipantMediaStateDto(false, true, true));
+
+        registry.IsParticipantInRoom("room", participant.ConnectionId).Should().BeTrue();
+        others.Verify(item => item.SendCoreAsync(
+            CallRealtimeEvents.ParticipantMediaStateChanged,
+            It.IsAny<object?[]>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task DisconnectWithAbortedTokenDoesNotThrow()
     {
         var registry = new CallRoomRegistry();

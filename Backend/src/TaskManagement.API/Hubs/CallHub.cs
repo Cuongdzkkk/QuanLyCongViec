@@ -1,6 +1,8 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging.Abstractions;
 using TaskManagement.Application.DTOs.Collaboration;
 using TaskManagement.Application.Interfaces;
 
@@ -16,23 +18,27 @@ public sealed class CallHub : Hub
     private readonly ICallTranscriptionProvider _transcriptionProvider;
     private readonly ICallTranscriptService _transcripts;
     private readonly ICallChatService _callChat;
+    private readonly ILogger<CallHub> _logger;
 
     public CallHub(
         ICallRoomRegistry rooms,
         ICallRoomAuthorizationService authorization,
         ICallTranscriptionProvider transcriptionProvider,
         ICallTranscriptService transcripts,
-        ICallChatService callChat)
+        ICallChatService callChat,
+        ILogger<CallHub>? logger = null)
     {
         _rooms = rooms;
         _authorization = authorization;
         _transcriptionProvider = transcriptionProvider;
         _transcripts = transcripts;
         _callChat = callChat;
+        _logger = logger ?? NullLogger<CallHub>.Instance;
     }
 
     public async Task<CallRoomSnapshotDto> JoinVoiceRoom(string? projectId, string? voiceChannelId)
     {
+        Trace("JOIN_BEGIN", nameof(JoinVoiceRoom), roomId: voiceChannelId);
         var userId = GetCurrentUserId();
         var parsedProjectId = ParseGuid(projectId, "INVALID_PROJECT_ID");
         var roomId = BuildRoomId(parsedProjectId, voiceChannelId);
@@ -69,6 +75,7 @@ public sealed class CallHub : Hub
                 new CallAiStateChangedDto(nextAiState),
                 Context.ConnectionAborted);
         }
+        Trace("JOIN_ACK", nameof(JoinVoiceRoom), roomId, result.Snapshot.AiState.CallSessionId, result.Snapshot.Participants.Count, "ok");
         return result.Snapshot;
     }
 
@@ -80,15 +87,15 @@ public sealed class CallHub : Hub
 
     public Task SendWebRtcOffer(string? roomId, string? targetConnectionId, object? description) =>
         RelaySignalAsync(roomId, targetConnectionId, description, CallRealtimeEvents.WebRtcOffer,
-            (sender, target, payload) => new CallOfferDto(sender.ConnectionId, sender.UserId, target.ConnectionId, payload));
+            (sender, target, payload) => new CallOfferDto(sender.ConnectionId, sender.UserId, target.ConnectionId, payload), nameof(SendWebRtcOffer));
 
     public Task SendWebRtcAnswer(string? roomId, string? targetConnectionId, object? description) =>
         RelaySignalAsync(roomId, targetConnectionId, description, CallRealtimeEvents.WebRtcAnswer,
-            (sender, target, payload) => new CallAnswerDto(sender.ConnectionId, sender.UserId, target.ConnectionId, payload));
+            (sender, target, payload) => new CallAnswerDto(sender.ConnectionId, sender.UserId, target.ConnectionId, payload), nameof(SendWebRtcAnswer));
 
     public Task SendIceCandidate(string? roomId, string? targetConnectionId, object? candidate) =>
         RelaySignalAsync(roomId, targetConnectionId, candidate, CallRealtimeEvents.IceCandidate,
-            (sender, target, payload) => new CallIceCandidateDto(sender.ConnectionId, sender.UserId, target.ConnectionId, payload));
+            (sender, target, payload) => new CallIceCandidateDto(sender.ConnectionId, sender.UserId, target.ConnectionId, payload), nameof(SendIceCandidate));
 
     public async Task<IReadOnlyList<CallChatMessageDto>> GetCallChatHistory(string? roomId, int limit = 100)
     {
@@ -123,6 +130,7 @@ public sealed class CallHub : Hub
 
     public async Task PublishParticipantMediaState(string? roomId, CallParticipantMediaStateDto? state)
     {
+        Trace("MEDIA_STATE_BEGIN", nameof(PublishParticipantMediaState), roomId, payloadSize: EstimatePayloadBytes(state));
         if (state == null) throw new HubException("INVALID_MEDIA_STATE");
         var normalizedRoomId = NormalizeRoomId(roomId);
         if (!_rooms.TryUpdateMediaState(normalizedRoomId, Context.ConnectionId, state, out var participant))
@@ -131,6 +139,7 @@ public sealed class CallHub : Hub
             CallRealtimeEvents.ParticipantMediaStateChanged,
             new CallParticipantMediaStateChangedDto(participant.ConnectionId, participant.UserId, state),
             Context.ConnectionAborted);
+        Trace("MEDIA_STATE_OK", nameof(PublishParticipantMediaState), normalizedRoomId, result: "ok");
     }
 
     public async Task SetRaiseHand(string? roomId, bool raised)
@@ -308,34 +317,42 @@ public sealed class CallHub : Hub
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        foreach (var participant in _rooms.RemoveConnection(Context.ConnectionId))
+        Trace("DISCONNECTED_BEGIN", nameof(OnDisconnectedAsync), exception: exception);
+        try
         {
-            var nextAiState = _rooms.GetAiState(participant.RoomId);
-            try
+            foreach (var participant in _rooms.RemoveConnection(Context.ConnectionId))
             {
-                await Clients.OthersInGroup(participant.RoomId).SendAsync(
-                    CallRealtimeEvents.ParticipantLeft,
-                    new CallParticipantLeftDto(participant.ConnectionId, participant.UserId),
-                    CancellationToken.None);
-            }
-            catch (OperationCanceledException)
-            {
-                // Teardown notifications are best effort; registry cleanup is authoritative.
-            }
+                var nextAiState = _rooms.GetAiState(participant.RoomId);
+                try
+                {
+                    await Clients.OthersInGroup(participant.RoomId).SendAsync(
+                        CallRealtimeEvents.ParticipantLeft,
+                        new CallParticipantLeftDto(participant.ConnectionId, participant.UserId),
+                        CancellationToken.None);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Teardown notifications are best effort; registry cleanup is authoritative.
+                }
 
-            try
-            {
-                // The disconnect token is already cancelled by the time this callback runs.
-                // Remaining participants still need the room-state transition, so do not use
-                // the departed connection's cancellation token for this broadcast.
-                await PublishAiStateTransitionAsync(participant.RoomId, nextAiState, CancellationToken.None);
+                try
+                {
+                    // The disconnect token is already cancelled by the time this callback runs.
+                    // Remaining participants still need the room-state transition, so do not use
+                    // the departed connection's cancellation token for this broadcast.
+                    await PublishAiStateTransitionAsync(participant.RoomId, nextAiState, CancellationToken.None);
+                }
+                catch (OperationCanceledException)
+                {
+                    // SignalR may close the write side while teardown is notifying the room.
+                }
             }
-            catch (OperationCanceledException)
-            {
-                // SignalR may close the write side while teardown is notifying the room.
-            }
+            await base.OnDisconnectedAsync(exception);
         }
-        await base.OnDisconnectedAsync(exception);
+        finally
+        {
+            Trace("DISCONNECTED_DONE", nameof(OnDisconnectedAsync), exception: exception);
+        }
     }
 
     private async Task RelaySignalAsync(
@@ -343,8 +360,10 @@ public sealed class CallHub : Hub
         string? targetConnectionId,
         object? payload,
         string eventName,
-        Func<CallRoomParticipant, CallRoomParticipant, object, object> envelope)
+        Func<CallRoomParticipant, CallRoomParticipant, object, object> envelope,
+        string methodName)
     {
+        Trace("SIGNAL_BEGIN", methodName, roomId, payloadSize: EstimatePayloadBytes(payload));
         if (payload == null) throw new HubException("INVALID_SIGNAL");
         var normalizedRoomId = NormalizeRoomId(roomId);
         if (string.IsNullOrWhiteSpace(targetConnectionId) ||
@@ -354,6 +373,39 @@ public sealed class CallHub : Hub
 
         await Clients.Client(target.ConnectionId).SendAsync(
             eventName, envelope(sender, target, payload), Context.ConnectionAborted);
+        Trace("SIGNAL_OK", methodName, normalizedRoomId, _rooms.GetAiState(normalizedRoomId).CallSessionId, result: "ok");
+    }
+
+    private void Trace(
+        string eventName,
+        string method,
+        string? roomId = null,
+        Guid? callSessionId = null,
+        int? participantCount = null,
+        string? result = null,
+        int? payloadSize = null,
+        Exception? exception = null)
+    {
+        _logger.LogInformation(
+            "[CALL_HUB_SERVER] timestamp={Timestamp} event={Event} method={Method} connectionId={ConnectionId} userId={UserId} roomId={RoomId} callSessionId={CallSessionId} participantCount={ParticipantCount} payloadBytes={PayloadBytes} result={Result} exceptionType={ExceptionType}",
+            DateTimeOffset.UtcNow,
+            eventName,
+            method,
+            Context.ConnectionId,
+            Context.User?.FindFirstValue(ClaimTypes.NameIdentifier),
+            roomId,
+            callSessionId,
+            participantCount,
+            payloadSize,
+            result,
+            exception?.GetType().FullName);
+    }
+
+    private static int? EstimatePayloadBytes(object? payload)
+    {
+        if (payload is null) return null;
+        try { return JsonSerializer.SerializeToUtf8Bytes(payload).Length; }
+        catch (JsonException) { return null; }
     }
 
     private async Task LeaveRoomAsync(string roomId, CancellationToken cancellationToken)
