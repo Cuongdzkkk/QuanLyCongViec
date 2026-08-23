@@ -166,6 +166,67 @@ public sealed class CallRoomRegistryTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Theory]
+    [InlineData(33 * 1024)]
+    [InlineData(64 * 1024)]
+    public async Task LargeWebRtcOfferAbove32KbIsAcceptedByCallHub(int sdpBytes)
+    {
+        var userId = Guid.NewGuid();
+        var targetUserId = Guid.NewGuid();
+        var roomId = "project:room:voice:general";
+        var registry = new CallRoomRegistry();
+        registry.Join(new CallRoomParticipant(roomId, "sender", userId, "Sender", null, true, false, false));
+        registry.Join(new CallRoomParticipant(roomId, "target", targetUserId, "Target", null, true, false, false));
+        var targetProxy = new Mock<ISingleClientProxy>();
+        var clients = new Mock<IHubCallerClients>();
+        clients.Setup(item => item.Client("target")).Returns(targetProxy.Object);
+        var hub = CreateHub(registry, Mock.Of<ICallRoomAuthorizationService>(), "sender", userId, clients.Object);
+
+        await hub.SendWebRtcOffer(roomId, "target", new { type = "offer", sdp = new string('s', sdpBytes) });
+
+        targetProxy.Verify(item => item.SendCoreAsync(
+            CallRealtimeEvents.WebRtcOffer,
+            It.IsAny<object?[]>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task OversizedWebRtcOfferIsRejectedBelowTransportLimit()
+    {
+        var userId = Guid.NewGuid();
+        var targetUserId = Guid.NewGuid();
+        var roomId = "project:room:voice:general";
+        var registry = new CallRoomRegistry();
+        registry.Join(new CallRoomParticipant(roomId, "sender", userId, "Sender", null, true, false, false));
+        registry.Join(new CallRoomParticipant(roomId, "target", targetUserId, "Target", null, true, false, false));
+        var hub = CreateHub(registry, Mock.Of<ICallRoomAuthorizationService>(), "sender", userId);
+
+        await Assert.ThrowsAsync<HubException>(() => hub.SendWebRtcOffer(
+            roomId, "target", new { type = "offer", sdp = new string('s', CallHub.MaximumSdpUtf8Bytes + 1) }));
+    }
+
+    [Fact]
+    public async Task NormalAnswerAndIceCandidateAreRelayedAfterJoin()
+    {
+        var userId = Guid.NewGuid();
+        var targetUserId = Guid.NewGuid();
+        var roomId = "project:room:voice:general";
+        var registry = new CallRoomRegistry();
+        registry.Join(new CallRoomParticipant(roomId, "sender", userId, "Sender", null, true, false, false));
+        registry.Join(new CallRoomParticipant(roomId, "target", targetUserId, "Target", null, true, false, false));
+        var targetProxy = new Mock<ISingleClientProxy>();
+        var clients = new Mock<IHubCallerClients>();
+        clients.Setup(item => item.Client("target")).Returns(targetProxy.Object);
+        var hub = CreateHub(registry, Mock.Of<ICallRoomAuthorizationService>(), "sender", userId, clients.Object);
+
+        await hub.SendWebRtcAnswer(roomId, "target", new { type = "answer", sdp = "normal-answer" });
+        await hub.SendIceCandidate(roomId, "target", new { candidate = "normal-ice" });
+
+        targetProxy.Invocations.Select(invocation => invocation.Arguments[0]).Should().ContainInOrder(
+            CallRealtimeEvents.WebRtcAnswer,
+            CallRealtimeEvents.IceCandidate);
+    }
+
     [Fact]
     public async Task CallChatRequiresMembershipAndBroadcastsCanonicalMessage()
     {
