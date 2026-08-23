@@ -64,6 +64,29 @@ public sealed class BillingMvpTests
     }
 
     [Fact]
+    public async Task ApprovingNewPlanAtomicallyCutsOverLegacyBalanceBeforeGrantingNewBucket()
+    {
+        await using var context = CreateContext();
+        var user = AddUser(context);
+        var admin = AddUser(context, "admin-cutover@sprinta.local");
+        AddPlans(context);
+        var now = DateTime.UtcNow;
+        AddActiveSubscription(context, user.Id, "plus", now.AddDays(-1), now.AddDays(29));
+        context.AITokenUsages.Add(TokenUsage(user.Id, 300_000, now));
+        await context.SaveChangesAsync();
+
+        var billing = BillingService(context);
+        var order = await billing.CreateOrderAsync(user.Id, "pro");
+        await billing.ApproveOrderAsync(order.Id, admin.Id, "cutover test");
+
+        var buckets = await context.AiCreditBuckets.Where(x => x.UserId == user.Id).OrderBy(x => x.SourceType).ToListAsync();
+        buckets.Should().HaveCount(2);
+        buckets.Single(x => x.SourceType == "LegacyCutover").RemainingCredits.Should().Be(900);
+        buckets.Single(x => x.SourceType == "PaymentOrder").RemainingCredits.Should().Be(3000);
+        (await BillingService(context).GetSummaryAsync(user.Id)).TotalRemainingCredits.Should().Be(3900);
+    }
+
+    [Fact]
     public async Task ApprovingPaidOrder_IsIdempotent_AndStartsFreshMonthlyPeriod()
     {
         await using var context = CreateContext();

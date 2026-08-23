@@ -9,9 +9,25 @@ public class BillingSummaryDto
     public int AdjustmentCredits { get; set; }
     public int UsedCredits { get; set; }
     public int RemainingCredits { get; set; }
+    public int TotalRemainingCredits { get; set; }
+    public IReadOnlyList<CreditBucketDto> CreditBuckets { get; set; } = Array.Empty<CreditBucketDto>();
     public DateTime CurrentPeriodStart { get; set; }
     public DateTime CurrentPeriodEnd { get; set; }
     public PaymentOrderDto? PendingOrder { get; set; }
+}
+
+public sealed class CreditBucketDto
+{
+    public Guid Id { get; set; }
+    public string SourcePlan { get; set; } = string.Empty;
+    public int Granted { get; set; }
+    public int Remaining { get; set; }
+    public int Reserved { get; set; }
+    public int Consumed { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public DateTime ValidFrom { get; set; }
+    public DateTime ExpiresAt { get; set; }
+    public string? SourceReference { get; set; }
 }
 
 public sealed class BillingUserDto : BillingSummaryDto
@@ -30,6 +46,7 @@ public sealed class PaymentOrderDto
     public string PlanCode { get; set; } = string.Empty;
     public string PlanName { get; set; } = string.Empty;
     public decimal AmountVnd { get; set; }
+    public int IncludedAiCredits { get; set; }
     public string Status { get; set; } = string.Empty;
     public string TransferCode { get; set; } = string.Empty;
     public string Currency { get; set; } = "VND";

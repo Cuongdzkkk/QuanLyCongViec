@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { clearAuthSession, getStoredAccessToken } from '@/utils/authSession'
+import { ensureAiOperationId } from '@/utils/aiOperationId'
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api';
 
@@ -28,6 +29,7 @@ const processQueue = (error, token = null) => {
 
 axiosClient.interceptors.request.use(
     (config) => {
+        ensureAiOperationId(config)
         const token = getStoredAccessToken();
         if (token) {
             config.headers['Authorization'] = `Bearer ${token}`;

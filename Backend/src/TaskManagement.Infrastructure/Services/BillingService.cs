@@ -40,6 +40,27 @@ public sealed class BillingService : IBillingService
     public async Task<BillingSummaryDto> GetSummaryAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var usage = await _creditUsageService.GetUsageAsync(userId, DateTime.MinValue, DateTime.MaxValue, cancellationToken);
+        var now = DateTime.UtcNow;
+        var bucketRows = await _context.AiCreditBuckets.AsNoTracking().Where(x => x.UserId == userId)
+            .OrderBy(x => x.ExpiresAt).ThenBy(x => x.CreatedAt).ThenBy(x => x.Id).ToListAsync(cancellationToken);
+        var bucketIds = bucketRows.Select(x => x.Id).ToList();
+        var reservedByBucket = await _context.AiCreditReservationAllocations.AsNoTracking()
+            .Where(x => bucketIds.Contains(x.CreditBucketId) && x.AllocatedCredits > 0)
+            .GroupBy(x => x.CreditBucketId)
+            .Select(x => new { BucketId = x.Key, Reserved = x.Sum(item => item.AllocatedCredits) })
+            .ToDictionaryAsync(x => x.BucketId, x => x.Reserved, cancellationToken);
+        var buckets = bucketRows.Select(x =>
+        {
+            var reserved = reservedByBucket.GetValueOrDefault(x.Id);
+            var status = x.ValidFrom > now ? "Future" : x.ExpiresAt <= now ? "Expired" : x.RemainingCredits <= 0 && reserved <= 0 ? "Consumed" : "Active";
+            return new CreditBucketDto
+            {
+                Id = x.Id, SourcePlan = x.PlanCode, Granted = x.GrantedCredits,
+                Remaining = Math.Max(0, x.RemainingCredits), Reserved = reserved,
+                Consumed = Math.Max(0, x.GrantedCredits - x.RemainingCredits - reserved),
+                ValidFrom = x.ValidFrom, ExpiresAt = x.ExpiresAt, SourceReference = x.SourceReference, Status = status
+            };
+        }).ToList();
         var planName = await _context.AiPricingPlans.AsNoTracking()
             .Where(plan => plan.Code == usage.PlanCode)
             .Select(plan => plan.Name)
@@ -61,6 +82,8 @@ public sealed class BillingService : IBillingService
             AdjustmentCredits = usage.AdjustmentCredits,
             UsedCredits = usage.UsedCredits,
             RemainingCredits = usage.RemainingCredits,
+            TotalRemainingCredits = usage.TotalRemainingCredits > 0 ? usage.TotalRemainingCredits : usage.RemainingCredits,
+            CreditBuckets = buckets,
             CurrentPeriodStart = usage.CurrentPeriodStart,
             CurrentPeriodEnd = usage.CurrentPeriodEnd,
             PendingOrder = pendingOrder == null ? null : await ToOrderDtoAsync(pendingOrder, cancellationToken)
@@ -515,7 +538,7 @@ public sealed class BillingService : IBillingService
     {
         if (useTransaction) _context.ChangeTracker.Clear();
         await using IDbContextTransaction? transaction = useTransaction
-            ? await _context.Database.BeginTransactionAsync(cancellationToken)
+            ? await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
             : null;
         var order = await _context.PaymentOrders.Include(item => item.User)
             .SingleOrDefaultAsync(item => item.Id == orderId, cancellationToken)
@@ -528,6 +551,15 @@ public sealed class BillingService : IBillingService
         if (order.ExpiresAt <= DateTime.UtcNow) throw new InvalidOperationException("Đơn thanh toán đã hết hạn.");
 
         var now = DateTime.UtcNow;
+        await _creditUsageService.EnsureLegacyCutoverAsync(order.UserId, cancellationToken);
+        var previousPlanCode = (await _context.AiSubscriptions.AsNoTracking()
+            .Where(x => x.UserId == order.UserId)
+            .Select(x => x.PlanCode)
+            .SingleOrDefaultAsync(cancellationToken)) ?? "free";
+        var previousPeriodEnd = await _context.AiSubscriptions.AsNoTracking()
+            .Where(x => x.UserId == order.UserId)
+            .Select(x => (DateTime?)x.CurrentPeriodEnd)
+            .SingleOrDefaultAsync(cancellationToken);
         order.Status = "Paid";
         order.PaidAt = now;
         order.ApprovedByUserId = adminUserId;
@@ -547,6 +579,20 @@ public sealed class BillingService : IBillingService
         subscription.ActivatedAt = now;
         subscription.CancelledAt = null;
         subscription.AutoRenew = false;
+        if (order.IncludedAiCreditsSnapshot > 0 && !await _context.AiCreditBuckets.AnyAsync(x => x.SourcePaymentOrderId == order.Id, cancellationToken))
+        {
+            var isRenewal = string.Equals(previousPlanCode, order.PlanCode, StringComparison.OrdinalIgnoreCase)
+                && previousPeriodEnd > now;
+            var validFrom = isRenewal ? subscription.CurrentPeriodEnd : now;
+            var expiresAt = validFrom.AddMonths(1);
+            _context.AiCreditBuckets.Add(new AiCreditBucket
+            {
+                Id = Guid.NewGuid(), UserId = order.UserId, PlanCode = order.PlanCode,
+                GrantedCredits = order.IncludedAiCreditsSnapshot, RemainingCredits = order.IncludedAiCreditsSnapshot,
+                ValidFrom = DateTime.SpecifyKind(validFrom, DateTimeKind.Utc), ExpiresAt = DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc),
+                SourceType = "PaymentOrder", SourcePaymentOrderId = order.Id, SourceReference = order.TransferCode, CreatedAt = now
+            });
+        }
         subscription.UpdatedAt = now;
         transactionRecord.IncludedAiCredits = order.IncludedAiCreditsSnapshot;
         transactionRecord.SubscriptionPeriodStart = subscription.CurrentPeriodStart;
@@ -846,7 +892,8 @@ public sealed class BillingService : IBillingService
         TransactionStatus = order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.Status,
         TransactionCreatedAt = AsUtc(order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.CreatedAt),
         TransactionPeriodStart = AsUtc(order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.SubscriptionPeriodStart),
-        TransactionPeriodEnd = AsUtc(order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.SubscriptionPeriodEnd)
+        TransactionPeriodEnd = AsUtc(order.Transactions.OrderByDescending(x => x.CreatedAt).FirstOrDefault()?.SubscriptionPeriodEnd),
+        IncludedAiCredits = order.IncludedAiCreditsSnapshot
     };
 
     private static DateTime AsUtc(DateTime value) => value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);

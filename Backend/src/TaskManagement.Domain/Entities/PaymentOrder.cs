@@ -20,5 +20,6 @@ public class PaymentOrder
 
     public User User { get; set; } = null!;
     public User? ApprovedByUser { get; set; }
+    public ICollection<AiCreditBucket> AiCreditBuckets { get; set; } = new List<AiCreditBucket>();
     public ICollection<PaymentTransaction> Transactions { get; set; } = new List<PaymentTransaction>();
 }

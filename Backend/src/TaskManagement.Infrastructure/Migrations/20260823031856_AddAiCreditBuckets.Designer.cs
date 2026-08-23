@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaskManagement.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using TaskManagement.Infrastructure.Data;
 namespace TaskManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260823031856_AddAiCreditBuckets")]
+    partial class AddAiCreditBuckets
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -52,7 +55,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("AIFeedbacks", (string)null);
+                    b.ToTable("AIFeedbacks");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AIPromptTemplate", b =>
@@ -74,7 +77,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("AIPromptTemplates", (string)null);
+                    b.ToTable("AIPromptTemplates");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AITokenUsage", b =>
@@ -100,7 +103,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("AITokenUsages", (string)null);
+                    b.ToTable("AITokenUsages");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AITrainingDataset", b =>
@@ -134,7 +137,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("CreatorId");
 
-                    b.ToTable("AITrainingDatasets", (string)null);
+                    b.ToTable("AITrainingDatasets");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiActionExecution", b =>
@@ -218,7 +221,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "State", "UpdatedAt");
 
-                    b.ToTable("AiActionExecutions", (string)null);
+                    b.ToTable("AiActionExecutions");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiAttachment", b =>
@@ -296,7 +299,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "WorkspaceId", "ConversationId", "Sha256");
 
-                    b.ToTable("AiAttachments", (string)null);
+                    b.ToTable("AiAttachments");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiAttachmentChunk", b =>
@@ -332,7 +335,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("AttachmentId", "ChunkIndex")
                         .IsUnique();
 
-                    b.ToTable("AiAttachmentChunks", (string)null);
+                    b.ToTable("AiAttachmentChunks");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiConversation", b =>
@@ -366,7 +369,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "WorkspaceId", "UpdatedAt");
 
-                    b.ToTable("AiConversations", (string)null);
+                    b.ToTable("AiConversations");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditAdjustment", b =>
@@ -409,48 +412,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "EffectivePeriodStart", "EffectivePeriodEnd");
 
-                    b.ToTable("AiCreditAdjustments", (string)null);
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditReservation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("Credits")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("IdempotencyKey")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IdempotencyKey")
-                        .IsUnique();
-
-                    b.HasIndex("UserId", "Status", "ExpiresAt");
-
-                    b.ToTable("AiCreditReservations", (string)null);
+                    b.ToTable("AiCreditAdjustments");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditBucket", b =>
@@ -476,12 +438,6 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Property<int>("RemainingCredits")
                         .HasColumnType("int");
 
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
                     b.Property<Guid?>("SourcePaymentOrderId")
                         .HasColumnType("uniqueidentifier");
 
@@ -506,94 +462,11 @@ namespace TaskManagement.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[SourcePaymentOrderId] IS NOT NULL");
 
-                    b.HasIndex("SourceType", "SourceReference")
-                        .IsUnique()
-                        .HasFilter("[SourceReference] IS NOT NULL");
-
                     b.HasIndex("UserId", "ExpiresAt", "CreatedAt");
 
                     b.HasIndex("UserId", "ValidFrom", "ExpiresAt");
 
                     b.ToTable("AiCreditBuckets");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditReservation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("FinalizedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("FinalizedCredits")
-                        .HasColumnType("int");
-
-                    b.Property<string>("IdempotencyKey")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<DateTime?>("ReleasedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("RequestedCredits")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ReservedCredits")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "IdempotencyKey")
-                        .IsUnique();
-
-                    b.ToTable("AiCreditReservations");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditReservationAllocation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("AllocatedCredits")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ConsumedCredits")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("CreditBucketId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("ReservationId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreditBucketId");
-
-                    b.HasIndex("ReservationId", "CreditBucketId")
-                        .IsUnique();
-
-                    b.ToTable("AiCreditReservationAllocations");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditRule", b =>
@@ -627,7 +500,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("ActionType")
                         .IsUnique();
 
-                    b.ToTable("AiCreditRules", (string)null);
+                    b.ToTable("AiCreditRules");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiPricingPlan", b =>
@@ -692,7 +565,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("AiPricingPlans", (string)null);
+                    b.ToTable("AiPricingPlans");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiSubscription", b =>
@@ -742,7 +615,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("Status", "CurrentPeriodEnd");
 
-                    b.ToTable("AiSubscriptions", (string)null);
+                    b.ToTable("AiSubscriptions");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiUsageLedger", b =>
@@ -788,7 +661,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("WorkspaceId", "OccurredAt");
 
-                    b.ToTable("AiUsageLedgerEntries", (string)null);
+                    b.ToTable("AiUsageLedgerEntries");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Attachment", b =>
@@ -823,7 +696,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("WorkTaskId");
 
-                    b.ToTable("Attachments", (string)null);
+                    b.ToTable("Attachments");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AuditLog", b =>
@@ -857,58 +730,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("WorkTaskId");
 
-                    b.ToTable("AuditLogs", (string)null);
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.CallTranscriptChunk", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("CallSessionId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<double?>("Confidence")
-                        .HasColumnType("float");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset>("EndedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("ProjectId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("SpeakerDisplayName")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<Guid>("SpeakerUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset>("StartedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("Text")
-                        .IsRequired()
-                        .HasMaxLength(12000)
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("VoiceChannelId")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CallSessionId", "CreatedAt");
-
-                    b.HasIndex("ProjectId", "VoiceChannelId", "CallSessionId", "StartedAt");
-
-                    b.ToTable("CallTranscriptChunks", (string)null);
+                    b.ToTable("AuditLogs");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ChannelMessage", b =>
@@ -931,9 +753,6 @@ namespace TaskManagement.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("ChannelId");
 
-                    b.Property<Guid?>("ReplyToMessageId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid>("SenderId")
                         .HasColumnType("uniqueidentifier");
 
@@ -944,13 +763,11 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("LegacyDepartmentId");
 
-                    b.HasIndex("ReplyToMessageId");
-
                     b.HasIndex("SenderId");
 
                     b.HasIndex("CollaborationChannelId", "SentAt", "Id");
 
-                    b.ToTable("ChannelMessages", (string)null);
+                    b.ToTable("ChannelMessages");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ChannelMessageMention", b =>
@@ -986,7 +803,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("MentionedUserId", "CreatedAt");
 
-                    b.ToTable("ChannelMessageMentions", (string)null);
+                    b.ToTable("ChannelMessageMentions");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationChannel", b =>
@@ -1052,7 +869,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ProjectId", "IsDeleted", "IsArchived");
 
-                    b.ToTable("CollaborationChannels", (string)null);
+                    b.ToTable("CollaborationChannels");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationChannelMember", b =>
@@ -1079,7 +896,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "IsActive");
 
-                    b.ToTable("CollaborationChannelMembers", (string)null);
+                    b.ToTable("CollaborationChannelMembers");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationChannelReadState", b =>
@@ -1102,7 +919,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "ChannelId");
 
-                    b.ToTable("CollaborationChannelReadStates", (string)null);
+                    b.ToTable("CollaborationChannelReadStates");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationMessageAttachment", b =>
@@ -1152,69 +969,10 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UploadedByUserId", "CreatedAt");
 
-                    b.ToTable("CollaborationMessageAttachments", null, t =>
+                    b.ToTable("CollaborationMessageAttachments", t =>
                         {
                             t.HasCheckConstraint("CK_CollaborationMessageAttachments_ExactlyOneMessage", "([ChannelMessageId] IS NOT NULL AND [DirectMessageId] IS NULL) OR ([ChannelMessageId] IS NULL AND [DirectMessageId] IS NOT NULL)");
                         });
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationMessagePin", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("ChannelMessageId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("PinnedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("PinnedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ChannelMessageId")
-                        .IsUnique();
-
-                    b.HasIndex("PinnedByUserId");
-
-                    b.HasIndex("ChannelMessageId", "PinnedAt");
-
-                    b.ToTable("CollaborationMessagePins", (string)null);
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationMessageReaction", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("ChannelMessageId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Emoji")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("ChannelMessageId", "Emoji");
-
-                    b.HasIndex("ChannelMessageId", "UserId", "Emoji")
-                        .IsUnique();
-
-                    b.ToTable("CollaborationMessageReactions", (string)null);
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Comment", b =>
@@ -1257,7 +1015,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("EntityType", "EntityId");
 
-                    b.ToTable("Comments", (string)null);
+                    b.ToTable("Comments");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.CommentAttachment", b =>
@@ -1296,7 +1054,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UploadedByUserId");
 
-                    b.ToTable("CommentAttachments", (string)null);
+                    b.ToTable("CommentAttachments");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.CommentMention", b =>
@@ -1320,7 +1078,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("MentionedUserId");
 
-                    b.ToTable("CommentMentions", (string)null);
+                    b.ToTable("CommentMentions");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ContingencyPlan", b =>
@@ -1369,7 +1127,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("WorkTaskId");
 
-                    b.ToTable("ContingencyPlans", (string)null);
+                    b.ToTable("ContingencyPlans");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ContingencyPlanTask", b =>
@@ -1424,7 +1182,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("WorkTaskId");
 
-                    b.ToTable("ContingencyPlanTasks", (string)null);
+                    b.ToTable("ContingencyPlanTasks");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.CustomFieldDefinition", b =>
@@ -1475,7 +1233,7 @@ namespace TaskManagement.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[IsDeleted] = 0");
 
-                    b.ToTable("CustomFieldDefinitions", (string)null);
+                    b.ToTable("CustomFieldDefinitions");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.CustomFieldValue", b =>
@@ -1506,55 +1264,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("WorkTaskId", "FieldDefinitionId")
                         .IsUnique();
 
-                    b.ToTable("CustomFieldValues", (string)null);
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.DailyCheckin", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Blocker")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<DateOnly>("CheckinDate")
-                        .HasColumnType("date");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("ProjectId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Today")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Yesterday")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProjectId", "CheckinDate");
-
-                    b.HasIndex("UserId", "CheckinDate");
-
-                    b.HasIndex("ProjectId", "UserId", "CheckinDate")
-                        .IsUnique();
-
-                    b.ToTable("DailyCheckins", (string)null);
+                    b.ToTable("CustomFieldValues");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Department", b =>
@@ -1597,7 +1307,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ParentId");
 
-                    b.ToTable("Departments", (string)null);
+                    b.ToTable("Departments");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.DepartmentMember", b =>
@@ -1618,7 +1328,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("DepartmentMembers", (string)null);
+                    b.ToTable("DepartmentMembers");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.DirectConversation", b =>
@@ -1672,7 +1382,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "ConversationId");
 
-                    b.ToTable("DirectConversationParticipants", (string)null);
+                    b.ToTable("DirectConversationParticipants");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.DirectConversationReadState", b =>
@@ -1695,7 +1405,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "ConversationId");
 
-                    b.ToTable("DirectConversationReadStates", (string)null);
+                    b.ToTable("DirectConversationReadStates");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.DirectMessage", b =>
@@ -1735,7 +1445,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ConversationId", "SentAt", "Id");
 
-                    b.ToTable("DirectMessages", (string)null);
+                    b.ToTable("DirectMessages");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.EntityFollower", b =>
@@ -1761,7 +1471,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("EntityFollowers", (string)null);
+                    b.ToTable("EntityFollowers");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ExternalLogin", b =>
@@ -1802,7 +1512,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("UserId", "Provider")
                         .IsUnique();
 
-                    b.ToTable("ExternalLogins", (string)null);
+                    b.ToTable("ExternalLogins");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Goal", b =>
@@ -1859,7 +1569,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("WorkspaceId");
 
-                    b.ToTable("Goals", (string)null);
+                    b.ToTable("Goals");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.GoalDecision", b =>
@@ -1890,7 +1600,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("GoalId");
 
-                    b.ToTable("GoalDecisions", (string)null);
+                    b.ToTable("GoalDecisions");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.GoalLesson", b =>
@@ -1918,7 +1628,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("GoalId");
 
-                    b.ToTable("GoalLessons", (string)null);
+                    b.ToTable("GoalLessons");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.GoalRisk", b =>
@@ -1950,7 +1660,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("GoalId");
 
-                    b.ToTable("GoalRisks", (string)null);
+                    b.ToTable("GoalRisks");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.GoalUpdate", b =>
@@ -1994,7 +1704,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("GoalUpdates", (string)null);
+                    b.ToTable("GoalUpdates");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.InboxItem", b =>
@@ -2062,7 +1772,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "Source", "CreatedAt");
 
-                    b.ToTable("InboxItems", (string)null);
+                    b.ToTable("InboxItems");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Intake", b =>
@@ -2120,7 +1830,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("SubmittedById");
 
-                    b.ToTable("Intakes", (string)null);
+                    b.ToTable("Intakes");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.IntegrationAccount", b =>
@@ -2174,7 +1884,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("UserId", "Provider")
                         .IsUnique();
 
-                    b.ToTable("IntegrationAccounts", (string)null);
+                    b.ToTable("IntegrationAccounts");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.IssueLabel", b =>
@@ -2192,7 +1902,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("LabelId");
 
-                    b.ToTable("IssueLabels", (string)null);
+                    b.ToTable("IssueLabels");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.IssueModule", b =>
@@ -2210,7 +1920,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ModuleId");
 
-                    b.ToTable("IssueModules", (string)null);
+                    b.ToTable("IssueModules");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Kudo", b =>
@@ -2246,7 +1956,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("SenderId");
 
-                    b.ToTable("Kudos", (string)null);
+                    b.ToTable("Kudos");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.KudoReaction", b =>
@@ -2274,7 +1984,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("KudoReactions", (string)null);
+                    b.ToTable("KudoReactions");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Label", b =>
@@ -2309,7 +2019,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("WorkspaceId");
 
-                    b.ToTable("Labels", (string)null);
+                    b.ToTable("Labels");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Module", b =>
@@ -2353,7 +2063,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("Modules", (string)null);
+                    b.ToTable("Modules");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Notification", b =>
@@ -2378,10 +2088,6 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<string>("DedupeKey")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
 
                     b.Property<bool>("IsRead")
                         .HasColumnType("bit");
@@ -2416,10 +2122,6 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ChannelMessageId");
 
-                    b.HasIndex("DedupeKey")
-                        .IsUnique()
-                        .HasFilter("[DedupeKey] IS NOT NULL");
-
                     b.HasIndex("RelatedInvitationId");
 
                     b.HasIndex("TriggeredByUserId");
@@ -2430,7 +2132,7 @@ namespace TaskManagement.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[ChannelMessageId] IS NOT NULL");
 
-                    b.ToTable("Notifications", (string)null);
+                    b.ToTable("Notifications");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.NotificationPreference", b =>
@@ -2467,7 +2169,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("UserId", "Category")
                         .IsUnique();
 
-                    b.ToTable("NotificationPreferences", (string)null);
+                    b.ToTable("NotificationPreferences");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Organization", b =>
@@ -2502,7 +2204,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Organizations", (string)null);
+                    b.ToTable("Organizations");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Page", b =>
@@ -2556,71 +2258,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UpdatedById");
 
-                    b.ToTable("Pages", (string)null);
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.PaymentEmailDelivery", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Attempt")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("FailedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("FailureReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<bool>("IsAutomatic")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<Guid>("PaymentOrderId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ProviderMessageId")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<string>("RecipientEmail")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<DateTime>("RequestedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("SentAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("PaymentOrderId", "Kind", "Attempt")
-                        .IsUnique();
-
-                    b.HasIndex("PaymentOrderId", "Kind", "IsAutomatic")
-                        .IsUnique()
-                        .HasFilter("[IsAutomatic] = 1");
-
-                    b.ToTable("PaymentEmailDeliveries");
+                    b.ToTable("Pages");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.PaymentOrder", b =>
@@ -2643,16 +2281,6 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(8)
-                        .HasColumnType("nvarchar(8)")
-                        .HasDefaultValue("VND");
-
-                    b.Property<DateTime?>("ExpiresAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<int>("IncludedAiCreditsSnapshot")
                         .HasColumnType("int");
 
@@ -2663,18 +2291,6 @@ namespace TaskManagement.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("PlanNameSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<string>("Provider")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)")
-                        .HasDefaultValue("manual_bank_transfer");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -2696,126 +2312,11 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("TransferCode")
                         .IsUnique();
 
+                    b.HasIndex("UserId");
+
                     b.HasIndex("Status", "CreatedAt");
 
-                    b.HasIndex("UserId", "PlanCode", "Status");
-
-                    b.ToTable("PaymentOrders", (string)null);
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.PaymentTransaction", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(8)
-                        .HasColumnType("nvarchar(8)");
-
-                    b.Property<int?>("IncludedAiCredits")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("PaidAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("PaymentOrderId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Provider")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("ProviderReference")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<string>("ProviderTransactionId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<DateTime?>("SubscriptionPeriodEnd")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("SubscriptionPeriodStart")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PaymentOrderId");
-
-                    b.HasIndex("Provider", "ProviderTransactionId")
-                        .IsUnique();
-
-                    b.ToTable("PaymentTransactions", (string)null);
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.PaymentWebhookEvent", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("EventType")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("FailureReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<Guid?>("PaymentOrderId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("ProcessedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Provider")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("ProviderEventId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<string>("RawPayload")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("ReceivedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PaymentOrderId");
-
-                    b.HasIndex("Provider", "ProviderEventId")
-                        .IsUnique();
-
-                    b.ToTable("PaymentWebhookEvents", (string)null);
+                    b.ToTable("PaymentOrders");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.PerformanceReview", b =>
@@ -2848,7 +2349,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ReviewerId");
 
-                    b.ToTable("PerformanceReviews", (string)null);
+                    b.ToTable("PerformanceReviews");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Permission", b =>
@@ -2882,7 +2383,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("Permissions", (string)null);
+                    b.ToTable("Permissions");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.PointTransaction", b =>
@@ -2939,7 +2440,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserWalletUserId", "WorkTaskId", "TransactionType");
 
-                    b.ToTable("PointTransactions", (string)null);
+                    b.ToTable("PointTransactions");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Project", b =>
@@ -3034,7 +2535,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("WorkspaceId", "Identifier")
                         .IsUnique();
 
-                    b.ToTable("Projects", (string)null);
+                    b.ToTable("Projects");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ProjectDecision", b =>
@@ -3062,7 +2563,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("ProjectDecisions", (string)null);
+                    b.ToTable("ProjectDecisions");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ProjectDepartmentRole", b =>
@@ -3135,7 +2636,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ProjectId", "UserId", "Status");
 
-                    b.ToTable("ProjectInvitations", (string)null);
+                    b.ToTable("ProjectInvitations");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ProjectLesson", b =>
@@ -3163,7 +2664,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("ProjectLessons", (string)null);
+                    b.ToTable("ProjectLessons");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ProjectLink", b =>
@@ -3197,7 +2698,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("ProjectLinks", (string)null);
+                    b.ToTable("ProjectLinks");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ProjectMember", b =>
@@ -3225,7 +2726,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("ProjectMembers", (string)null);
+                    b.ToTable("ProjectMembers");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ProjectRisk", b =>
@@ -3257,7 +2758,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("ProjectRisks", (string)null);
+                    b.ToTable("ProjectRisks");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ProjectTemplate", b =>
@@ -3338,7 +2839,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("ProjectUpdates", (string)null);
+                    b.ToTable("ProjectUpdates");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.ProjectView", b =>
@@ -3379,7 +2880,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("ProjectViews", (string)null);
+                    b.ToTable("ProjectViews");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.RecentView", b =>
@@ -3475,7 +2976,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("RefreshTokens", (string)null);
+                    b.ToTable("RefreshTokens");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Role", b =>
@@ -3499,7 +3000,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Roles", (string)null);
+                    b.ToTable("Roles");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.RolePermission", b =>
@@ -3514,7 +3015,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("PermissionId");
 
-                    b.ToTable("RolePermissions", (string)null);
+                    b.ToTable("RolePermissions");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.SiteAuditLog", b =>
@@ -3552,7 +3053,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("EntityType", "EntityId");
 
-                    b.ToTable("SiteAuditLogs", (string)null);
+                    b.ToTable("SiteAuditLogs");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Sprint", b =>
@@ -3609,7 +3110,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("ProjectId", "State", "StartDate", "CreatedAt", "Id")
                         .HasDatabaseName("IX_Sprints_Project_State_Order");
 
-                    b.ToTable("Sprints", (string)null);
+                    b.ToTable("Sprints");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.StarredItem", b =>
@@ -3731,7 +3232,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "IsDeleted", "IsPinned", "UpdatedAt");
 
-                    b.ToTable("StickyNotes", (string)null);
+                    b.ToTable("StickyNotes");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.SyncHistory", b =>
@@ -3772,7 +3273,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "Provider", "StartedAt");
 
-                    b.ToTable("SyncHistories", (string)null);
+                    b.ToTable("SyncHistories");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.SystemAuditLog", b =>
@@ -3809,7 +3310,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("SystemAuditLogs", (string)null);
+                    b.ToTable("SystemAuditLogs");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.SystemSetting", b =>
@@ -3838,7 +3339,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("SystemSettings", (string)null);
+                    b.ToTable("SystemSettings");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.TaskAssignment", b =>
@@ -3904,7 +3405,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("TaskAssignments", (string)null);
+                    b.ToTable("TaskAssignments");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.TaskContingencyPlan", b =>
@@ -3966,7 +3467,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("WorkTaskId", "Status");
 
-                    b.ToTable("TaskContingencyPlans", (string)null);
+                    b.ToTable("TaskContingencyPlans");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.TaskDependency", b =>
@@ -3984,7 +3485,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("SuccessorTaskId");
 
-                    b.ToTable("TaskDependencies", (string)null);
+                    b.ToTable("TaskDependencies");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.TaskDraft", b =>
@@ -4021,7 +3522,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "ProjectId", "UpdatedAt");
 
-                    b.ToTable("TaskDrafts", (string)null);
+                    b.ToTable("TaskDrafts");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.TaskStatus", b =>
@@ -4047,7 +3548,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("TaskStatuses", (string)null);
+                    b.ToTable("TaskStatuses");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.TaskSubscriber", b =>
@@ -4065,7 +3566,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("TaskSubscribers", (string)null);
+                    b.ToTable("TaskSubscribers");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.TaskType", b =>
@@ -4091,7 +3592,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("TaskTypes", (string)null);
+                    b.ToTable("TaskTypes");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.TaskVectorEmbedding", b =>
@@ -4108,7 +3609,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasKey("WorkTaskId");
 
-                    b.ToTable("TaskVectorEmbeddings", (string)null);
+                    b.ToTable("TaskVectorEmbeddings");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.TeamGoal", b =>
@@ -4138,7 +3639,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("DepartmentId", "GoalId")
                         .IsUnique();
 
-                    b.ToTable("TeamGoals", (string)null);
+                    b.ToTable("TeamGoals");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.TenantConfig", b =>
@@ -4177,7 +3678,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("TenantConfigs", (string)null);
+                    b.ToTable("TenantConfigs");
 
                     b.HasData(
                         new
@@ -4221,7 +3722,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("WorkTaskId");
 
-                    b.ToTable("TimeLogs", (string)null);
+                    b.ToTable("TimeLogs");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.User", b =>
@@ -4291,7 +3792,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("OrganizationId");
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.UserRole", b =>
@@ -4306,7 +3807,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("RoleId");
 
-                    b.ToTable("UserRoles", (string)null);
+                    b.ToTable("UserRoles");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.UserWallet", b =>
@@ -4322,7 +3823,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasKey("UserId");
 
-                    b.ToTable("UserWallets", (string)null);
+                    b.ToTable("UserWallets");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.WorkTask", b =>
@@ -4427,7 +3928,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("WorkspaceId", "ProjectId");
 
-                    b.ToTable("WorkTasks", (string)null);
+                    b.ToTable("WorkTasks");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Workspace", b =>
@@ -4470,7 +3971,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasIndex("Slug")
                         .IsUnique();
 
-                    b.ToTable("Workspaces", (string)null);
+                    b.ToTable("Workspaces");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.WorkspaceMember", b =>
@@ -4495,7 +3996,7 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("WorkspaceMembers", (string)null);
+                    b.ToTable("WorkspaceMembers");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.AIFeedback", b =>
@@ -4588,36 +4089,6 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditReservation", b =>
-                {
-                    b.HasOne("TaskManagement.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditReservationAllocation", b =>
-                {
-                    b.HasOne("TaskManagement.Domain.Entities.AiCreditBucket", "CreditBucket")
-                        .WithMany("ReservationAllocations")
-                        .HasForeignKey("CreditBucketId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("TaskManagement.Domain.Entities.AiCreditReservation", "Reservation")
-                        .WithMany("Allocations")
-                        .HasForeignKey("ReservationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CreditBucket");
-
-                    b.Navigation("Reservation");
-                });
-
             modelBuilder.Entity("TaskManagement.Domain.Entities.AiSubscription", b =>
                 {
                     b.HasOne("TaskManagement.Domain.Entities.User", "User")
@@ -4705,11 +4176,6 @@ namespace TaskManagement.Infrastructure.Migrations
                         .HasForeignKey("LegacyDepartmentId")
                         .OnDelete(DeleteBehavior.Cascade);
 
-                    b.HasOne("TaskManagement.Domain.Entities.ChannelMessage", "ReplyToMessage")
-                        .WithMany("Replies")
-                        .HasForeignKey("ReplyToMessageId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("TaskManagement.Domain.Entities.User", "Sender")
                         .WithMany()
                         .HasForeignKey("SenderId")
@@ -4719,8 +4185,6 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("CollaborationChannel");
 
                     b.Navigation("LegacyDepartment");
-
-                    b.Navigation("ReplyToMessage");
 
                     b.Navigation("Sender");
                 });
@@ -4839,44 +4303,6 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("DirectMessage");
 
                     b.Navigation("UploadedByUser");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationMessagePin", b =>
-                {
-                    b.HasOne("TaskManagement.Domain.Entities.ChannelMessage", "ChannelMessage")
-                        .WithOne("Pin")
-                        .HasForeignKey("TaskManagement.Domain.Entities.CollaborationMessagePin", "ChannelMessageId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("TaskManagement.Domain.Entities.User", "PinnedByUser")
-                        .WithMany()
-                        .HasForeignKey("PinnedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("ChannelMessage");
-
-                    b.Navigation("PinnedByUser");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationMessageReaction", b =>
-                {
-                    b.HasOne("TaskManagement.Domain.Entities.ChannelMessage", "ChannelMessage")
-                        .WithMany("Reactions")
-                        .HasForeignKey("ChannelMessageId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("TaskManagement.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("ChannelMessage");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Comment", b =>
@@ -5006,25 +4432,6 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("FieldDefinition");
 
                     b.Navigation("WorkTask");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.DailyCheckin", b =>
-                {
-                    b.HasOne("TaskManagement.Domain.Entities.Project", "Project")
-                        .WithMany()
-                        .HasForeignKey("ProjectId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("TaskManagement.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Project");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Department", b =>
@@ -5552,25 +4959,6 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("UpdatedBy");
                 });
 
-            modelBuilder.Entity("TaskManagement.Domain.Entities.PaymentEmailDelivery", b =>
-                {
-                    b.HasOne("TaskManagement.Domain.Entities.PaymentOrder", "PaymentOrder")
-                        .WithMany()
-                        .HasForeignKey("PaymentOrderId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("TaskManagement.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("PaymentOrder");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("TaskManagement.Domain.Entities.PaymentOrder", b =>
                 {
                     b.HasOne("TaskManagement.Domain.Entities.User", "ApprovedByUser")
@@ -5587,17 +4975,6 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("ApprovedByUser");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.PaymentTransaction", b =>
-                {
-                    b.HasOne("TaskManagement.Domain.Entities.PaymentOrder", "PaymentOrder")
-                        .WithMany("Transactions")
-                        .HasForeignKey("PaymentOrderId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("PaymentOrder");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.PerformanceReview", b =>
@@ -6304,27 +5681,11 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("Chunks");
                 });
 
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditBucket", b =>
-                {
-                    b.Navigation("ReservationAllocations");
-                });
-
-            modelBuilder.Entity("TaskManagement.Domain.Entities.AiCreditReservation", b =>
-                {
-                    b.Navigation("Allocations");
-                });
-
             modelBuilder.Entity("TaskManagement.Domain.Entities.ChannelMessage", b =>
                 {
                     b.Navigation("Attachments");
 
                     b.Navigation("Mentions");
-
-                    b.Navigation("Pin");
-
-                    b.Navigation("Reactions");
-
-                    b.Navigation("Replies");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.CollaborationChannel", b =>
@@ -6415,7 +5776,6 @@ namespace TaskManagement.Infrastructure.Migrations
             modelBuilder.Entity("TaskManagement.Domain.Entities.PaymentOrder", b =>
                 {
                     b.Navigation("AiCreditBuckets");
-                    b.Navigation("Transactions");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Permission", b =>
