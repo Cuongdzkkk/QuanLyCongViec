@@ -154,10 +154,18 @@
 
             <template v-else-if="paymentState === 'Paid'">
               <span class="status-badge paid"><ShieldCheck :size="14" /> {{ t('Đã thanh toán', 'Paid') }}</span>
-              <h2>{{ t('Gói đã sẵn sàng', 'Your plan is ready') }}</h2>
-              <p>{{ t('Hệ thống đã cập nhật gói và entitlement của bạn.', 'Your plan and entitlement are now up to date.') }}</p>
-              <div class="paid-summary"><span>{{ t('Gói hiện tại', 'Current plan') }}</span><strong>{{ billing?.planName || paidOrder?.planName || plan.name }}</strong><small>{{ billing?.remainingCredits ?? '-' }} {{ t('AI credits còn lại', 'AI credits remaining') }}</small></div>
-              <button v-if="paidOrder && canShowPaymentReceipt(paidOrder)" type="button" class="primary-button" @click="openReceipt(paidOrder)">{{ t('Xem biên nhận', 'View receipt') }}</button>
+              <h2>{{ t('Thanh toán thành công', 'Payment successful') }}</h2>
+              <p>{{ t('Gói của bạn đã được cập nhật và credit đã sẵn sàng sử dụng.', 'Your plan is updated and the credits are ready to use.') }}</p>
+              <div class="paid-summary">
+                <span>{{ t('Gói đã mua', 'Purchased plan') }}</span>
+                <strong>{{ paidOrder?.planName || billing?.planName || plan.name }}</strong>
+                <small>{{ priceLabel(paidOrder?.amountVnd) }} · {{ formatDate(paidOrder?.paidAt) }}</small>
+                <small>{{ billing?.totalRemainingCredits ?? billing?.remainingCredits ?? '-' }} {{ t('AI credits trong ví', 'AI wallet credits') }}</small>
+              </div>
+              <div class="success-actions">
+                <button v-if="paidOrder && canShowPaymentReceipt(paidOrder)" type="button" class="primary-button" @click="openReceipt(paidOrder)">{{ t('Xem thanh toán', 'View payment') }}</button>
+                <button type="button" class="secondary-button" @click="router.push('/dashboard')">{{ t('Tiếp tục sử dụng SprintA', 'Continue using SprintA') }}</button>
+              </div>
             </template>
 
             <template v-else-if="paymentState === 'Expired'">
@@ -253,6 +261,7 @@ import {
   isActivePendingOrder,
   isKnownPaymentOrderStatus,
   isOrderForPlan,
+  mergePaymentOrder,
   selectActivePendingOrder,
   shouldPollPaymentOrder
 } from '@/utils/billingCheckoutState'
@@ -293,9 +302,14 @@ const isEnterprise = computed(() => planCode.value === 'enterprise' || plan.valu
 
 const applyHistoryResponse = (response) => {
   const historyData = unwrapBillingData(response) || {}
-  history.value = historyData.items || []
+  const items = historyData.items || []
+  const knownOrders = new Map([
+    ...orders.value,
+    ...(billing.value?.pendingOrder ? [billing.value.pendingOrder] : [])
+  ].map(order => [order.id, order]))
+  history.value = items
   historyTotal.value = historyData.totalCount || history.value.length
-  orders.value = history.value
+  orders.value = items.map(order => mergePaymentOrder(knownOrders.get(order.id), order))
 }
 
 const planOrders = computed(() => {
@@ -370,9 +384,13 @@ const resolveHandoffOrder = async (knownOrders) => {
 
 const mergeOrderIntoState = (order) => {
   if (!order) return
-  orders.value = [order, ...orders.value.filter(item => item.id !== order.id)]
-  if (isActivePendingOrder(order, clock.value)) {
-    billing.value = { ...(billing.value || {}), pendingOrder: order }
+  const historyOrder = orders.value.find(item => item.id === order.id)
+  const pendingOrder = billing.value?.pendingOrder?.id === order.id ? billing.value.pendingOrder : null
+  const mergedExistingOrder = mergePaymentOrder(historyOrder, pendingOrder)
+  const mergedOrder = mergePaymentOrder(mergedExistingOrder, order)
+  orders.value = [mergedOrder, ...orders.value.filter(item => item.id !== order.id)]
+  if (isActivePendingOrder(mergedOrder, clock.value)) {
+    billing.value = { ...(billing.value || {}), pendingOrder: mergedOrder }
   }
 }
 
@@ -407,17 +425,28 @@ const loadData = async () => {
 }
 
 const refreshPaymentState = async () => {
-  if (!activeOrder.value || refreshing.value) return
+  const pendingOrder = activeOrder.value
+  if (!pendingOrder || refreshing.value) return
   const generation = loadGeneration
   refreshing.value = true
   try {
-    const [billingResponse, historyResponse] = await Promise.all([
-      billingApi.getMe(), billingApi.getMyHistory({ page: 1, pageSize: historyPageSize })
-    ])
-    if (generation === loadGeneration) {
-      billing.value = unwrapBillingData(billingResponse)
-      historyPage.value = 1
-      applyHistoryResponse(historyResponse)
+    const detail = unwrapBillingData(await billingApi.getOrderDetails(pendingOrder.id))
+    const latestOrder = detail?.order
+    if (generation !== loadGeneration || !latestOrder) return
+
+    const wasPending = isActivePendingOrder(pendingOrder, clock.value)
+    mergeOrderIntoState(latestOrder)
+
+    if (wasPending && !isActivePendingOrder(latestOrder, clock.value)) {
+      const [billingResponse, historyResponse] = await Promise.all([
+        billingApi.getMe(), billingApi.getMyHistory({ page: 1, pageSize: historyPageSize })
+      ])
+      if (generation === loadGeneration) {
+        billing.value = unwrapBillingData(billingResponse)
+        historyPage.value = 1
+        applyHistoryResponse(historyResponse)
+        mergeOrderIntoState(latestOrder)
+      }
     }
   } catch {
     // Polling is deliberately quiet. The manual check button remains available.
@@ -569,4 +598,5 @@ dl { margin: 22px 0; }dl > div { display: flex; justify-content: space-between; 
 @media (max-width: 900px) { .checkout-shell { padding-top: 32px; }.checkout-intro { grid-template-columns: 1fr; gap: 18px; }.price-block { min-width: 0; text-align: left; }.payment-stage { grid-template-columns: 1fr; }.payment-visual { min-height: auto; }.order-card { box-shadow: none; } }
 @media (max-width: 640px) { .checkout-nav { height: 62px; padding: 0 16px; }.brand { font-size: 16px; }.back-button { font-size: 12px; }.checkout-shell { width: min(100% - 24px, 1180px); padding: 26px 0 56px; }.checkout-intro h1 { font-size: 36px; }.payment-visual, .order-card, .billing-history, .billing-detail { border-radius: 14px; padding: 19px; }.visual-heading { align-items: start; flex-direction: column; gap: 8px; margin-top: 34px; }.visual-meta { padding-bottom: 0; }.qr-frame { margin-top: 20px; }.detail-list > div { grid-template-columns: 1fr; gap: 6px; }.detail-list dd { text-align: left; }.copy-detail dd { justify-content: flex-start; }.countdown-block { align-items: flex-start; flex-direction: column; }.countdown-block > div:last-child { text-align: left; }.current-entitlement { grid-template-columns: 1fr; }.current-entitlement > div { border-right: 0; border-bottom: 1px solid var(--color-border, #dfe4ec); }.current-entitlement > div:last-child { border-bottom: 0; }.history-heading, .history-row { display: grid; grid-template-columns: 1fr auto; }.history-meta { justify-items: end; }.history-actions { grid-column: 1 / -1; }.success-panel, .expired-panel, .preparing-panel { min-height: 300px; padding: 24px; }.pre-checkout-state { min-height: 300px; } }
 @media (prefers-reduced-motion: reduce) { .primary-button, .secondary-button, .copy-detail button, .transfer-content button { transition: none; } }
+.success-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 </style>

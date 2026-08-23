@@ -697,6 +697,15 @@ public sealed class BillingService : IBillingService
         var plan = await _context.AiPricingPlans.SingleOrDefaultAsync(x => x.Code == order.PlanCode, cancellationToken)
             ?? throw new InvalidOperationException("Gói của đơn thanh toán không còn tồn tại.");
         var now = webhook.TransactionAt?.UtcDateTime ?? DateTime.UtcNow;
+        await _creditUsageService.EnsureLegacyCutoverAsync(order.UserId, cancellationToken);
+        var previousPlanCode = (await _context.AiSubscriptions.AsNoTracking()
+            .Where(x => x.UserId == order.UserId)
+            .Select(x => x.PlanCode)
+            .SingleOrDefaultAsync(cancellationToken)) ?? "free";
+        var previousPeriodEnd = await _context.AiSubscriptions.AsNoTracking()
+            .Where(x => x.UserId == order.UserId)
+            .Select(x => (DateTime?)x.CurrentPeriodEnd)
+            .SingleOrDefaultAsync(cancellationToken);
         order.Status = "Paid";
         order.PaidAt = now;
         var transactionRecord = new PaymentTransaction
@@ -710,6 +719,20 @@ public sealed class BillingService : IBillingService
         subscription.PlanCode = order.PlanCode; subscription.Status = "Active";
         subscription.CurrentPeriodStart = now; subscription.CurrentPeriodEnd = now.AddMonths(1);
         subscription.ActivatedAt = now; subscription.CancelledAt = null; subscription.AutoRenew = false; subscription.UpdatedAt = now;
+        if (order.IncludedAiCreditsSnapshot > 0 && !await _context.AiCreditBuckets.AnyAsync(x => x.SourcePaymentOrderId == order.Id, cancellationToken))
+        {
+            var isRenewal = string.Equals(previousPlanCode, order.PlanCode, StringComparison.OrdinalIgnoreCase)
+                && previousPeriodEnd > now;
+            var validFrom = isRenewal ? subscription.CurrentPeriodEnd : now;
+            var expiresAt = validFrom.AddMonths(1);
+            _context.AiCreditBuckets.Add(new AiCreditBucket
+            {
+                Id = Guid.NewGuid(), UserId = order.UserId, PlanCode = order.PlanCode,
+                GrantedCredits = order.IncludedAiCreditsSnapshot, RemainingCredits = order.IncludedAiCreditsSnapshot,
+                ValidFrom = DateTime.SpecifyKind(validFrom, DateTimeKind.Utc), ExpiresAt = DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc),
+                SourceType = "PaymentOrder", SourcePaymentOrderId = order.Id, SourceReference = order.TransferCode, CreatedAt = now
+            });
+        }
         transactionRecord.IncludedAiCredits = order.IncludedAiCreditsSnapshot;
         transactionRecord.SubscriptionPeriodStart = subscription.CurrentPeriodStart;
         transactionRecord.SubscriptionPeriodEnd = subscription.CurrentPeriodEnd;
