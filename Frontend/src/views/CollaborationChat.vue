@@ -326,7 +326,7 @@
             >
               <div class="call-thumb-media">
                 <video
-                  v-if="user.connectionId === callConnectionId && (isCallCameraOn || isSharingScreen)"
+                  v-if="user.connectionId === callConnectionId && isParticipantVideoVisible(user)"
                   :ref="el => setLocalVideoElement(el, 'rail')"
                   autoplay
                   playsinline
@@ -334,7 +334,7 @@
                   :style="{ transform: isSharingScreen ? 'none' : 'scaleX(-1)' }"
                 ></video>
                 <video
-                  v-else-if="user.connectionId !== callConnectionId && remoteStreams.has(user.connectionId) && (user.cameraEnabled || user.screenSharing)"
+                  v-else-if="user.connectionId !== callConnectionId && isParticipantVideoVisible(user)"
                   :ref="el => setRemoteVideoElement(el, user.connectionId, 'rail')"
                   autoplay
                   playsinline
@@ -1381,6 +1381,7 @@ const callMicrophoneEnabled = ref(true)
 const callParticipants = ref([])
 const remoteStreams = ref(new Map())
 const localCallStream = ref(null)
+const localScreenStream = ref(null)
 const callConnectionId = ref('')
 const callState = ref('disconnected')
 const callError = ref('')
@@ -1421,14 +1422,14 @@ const activePresenterStream = () => {
   const presenter = activePresenter.value
   if (!presenter) return null
   return presenter.connectionId === callConnectionId.value
-    ? localCallStream.value
-    : remoteStreams.value.get(presenter.connectionId) || null
+    ? localScreenStream.value
+    : remoteStreams.value.get(presenter.connectionId)?.screenStream || null
 }
 
 const hasLiveVideoTrack = stream => stream?.getVideoTracks?.().some(track => track.readyState === 'live') === true
 const isParticipantVideoVisible = user => user.connectionId === callConnectionId.value
-  ? (isCallCameraOn.value || isSharingScreen.value) && hasLiveVideoTrack(localCallStream.value)
-  : (user.cameraEnabled || user.screenSharing) && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId))
+  ? isCallCameraOn.value && hasLiveVideoTrack(localCallStream.value)
+  : user.cameraEnabled && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId)?.cameraStream)
 const isParticipantStageVisible = user => isParticipantVideoVisible(user)
   && (!focusedParticipantConnectionId.value || focusedParticipantConnectionId.value === user.connectionId)
 const isParticipantSpeaking = user => user.isSpeaking === true || user.speaking === true || user.activeSpeaker === true
@@ -1463,10 +1464,10 @@ const bindMediaElement = (element, stream, muted = false) => {
 const syncCallVideoElements = () => {
   for (const element of localVideoElements.values()) bindMediaElement(element, localCallStream.value, true)
   for (const { connectionId, element } of remoteVideoElements.values()) {
-    bindMediaElement(element, remoteStreams.value.get(connectionId), false)
+    bindMediaElement(element, remoteStreams.value.get(connectionId)?.cameraStream, false)
   }
   for (const [connectionId, element] of remoteAudioElements) {
-    bindMediaElement(element, remoteStreams.value.get(connectionId), false)
+    bindMediaElement(element, remoteStreams.value.get(connectionId)?.audioStream, false)
   }
   bindMediaElement(presentationVideoElement.value, activePresenterStream(), true)
 }
@@ -1481,13 +1482,13 @@ const setRemoteVideoElement = (element, connectionId, slot = 'rail') => {
   const key = `${slot}:${connectionId}`
   if (element) remoteVideoElements.set(key, { connectionId, element })
   else remoteVideoElements.delete(key)
-  bindMediaElement(element, remoteStreams.value.get(connectionId), false)
+  bindMediaElement(element, remoteStreams.value.get(connectionId)?.cameraStream, false)
 }
 
 const setRemoteAudioElement = (element, connectionId) => {
   if (element) remoteAudioElements.set(connectionId, element)
   else remoteAudioElements.delete(connectionId)
-  bindMediaElement(element, remoteStreams.value.get(connectionId), false)
+  bindMediaElement(element, remoteStreams.value.get(connectionId)?.audioStream, false)
 }
 
 const setPresentationVideoElement = (element) => {
@@ -1591,6 +1592,7 @@ const handleCallError = (error, showMessage = true) => {
 
 const syncLocalCallPreview = async () => {
   localCallStream.value = callSession.value?.getLocalStream?.() || null
+  localScreenStream.value = callSession.value?.getLocalScreenStream?.() || null
   callConnectionId.value = callSession.value?.getConnectionId?.() || ''
   await nextTick()
   syncCallVideoElements()
@@ -1754,6 +1756,7 @@ const leaveVoiceChannel = async (showMessage = true) => {
   callTranscriptChunks.value = []
   remoteStreams.value = new Map()
   localCallStream.value = null
+  localScreenStream.value = null
   callConnectionId.value = ''
   callMicrophoneEnabled.value = true
   isCallCameraOn.value = false

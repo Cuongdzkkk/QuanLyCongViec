@@ -26,6 +26,8 @@ const expects = [
   ['responsive presentation becomes a camera strip', '@media (max-width: 900px)', 'flex-direction: row', 'overflow-x: auto'],
   ['controls expose predictable accessible states', 'Mic đang bật', 'Camera đang bật', 'call-control-future-slot', 'Rời cuộc gọi'],
   ['participant focus preserves presentation access', 'focusParticipant', 'is-focused-participant', 'Quay lại màn hình chia sẻ'],
+  ['presentation consumes separate screen source', 'getLocalScreenStream', 'screenStream', 'cameraStream'],
+  ['remote camera and screen sources stay separate', '?.cameraStream', '?.screenStream', '?.audioStream'],
   ['participant layout is dense and responsive', 'group-video-grid', 'grid-auto-flow: dense', '@media (max-width: 760px)'],
   ['call context tabs are present', 'class="context-tabs"', 'role="tablist"'],
   ['realtime and attachment services remain in use', 'collaborationRealtime', 'collaborationApi.downloadAttachment'],
