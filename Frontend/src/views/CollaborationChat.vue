@@ -258,7 +258,7 @@
           </div>
         </header>
 
-        <div class="call-workspace-body" :class="callLayoutClasses">
+        <div ref="meetingShell" class="call-workspace-body" :class="callLayoutClasses">
           <section ref="presentationStage" class="call-presentation-stage" :class="{ 'is-focused': presentationFocused, 'is-fullscreen': presentationIsFullscreen }" :data-layout-mode="callLayoutMode" aria-label="Presentation stage">
             <template v-if="activePresenter">
               <div class="presentation-heading">
@@ -272,7 +272,7 @@
               <div class="presentation-toolbar" role="toolbar" aria-label="Presentation controls">
                 <button type="button" class="presentation-control" :title="presentationFocused ? 'Thu nhỏ' : 'Phóng to'" @click="togglePresentationFocus">
                   <i :class="presentationFocused ? 'fa-solid fa-compress' : 'fa-solid fa-expand'" aria-hidden="true"></i>
-                  <span>{{ presentationFocused ? 'Thu nhỏ' : 'Phóng to' }}</span>
+                  <span>{{ presentationFocused ? 'Quay lại bố cục' : 'Phóng to' }}</span>
                 </button>
                 <button type="button" class="presentation-control" :title="presentationIsFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'" @click="togglePresentationFullscreen">
                   <i :class="presentationIsFullscreen ? 'fa-solid fa-compress-arrows-alt' : 'fa-solid fa-expand-arrows-alt'" aria-hidden="true"></i>
@@ -316,7 +316,10 @@
                   autoplay
                   playsinline
                 ></video>
-                <span class="call-camera-stage-label">{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</span>
+                <span class="call-camera-stage-label">
+                  {{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}
+                  <span v-if="user.handRaised" class="call-hand-indicator" title="Đang giơ tay"><i class="fa-solid fa-hand" aria-hidden="true"></i><span>Đang giơ tay</span></span>
+                </span>
               </article>
             </div>
             <div v-else class="call-grid-empty" aria-live="polite">
@@ -325,7 +328,7 @@
             </div>
           </section>
 
-          <section class="call-participant-rail" aria-label="Call participants">
+          <section v-if="callLayoutMode.startsWith('PRESENTATION')" class="call-participant-rail" aria-label="Call participants">
             <article
               v-for="user in callParticipants"
               :key="user.connectionId"
@@ -366,6 +369,7 @@
                 <span class="truncate">{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</span>
                 <i v-if="!user.microphoneEnabled" class="fa-solid fa-microphone-slash" aria-label="Đang tắt micro"></i>
                 <span v-if="activePresenter?.connectionId === user.connectionId" class="presenter-tag">Đang trình bày</span>
+                <span v-if="user.handRaised" class="call-hand-indicator" title="Đang giơ tay"><i class="fa-solid fa-hand" aria-hidden="true"></i><span>Đang giơ tay</span></span>
               </div>
             </article>
           </section>
@@ -453,33 +457,64 @@
               </div>
 
               <button 
-                class="call-control-circle-btn" 
+                class="call-control-circle-btn share-control"
                 :class="{ 'active-share': isSharingScreen }" 
                 @click="toggleScreenShare"
                 :aria-label="isSharingScreen ? 'Đang chia sẻ — dừng chia sẻ' : 'Chia sẻ màn hình'"
                 :title="isSharingScreen ? 'Tắt chia sẻ' : 'Chia sẻ màn hình'"
-                style="background-color: #2b2d31; color: white;"
               >
-                <i class="fa-solid fa-desktop" :style="{ color: isSharingScreen ? '#22c55e' : '#dbdee1' }"></i>
+                <i class="fa-solid fa-desktop" aria-hidden="true"></i>
               </button>
 
-              <button type="button" class="call-control-circle-btn" :class="{ active: callHandRaised }" :aria-pressed="callHandRaised" aria-label="Giơ tay" title="Giơ tay" @click="toggleRaiseHand">
-                <i class="fa-solid fa-hand" aria-hidden="true"></i>
+              <button type="button" class="call-control-label-btn hand-control" :class="{ active: callHandRaised }" :aria-pressed="callHandRaised" :aria-label="callHandRaised ? 'Hạ tay' : 'Giơ tay'" :title="callHandRaised ? 'Hạ tay' : 'Giơ tay'" @click="toggleRaiseHand">
+                <i class="fa-solid fa-hand" aria-hidden="true"></i><span>{{ callHandRaised ? 'Hạ tay' : 'Giơ tay' }}</span>
+              </button>
+
+              <button v-if="callLayoutMode === 'CAMERA_FOCUS' && visibleCallParticipants.length > 1" type="button" class="call-control-label-btn" aria-label="Thu về lưới" title="Thu về lưới" @click="returnToParticipantGrid">
+                <i class="fa-solid fa-table-cells" aria-hidden="true"></i><span>Thu về lưới</span>
+              </button>
+
+              <button type="button" class="call-control-label-btn" aria-label="Mở chat cuộc gọi" title="Chat" :aria-pressed="callChatOpen" @click="callChatOpen = !callChatOpen">
+                <i class="fa-solid fa-message" aria-hidden="true"></i><span>Chat</span>
+              </button>
+
+              <button type="button" class="call-control-label-btn" aria-label="Mở danh sách người tham gia" title="Người tham gia" :aria-pressed="showMembersSidebar" @click="toggleContextPanel">
+                <i class="fa-solid fa-users" aria-hidden="true"></i><span>Người tham gia</span>
               </button>
 
               <div class="camera-effects-control">
-                <button type="button" class="call-control-label-btn" aria-haspopup="menu" :aria-expanded="showMoreMenu" aria-label="Mở thêm tùy chọn" @click="showMoreMenu = !showMoreMenu">
+                <button type="button" class="call-control-label-btn" aria-haspopup="menu" :aria-expanded="showMoreMenu" aria-label="Mở thêm tùy chọn" @click="showMoreMenu = !showMoreMenu; moreMenuSection = ''">
                   <i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span>Thêm</span>
                 </button>
-                <div v-if="showMoreMenu" class="camera-effects-menu" role="menu" aria-label="Tùy chọn cuộc gọi">
-                  <button v-for="emoji in ['👍', '👏', '😂', '❤️', '🎉', '😮']" :key="emoji" type="button" role="menuitem" @click="sendCallReaction(emoji)">{{ emoji }} Gửi reaction</button>
-                  <button type="button" role="menuitem" @click="toggleCallPictureInPicture">Picture-in-picture</button>
-                  <button type="button" role="menuitem" @click="loadCallDevices">Thiết bị ({{ callDevices.length || 0 }})</button>
-                  <div v-if="callDevices.length" class="call-device-list" aria-label="Thiết bị khả dụng">
-                    <button v-for="device in callDevices" :key="device.deviceId || device.kind" type="button" role="menuitem" @click="switchCallDevice(device)">{{ device.label || device.kind }}</button>
-                  </div>
-                  <button type="button" role="menuitem" @click="showMoreMenu = false; showCameraEffectsMenu = !showCameraEffectsMenu">Hiệu ứng camera</button>
-                  <small>Phím tắt: Ctrl/Cmd+D microphone · Ctrl/Cmd+E camera</small>
+                <div v-if="showMoreMenu" class="call-more-menu" role="menu" aria-label="Tùy chọn cuộc gọi">
+                  <template v-if="!moreMenuSection">
+                    <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'reactions'"><span>Phản ứng</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+                    <button type="button" class="call-more-menu-item" role="menuitem" @click="openCallDevicesMenu"><span>Thiết bị âm thanh và video</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+                    <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'effects'"><span>Hiệu ứng hình ảnh</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+                    <button type="button" class="call-more-menu-item" role="menuitem" @click="toggleCallPictureInPicture">Picture-in-picture</button>
+                    <button type="button" class="call-more-menu-item" role="menuitem" @click="togglePresentationFullscreen">{{ presentationIsFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình' }}</button>
+                    <button type="button" class="call-more-menu-item is-unavailable" role="menuitem" disabled title="Phụ đề chưa sẵn sàng">Phụ đề <small>Chưa sẵn sàng</small></button>
+                    <button type="button" class="call-more-menu-item is-unavailable" role="menuitem" disabled title="Phím tắt đang được hỗ trợ cho mic và camera">Phím tắt <small>Ctrl/Cmd+D · Ctrl/Cmd+E</small></button>
+                  </template>
+                  <template v-else>
+                    <button type="button" class="call-more-menu-back" @click="moreMenuSection = ''"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>Thêm</span></button>
+                    <div v-if="moreMenuSection === 'reactions'" class="call-reaction-picker" role="group" aria-label="Phản ứng">
+                      <span class="call-more-section-label">Chọn một phản ứng</span>
+                      <div class="call-reaction-options">
+                        <button v-for="emoji in ['👍', '👏', '❤️', '😂', '🎉']" :key="emoji" type="button" class="call-reaction-option" :aria-label="`Gửi phản ứng ${emoji}`" @click="sendCallReaction(emoji)">{{ emoji }}</button>
+                      </div>
+                    </div>
+                    <div v-else-if="moreMenuSection === 'devices'" class="call-device-panel">
+                      <span class="call-more-section-label">Thiết bị khả dụng</span>
+                      <button v-for="device in callDevices" :key="device.deviceId || device.kind" type="button" class="call-device-option" role="menuitem" @click="switchCallDevice(device)">{{ device.label || device.kind }}</button>
+                      <span v-if="!callDevices.length" class="call-more-empty">Chưa tìm thấy thiết bị.</span>
+                    </div>
+                    <div v-else class="call-effects-panel">
+                      <span class="call-more-section-label">Hiệu ứng hình ảnh</span>
+                      <button type="button" class="call-device-option" :class="{ selected: cameraBackgroundEffect === 'none' }" @click="setCallBackgroundEffect('none')">Không làm mờ</button>
+                      <button type="button" class="call-device-option" :class="{ selected: cameraBackgroundEffect === 'blur' }" :disabled="cameraEffectPending" @click="setCallBackgroundEffect('blur')">Làm mờ nền</button>
+                    </div>
+                  </template>
                 </div>
               </div>
 
@@ -522,6 +557,19 @@
               <button v-if="callChatDraft" type="button" class="call-chat-clear" aria-label="Xóa nội dung đang nhập" title="Xóa nội dung đang nhập" @click="callChatDraft = ''"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
               <button type="submit" :disabled="callChatSending || !callChatDraft.trim()" aria-label="Gửi tin nhắn cuộc gọi" title="Gửi tin nhắn cuộc gọi"><i :class="callChatSending ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'" aria-hidden="true"></i></button>
             </form>
+          </aside>
+          <aside v-if="presentationIsFullscreen && showMembersSidebar" class="call-fullscreen-panel" aria-label="Người tham gia cuộc gọi">
+            <div class="call-chat-panel-header">
+              <div class="call-chat-panel-title"><span class="context-kicker">MEETING</span><strong>Người tham gia</strong></div>
+              <button type="button" class="context-close" aria-label="Đóng danh sách người tham gia" title="Đóng danh sách người tham gia" @click="toggleContextPanel"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            </div>
+            <div class="context-member-list">
+              <div v-for="user in callParticipants" :key="`fullscreen-context-${user.connectionId}`" class="context-member-row">
+                <el-avatar :size="30" :src="user.avatarUrl">{{ user.displayName?.charAt(0) }}</el-avatar>
+                <span>{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</span>
+                <i v-if="user.handRaised" class="fa-solid fa-hand call-hand-indicator" aria-label="Đang giơ tay" title="Đang giơ tay"></i>
+              </div>
+            </div>
           </aside>
         </div>
       </template>
@@ -912,6 +960,7 @@
           <div v-for="user in callParticipants" :key="`context-${user.connectionId}`" class="context-member-row">
             <el-avatar :size="30" :src="user.avatarUrl">{{ user.displayName?.charAt(0) }}</el-avatar><span>{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</span>
             <i v-if="user.userId === currentUser.id && !user.microphoneEnabled" class="fa-solid fa-microphone-slash" aria-label="Đang tắt micro"></i>
+            <i v-if="user.handRaised" class="fa-solid fa-hand call-hand-indicator" aria-label="Đang giơ tay" title="Đang giơ tay"></i>
           </div>
         </div>
         <div v-else class="context-member-list">
@@ -1067,6 +1116,10 @@ import {
   getCollaborationHubErrorCode
 } from '@/services/collaborationRealtime'
 import { createCallMediaSession } from '@/services/callMediaService'
+import {
+  dedupeParticipantsByUser,
+  getMeetingLayoutMode
+} from '@/services/meetingLayoutState'
 import {
   clearScopedCurrentProjectId,
   getScopedCurrentProjectId,
@@ -1420,11 +1473,13 @@ const cameraEffectPending = ref(false)
 const cameraEffectNotice = ref('')
 const showCameraEffectsMenu = ref(false)
 const showMoreMenu = ref(false)
+const moreMenuSection = ref('')
 const callHandRaised = ref(false)
 const callReactions = ref([])
 const callLiveNotice = ref('')
 const callDevices = ref([])
 const presentationStage = ref(null)
+const meetingShell = ref(null)
 const presentationFocused = ref(false)
 const presentationIsFullscreen = ref(false)
 const callMicrophoneEnabled = ref(true)
@@ -1485,14 +1540,22 @@ const isParticipantStageVisible = user => isParticipantVideoVisible(user)
   && (!focusedParticipantConnectionId.value || focusedParticipantConnectionId.value === user.connectionId)
 const isParticipantSpeaking = user => user.isSpeaking === true || user.speaking === true || user.activeSpeaker === true
 const visibleCallParticipants = computed(() => callParticipants.value.filter(isParticipantVideoVisible))
+const focusedVideoParticipant = computed(() => callParticipants.value.find(user =>
+  user.connectionId === focusedParticipantConnectionId.value && isParticipantVideoVisible(user)
+))
 const hasVisibleCallVideo = computed(() => visibleCallParticipants.value.length > 0)
 const callLayoutMode = computed(() => {
-  if (activePresenter.value) return presentationFocused.value ? 'PRESENTATION_FOCUS' : 'PRESENTATION'
-  return visibleCallParticipants.value.length === 1 ? 'CAMERA_FOCUS' : 'CAMERA_GRID'
+  return getMeetingLayoutMode({
+    hasPresenter: Boolean(activePresenter.value),
+    presentationFocused: presentationFocused.value,
+    focusedParticipantId: focusedVideoParticipant.value?.connectionId || '',
+    visibleParticipantCount: visibleCallParticipants.value.length
+  })
 })
 const callLayoutClasses = computed(() => ({
   'is-presentation-mode': callLayoutMode.value.startsWith('PRESENTATION'),
-  'is-camera-mode': callLayoutMode.value.startsWith('CAMERA')
+  'is-camera-mode': callLayoutMode.value.startsWith('CAMERA'),
+  'is-focus-mode': callLayoutMode.value.endsWith('FOCUS')
 }))
 const focusParticipant = connectionId => {
   const participant = callParticipants.value.find(user => user.connectionId === connectionId)
@@ -1671,7 +1734,7 @@ const createCallSessionForVoiceChannel = (voiceChannel) => createCallMediaSessio
     }
   },
   onParticipants: async (items) => {
-    callParticipants.value = items
+    callParticipants.value = dedupeParticipantsByUser(items, callConnectionId.value)
     await nextTick()
     syncCallVideoElements()
   },
@@ -1702,8 +1765,12 @@ const toggleRaiseHand = async () => {
   const nextValue = !callHandRaised.value
   try { await callSession.value.setRaiseHand(nextValue); callHandRaised.value = nextValue } catch (error) { handleCallError(error) }
 }
-const sendCallReaction = async emoji => { try { await callSession.value?.sendReaction(emoji); showMoreMenu.value = false } catch (error) { handleCallError(error) } }
+const sendCallReaction = async emoji => { try { await callSession.value?.sendReaction(emoji); showMoreMenu.value = false; moreMenuSection.value = '' } catch (error) { handleCallError(error) } }
 const loadCallDevices = async () => { callDevices.value = await callSession.value?.enumerateDevices?.() || [] }
+const openCallDevicesMenu = async () => {
+  await loadCallDevices()
+  moreMenuSection.value = 'devices'
+}
 const switchCallDevice = async device => {
   try {
     if (device.kind === 'audioinput') await callSession.value?.setMicrophoneDevice(device.deviceId)
@@ -1871,6 +1938,7 @@ const togglePresentationFocus = () => {
 
 const returnToParticipantGrid = () => {
   presentationFocused.value = false
+  focusedParticipantConnectionId.value = ''
 }
 
 const returnToPresentation = () => {
@@ -1879,14 +1947,14 @@ const returnToPresentation = () => {
 }
 
 const syncPresentationFullscreen = () => {
-  presentationIsFullscreen.value = document.fullscreenElement === presentationStage.value
+  presentationIsFullscreen.value = document.fullscreenElement === meetingShell.value
 }
 
 const togglePresentationFullscreen = async () => {
-  if (!presentationStage.value) return
+  if (!meetingShell.value) return
   try {
-    if (document.fullscreenElement === presentationStage.value) await document.exitFullscreen()
-    else if (presentationStage.value.requestFullscreen) await presentationStage.value.requestFullscreen()
+    if (document.fullscreenElement === meetingShell.value) await document.exitFullscreen()
+    else if (meetingShell.value.requestFullscreen) await meetingShell.value.requestFullscreen()
   } catch (error) {
     handleCallError(error)
   }
@@ -1895,7 +1963,7 @@ const togglePresentationFullscreen = async () => {
 watch(activePresenter, async presenter => {
   if (presenter) return
   presentationFocused.value = false
-  if (document.fullscreenElement === presentationStage.value) await document.exitFullscreen().catch(() => {})
+  if (document.fullscreenElement === meetingShell.value) await document.exitFullscreen().catch(() => {})
 })
 
 const openVoiceChannelChat = async () => {
@@ -4774,11 +4842,15 @@ const fetchProjectMembers = async () => {
   min-height: min(68vh, 720px);
 }
 
-.call-presentation-stage:fullscreen {
-  padding: 24px;
+.call-workspace-body:fullscreen {
+  width: 100vw;
+  height: 100dvh;
+  min-height: 0;
+  padding: 18px;
+  overflow: hidden;
   border: 0;
   border-radius: 0;
-  background: #05070b;
+  background: var(--chat-bg, #0f172a);
 }
 
 .presentation-heading {
@@ -4931,6 +5003,16 @@ const fetchProjectMembers = async () => {
   white-space: nowrap;
 }
 
+.call-hand-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  color: #f4c46b;
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .call-participant-rail {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -5019,6 +5101,8 @@ const fetchProjectMembers = async () => {
   position: relative;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
   padding: 9px 12px;
   border: 1px solid rgba(148, 163, 184, 0.14);
@@ -5090,6 +5174,133 @@ const fetchProjectMembers = async () => {
 .camera-effects-menu > button:disabled {
   cursor: wait;
   opacity: 0.65;
+}
+
+.call-more-menu {
+  position: absolute;
+  z-index: 8;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: min(270px, calc(100vw - 24px));
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  background: #111827;
+  box-shadow: 0 16px 32px rgba(2, 6, 23, 0.35);
+}
+
+.call-more-menu-item,
+.call-more-menu-back,
+.call-device-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #dbe7f1;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.call-more-menu-item:hover,
+.call-more-menu-item:focus-visible,
+.call-more-menu-back:hover,
+.call-more-menu-back:focus-visible,
+.call-device-option:hover,
+.call-device-option:focus-visible,
+.call-device-option.selected {
+  background: #1e293b;
+  color: #f8fafc;
+  outline: none;
+}
+
+.call-more-menu-item.is-unavailable {
+  cursor: not-allowed;
+  color: #94a3b8;
+  opacity: 0.82;
+}
+
+.call-more-menu-item small {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.call-more-menu-back {
+  justify-content: flex-start;
+  margin-bottom: 6px;
+  color: #a7f3d0;
+}
+
+.call-more-section-label,
+.call-more-empty {
+  display: block;
+  padding: 6px 10px 8px;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.call-reaction-options {
+  display: flex;
+  gap: 5px;
+  padding: 3px 4px 5px;
+}
+
+.call-reaction-option {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #1e293b;
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.call-reaction-option:hover,
+.call-reaction-option:focus-visible {
+  border-color: #63d29f;
+  background: #273449;
+  outline: none;
+}
+
+.call-device-panel,
+.call-effects-panel {
+  display: grid;
+  gap: 3px;
+}
+
+.call-device-option {
+  justify-content: flex-start;
+  min-height: 36px;
+}
+
+.call-workspace-body.is-focus-mode .call-presentation-stage {
+  min-height: min(72dvh, 820px);
+}
+
+.call-workspace-body.is-presentation-mode.is-focus-mode {
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 210px);
+}
+
+.call-workspace-body.is-presentation-mode.is-focus-mode .call-presentation-stage {
+  min-height: 0;
+}
+
+.call-workspace-body:fullscreen .call-controls-row {
+  position: relative;
+  z-index: 9;
+}
+
+.call-workspace-body:fullscreen .call-presentation-stage {
+  min-height: 0;
 }
 
 .effect-radio {
@@ -5557,6 +5768,7 @@ const fetchProjectMembers = async () => {
 .call-chat-panel { display: flex; width: 290px; min-width: 290px; flex-direction: column; border-left: 1px solid rgba(148, 163, 184, .13); background: #091725; }
 .call-workspace-body { position: relative; }
 .call-chat-panel { position: absolute; top: 0; right: 0; bottom: 0; z-index: 4; }
+.call-fullscreen-panel { position: absolute; z-index: 8; top: 0; right: 0; bottom: 0; display: flex; width: min(300px, calc(100vw - 24px)); flex-direction: column; border-left: 1px solid rgba(148, 163, 184, .13); background: #091725; }
 .call-chat-panel-header strong { display: block; margin-top: 3px; color: #e7f2fb; font-size: 13px; }
 .call-chat-thread { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 9px; overflow-y: auto; padding: 13px; }
 .call-chat-message { display: flex; flex-direction: column; gap: 2px; }
@@ -6695,6 +6907,28 @@ background-color: #111c2d !important;
 .chat-workspace .presentation-control:hover,
 .chat-workspace .call-control-label-btn:focus-visible,
 .chat-workspace .presentation-control:focus-visible { border-color: var(--chat-accent) !important; background: var(--chat-accent-soft) !important; color: var(--chat-accent-hover) !important; }
+.chat-workspace .call-control-circle-btn.share-control { background: var(--chat-surface-2) !important; color: var(--chat-muted) !important; }
+.chat-workspace .call-control-circle-btn.share-control.active-share { color: var(--color-success, #16a34a) !important; }
+.chat-workspace .call-more-menu { border-color: var(--chat-line); background: var(--chat-surface); color: var(--chat-ink); box-shadow: 0 16px 32px color-mix(in srgb, var(--chat-ink) 16%, transparent); }
+.chat-workspace .call-more-menu-item,
+.chat-workspace .call-more-menu-back,
+.chat-workspace .call-device-option { color: var(--chat-ink); }
+.chat-workspace .call-more-menu-item:hover,
+.chat-workspace .call-more-menu-item:focus-visible,
+.chat-workspace .call-more-menu-back:hover,
+.chat-workspace .call-more-menu-back:focus-visible,
+.chat-workspace .call-device-option:hover,
+.chat-workspace .call-device-option:focus-visible,
+.chat-workspace .call-device-option.selected { background: var(--chat-surface-2); color: var(--chat-ink); }
+.chat-workspace .call-more-menu-item.is-unavailable,
+.chat-workspace .call-more-menu-item small,
+.chat-workspace .call-more-section-label,
+.chat-workspace .call-more-empty { color: var(--chat-muted); }
+.chat-workspace .call-reaction-option { border-color: var(--chat-line); background: var(--chat-surface-2); }
+.chat-workspace .call-reaction-option:hover,
+.chat-workspace .call-reaction-option:focus-visible { border-color: var(--chat-accent); background: var(--chat-accent-soft); }
+.chat-workspace .call-workspace-body:fullscreen { overflow: hidden; background: var(--chat-bg); color: var(--chat-ink); }
+.chat-workspace .call-workspace-body:fullscreen .call-control-dock { background: var(--chat-surface); }
 .chat-workspace .camera-effects-title { color: var(--chat-faint); }
 .chat-workspace .camera-effects-menu > button,
 .chat-workspace .call-device-list button { color: var(--chat-ink); }
@@ -6703,6 +6937,7 @@ background-color: #111c2d !important;
 .chat-workspace .call-device-list button:hover { background: var(--chat-surface-2); color: var(--chat-ink); }
 .chat-workspace .camera-effects-notice { color: var(--color-warning, #a16207); }
 .chat-workspace .call-chat-panel { width: min(340px, calc(100% - 16px)); min-width: min(340px, calc(100% - 16px)); }
+.chat-workspace .call-fullscreen-panel { width: min(340px, calc(100% - 16px)); }
 .chat-workspace .call-chat-panel-title { min-width: 0; flex: 1; }
 .chat-workspace .call-chat-channel-name { display: block; max-width: 100%; margin-top: 4px; overflow-wrap: anywhere; color: var(--chat-ink) !important; font-size: 14px; line-height: 1.25; }
 .chat-workspace .call-chat-thread { gap: 12px; padding: 14px; }
@@ -6723,6 +6958,7 @@ background-color: #111c2d !important;
 .chat-workspace .call-chat-composer button:hover:not(:disabled) { background: var(--chat-accent-hover); color: var(--color-text-inverse, #fff); }
 .chat-workspace .call-chat-composer button.call-chat-clear:hover:not(:disabled) { background: var(--chat-line); color: var(--chat-ink); }
 .chat-workspace .call-chat-composer button:disabled { background: var(--chat-line); color: var(--chat-faint); }
+.chat-workspace .call-fullscreen-panel { border-left-color: var(--chat-line); background: var(--chat-surface); color: var(--chat-ink); }
 .chat-workspace :where(button, input, textarea, [tabindex='0']):focus-visible { outline: 3px solid color-mix(in srgb, var(--chat-accent) 52%, transparent); outline-offset: 2px; }
 .chat-sidebar-backdrop { display: none; }
 
