@@ -1539,7 +1539,12 @@ const speakerSelectionSupported = ref(false)
 const audioInputDevices = computed(() => callDevices.value.filter(device => device.kind === 'audioinput'))
 const videoInputDevices = computed(() => callDevices.value.filter(device => device.kind === 'videoinput'))
 const audioOutputDevices = computed(() => callDevices.value.filter(device => device.kind === 'audiooutput'))
-const callChatConnected = computed(() => Boolean(callSession.value && callState.value === 'connected' && callConnectionId.value))
+const callChatConnected = computed(() => Boolean(
+  callSession.value &&
+  callState.value === 'connected' &&
+  callConnectionId.value &&
+  callSession.value.isJoined?.() &&
+  callSession.value.getCallSessionId?.()))
 const channelUtilityOpen = ref(false)
 const channelUtilityMode = ref('search')
 const channelSearchQuery = ref('')
