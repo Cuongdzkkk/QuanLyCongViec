@@ -205,6 +205,10 @@ public sealed class CallRoomRegistryTests
         var repeated = registry.Join(second);
         repeated.ReplacedParticipants.Should().BeEmpty();
         repeated.Snapshot.Participants.Should().ContainSingle(item => item.ConnectionId == "connection-new");
+
+        var other = registry.Join(new CallRoomParticipant(
+            roomId, "connection-other", Guid.NewGuid(), "Other", null, true, false, false));
+        other.Snapshot.Participants.Should().HaveCount(2);
     }
 
     [Fact]
