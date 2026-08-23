@@ -11,13 +11,6 @@ namespace TaskManagement.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<int>(
-                name: "IncludedAiCreditsSnapshot",
-                table: "PaymentOrders",
-                type: "int",
-                nullable: false,
-                defaultValue: 0);
-
             migrationBuilder.CreateTable(
                 name: "AiCreditBuckets",
                 columns: table => new
@@ -74,10 +67,6 @@ namespace TaskManagement.Infrastructure.Migrations
         {
             migrationBuilder.DropTable(
                 name: "AiCreditBuckets");
-
-            migrationBuilder.DropColumn(
-                name: "IncludedAiCreditsSnapshot",
-                table: "PaymentOrders");
         }
     }
 }
