@@ -237,6 +237,27 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
 
   const closeAllPeers = () => [...peers.keys()].forEach(closePeer)
 
+  const updateRemoteStream = (connectionId, streams, track) => {
+    // Some browsers deliver audio and video as separate track events, and
+    // event.streams can be empty for either event. Keep one stable stream per
+    // peer and merge every incoming track into it.
+    const stream = remoteStreams.get(connectionId) || new MediaStream()
+    for (const incomingStream of streams ?? []) {
+      for (const incomingTrack of incomingStream.getTracks()) {
+        const previousTrack = stream.getTracks().find(item => item.kind === incomingTrack.kind)
+        if (previousTrack && previousTrack !== incomingTrack) stream.removeTrack(previousTrack)
+        if (!stream.getTracks().includes(incomingTrack)) stream.addTrack(incomingTrack)
+      }
+    }
+    if (track) {
+      const previousTrack = stream.getTracks().find(item => item.kind === track.kind)
+      if (previousTrack && previousTrack !== track) stream.removeTrack(previousTrack)
+      if (!stream.getTracks().includes(track)) stream.addTrack(track)
+    }
+    remoteStreams.set(connectionId, stream)
+    emitRemoteStreams()
+  }
+
   const sendSignal = async (method, targetConnectionId, payload) => {
     if (!connection || connection.state !== signalR.HubConnectionState.Connected || !roomId) return
     try {
@@ -281,11 +302,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     entry.pc.onicecandidate = ({ candidate }) => {
       if (candidate) void sendSignal('SendIceCandidate', connectionId, candidate)
     }
-    entry.pc.ontrack = ({ streams, track }) => {
-      const stream = streams[0] || new MediaStream([track])
-      remoteStreams.set(connectionId, stream)
-      emitRemoteStreams()
-    }
+    entry.pc.ontrack = ({ streams, track }) => updateRemoteStream(connectionId, streams, track)
     entry.pc.onnegotiationneeded = () => negotiate(entry)
     entry.pc.onconnectionstatechange = () => {
       if (['failed', 'disconnected'].includes(entry.pc.connectionState)) void recoverPeer(connectionId)
