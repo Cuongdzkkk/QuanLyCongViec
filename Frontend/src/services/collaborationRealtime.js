@@ -1,5 +1,6 @@
 import * as signalR from '@microsoft/signalr'
 import { getStoredAccessToken } from '@/utils/authSession'
+import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 
 export const COLLABORATION_REALTIME_EVENTS = Object.freeze({
   CHANNEL_MESSAGE_CREATED: 'ChannelMessageCreated',
@@ -73,11 +74,10 @@ class CollaborationRealtimeService {
 
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api'
     const hubBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '')
-    const connection = new signalR.HubConnectionBuilder()
+    const connection = configureRealtimeHub(new signalR.HubConnectionBuilder())
       .withUrl(`${hubBaseUrl}/hubs/chat`, {
         accessTokenFactory: () => getStoredAccessToken() || ''
       })
-      .withAutomaticReconnect([0, 2000, 10000, 30000])
       .configureLogging(signalR.LogLevel.None)
       .build()
 
@@ -119,7 +119,8 @@ class CollaborationRealtimeService {
 
   async start() {
     if (!getStoredAccessToken()) throw createClientError('AUTH_REQUIRED')
-    if (this.isConnected) return
+    if ([signalR.HubConnectionState.Connected, signalR.HubConnectionState.Connecting, signalR.HubConnectionState.Reconnecting]
+      .includes(this.state)) return this.startPromise
     if (this.startPromise) return this.startPromise
     if (this.stopPromise) await this.stopPromise
 
@@ -173,6 +174,7 @@ class CollaborationRealtimeService {
         await this.invokeLeave('LeaveDirectConversation', conversationId)
       }
       await connection.stop()
+      if (this.connection === connection) this.connection = null
       this.emitState(COLLABORATION_REALTIME_STATES.DISCONNECTED)
     })().finally(() => {
       this.stopPromise = null

@@ -15,7 +15,12 @@ ProjectAccessPolicy.Configure(
     builder.Configuration.GetValue("Features:ProjectAccessRestrictionsEnabled", true));
 
 builder.Services.AddControllers();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    // Keep the transport alive through a short proxy/network interruption without masking a dead client.
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+});
 builder.Services.AddHttpClient();
 builder.Services.AddOpenApi();
 builder.Services.AddMemoryCache();

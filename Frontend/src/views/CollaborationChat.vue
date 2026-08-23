@@ -1436,6 +1436,7 @@ const callConnectionId = ref('')
 const callState = ref('disconnected')
 const callError = ref('')
 const callSession = ref(null)
+let callJoinPromise = null
 const callAiState = ref({ state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] })
 const callTranscriptChunks = ref([])
 const callTranscriptInterim = ref({ text: '', startedAt: '', speakerDisplayName: '' })
@@ -1808,31 +1809,35 @@ const toggleScreenShare = async () => {
 }
 
 const joinVoiceChannel = async (vc) => {
+  if (callJoinPromise) return callJoinPromise
   if (activeVoiceChannel.value?.id === vc.id) {
     showVoiceCallMain.value = true
     return
   }
-  if (callSession.value) await leaveVoiceChannel(false)
+  callJoinPromise = (async () => {
+    if (callSession.value) await leaveVoiceChannel(false)
 
-  const session = createCallSessionForVoiceChannel(vc)
-  callSession.value = session
-  callError.value = ''
-  try {
-    await session.start()
-    await loadCallDevices()
-    activeVoiceChannel.value = vc
-    showVoiceCallMain.value = true
-    await loadCallTranscript(vc)
-    await syncLocalCallPreview()
-    ElMessage.success(`Đã kết nối vào kênh thoại: ${vc.name}`)
-  } catch (error) {
-    handleCallError(error)
-    await session.leave().catch(() => {})
-    callSession.value = null
-    callParticipants.value = []
-    remoteStreams.value = new Map()
-    callConnectionId.value = ''
-  }
+    const session = createCallSessionForVoiceChannel(vc)
+    callSession.value = session
+    callError.value = ''
+    try {
+      await session.start()
+      await loadCallDevices()
+      activeVoiceChannel.value = vc
+      showVoiceCallMain.value = true
+      await loadCallTranscript(vc)
+      await syncLocalCallPreview()
+      ElMessage.success(`Đã kết nối vào kênh thoại: ${vc.name}`)
+    } catch (error) {
+      handleCallError(error)
+      await session.leave().catch(() => {})
+      callSession.value = null
+      callParticipants.value = []
+      remoteStreams.value = new Map()
+      callConnectionId.value = ''
+    }
+  })().finally(() => { callJoinPromise = null })
+  return callJoinPromise
 }
 
 const leaveVoiceChannel = async (showMessage = true) => {
