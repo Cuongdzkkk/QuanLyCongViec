@@ -270,6 +270,30 @@
                 </button>
               </div>
             </template>
+            <div v-else-if="hasVisibleCallVideo" class="call-camera-stage" aria-label="Camera participants">
+              <article
+                v-for="user in callParticipants"
+                v-show="isParticipantVideoVisible(user)"
+                :key="`stage-${user.connectionId}`"
+                class="call-camera-stage-tile"
+              >
+                <video
+                  v-if="user.connectionId === callConnectionId"
+                  :ref="el => setLocalVideoElement(el, 'stage')"
+                  autoplay
+                  playsinline
+                  muted
+                  :style="{ transform: isSharingScreen ? 'none' : 'scaleX(-1)' }"
+                ></video>
+                <video
+                  v-else
+                  :ref="el => setRemoteVideoElement(el, user.connectionId, 'stage')"
+                  autoplay
+                  playsinline
+                ></video>
+                <span class="call-camera-stage-label">{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</span>
+              </article>
+            </div>
             <div v-else class="call-grid-empty" aria-live="polite">
               <i class="fa-solid fa-users-viewfinder" aria-hidden="true"></i>
               <span>Camera của người tham gia sẽ xuất hiện ở đây</span>
@@ -286,7 +310,7 @@
               <div class="call-thumb-media">
                 <video
                   v-if="user.connectionId === callConnectionId && (isCallCameraOn || isSharingScreen)"
-                  :ref="setLocalVideoElement"
+                  :ref="el => setLocalVideoElement(el, 'rail')"
                   autoplay
                   playsinline
                   muted
@@ -294,7 +318,7 @@
                 ></video>
                 <video
                   v-else-if="user.connectionId !== callConnectionId && remoteStreams.has(user.connectionId) && (user.cameraEnabled || user.screenSharing)"
-                  :ref="el => setRemoteVideoElement(el, user.connectionId)"
+                  :ref="el => setRemoteVideoElement(el, user.connectionId, 'rail')"
                   autoplay
                   playsinline
                 ></video>
@@ -1338,7 +1362,7 @@ const callSession = ref(null)
 const callAiState = ref({ state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] })
 const callTranscriptChunks = ref([])
 const callTranscriptInterim = ref({ text: '', startedAt: '', speakerDisplayName: '' })
-const localVideoElement = ref(null)
+const localVideoElements = new Map()
 const presentationVideoElement = ref(null)
 const remoteVideoElements = new Map()
 const remoteAudioElements = new Map()
@@ -1374,6 +1398,12 @@ const activePresenterStream = () => {
     : remoteStreams.value.get(presenter.connectionId) || null
 }
 
+const hasLiveVideoTrack = stream => stream?.getVideoTracks?.().some(track => track.readyState === 'live') === true
+const isParticipantVideoVisible = user => user.connectionId === callConnectionId.value
+  ? (isCallCameraOn.value || isSharingScreen.value) && hasLiveVideoTrack(localCallStream.value)
+  : (user.cameraEnabled || user.screenSharing) && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId))
+const hasVisibleCallVideo = computed(() => callParticipants.value.some(isParticipantVideoVisible))
+
 const bindMediaElement = (element, stream, muted = false) => {
   if (!element) return
   element.muted = muted
@@ -1387,8 +1417,8 @@ const bindMediaElement = (element, stream, muted = false) => {
 }
 
 const syncCallVideoElements = () => {
-  bindMediaElement(localVideoElement.value, localCallStream.value, true)
-  for (const [connectionId, element] of remoteVideoElements) {
+  for (const element of localVideoElements.values()) bindMediaElement(element, localCallStream.value, true)
+  for (const { connectionId, element } of remoteVideoElements.values()) {
     bindMediaElement(element, remoteStreams.value.get(connectionId), false)
   }
   for (const [connectionId, element] of remoteAudioElements) {
@@ -1397,14 +1427,16 @@ const syncCallVideoElements = () => {
   bindMediaElement(presentationVideoElement.value, activePresenterStream(), true)
 }
 
-const setLocalVideoElement = (element) => {
-  localVideoElement.value = element
+const setLocalVideoElement = (element, slot = 'rail') => {
+  if (element) localVideoElements.set(slot, element)
+  else localVideoElements.delete(slot)
   bindMediaElement(element, localCallStream.value, true)
 }
 
-const setRemoteVideoElement = (element, connectionId) => {
-  if (element) remoteVideoElements.set(connectionId, element)
-  else remoteVideoElements.delete(connectionId)
+const setRemoteVideoElement = (element, connectionId, slot = 'rail') => {
+  const key = `${slot}:${connectionId}`
+  if (element) remoteVideoElements.set(key, { connectionId, element })
+  else remoteVideoElements.delete(key)
   bindMediaElement(element, remoteStreams.value.get(connectionId), false)
 }
 
@@ -4701,6 +4733,52 @@ const fetchProjectMembers = async () => {
 .call-grid-empty i {
   color: #475569;
   font-size: 18px;
+}
+
+.call-camera-stage {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  align-content: stretch;
+  gap: 12px;
+  min-height: 310px;
+  padding: 12px;
+  overflow: auto;
+  background: #080d16;
+}
+
+.call-camera-stage-tile {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  background: #0b1220;
+}
+
+.call-camera-stage-tile video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  object-fit: cover;
+}
+
+.call-camera-stage-label {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  z-index: 1;
+  max-width: calc(100% - 20px);
+  padding: 4px 7px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: rgba(2, 6, 23, 0.72);
+  color: #f8fafc;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .call-participant-rail {
