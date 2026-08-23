@@ -12,6 +12,8 @@ for (const needle of [
   'captureStream',
   'PROCESS_WIDTH = 640',
   'PROCESS_FPS = 15',
+  'PERSON_CATEGORY_VALUE = 0',
+  'values[index] === PERSON_CATEGORY_VALUE ? 255 : 0',
   'dispose'
 ]) assert.ok(source.includes(needle), `missing ${needle}`)
 
