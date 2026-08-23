@@ -30,6 +30,7 @@ const required = [
   'getMediaState',
   'setCameraBackgroundEffect',
   'backgroundEffect',
+  'await disposeBackgroundProcessor()',
   'effect-fallback',
   'createBackgroundBlurProcessor',
   'AudioContext',

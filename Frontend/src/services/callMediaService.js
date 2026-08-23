@@ -517,7 +517,10 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   }
 
   const getCameraOutputTrack = async () => {
-    if (backgroundEffect !== 'blur') return rawCameraTrack
+    if (backgroundEffect !== 'blur') {
+      await disposeBackgroundProcessor()
+      return rawCameraTrack
+    }
     await disposeBackgroundProcessor()
     const processor = createBackgroundBlurProcessor()
     try {
