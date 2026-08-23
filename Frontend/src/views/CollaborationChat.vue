@@ -290,9 +290,8 @@
             </template>
             <div v-else-if="hasVisibleCallVideo" class="call-camera-stage" :class="`layout-${callLayoutMode.toLowerCase()}`" aria-label="Camera participants">
               <article
-                v-for="user in callParticipants"
+                v-for="user in cameraStageParticipants"
                 :key="`stage-${user.connectionId}`"
-                v-show="isParticipantStageVisible(user)"
                 class="call-camera-stage-tile"
                 :class="{ 'is-focused-participant': focusedParticipantConnectionId === user.connectionId, 'is-speaking': isParticipantSpeaking(user) }"
                 tabindex="0"
@@ -328,9 +327,9 @@
             </div>
           </section>
 
-          <section v-if="callLayoutMode.startsWith('PRESENTATION')" class="call-participant-rail" aria-label="Call participants">
+          <section v-if="callRailParticipants.length" class="call-participant-rail" aria-label="Call participants">
             <article
-              v-for="user in callParticipants"
+              v-for="user in callRailParticipants"
               :key="user.connectionId"
               class="call-participant-thumb"
               :class="{ 'is-presenter': activePresenter?.connectionId === user.connectionId, 'is-speaking': isParticipantSpeaking(user), 'is-focused-participant': focusedParticipantConnectionId === user.connectionId }"
@@ -470,7 +469,7 @@
                 <i class="fa-solid fa-hand" aria-hidden="true"></i><span>{{ callHandRaised ? 'Hạ tay' : 'Giơ tay' }}</span>
               </button>
 
-              <button v-if="callLayoutMode === 'CAMERA_FOCUS' && visibleCallParticipants.length > 1" type="button" class="call-control-label-btn" aria-label="Thu về lưới" title="Thu về lưới" @click="returnToParticipantGrid">
+              <button v-if="callLayoutMode === 'CAMERA_FOCUS'" type="button" class="call-control-label-btn" aria-label="Thu về lưới" title="Thu về lưới" @click="returnToParticipantGrid">
                 <i class="fa-solid fa-table-cells" aria-hidden="true"></i><span>Thu về lưới</span>
               </button>
 
@@ -1118,7 +1117,8 @@ import {
 import { createCallMediaSession } from '@/services/callMediaService'
 import {
   dedupeParticipantsByUser,
-  getMeetingLayoutMode
+  getMeetingLayoutMode,
+  getMeetingRenderCollections
 } from '@/services/meetingLayoutState'
 import {
   clearScopedCurrentProjectId,
@@ -1536,11 +1536,10 @@ const hasLiveVideoTrack = stream => stream?.getVideoTracks?.().some(track => tra
 const isParticipantVideoVisible = user => user.connectionId === callConnectionId.value
   ? isCallCameraOn.value && hasLiveVideoTrack(localCallStream.value)
   : user.cameraEnabled && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId)?.cameraStream)
-const isParticipantStageVisible = user => isParticipantVideoVisible(user)
-  && (!focusedParticipantConnectionId.value || focusedParticipantConnectionId.value === user.connectionId)
 const isParticipantSpeaking = user => user.isSpeaking === true || user.speaking === true || user.activeSpeaker === true
-const visibleCallParticipants = computed(() => callParticipants.value.filter(isParticipantVideoVisible))
-const focusedVideoParticipant = computed(() => callParticipants.value.find(user =>
+const uniqueCallParticipants = computed(() => dedupeParticipantsByUser(callParticipants.value, callConnectionId.value))
+const visibleCallParticipants = computed(() => uniqueCallParticipants.value.filter(isParticipantVideoVisible))
+const focusedVideoParticipant = computed(() => uniqueCallParticipants.value.find(user =>
   user.connectionId === focusedParticipantConnectionId.value && isParticipantVideoVisible(user)
 ))
 const hasVisibleCallVideo = computed(() => visibleCallParticipants.value.length > 0)
@@ -1552,6 +1551,17 @@ const callLayoutMode = computed(() => {
     visibleParticipantCount: visibleCallParticipants.value.length
   })
 })
+const meetingRenderCollections = computed(() => getMeetingRenderCollections({
+  mode: callLayoutMode.value,
+  visibleParticipants: visibleCallParticipants.value,
+  allParticipants: uniqueCallParticipants.value,
+  focusedParticipantId: focusedVideoParticipant.value?.connectionId || ''
+}))
+const cameraStageParticipants = computed(() => meetingRenderCollections.value.cameraStageParticipants)
+const callRailParticipants = computed(() => [
+  ...meetingRenderCollections.value.cameraRailParticipants,
+  ...meetingRenderCollections.value.presentationRailParticipants
+])
 const callLayoutClasses = computed(() => ({
   'is-presentation-mode': callLayoutMode.value.startsWith('PRESENTATION'),
   'is-camera-mode': callLayoutMode.value.startsWith('CAMERA'),
