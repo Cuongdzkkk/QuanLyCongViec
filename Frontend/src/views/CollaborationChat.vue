@@ -244,8 +244,8 @@
           </div>
         </header>
 
-        <div class="call-workspace-body">
-          <section ref="presentationStage" class="call-presentation-stage" :class="{ 'is-focused': presentationFocused, 'is-fullscreen': presentationIsFullscreen }" aria-label="Presentation stage">
+        <div class="call-workspace-body" :class="callLayoutClasses">
+          <section ref="presentationStage" class="call-presentation-stage" :class="{ 'is-focused': presentationFocused, 'is-fullscreen': presentationIsFullscreen }" :data-layout-mode="callLayoutMode" aria-label="Presentation stage">
             <template v-if="activePresenter">
               <div class="presentation-heading">
                 <span class="presentation-live-dot" aria-hidden="true"></span>
@@ -268,14 +268,25 @@
                   <i class="fa-solid fa-table-cells" aria-hidden="true"></i>
                   <span>Về lưới</span>
                 </button>
+                <button v-if="focusedParticipantConnectionId" type="button" class="presentation-control" title="Quay lại màn hình chia sẻ" @click="returnToPresentation">
+                  <i class="fa-solid fa-display" aria-hidden="true"></i>
+                  <span>Quay lại màn hình chia sẻ</span>
+                </button>
               </div>
             </template>
-            <div v-else-if="hasVisibleCallVideo" class="call-camera-stage" aria-label="Camera participants">
+            <div v-else-if="hasVisibleCallVideo" class="call-camera-stage" :class="`layout-${callLayoutMode.toLowerCase()}`" aria-label="Camera participants">
               <article
                 v-for="user in callParticipants"
-                v-show="isParticipantVideoVisible(user)"
                 :key="`stage-${user.connectionId}`"
+                v-show="isParticipantStageVisible(user)"
                 class="call-camera-stage-tile"
+                :class="{ 'is-focused-participant': focusedParticipantConnectionId === user.connectionId, 'is-speaking': isParticipantSpeaking(user) }"
+                tabindex="0"
+                role="button"
+                :aria-label="`Tập trung vào ${user.displayName}`"
+                @click="focusParticipant(user.connectionId)"
+                @keydown.enter.prevent="focusParticipant(user.connectionId)"
+                @keydown.space.prevent="focusParticipant(user.connectionId)"
               >
                 <video
                   v-if="user.connectionId === callConnectionId"
@@ -305,11 +316,17 @@
               v-for="user in callParticipants"
               :key="user.connectionId"
               class="call-participant-thumb"
-              :class="{ 'is-presenter': activePresenter?.connectionId === user.connectionId }"
+              :class="{ 'is-presenter': activePresenter?.connectionId === user.connectionId, 'is-speaking': isParticipantSpeaking(user), 'is-focused-participant': focusedParticipantConnectionId === user.connectionId }"
+              tabindex="0"
+              role="button"
+              :aria-label="`Tập trung vào ${user.displayName}`"
+              @click="focusParticipant(user.connectionId)"
+              @keydown.enter.prevent="focusParticipant(user.connectionId)"
+              @keydown.space.prevent="focusParticipant(user.connectionId)"
             >
               <div class="call-thumb-media">
                 <video
-                  v-if="user.connectionId === callConnectionId && (isCallCameraOn || isSharingScreen)"
+                  v-if="user.connectionId === callConnectionId && isParticipantVideoVisible(user)"
                   :ref="el => setLocalVideoElement(el, 'rail')"
                   autoplay
                   playsinline
@@ -317,7 +334,7 @@
                   :style="{ transform: isSharingScreen ? 'none' : 'scaleX(-1)' }"
                 ></video>
                 <video
-                  v-else-if="user.connectionId !== callConnectionId && remoteStreams.has(user.connectionId) && (user.cameraEnabled || user.screenSharing)"
+                  v-else-if="user.connectionId !== callConnectionId && isParticipantVideoVisible(user)"
                   :ref="el => setRemoteVideoElement(el, user.connectionId, 'rail')"
                   autoplay
                   playsinline
@@ -388,6 +405,7 @@
                 class="call-control-circle-btn" 
                 :class="{ 'inactive': !callMicrophoneEnabled }"
                 @click="toggleCallMicrophone"
+                :aria-label="callMicrophoneEnabled ? 'Mic đang bật — tắt mic' : 'Mic đã tắt — bật mic'"
                 :title="callMicrophoneEnabled ? 'Tắt Micro' : 'Bật Micro'"
               >
                 <i :class="callMicrophoneEnabled ? 'fa-solid fa-microphone' : 'fa-solid fa-microphone-slash'"></i>
@@ -397,13 +415,14 @@
                 class="call-control-circle-btn" 
                 :class="{ 'inactive': !isCallCameraOn }" 
                 @click="toggleCallCameraReal"
+                :aria-label="isCallCameraOn ? 'Camera đang bật — tắt camera' : 'Camera đang tắt — bật camera'"
                 :title="isCallCameraOn ? 'Tắt Camera' : 'Bật Camera'"
               >
                 <i :class="isCallCameraOn ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'"></i>
               </button>
 
               <div class="camera-effects-control">
-                <button type="button" class="call-control-label-btn" :class="{ active: cameraBackgroundEffect === 'blur' }" title="Hiệu ứng camera" aria-haspopup="menu" :aria-expanded="showCameraEffectsMenu" @click="showCameraEffectsMenu = !showCameraEffectsMenu">
+                <button type="button" class="call-control-label-btn" :class="{ active: cameraBackgroundEffect === 'blur' }" title="Hiệu ứng camera" aria-label="Mở hiệu ứng camera" aria-haspopup="menu" :aria-expanded="showCameraEffectsMenu" @click="showCameraEffectsMenu = !showCameraEffectsMenu">
                   <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
                   <span>Nền</span>
                 </button>
@@ -424,21 +443,47 @@
                 class="call-control-circle-btn" 
                 :class="{ 'active-share': isSharingScreen }" 
                 @click="toggleScreenShare"
+                :aria-label="isSharingScreen ? 'Đang chia sẻ — dừng chia sẻ' : 'Chia sẻ màn hình'"
                 :title="isSharingScreen ? 'Tắt chia sẻ' : 'Chia sẻ màn hình'"
                 style="background-color: #2b2d31; color: white;"
               >
                 <i class="fa-solid fa-desktop" :style="{ color: isSharingScreen ? '#22c55e' : '#dbdee1' }"></i>
               </button>
 
+              <button type="button" class="call-control-circle-btn" :class="{ active: callHandRaised }" :aria-pressed="callHandRaised" aria-label="Giơ tay" title="Giơ tay" @click="toggleRaiseHand">
+                <i class="fa-solid fa-hand" aria-hidden="true"></i>
+              </button>
+
+              <div class="camera-effects-control">
+                <button type="button" class="call-control-label-btn" aria-haspopup="menu" :aria-expanded="showMoreMenu" aria-label="Mở thêm tùy chọn" @click="showMoreMenu = !showMoreMenu">
+                  <i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span>Thêm</span>
+                </button>
+                <div v-if="showMoreMenu" class="camera-effects-menu" role="menu" aria-label="Tùy chọn cuộc gọi">
+                  <button v-for="emoji in ['👍', '👏', '😂', '❤️', '🎉', '😮']" :key="emoji" type="button" role="menuitem" @click="sendCallReaction(emoji)">{{ emoji }} Gửi reaction</button>
+                  <button type="button" role="menuitem" @click="toggleCallPictureInPicture">Picture-in-picture</button>
+                  <button type="button" role="menuitem" @click="loadCallDevices">Thiết bị ({{ callDevices.length || 0 }})</button>
+                  <div v-if="callDevices.length" class="call-device-list" aria-label="Thiết bị khả dụng">
+                    <button v-for="device in callDevices" :key="device.deviceId || device.kind" type="button" role="menuitem" @click="switchCallDevice(device)">{{ device.label || device.kind }}</button>
+                  </div>
+                  <button type="button" role="menuitem" @click="showMoreMenu = false; showCameraEffectsMenu = !showCameraEffectsMenu">Hiệu ứng camera</button>
+                  <small>Phím tắt: Ctrl/Cmd+D microphone · Ctrl/Cmd+E camera</small>
+                </div>
+              </div>
+
               <button 
                 class="call-control-circle-btn hang-up" 
                 @click="leaveVoiceChannel"
+                aria-label="Rời cuộc gọi"
                 title="Rời kênh thoại"
               >
                 <i class="fa-solid fa-phone-slash"></i>
               </button>
             </div>
           </div>
+          <div class="call-reaction-overlay" aria-live="polite">
+            <span v-for="reaction in callReactions" :key="reaction.id" class="call-reaction-bubble">{{ reaction.emoji }} <small>{{ reaction.displayName }}</small></span>
+          </div>
+          <div class="sr-only" aria-live="polite">{{ callLiveNotice }}</div>
           <aside v-if="callChatOpen" class="call-chat-panel" aria-label="Call chat">
             <div class="call-chat-panel-header">
               <div><span class="context-kicker">CALL CHAT</span><strong>{{ activeChannel?.name || 'Tin nhắn cuộc gọi' }}</strong></div>
@@ -1348,6 +1393,11 @@ const cameraBackgroundEffect = ref('none')
 const cameraEffectPending = ref(false)
 const cameraEffectNotice = ref('')
 const showCameraEffectsMenu = ref(false)
+const showMoreMenu = ref(false)
+const callHandRaised = ref(false)
+const callReactions = ref([])
+const callLiveNotice = ref('')
+const callDevices = ref([])
 const presentationStage = ref(null)
 const presentationFocused = ref(false)
 const presentationIsFullscreen = ref(false)
@@ -1355,6 +1405,7 @@ const callMicrophoneEnabled = ref(true)
 const callParticipants = ref([])
 const remoteStreams = ref(new Map())
 const localCallStream = ref(null)
+const localScreenStream = ref(null)
 const callConnectionId = ref('')
 const callState = ref('disconnected')
 const callError = ref('')
@@ -1366,6 +1417,7 @@ const localVideoElements = new Map()
 const presentationVideoElement = ref(null)
 const remoteVideoElements = new Map()
 const remoteAudioElements = new Map()
+const focusedParticipantConnectionId = ref('')
 const callChatOpen = ref(false)
 const callChatDraft = ref('')
 const callChatSending = ref(false)
@@ -1394,15 +1446,32 @@ const activePresenterStream = () => {
   const presenter = activePresenter.value
   if (!presenter) return null
   return presenter.connectionId === callConnectionId.value
-    ? localCallStream.value
-    : remoteStreams.value.get(presenter.connectionId) || null
+    ? localScreenStream.value
+    : remoteStreams.value.get(presenter.connectionId)?.screenStream || null
 }
 
 const hasLiveVideoTrack = stream => stream?.getVideoTracks?.().some(track => track.readyState === 'live') === true
 const isParticipantVideoVisible = user => user.connectionId === callConnectionId.value
-  ? (isCallCameraOn.value || isSharingScreen.value) && hasLiveVideoTrack(localCallStream.value)
-  : (user.cameraEnabled || user.screenSharing) && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId))
-const hasVisibleCallVideo = computed(() => callParticipants.value.some(isParticipantVideoVisible))
+  ? isCallCameraOn.value && hasLiveVideoTrack(localCallStream.value)
+  : user.cameraEnabled && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId)?.cameraStream)
+const isParticipantStageVisible = user => isParticipantVideoVisible(user)
+  && (!focusedParticipantConnectionId.value || focusedParticipantConnectionId.value === user.connectionId)
+const isParticipantSpeaking = user => user.isSpeaking === true || user.speaking === true || user.activeSpeaker === true
+const visibleCallParticipants = computed(() => callParticipants.value.filter(isParticipantVideoVisible))
+const hasVisibleCallVideo = computed(() => visibleCallParticipants.value.length > 0)
+const callLayoutMode = computed(() => {
+  if (activePresenter.value) return presentationFocused.value ? 'PRESENTATION_FOCUS' : 'PRESENTATION'
+  return visibleCallParticipants.value.length === 1 ? 'CAMERA_FOCUS' : 'CAMERA_GRID'
+})
+const callLayoutClasses = computed(() => ({
+  'is-presentation-mode': callLayoutMode.value.startsWith('PRESENTATION'),
+  'is-camera-mode': callLayoutMode.value.startsWith('CAMERA')
+}))
+const focusParticipant = connectionId => {
+  const participant = callParticipants.value.find(user => user.connectionId === connectionId)
+  if (!participant || !isParticipantVideoVisible(participant)) return
+  focusedParticipantConnectionId.value = focusedParticipantConnectionId.value === connectionId ? '' : connectionId
+}
 
 const bindMediaElement = (element, stream, muted = false) => {
   if (!element) return
@@ -1419,10 +1488,10 @@ const bindMediaElement = (element, stream, muted = false) => {
 const syncCallVideoElements = () => {
   for (const element of localVideoElements.values()) bindMediaElement(element, localCallStream.value, true)
   for (const { connectionId, element } of remoteVideoElements.values()) {
-    bindMediaElement(element, remoteStreams.value.get(connectionId), false)
+    bindMediaElement(element, remoteStreams.value.get(connectionId)?.cameraStream, false)
   }
   for (const [connectionId, element] of remoteAudioElements) {
-    bindMediaElement(element, remoteStreams.value.get(connectionId), false)
+    bindMediaElement(element, remoteStreams.value.get(connectionId)?.audioStream, false)
   }
   bindMediaElement(presentationVideoElement.value, activePresenterStream(), true)
 }
@@ -1437,13 +1506,13 @@ const setRemoteVideoElement = (element, connectionId, slot = 'rail') => {
   const key = `${slot}:${connectionId}`
   if (element) remoteVideoElements.set(key, { connectionId, element })
   else remoteVideoElements.delete(key)
-  bindMediaElement(element, remoteStreams.value.get(connectionId), false)
+  bindMediaElement(element, remoteStreams.value.get(connectionId)?.cameraStream, false)
 }
 
 const setRemoteAudioElement = (element, connectionId) => {
   if (element) remoteAudioElements.set(connectionId, element)
   else remoteAudioElements.delete(connectionId)
-  bindMediaElement(element, remoteStreams.value.get(connectionId), false)
+  bindMediaElement(element, remoteStreams.value.get(connectionId)?.audioStream, false)
 }
 
 const setPresentationVideoElement = (element) => {
@@ -1547,6 +1616,7 @@ const handleCallError = (error, showMessage = true) => {
 
 const syncLocalCallPreview = async () => {
   localCallStream.value = callSession.value?.getLocalStream?.() || null
+  localScreenStream.value = callSession.value?.getLocalScreenStream?.() || null
   callConnectionId.value = callSession.value?.getConnectionId?.() || ''
   await nextTick()
   syncCallVideoElements()
@@ -1583,11 +1653,48 @@ const createCallSessionForVoiceChannel = (voiceChannel) => createCallMediaSessio
     await nextTick()
     syncCallVideoElements()
   },
+  onHandChanged: ({ connectionId, handRaised }) => {
+    if (connectionId === callConnectionId.value) callHandRaised.value = handRaised
+  },
+  onReaction: reaction => {
+    callReactions.value = [...callReactions.value.filter(item => item.id !== reaction.id), { ...reaction, expiresAt: Date.now() + 4000 }]
+    window.setTimeout(() => { callReactions.value = callReactions.value.filter(item => item.id !== reaction.id) }, 4100)
+  },
+  onForceMute: async () => {
+    if (callSession.value && callMicrophoneEnabled.value) { await callSession.value.setMicrophoneEnabled(false); callMicrophoneEnabled.value = false; callLiveNotice.value = 'Bạn đã được tắt microphone bởi host.' }
+  },
+  onForceRemoved: async () => { callLiveNotice.value = 'Bạn đã được mời khỏi cuộc gọi.'; await leaveVoiceChannel(false) },
   onAiState: handleCallAiState,
   onTranscriptChunk: handleTranscriptChunk,
   onTranscriptInterim: handleTranscriptInterim,
   onTranscriptionError: handleTranscriptionError
 })
+
+const toggleRaiseHand = async () => {
+  if (!callSession.value) return
+  const nextValue = !callHandRaised.value
+  try { await callSession.value.setRaiseHand(nextValue); callHandRaised.value = nextValue } catch (error) { handleCallError(error) }
+}
+const sendCallReaction = async emoji => { try { await callSession.value?.sendReaction(emoji); showMoreMenu.value = false } catch (error) { handleCallError(error) } }
+const loadCallDevices = async () => { callDevices.value = await callSession.value?.enumerateDevices?.() || [] }
+const switchCallDevice = async device => {
+  try {
+    if (device.kind === 'audioinput') await callSession.value?.setMicrophoneDevice(device.deviceId)
+    if (device.kind === 'videoinput') await callSession.value?.setCameraDevice(device.deviceId)
+    await loadCallDevices()
+  } catch (error) { handleCallError(error) }
+}
+const toggleCallPictureInPicture = async () => {
+  const element = presentationVideoElement.value || [...localVideoElements.values()][0] || [...remoteVideoElements.values()][0]?.element
+  if (!element?.requestPictureInPicture) { callLiveNotice.value = 'Picture-in-picture chưa được trình duyệt hỗ trợ.'; return }
+  try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else await element.requestPictureInPicture(); showMoreMenu.value = false } catch (error) { handleCallError(error) }
+}
+const handleCallShortcut = event => {
+  if (!showVoiceCallMain.value || event.target?.matches?.('input, textarea, [contenteditable="true"]')) return
+  if (!(event.ctrlKey || event.metaKey)) return
+  if (event.key.toLowerCase() === 'd') { event.preventDefault(); void toggleCallMicrophone() }
+  if (event.key.toLowerCase() === 'e') { event.preventDefault(); void toggleCallCameraReal() }
+}
 
 const requestCallAi = async () => {
   if (!callSession.value) return
@@ -1686,6 +1793,7 @@ const joinVoiceChannel = async (vc) => {
   callError.value = ''
   try {
     await session.start()
+    await loadCallDevices()
     activeVoiceChannel.value = vc
     showVoiceCallMain.value = true
     await loadCallTranscript(vc)
@@ -1710,6 +1818,7 @@ const leaveVoiceChannel = async (showMessage = true) => {
   callTranscriptChunks.value = []
   remoteStreams.value = new Map()
   localCallStream.value = null
+  localScreenStream.value = null
   callConnectionId.value = ''
   callMicrophoneEnabled.value = true
   isCallCameraOn.value = false
@@ -1730,6 +1839,11 @@ const togglePresentationFocus = () => {
 }
 
 const returnToParticipantGrid = () => {
+  presentationFocused.value = false
+}
+
+const returnToPresentation = () => {
+  focusedParticipantConnectionId.value = ''
   presentationFocused.value = false
 }
 
@@ -3180,6 +3294,7 @@ const initializeCollaborationContext = async ({ forceProjects = false } = {}) =>
 
 onMounted(() => {
   componentMounted = true
+  window.addEventListener('keydown', handleCallShortcut)
   document.addEventListener('fullscreenchange', syncPresentationFullscreen)
   registerRealtimeHandlers()
   void initializeCollaborationContext()
@@ -3231,6 +3346,7 @@ watch(projectOptions, (projects) => {
 
 onBeforeUnmount(() => {
   componentMounted = false
+  window.removeEventListener('keydown', handleCallShortcut)
   document.removeEventListener('fullscreenchange', syncPresentationFullscreen)
   collaborationContextVersion += 1
   realtimeUnsubscribers.splice(0).forEach(unsubscribe => unsubscribe())
@@ -4801,6 +4917,10 @@ const fetchProjectMembers = async () => {
 .call-participant-thumb.is-presenter {
   border-color: rgba(74, 222, 128, 0.65);
 }
+.call-participant-thumb.is-focused-participant,
+.call-camera-stage-tile.is-focused-participant { border-color: #63d29f; box-shadow: 0 0 0 2px rgba(99, 210, 159, .2); }
+.call-participant-thumb.is-speaking,
+.call-camera-stage-tile.is-speaking { border-color: rgba(88, 183, 232, .8); }
 
 .call-participant-thumb:hover {
   transform: translateY(-1px);
@@ -5411,6 +5531,66 @@ const fetchProjectMembers = async () => {
 .call-chat-composer { display: flex; gap: 6px; padding: 10px; border-top: 1px solid rgba(148, 163, 184, .12); }
 .call-chat-composer button { width: 31px; border: 0; border-radius: 6px; background: #63d29f; color: #06131c; cursor: pointer; }
 .call-chat-composer button:disabled { cursor: not-allowed; opacity: .45; }
+.call-workspace-body.is-presentation-mode {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 240px);
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  align-items: stretch;
+}
+.call-workspace-body.is-presentation-mode .call-presentation-stage { grid-column: 1; grid-row: 1; min-height: 0; }
+.call-workspace-body.is-presentation-mode .call-participant-rail {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  min-height: 0;
+  max-height: none;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.call-workspace-body.is-presentation-mode .call-participant-thumb { flex: 0 0 auto; }
+.call-workspace-body.is-presentation-mode .call-transcript-panel {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: auto;
+  min-width: 0;
+  max-height: 170px;
+  overflow: auto;
+  border-top: 1px solid rgba(148, 163, 184, .13);
+  border-left: 0;
+}
+.call-workspace-body.is-presentation-mode .call-controls-row { grid-column: 1 / -1; grid-row: 3; }
+.call-camera-stage.layout-camera_focus { grid-template-columns: minmax(0, min(760px, 100%)); justify-content: center; }
+.call-camera-stage.layout-camera_grid { grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
+.call-control-future-slot:disabled { cursor: not-allowed; opacity: .6; }
+.call-reaction-overlay { position: absolute; z-index: 12; right: 18px; bottom: 92px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; }
+.call-reaction-bubble { padding: 6px 10px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px; background: rgba(15,23,42,.9); color: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.2); animation: call-reaction-rise 4s ease-out both; }
+.call-reaction-bubble small { margin-left: 4px; color: #b8c6d4; font-size: 10px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@keyframes call-reaction-rise { from { opacity: 0; transform: translateY(8px) scale(.92); } 12%, 78% { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-12px) scale(1.04); } }
+.call-control-circle-btn:focus-visible,
+.call-control-label-btn:focus-visible,
+.presentation-control:focus-visible,
+.call-participant-thumb:focus-visible { outline: 2px solid #63d29f; outline-offset: 3px; }
+@media (max-width: 900px) {
+  .call-workspace-body.is-presentation-mode { display: flex; flex-direction: column; }
+  .call-workspace-body.is-presentation-mode .call-presentation-stage { min-height: 240px; }
+  .call-workspace-body.is-presentation-mode .call-participant-rail {
+    display: flex;
+    max-height: none;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .call-workspace-body.is-presentation-mode .call-participant-thumb { width: 170px; min-width: 170px; }
+  .call-workspace-body.is-presentation-mode .call-transcript-panel { max-height: 190px; }
+}
+@media (max-width: 560px) {
+  .call-camera-stage { grid-template-columns: 1fr; min-height: 240px; padding: 8px; }
+  .call-camera-stage-tile video { min-height: 210px; }
+  .call-control-dock { max-width: 100%; overflow-x: auto; }
+  .call-control-future-slot span { display: none; }
+}
 .chat-context-panel { position: absolute; z-index: 4; top: 0; right: 0; bottom: 0; display: flex; width: var(--chat-context-width); flex-direction: column; border-left: 1px solid var(--chat-line); background: #0c1828; }
 .context-panel-header, .ai-surface-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 18px 16px 12px; border-bottom: 1px solid var(--chat-line); }
 .context-panel-header h3, .ai-surface-header h3 { margin: 4px 0 0; color: #e8f4fc; font-size: 14px; }

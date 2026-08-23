@@ -16,6 +16,9 @@ const normalizeParticipant = (value) => ({
   microphoneEnabled: read(value, 'microphoneEnabled', 'MicrophoneEnabled') !== false,
   cameraEnabled: read(value, 'cameraEnabled', 'CameraEnabled') === true,
   screenSharing: read(value, 'screenSharing', 'ScreenSharing') === true
+  ,handRaised: read(value, 'handRaised', 'HandRaised') === true
+  ,isSpeaking: read(value, 'isSpeaking', 'IsSpeaking') === true
+  ,role: read(value, 'role', 'Role') || 'participant'
 })
 
 const mediaError = (error, fallbackCode) => {
@@ -39,16 +42,17 @@ const getIceServers = async () => {
   }))
 }
 
-export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams, onAiState, onTranscriptChunk, onTranscriptInterim, onTranscriptionError }) => {
+export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams, onAiState, onTranscriptChunk, onTranscriptInterim, onTranscriptionError, onHandChanged, onReaction, onSpeakerChanged, onForceMute, onForceRemoved }) => {
   let connection = null
   let roomId = null
   let localStream = null
+  let cameraStream = null
+  let screenStream = null
   let rawCameraTrack = null
   let cameraTrack = null
   let screenTrack = null
   let backgroundProcessor = null
   let backgroundEffect = 'none'
-  let preShareCameraEnabled = false
   let microphoneEnabled = true
   let cameraEnabled = false
   let screenSharing = false
@@ -222,6 +226,45 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     })
   }
 
+  const emptyRemoteMedia = () => ({
+    audioStream: new MediaStream(),
+    cameraStream: new MediaStream(),
+    screenStream: new MediaStream()
+  })
+
+  const removeRemoteTrack = (connectionId, source, track) => {
+    const media = remoteStreams.get(connectionId)
+    const stream = media?.[`${source}Stream`]
+    if (!stream || !stream.getTracks().includes(track)) return
+    stream.removeTrack(track)
+    emitRemoteStreams()
+  }
+
+  const addRemoteTrack = (connectionId, source, track) => {
+    if (!source || !track) return
+    const media = remoteStreams.get(connectionId) || emptyRemoteMedia()
+    const stream = media[`${source}Stream`]
+    const previousTrack = stream.getTracks().find(item => item.kind === track.kind)
+    if (previousTrack && previousTrack !== track) stream.removeTrack(previousTrack)
+    if (!stream.getTracks().includes(track)) stream.addTrack(track)
+    track.onended = () => removeRemoteTrack(connectionId, source, track)
+    remoteStreams.set(connectionId, media)
+    emitRemoteStreams()
+  }
+
+  const sourceForStream = (entry, stream) => entry.remoteMediaSources?.get(stream?.id) || null
+  const sourceForTrack = (entry, track) => entry.remoteMediaSourcesByTrackId?.get(track?.id) || null
+
+  const updateRemoteStreams = (connectionId, entry, streams, track) => {
+    for (const stream of streams ?? []) {
+      const source = sourceForStream(entry, stream)
+      for (const incomingTrack of stream.getTracks()) {
+        addRemoteTrack(connectionId, incomingTrack.kind === 'audio' ? 'audio' : source || sourceForTrack(entry, incomingTrack), incomingTrack)
+      }
+    }
+    if (track) addRemoteTrack(connectionId, track.kind === 'audio' ? 'audio' : sourceForTrack(entry, track), track)
+  }
+
   const closePeer = (connectionId) => {
     const peer = peers.get(connectionId)
     if (!peer) return
@@ -237,27 +280,6 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
 
   const closeAllPeers = () => [...peers.keys()].forEach(closePeer)
 
-  const updateRemoteStream = (connectionId, streams, track) => {
-    // Some browsers deliver audio and video as separate track events, and
-    // event.streams can be empty for either event. Keep one stable stream per
-    // peer and merge every incoming track into it.
-    const stream = remoteStreams.get(connectionId) || new MediaStream()
-    for (const incomingStream of streams ?? []) {
-      for (const incomingTrack of incomingStream.getTracks()) {
-        const previousTrack = stream.getTracks().find(item => item.kind === incomingTrack.kind)
-        if (previousTrack && previousTrack !== incomingTrack) stream.removeTrack(previousTrack)
-        if (!stream.getTracks().includes(incomingTrack)) stream.addTrack(incomingTrack)
-      }
-    }
-    if (track) {
-      const previousTrack = stream.getTracks().find(item => item.kind === track.kind)
-      if (previousTrack && previousTrack !== track) stream.removeTrack(previousTrack)
-      if (!stream.getTracks().includes(track)) stream.addTrack(track)
-    }
-    remoteStreams.set(connectionId, stream)
-    emitRemoteStreams()
-  }
-
   const sendSignal = async (method, targetConnectionId, payload) => {
     if (!connection || connection.state !== signalR.HubConnectionState.Connected || !roomId) return
     try {
@@ -272,10 +294,32 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     try {
       entry.makingOffer = true
       await entry.pc.setLocalDescription()
-      await sendSignal('SendWebRtcOffer', entry.connectionId, entry.pc.localDescription)
+      await sendSignal('SendWebRtcOffer', entry.connectionId, {
+        description: entry.pc.localDescription,
+        mediaSources: getLocalMediaSources()
+      })
     } finally {
       entry.makingOffer = false
     }
+  }
+
+  const getLocalMediaSources = () => [
+    cameraStream && { streamId: cameraStream.id, trackId: cameraTrack?.id, source: 'camera' },
+    screenStream && { streamId: screenStream.id, trackId: screenTrack?.id, source: 'screen' }
+  ].filter(Boolean)
+
+  const syncVideoSender = async (entry, senderKey, track, stream) => {
+    let sender = entry[senderKey]
+    if (track && !sender) sender = entry[senderKey] = entry.pc.addTrack(track, stream)
+    if (sender && sender.track !== track) await sender.replaceTrack(track)
+  }
+
+  const syncPeerMedia = async entry => {
+    const audioTrack = localStream?.getAudioTracks?.()[0] || null
+    if (audioTrack && !entry.audioSender) entry.audioSender = entry.pc.addTrack(audioTrack, localStream)
+    if (entry.audioSender && entry.audioSender.track !== audioTrack) await entry.audioSender.replaceTrack(audioTrack)
+    await syncVideoSender(entry, 'cameraSender', cameraTrack, cameraStream)
+    await syncVideoSender(entry, 'screenSender', screenTrack, screenStream)
   }
 
   const recoverPeer = async (connectionId) => {
@@ -294,28 +338,37 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       makingOffer: false,
       ignoreOffer: false,
       isSettingRemoteAnswerPending: false,
-      polite: isPolite(connectionId)
+      polite: isPolite(connectionId),
+      audioSender: null,
+      cameraSender: null,
+      screenSender: null,
+      remoteMediaSources: new Map(),
+      remoteMediaSourcesByTrackId: new Map()
     }
     peers.set(connectionId, entry)
-    for (const track of localStream?.getTracks() ?? []) entry.pc.addTrack(track, localStream)
 
     entry.pc.onicecandidate = ({ candidate }) => {
       if (candidate) void sendSignal('SendIceCandidate', connectionId, candidate)
     }
-    entry.pc.ontrack = ({ streams, track }) => updateRemoteStream(connectionId, streams, track)
+    entry.pc.ontrack = ({ streams, track }) => updateRemoteStreams(connectionId, entry, streams, track)
     entry.pc.onnegotiationneeded = () => negotiate(entry)
     entry.pc.onconnectionstatechange = () => {
       if (['failed', 'disconnected'].includes(entry.pc.connectionState)) void recoverPeer(connectionId)
       if (entry.pc.connectionState === 'connected') recoveryAttempts = 0
     }
+    await syncPeerMedia(entry)
     return entry
   }
 
   const applyOffer = async message => {
     const connectionId = read(message, 'fromConnectionId', 'FromConnectionId')
-    const description = read(message, 'description', 'Description')
+    const signal = read(message, 'description', 'Description')
+    const description = read(signal, 'description', 'Description') || signal
+    const mediaSources = read(signal, 'mediaSources', 'MediaSources') ?? read(message, 'mediaSources', 'MediaSources') ?? []
     const entry = await createPeer(connectionId)
     if (!entry || !description) return
+    entry.remoteMediaSources = new Map(mediaSources.map(item => [read(item, 'streamId', 'StreamId'), read(item, 'source', 'Source')]))
+    entry.remoteMediaSourcesByTrackId = new Map(mediaSources.map(item => [read(item, 'trackId', 'TrackId'), read(item, 'source', 'Source')]))
     const offerCollision = entry.makingOffer || entry.pc.signalingState !== 'stable'
     entry.ignoreOffer = !entry.polite && offerCollision
     if (entry.ignoreOffer) return
@@ -324,13 +377,22 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     await entry.pc.setRemoteDescription(description)
     entry.isSettingRemoteAnswerPending = false
     await entry.pc.setLocalDescription()
-    await sendSignal('SendWebRtcAnswer', connectionId, entry.pc.localDescription)
+    await sendSignal('SendWebRtcAnswer', connectionId, {
+      description: entry.pc.localDescription,
+      mediaSources: getLocalMediaSources()
+    })
   }
 
   const applyAnswer = async message => {
     const connectionId = read(message, 'fromConnectionId', 'FromConnectionId')
-    const description = read(message, 'description', 'Description')
+    const signal = read(message, 'description', 'Description')
+    const description = read(signal, 'description', 'Description') || signal
     const entry = getPeer(connectionId)
+    const mediaSources = read(signal, 'mediaSources', 'MediaSources') ?? read(message, 'mediaSources', 'MediaSources') ?? []
+    if (entry) {
+      entry.remoteMediaSources = new Map(mediaSources.map(item => [read(item, 'streamId', 'StreamId'), read(item, 'source', 'Source')]))
+      entry.remoteMediaSourcesByTrackId = new Map(mediaSources.map(item => [read(item, 'trackId', 'TrackId'), read(item, 'source', 'Source')]))
+    }
     if (entry && description) await entry.pc.setRemoteDescription(description)
   }
 
@@ -378,6 +440,26 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       })
       emitParticipants()
     })
+    connection.on('ParticipantHandChanged', event => {
+      const connectionId = read(event, 'connectionId', 'ConnectionId')
+      const participant = participants.get(connectionId)
+      const raised = read(event, 'handRaised', 'HandRaised') === true
+      if (participant) { participants.set(connectionId, { ...participant, handRaised: raised }); emitParticipants() }
+      onHandChanged?.({ connectionId, handRaised: raised })
+    })
+    connection.on('CallReactionAdded', event => onReaction?.({
+      id: read(event, 'id', 'Id'), connectionId: read(event, 'connectionId', 'ConnectionId'),
+      userId: read(event, 'userId', 'UserId'), displayName: read(event, 'displayName', 'DisplayName'), emoji: read(event, 'emoji', 'Emoji')
+    }))
+    connection.on('ParticipantSpeakerChanged', event => {
+      const connectionId = read(event, 'connectionId', 'ConnectionId')
+      const participant = participants.get(connectionId)
+      const speaking = read(event, 'isSpeaking', 'IsSpeaking') === true
+      if (participant) { participants.set(connectionId, { ...participant, isSpeaking: speaking }); emitParticipants() }
+      onSpeakerChanged?.({ connectionId, isSpeaking: speaking })
+    })
+    connection.on('ForceMuteParticipant', () => onForceMute?.())
+    connection.on('ForceRemovedFromCall', () => onForceRemoved?.())
     connection.on('CallAiStateChanged', event => handleAiState(read(event, 'state', 'State')))
     connection.on('AiConsentRequested', event => handleAiState(read(event, 'state', 'State')))
     connection.on('AiParticipantAccepted', event => handleAiState(read(event, 'state', 'State')))
@@ -429,16 +511,6 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     }
   }
 
-  const replaceVideoTrack = async track => {
-    for (const entry of peers.values()) {
-      const sender = entry.pc.getSenders().find(item => item.track?.kind === 'video')
-      if (sender) await sender.replaceTrack(track)
-      else if (track && localStream) entry.pc.addTrack(track, localStream)
-    }
-    for (const trackInStream of localStream?.getVideoTracks() ?? []) localStream.removeTrack(trackInStream)
-    if (track && localStream) localStream.addTrack(track)
-  }
-
   const disposeBackgroundProcessor = async () => {
     await backgroundProcessor?.dispose?.()
     backgroundProcessor = null
@@ -468,8 +540,9 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       rawCameraTrack?.stop()
       cameraTrack = null
       rawCameraTrack = null
+      cameraStream = null
       cameraEnabled = false
-      await replaceVideoTrack(null)
+      for (const entry of peers.values()) await syncPeerMedia(entry)
     } else {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -478,8 +551,9 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         })
         rawCameraTrack = stream.getVideoTracks()[0]
         cameraTrack = await getCameraOutputTrack()
+        cameraStream = new MediaStream([cameraTrack])
         cameraEnabled = true
-        await replaceVideoTrack(cameraTrack)
+        for (const entry of peers.values()) await syncPeerMedia(entry)
       } catch (error) {
         rawCameraTrack?.stop()
         rawCameraTrack = null
@@ -497,6 +571,38 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     emit('media')
   }
 
+  const enumerateDevices = async () => (navigator.mediaDevices?.enumerateDevices ? navigator.mediaDevices.enumerateDevices() : [])
+
+  const setMicrophoneDevice = async deviceId => {
+    const next = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false })
+    const previous = localStream
+    localStream = next
+    for (const entry of peers.values()) await syncPeerMedia(entry)
+    previous?.getTracks().forEach(track => track.stop())
+    emit('media')
+  }
+
+  const setCameraDevice = async deviceId => {
+    if (!cameraEnabled) return
+    const next = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
+    const previousRaw = rawCameraTrack
+    rawCameraTrack = next.getVideoTracks()[0]
+    const previousOutput = cameraTrack
+    cameraTrack = await getCameraOutputTrack()
+    cameraStream = new MediaStream([cameraTrack])
+    previousOutput?.stop()
+    previousRaw?.stop()
+    for (const entry of peers.values()) await syncPeerMedia(entry)
+    emit('media')
+  }
+
+  const setRaiseHand = async raised => connection?.invoke('SetRaiseHand', roomId, Boolean(raised))
+  const sendReaction = async emoji => connection?.invoke('SendCallReaction', roomId, emoji)
+  const publishSpeakerState = async speaking => connection?.invoke('PublishSpeakerState', roomId, Boolean(speaking))
+  const muteParticipant = async id => connection?.invoke('MuteParticipant', roomId, id)
+  const lowerParticipantHand = async id => connection?.invoke('LowerParticipantHand', roomId, id)
+  const removeParticipant = async id => connection?.invoke('RemoveParticipant', roomId, id)
+
   const setCameraBackgroundEffect = async effect => {
     const nextEffect = normalizeBackgroundEffect(effect)
     if (nextEffect === backgroundEffect && (!nextEffect || backgroundProcessor?.isActive?.())) return
@@ -506,18 +612,24 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       return
     }
     const outputTrack = await getCameraOutputTrack()
+    const previousTrack = cameraTrack
     cameraTrack = outputTrack
-    await replaceVideoTrack(cameraTrack)
+    if (cameraStream) {
+      if (previousTrack) cameraStream.removeTrack(previousTrack)
+      cameraStream.addTrack(cameraTrack)
+    }
+    for (const entry of peers.values()) await syncPeerMedia(entry)
     await sendMediaState()
     emit('media')
   }
 
   const stopScreenShare = async () => {
+    if (screenTrack) screenTrack.onended = null
     screenTrack?.stop()
     screenTrack = null
+    screenStream = null
     screenSharing = false
-    if (preShareCameraEnabled) await setCameraEnabled(true)
-    else await replaceVideoTrack(null)
+    for (const entry of peers.values()) await syncPeerMedia(entry)
     await sendMediaState()
     emit('media')
   }
@@ -528,11 +640,9 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
       screenTrack = stream.getVideoTracks()[0]
-      preShareCameraEnabled = cameraEnabled
-      if (cameraEnabled) await setCameraEnabled(false)
-      cameraEnabled = false
+      screenStream = stream
       screenSharing = true
-      await replaceVideoTrack(screenTrack)
+      for (const entry of peers.values()) await syncPeerMedia(entry)
       screenTrack.onended = () => { void stopScreenShare() }
       await sendMediaState()
       emit('media')
@@ -579,7 +689,9 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       localStream = null
       cameraTrack = null
       rawCameraTrack = null
+      cameraStream = null
       screenTrack = null
+      screenStream = null
       participants.clear()
       remoteStreams.clear()
       connection = null
@@ -594,6 +706,15 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     start,
     leave,
     setMicrophoneEnabled,
+    enumerateDevices,
+    setMicrophoneDevice,
+    setCameraDevice,
+    setRaiseHand,
+    sendReaction,
+    publishSpeakerState,
+    muteParticipant,
+    lowerParticipantHand,
+    removeParticipant,
     setCameraEnabled,
     setCameraBackgroundEffect,
     toggleScreenShare,
@@ -602,7 +723,9 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       'RespondToAiConsent', roomId, state?.callSessionId || state?.CallSessionId,
       state?.consentGeneration || state?.ConsentGeneration, accepted),
     stopAiTranscription: async () => connection?.invoke('StopAiTranscription', roomId),
-    getLocalStream: () => localStream,
+    getLocalStream: () => cameraStream || localStream,
+    getLocalCameraStream: () => cameraStream,
+    getLocalScreenStream: () => screenStream,
     getRoomId: () => roomId,
     getConnectionId: localConnectionId,
     getMediaState: () => ({ microphoneEnabled, cameraEnabled, screenSharing, backgroundEffect })

@@ -8,6 +8,11 @@ public static class CallRealtimeEvents
     public const string WebRtcAnswer = nameof(WebRtcAnswer);
     public const string IceCandidate = nameof(IceCandidate);
     public const string ParticipantMediaStateChanged = nameof(ParticipantMediaStateChanged);
+    public const string ParticipantHandChanged = nameof(ParticipantHandChanged);
+    public const string CallReactionAdded = nameof(CallReactionAdded);
+    public const string ParticipantSpeakerChanged = nameof(ParticipantSpeakerChanged);
+    public const string ForceMuteParticipant = nameof(ForceMuteParticipant);
+    public const string ForceRemovedFromCall = nameof(ForceRemovedFromCall);
     public const string CallRoomStateChanged = nameof(CallRoomStateChanged);
     public const string AiConsentRequested = nameof(AiConsentRequested);
     public const string AiParticipantAccepted = nameof(AiParticipantAccepted);
@@ -48,7 +53,14 @@ public sealed record CallParticipantDto(
     string? AvatarUrl,
     bool MicrophoneEnabled,
     bool CameraEnabled,
-    bool ScreenSharing);
+    bool ScreenSharing,
+    bool HandRaised = false,
+    bool IsSpeaking = false,
+    string Role = "participant");
+
+public sealed record CallParticipantHandChangedDto(string ConnectionId, Guid UserId, bool HandRaised);
+public sealed record CallReactionDto(string Id, string ConnectionId, Guid UserId, string DisplayName, string Emoji, DateTimeOffset CreatedAt);
+public sealed record CallParticipantSpeakerChangedDto(string ConnectionId, Guid UserId, bool IsSpeaking);
 
 public sealed record CallRoomSnapshotDto(
     string RoomId,
