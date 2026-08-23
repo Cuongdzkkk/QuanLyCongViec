@@ -4,5 +4,5 @@ export const SIGNALR_SERVER_TIMEOUT_MS = 60000
 
 export const configureRealtimeHub = builder => builder
   .withAutomaticReconnect(SIGNALR_RECONNECT_DELAYS_MS)
-  .withKeepAliveIntervalInMilliseconds(SIGNALR_KEEP_ALIVE_MS)
-  .withServerTimeoutInMilliseconds(SIGNALR_SERVER_TIMEOUT_MS)
+  .withKeepAliveInterval(SIGNALR_KEEP_ALIVE_MS)
+  .withServerTimeout(SIGNALR_SERVER_TIMEOUT_MS)
