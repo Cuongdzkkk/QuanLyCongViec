@@ -16,10 +16,10 @@ export const getMeetingLayoutMode = ({
   hasPresenter,
   presentationFocused,
   focusedParticipantId,
-  visibleParticipantCount
+  participantCount
 }) => {
   if (hasPresenter) return presentationFocused ? 'PRESENTATION_FOCUS' : 'PRESENTATION'
-  if (focusedParticipantId && visibleParticipantCount > 0) return 'CAMERA_FOCUS'
+  if (focusedParticipantId && participantCount > 0) return 'CAMERA_FOCUS'
   return 'CAMERA_GRID'
 }
 
@@ -31,20 +31,18 @@ export const getMeetingVisualRegions = mode => mode.startsWith('PRESENTATION')
 
 export const getMeetingRenderCollections = ({
   mode,
-  visibleParticipants = [],
-  allParticipants = [],
+  participantsInCall = [],
   focusedParticipantId = ''
 }) => {
-  const uniqueVisibleParticipants = dedupeParticipantsByUser(visibleParticipants)
-  const uniqueAllParticipants = dedupeParticipantsByUser(allParticipants)
-  const focusedParticipant = uniqueVisibleParticipants.find(participant =>
+  const uniqueParticipantsInCall = dedupeParticipantsByUser(participantsInCall)
+  const focusedParticipant = uniqueParticipantsInCall.find(participant =>
     participant.connectionId === focusedParticipantId
   )
 
   if (mode === 'CAMERA_FOCUS' && focusedParticipant) {
     return {
       cameraStageParticipants: [focusedParticipant],
-      cameraRailParticipants: uniqueVisibleParticipants.filter(participant =>
+      cameraRailParticipants: uniqueParticipantsInCall.filter(participant =>
         participant.connectionId !== focusedParticipant.connectionId
       ),
       presentationRailParticipants: []
@@ -55,12 +53,12 @@ export const getMeetingRenderCollections = ({
     return {
       cameraStageParticipants: [],
       cameraRailParticipants: [],
-      presentationRailParticipants: uniqueAllParticipants
+      presentationRailParticipants: uniqueParticipantsInCall
     }
   }
 
   return {
-    cameraStageParticipants: uniqueVisibleParticipants,
+    cameraStageParticipants: uniqueParticipantsInCall,
     cameraRailParticipants: [],
     presentationRailParticipants: []
   }

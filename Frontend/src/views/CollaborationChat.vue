@@ -305,7 +305,7 @@
                 </button>
               </div>
             </template>
-            <div v-else-if="hasVisibleCallVideo" class="call-camera-stage" :class="`layout-${callLayoutMode.toLowerCase()}`" aria-label="Camera participants">
+            <div v-else-if="hasCallParticipants" class="call-camera-stage" :class="`layout-${callLayoutMode.toLowerCase()}`" aria-label="Call participants">
               <article
                 v-for="user in cameraStageParticipants"
                 :key="`stage-${user.connectionId}`"
@@ -319,7 +319,7 @@
                 @keydown.space.prevent="focusParticipant(user.connectionId)"
               >
                 <video
-                  v-if="user.connectionId === callConnectionId"
+                  v-if="user.connectionId === callConnectionId && isParticipantVideoVisible(user)"
                   :ref="el => setLocalVideoElement(el, 'stage')"
                   autoplay
                   playsinline
@@ -327,11 +327,21 @@
                   :style="{ transform: isSharingScreen ? 'none' : 'scaleX(-1)' }"
                 ></video>
                 <video
-                  v-else
+                  v-else-if="user.connectionId !== callConnectionId && isParticipantVideoVisible(user)"
                   :ref="el => setRemoteVideoElement(el, user.connectionId, 'stage')"
                   autoplay
                   playsinline
                 ></video>
+                <div v-else class="call-camera-stage-avatar" aria-hidden="true">
+                  <el-avatar :size="72" :src="user.connectionId === callConnectionId ? currentUser.avatar : user.avatarUrl">
+                    {{ (user.connectionId === callConnectionId ? currentUser.name : user.displayName)?.charAt(0) }}
+                  </el-avatar>
+                </div>
+                <audio
+                  v-if="user.connectionId !== callConnectionId && remoteStreams.has(user.connectionId)"
+                  :ref="el => setRemoteAudioElement(el, user.connectionId)"
+                  autoplay
+                ></audio>
                 <span class="call-camera-stage-label">
                   {{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}
                   <span v-if="user.handRaised" class="call-hand-indicator" title="Đang giơ tay"><i class="fa-solid fa-hand" aria-hidden="true"></i><span>Đang giơ tay</span></span>
@@ -1578,25 +1588,23 @@ const isParticipantVideoVisible = user => user.connectionId === callConnectionId
   ? isCallCameraOn.value && hasLiveVideoTrack(localCallStream.value)
   : user.cameraEnabled && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId)?.cameraStream)
 const isParticipantSpeaking = user => user.isSpeaking === true || user.speaking === true || user.activeSpeaker === true
-const uniqueCallParticipants = computed(() => dedupeParticipantsByUser(callParticipants.value, callConnectionId.value))
-const visibleCallParticipants = computed(() => uniqueCallParticipants.value.filter(isParticipantVideoVisible))
-const focusedVideoParticipant = computed(() => uniqueCallParticipants.value.find(user =>
-  user.connectionId === focusedParticipantConnectionId.value && isParticipantVideoVisible(user)
+const participantsInCall = computed(() => dedupeParticipantsByUser(callParticipants.value, callConnectionId.value))
+const focusedCallParticipant = computed(() => participantsInCall.value.find(user =>
+  user.connectionId === focusedParticipantConnectionId.value
 ))
-const hasVisibleCallVideo = computed(() => visibleCallParticipants.value.length > 0)
+const hasCallParticipants = computed(() => participantsInCall.value.length > 0)
 const callLayoutMode = computed(() => {
   return getMeetingLayoutMode({
     hasPresenter: Boolean(activePresenter.value),
     presentationFocused: presentationFocused.value,
-    focusedParticipantId: focusedVideoParticipant.value?.connectionId || '',
-    visibleParticipantCount: visibleCallParticipants.value.length
+    focusedParticipantId: focusedCallParticipant.value?.connectionId || '',
+    participantCount: participantsInCall.value.length
   })
 })
 const meetingRenderCollections = computed(() => getMeetingRenderCollections({
   mode: callLayoutMode.value,
-  visibleParticipants: visibleCallParticipants.value,
-  allParticipants: uniqueCallParticipants.value,
-  focusedParticipantId: focusedVideoParticipant.value?.connectionId || ''
+  participantsInCall: participantsInCall.value,
+  focusedParticipantId: focusedCallParticipant.value?.connectionId || ''
 }))
 const cameraStageParticipants = computed(() => meetingRenderCollections.value.cameraStageParticipants)
 const callRailParticipants = computed(() => [
@@ -1610,7 +1618,7 @@ const callLayoutClasses = computed(() => ({
 }))
 const focusParticipant = connectionId => {
   const participant = callParticipants.value.find(user => user.connectionId === connectionId)
-  if (!participant || !isParticipantVideoVisible(participant)) return
+  if (!participant) return
   focusedParticipantConnectionId.value = focusedParticipantConnectionId.value === connectionId ? '' : connectionId
 }
 
@@ -5193,6 +5201,16 @@ const fetchProjectMembers = async () => {
   height: 100%;
   min-height: 260px;
   object-fit: cover;
+}
+
+.call-camera-stage-avatar {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  align-items: center;
+  justify-content: center;
+  background: #0b1220;
 }
 
 .call-camera-stage-label {
