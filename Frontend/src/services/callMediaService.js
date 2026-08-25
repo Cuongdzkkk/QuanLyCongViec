@@ -365,10 +365,12 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     recoveryAttempts += 1
     closePeer(connectionId)
     await new Promise(resolve => setTimeout(resolve, 250 * recoveryAttempts))
-    if (!intentionalLeave && participants.has(connectionId)) await createPeer(connectionId)
+    if (!intentionalLeave && participants.has(connectionId)) {
+      await createPeer(connectionId, { initiate: `${localConnectionId()}` < `${connectionId}` })
+    }
   }
 
-  const createPeer = async (connectionId) => {
+  const createPeer = async (connectionId, { initiate = false } = {}) => {
     if (!connectionId || connectionId === localConnectionId()) return null
     if (!joinedAck) return null
     if (peers.has(connectionId)) return peers.get(connectionId)
@@ -378,6 +380,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       makingOffer: false,
       ignoreOffer: false,
       isSettingRemoteAnswerPending: false,
+      initialNegotiationComplete: false,
+      initiateInitialOffer: initiate,
       polite: isPolite(connectionId),
       audioTransceiver: null,
       cameraTransceiver: null,
@@ -395,16 +399,18 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       if (candidate) void sendSignal('SendIceCandidate', connectionId, candidate)
     }
     entry.pc.ontrack = ({ streams, track }) => updateRemoteStreams(connectionId, entry, streams, track)
-    entry.pc.onnegotiationneeded = () => negotiate(entry)
+    entry.pc.onnegotiationneeded = () => {
+      if (entry.initialNegotiationComplete || entry.initiateInitialOffer) void negotiate(entry)
+    }
     entry.pc.onconnectionstatechange = () => {
       if (['failed', 'disconnected'].includes(entry.pc.connectionState)) void recoverPeer(connectionId)
       if (entry.pc.connectionState === 'connected') recoveryAttempts = 0
     }
     await syncPeerMedia(entry)
-    // addTransceiver() can raise `negotiationneeded` before the handler is
-    // installed. Explicitly negotiate the freshly-created peer so an
-    // existing presenter offers its camera/screen tracks to late joiners.
-    await negotiate(entry)
+    // The existing room member receives ParticipantJoined and creates the
+    // pair's single initial offer. The joiner's snapshot-created peer waits
+    // for it, avoiding the duplicate offer added after the known-good flow.
+    if (entry.initiateInitialOffer) await negotiate(entry)
     return entry
   }
 
@@ -430,6 +436,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       description: entry.pc.localDescription,
       mediaSources: getLocalMediaSources()
     })
+    entry.initialNegotiationComplete = true
   }
 
   const applyAnswer = async message => {
@@ -445,6 +452,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     if (entry && description) {
       await entry.pc.setRemoteDescription(description)
       for (const candidate of entry.pendingCandidates.splice(0)) await entry.pc.addIceCandidate(candidate)
+      entry.initialNegotiationComplete = true
     }
   }
 
@@ -496,7 +504,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       const participant = normalizeParticipant(read(event, 'participant', 'Participant'))
       participants.set(participant.connectionId, participant)
       emitParticipants()
-      await createPeer(participant.connectionId)
+      await createPeer(participant.connectionId, { initiate: true })
     })
     connection.on('ParticipantLeft', event => {
       const connectionId = read(event, 'connectionId', 'ConnectionId')
