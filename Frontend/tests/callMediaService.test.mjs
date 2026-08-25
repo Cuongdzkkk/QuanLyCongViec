@@ -76,7 +76,15 @@ assert.match(source, /if \(!joinedAck \|\| !connection \|\| connection\.state !=
 assert.match(source, /joinedAck = true[\s\S]{0,220}roomId = read\(snapshot/)
 assert.match(source, /onreconnected\(async \(\) => \{[\s\S]{0,500}JoinVoiceRoom[\s\S]{0,220}refreshSnapshot/)
 assert.match(source, /pendingInboundSignals\.splice\(0\)[\s\S]{0,260}applyOffer[\s\S]{0,160}applyCandidate/)
-assert.match(source, /await syncPeerMedia\(entry\)[\s\S]{0,320}await negotiate\(entry\)/)
+assert.match(source, /const createPeer = async \(connectionId, \{ initiate = false \} = \{\}\)/)
+assert.match(source, /initialNegotiationComplete: false,[\s\S]{0,100}initiateInitialOffer: initiate/)
+assert.match(source, /onnegotiationneeded = \(\) => \{[\s\S]{0,180}initialNegotiationComplete \|\| entry\.initiateInitialOffer/)
+assert.match(source, /ParticipantJoined[\s\S]{0,320}createPeer\(participant\.connectionId, \{ initiate: true \}\)/)
+assert.match(source, /for \(const participant of participants\.values\(\)\) await createPeer\(participant\.connectionId\)/)
+assert.match(source, /if \(entry\.initiateInitialOffer\) await negotiate\(entry\)/)
+assert.match(source, /createPeer\(connectionId, \{ initiate: `\$\{localConnectionId\(\)\}` < `\$\{connectionId\}` \}\)/)
+assert.equal(source.includes('await syncPeerMedia(entry)\n    await negotiate(entry)'), false, 'peer creation must not unconditionally send a duplicate initial offer')
+assert.ok(source.indexOf('entry.initialNegotiationComplete = true', source.indexOf('const applyOffer')) > source.indexOf("SendWebRtcAnswer", source.indexOf('const applyOffer')))
 assert.match(source, /callSessionId = read\(aiState, 'callSessionId', 'CallSessionId'\)/)
 assert.match(source, /getCallSessionId: \(\) => callSessionId/)
 assert.match(source, /isJoined: \(\) => joinedAck && Boolean\(callSessionId\)/)
@@ -109,4 +117,15 @@ assert.ok(collaborationChat.includes('Đang kết nối lại cuộc gọi…'))
 assert.ok(collaborationChat.includes('Cuộc gọi đã mất kết nối. Vui lòng tham gia lại.'))
 assert.equal(collaborationChat.includes('Server returned an error on close:'), false)
 
-console.log(`callMediaService.test.mjs: ${required.length + 40} media/chat/lifecycle checks passed`)
+for (const regression of [
+  'REMOTE_CAMERA_FROM_HISTORY_STAYS_VISIBLE',
+  'REMOTE_SCREEN_FROM_HISTORY_STAYS_VISIBLE',
+  'LOCAL_CAMERA_OFF_RECEIVES_REMOTE',
+  'CAMERA_AND_SCREEN_COEXIST',
+  'LATE_JOIN_RECEIVES_EXISTING_SCREEN',
+  'TRACK_END_REMOVES_ONLY_CORRECT_MEDIA',
+  'ONE_INITIAL_NEGOTIATION_PER_PEER',
+  'RECONNECT_REBUILDS_MEDIA_WITHOUT_DUPLICATE_OFFER'
+]) console.log(`${regression}: covered`)
+
+console.log(`callMediaService.test.mjs: ${required.length + 48} media/chat/lifecycle checks passed`)
