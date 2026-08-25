@@ -50,4 +50,37 @@ public sealed class CallStt1ProviderTests
         result.IsFinal.Should().BeTrue();
         result.IsUtteranceFinal.Should().BeTrue();
     }
+
+    [Theory]
+    [InlineData("vi")]
+    [InlineData("en")]
+    public void ConfiguredProvider_supportsOnlyTheAdvertisedProductionLanguages(string language)
+    {
+        var options = new CallTranscriptionOptions
+        {
+            Enabled = true,
+            Provider = "Deepgram",
+            Language = language,
+            SupportedLanguages = ["vi", "en"],
+            Deepgram = new DeepgramCallTranscriptionOptions { ApiKey = "test-only" }
+        };
+
+        options.IsConfigured.Should().BeTrue();
+        options.SupportedLanguages.Should().Equal("vi", "en");
+    }
+
+    [Fact]
+    public void UnsupportedLanguage_keepsProviderUnavailable()
+    {
+        var options = new CallTranscriptionOptions
+        {
+            Enabled = true,
+            Provider = "Deepgram",
+            Language = "auto",
+            SupportedLanguages = ["vi", "en", "auto"],
+            Deepgram = new DeepgramCallTranscriptionOptions { ApiKey = "test-only" }
+        };
+
+        options.IsConfigured.Should().BeFalse();
+    }
 }

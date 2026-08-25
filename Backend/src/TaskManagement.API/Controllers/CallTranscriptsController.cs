@@ -13,13 +13,39 @@ public sealed class CallTranscriptsController : ControllerBase
 {
     private readonly ICallRoomAuthorizationService _authorization;
     private readonly ICallTranscriptService _transcripts;
+    private readonly IMeetingAiAnalysisService? _meetingAi;
 
     public CallTranscriptsController(
         ICallRoomAuthorizationService authorization,
-        ICallTranscriptService transcripts)
+        ICallTranscriptService transcripts,
+        IMeetingAiAnalysisService? meetingAi = null)
     {
         _authorization = authorization;
         _transcripts = transcripts;
+        _meetingAi = meetingAi;
+    }
+
+    [HttpGet("ai-report")]
+    public async Task<ActionResult<MeetingAiReportDto>> GetAiReport(
+        Guid projectId,
+        string voiceChannelId,
+        Guid callSessionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(voiceChannelId) || voiceChannelId.Length > 200) return BadRequest();
+        try
+        {
+            await _authorization.AuthorizeVoiceRoomJoinAsync(projectId, userId, cancellationToken);
+            var report = _meetingAi is null ? null : await _meetingAi.GetAsync(callSessionId, cancellationToken);
+            if (report is null || report.ProjectId != projectId || !string.Equals(report.VoiceChannelId, voiceChannelId, StringComparison.OrdinalIgnoreCase))
+                return NotFound();
+            return Ok(report);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
     }
 
     [HttpGet]

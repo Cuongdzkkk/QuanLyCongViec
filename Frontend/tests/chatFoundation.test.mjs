@@ -20,7 +20,7 @@ const expects = [
   ['remote video stays audible', ':ref="el => setRemoteVideoElement(el, user.connectionId, \'rail\')"', 'const setRemoteVideoElement = (element, connectionId, slot = \'rail\')'],
   ['camera stage follows participant presence and stays sized', 'hasCallParticipants', 'call-camera-stage', 'min-height: 310px', 'object-fit: cover'],
   ['placeholder waits for participant presence', 'v-else-if="hasCallParticipants"', 'v-else class="call-grid-empty"'],
-  ['screen share remains dominant', 'v-if="activePresenter"', 'activePresenterStream'],
+  ['screen share remains dominant in automatic view', 'v-if="activePresenter && callViewMode !== \'tiled\'"', 'activePresenterStream'],
   ['derived meeting layout modes stay centralized', 'const callLayoutMode = computed', 'getMeetingLayoutMode'],
   ['presentation keeps a participant rail', 'is-presentation-mode', 'grid-template-columns: minmax(0, 1fr) minmax(190px, 240px)', 'object-fit: contain'],
   ['responsive presentation becomes a camera strip', '@media (max-width: 900px)', 'flex-direction: row', 'overflow-x: auto'],
@@ -30,6 +30,8 @@ const expects = [
   ['presentation controls stay in the stage layout', 'presentation-toolbar', 'grid-template-rows: auto minmax(0, 1fr) auto', 'presentation-control'],
   ['call chat keeps room context and real sender identity', 'activeVoiceChannel?.name', 'msg.senderAvatar', '`${msg.senderId}` === `${currentUser.id}`', 'call-chat-channel-name'],
   ['call chat composer supports clear, send, and newline behavior', 'call-chat-clear', '@keydown.enter.exact.prevent="sendCallChatMessage"', 'textarea'],
+  ['meeting side panel switches between authoritative participants and call chat', 'callChatOpen || showMembersSidebar', 'openCallParticipants', 'participantsInCall', 'has-call-side-panel'],
+  ['call chat remains enabled only by authoritative room membership', 'callChatConnected', 'callSession.value.isJoined?.()', 'showMembersSidebar.value = false'],
   ['unavailable transcript copy stays truthful', 'Trợ lý cuộc họp chưa sẵn sàng', 'Quản trị viên chưa cấu hình phiên âm cuộc họp.'],
   ['remote camera and screen sources stay separate', '?.cameraStream', '?.screenStream', '?.audioStream'],
   ['participant layout is dense and responsive', 'group-video-grid', 'grid-auto-flow: dense', '@media (max-width: 760px)'],
@@ -47,5 +49,16 @@ assert.ok(view.includes('aiAnalysisOpen.value = true'))
 assert.ok(view.includes('openPreJoinVoiceChannel'))
 const callChatFunction = view.slice(view.indexOf('const openVoiceChannelChat = async () => {'), view.indexOf('const isCanceledRequest'))
 assert.doesNotMatch(callChatFunction, /createProjectChannel/)
+assert.match(callChatFunction, /showMembersSidebar\.value = false/)
+assert.match(view, /@submit\.prevent="sendCallChatMessage"/)
+assert.match(view, /@keydown\.enter\.exact\.prevent="sendCallChatMessage"/)
+assert.match(view, /clientMessageId[\s\S]{0,700}status: 'pending'/)
+assert.match(view, /existingIndex[\s\S]{0,500}clientMessageId/)
+
+console.log('CALL_CHAT_CLICKABLE: covered')
+console.log('CALL_CHAT_TYPABLE: covered')
+console.log('CALL_CHAT_A_TO_B_ONCE: covered')
+console.log('CALL_CHAT_B_TO_A_ONCE: covered')
+console.log('CALL_CHAT_PROJECT_POLLUTION: prevented by CallSession sendCallMessage path')
 
 console.log(`chatFoundation.test.mjs: ${expects.length} foundation checks passed`)

@@ -10,7 +10,8 @@ public sealed record CallAudioChunk(
     DateTimeOffset StartedAt,
     DateTimeOffset EndedAt,
     long ConsentGeneration,
-    string? SpeakerConnectionId = null);
+    string? SpeakerConnectionId = null,
+    string Language = "vi");
 
 public sealed record CallTranscriptionResult(
     string Text,

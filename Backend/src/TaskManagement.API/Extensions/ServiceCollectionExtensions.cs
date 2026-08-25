@@ -64,6 +64,7 @@ namespace TaskManagement.API.Extensions
             services.AddSingleton<ICallTranscriptionProvider>(_ => callTranscriptionOptions.IsConfigured
                 ? new DeepgramCallTranscriptionProvider(callTranscriptionOptions, _.GetRequiredService<ICallTranscriptionUsageSink>())
                 : new UnavailableCallTranscriptionProvider());
+            services.AddSingleton<IMeetingAiAnalysisService, MeetingAiAnalysisService>();
             services.AddSingleton<ICollaborationRealtimePublisher, TaskManagement.API.Services.ChatRealtimePublisher>();
             services.AddScoped<TaskManagement.API.Services.ICollaborationAttachmentStorage, TaskManagement.API.Services.CollaborationAttachmentStorage>();
             services.AddScoped<ITaskDependencyService, TaskDependencyService>();

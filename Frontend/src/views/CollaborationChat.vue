@@ -1,5 +1,5 @@
 <template>
-  <main class="chat-container chat-workspace" :class="{ 'has-context-panel': showMembersSidebar, 'is-sidebar-open': sidebarOpen }" aria-label="Không gian cộng tác SprintA">
+  <main class="chat-container chat-workspace" :class="{ 'has-context-panel': showMembersSidebar && !showVoiceCallMain, 'is-sidebar-open': sidebarOpen }" aria-label="Không gian cộng tác SprintA">
     <!-- Project scope sidebar for real collaboration channels -->
     <nav class="server-bar" aria-label="Project spaces">
       <div class="rail-caption">PROJECTS</div>
@@ -256,12 +256,12 @@
             </div>
           </div>
           <div class="header-actions">
-            <button type="button" class="ai-entry-button" :class="{ 'is-open': callAiState.state !== 'OFF' }" :aria-label="callAiButtonLabel" :title="callAiButtonLabel" @click="requestCallAi">
+            <button type="button" class="ai-entry-button" :class="{ 'is-open': callAiState.state !== 'OFF' }" :disabled="!callTranscriptionCapabilities.configured" :aria-label="callAiButtonLabel" :title="callAiButtonLabel" @click="requestCallAi">
               <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-              <span>{{ callAiStateLabel }}</span>
-              <span class="ai-off-state">{{ callAiState.state === 'OFF' ? 'Bật thủ công' : 'Consent' }}</span>
+              <span>Biên bản</span>
+              <span class="ai-off-state">{{ callTranscriptionCapabilities.configured ? callAiStateLabel : 'Chưa cấu hình' }}</span>
             </button>
-            <button type="button" class="action-btn" aria-label="Mở panel cuộc gọi" title="Mở panel cuộc gọi" @click="toggleContextPanel">
+            <button type="button" class="action-btn" aria-label="Mở danh sách người tham gia" title="Người tham gia" @click="openCallParticipants">
               <i class="fa-solid fa-layout-sidebar" aria-hidden="true"></i>
             </button>
             <button 
@@ -275,9 +275,9 @@
           </div>
         </header>
 
-        <div ref="meetingShell" class="call-workspace-body" :class="callLayoutClasses">
+        <div ref="meetingShell" class="call-workspace-body" :class="callLayoutClasses" @pointerdown.capture="resumeBlockedCallMedia">
           <section ref="presentationStage" class="call-presentation-stage" :class="{ 'is-focused': presentationFocused, 'is-fullscreen': presentationIsFullscreen }" :data-layout-mode="callLayoutMode" aria-label="Presentation stage">
-            <template v-if="activePresenter">
+            <template v-if="activePresenter && callViewMode !== 'tiled'">
               <div class="presentation-heading">
                 <span class="presentation-live-dot" aria-hidden="true"></span>
                 <strong>{{ activePresenter.displayName }} đang chia sẻ màn hình</strong>
@@ -305,7 +305,7 @@
                 </button>
               </div>
             </template>
-            <div v-else-if="hasCallParticipants" class="call-camera-stage" :class="`layout-${callLayoutMode.toLowerCase()}`" aria-label="Call participants">
+            <div v-else-if="hasCallParticipants" class="call-camera-stage" :class="`layout-${callLayoutMode.toLowerCase()}`" :data-participant-count="cameraStageParticipants.length" aria-label="Call participants">
               <article
                 v-for="user in cameraStageParticipants"
                 :key="`stage-${user.connectionId}`"
@@ -339,18 +339,23 @@
                 </div>
                 <audio
                   v-if="user.connectionId !== callConnectionId && remoteStreams.has(user.connectionId)"
-                  :ref="el => setRemoteAudioElement(el, user.connectionId)"
+                  :ref="el => setRemoteAudioElement(el, user.connectionId, 'stage')"
                   autoplay
                 ></audio>
                 <span class="call-camera-stage-label">
                   {{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}
                   <span v-if="user.handRaised" class="call-hand-indicator" title="Đang giơ tay"><i class="fa-solid fa-hand" aria-hidden="true"></i><span>Đang giơ tay</span></span>
                 </span>
+                <span v-if="!user.microphoneEnabled" class="call-camera-stage-muted" title="Đang tắt micro" aria-label="Đang tắt micro"><i class="fa-solid fa-microphone-slash" aria-hidden="true"></i></span>
               </article>
             </div>
             <div v-else class="call-grid-empty" aria-live="polite">
               <i class="fa-solid fa-users-viewfinder" aria-hidden="true"></i>
               <span>Camera của người tham gia sẽ xuất hiện ở đây</span>
+            </div>
+            <div v-if="captionsEnabled && latestCallCaption.text" class="call-live-caption" aria-live="polite" aria-atomic="true">
+              <strong>{{ latestCallCaption.speakerDisplayName }}</strong>
+              <span>{{ latestCallCaption.text }}</span>
             </div>
           </section>
 
@@ -387,7 +392,7 @@
                 </el-avatar>
                 <audio
                   v-if="user.connectionId !== callConnectionId && remoteStreams.has(user.connectionId)"
-                  :ref="el => setRemoteAudioElement(el, user.connectionId)"
+                  :ref="el => setRemoteAudioElement(el, user.connectionId, 'rail')"
                   autoplay
                 ></audio>
               </div>
@@ -429,6 +434,22 @@
             <div v-else class="call-transcript-paused">
               <strong>{{ callAiState.state === 'ERROR' ? 'Không thể khởi động phiên âm' : 'AI đang tắt' }}</strong>
             </div>
+            <section v-if="callTranscriptionCapabilities.aiConfigured" class="meeting-ai-report" aria-label="AI meeting report">
+              <div class="meeting-ai-report-heading">
+                <strong>Phân tích AI</strong>
+                <span>{{ callMeetingAiReport?.status || 'Đang chờ đủ nội dung' }}</span>
+              </div>
+              <template v-if="callMeetingAiReport?.state">
+                <p v-if="callMeetingAiReport.state.meetingSummaryDraft" class="meeting-ai-summary">{{ callMeetingAiReport.state.meetingSummaryDraft }}</p>
+                <div v-if="callMeetingAiReport.state.decisions?.length" class="meeting-ai-group"><strong>Quyết định</strong><ul><li v-for="item in callMeetingAiReport.state.decisions" :key="item.text"><span>{{ item.text }}</span><small v-if="formatAiEvidence(item.evidenceChunkIds)">{{ formatAiEvidence(item.evidenceChunkIds) }}</small></li></ul></div>
+                <div v-if="callMeetingAiReport.state.actionItems?.length" class="meeting-ai-group"><strong>Việc đề xuất — cần duyệt</strong><ul><li v-for="item in callMeetingAiReport.state.actionItems" :key="item.task"><span>{{ item.task }}<small v-if="item.proposedOwner"> · {{ item.proposedOwner }}</small></span><small v-if="formatAiEvidence(item.evidenceChunkIds)">{{ formatAiEvidence(item.evidenceChunkIds) }}</small></li></ul></div>
+                <div v-if="callMeetingAiReport.state.blockers?.length" class="meeting-ai-group"><strong>Trở ngại</strong><ul><li v-for="item in callMeetingAiReport.state.blockers" :key="item.text"><span>{{ item.text }}</span><small v-if="formatAiEvidence(item.evidenceChunkIds)">{{ formatAiEvidence(item.evidenceChunkIds) }}</small></li></ul></div>
+                <div v-if="callMeetingAiReport.state.risks?.length" class="meeting-ai-group"><strong>Rủi ro</strong><ul><li v-for="item in callMeetingAiReport.state.risks" :key="item.text"><span>{{ item.text }}</span><small v-if="formatAiEvidence(item.evidenceChunkIds)">{{ formatAiEvidence(item.evidenceChunkIds) }}</small></li></ul></div>
+                <div v-if="callMeetingAiReport.state.openQuestions?.length" class="meeting-ai-group"><strong>Câu hỏi mở</strong><ul><li v-for="item in callMeetingAiReport.state.openQuestions" :key="item.text"><span>{{ item.text }}</span><small v-if="formatAiEvidence(item.evidenceChunkIds)">{{ formatAiEvidence(item.evidenceChunkIds) }}</small></li></ul></div>
+              </template>
+              <small class="meeting-ai-review-note">AI không tự tạo WorkItem. Mọi đề xuất cần được bạn xem lại.</small>
+            </section>
+            <div v-else-if="callTranscriptionCapabilities.configured" class="meeting-ai-unavailable">Phân tích AI chưa được cấu hình. Phiên âm vẫn hoạt động độc lập.</div>
             <div class="call-transcript-list" aria-live="polite">
               <div v-for="chunk in callTranscriptChunks" :key="chunk.id" class="call-transcript-chunk">
                 <div><time>{{ formatTime(chunk.startedAt) }}</time><strong>{{ chunk.speakerDisplayName }}</strong></div>
@@ -504,8 +525,12 @@
                 <i class="fa-solid fa-message" aria-hidden="true"></i><span>Chat</span>
               </button>
 
-              <button type="button" class="call-control-label-btn" aria-label="Mở danh sách người tham gia" title="Người tham gia" :aria-pressed="showMembersSidebar" @click="toggleContextPanel">
+              <button type="button" class="call-control-label-btn" aria-label="Mở danh sách người tham gia" title="Người tham gia" :aria-pressed="showMembersSidebar" @click="openCallParticipants">
                 <i class="fa-solid fa-users" aria-hidden="true"></i><span>Người tham gia</span>
+              </button>
+
+              <button type="button" class="call-control-label-btn" :class="{ active: captionsEnabled }" :disabled="!callTranscriptionCapabilities.configured" :aria-pressed="captionsEnabled" :aria-label="captionsEnabled ? 'Tắt phụ đề' : 'Bật phụ đề'" :title="callTranscriptionCapabilities.configured ? (captionsEnabled ? 'Tắt phụ đề' : 'Bật phụ đề') : 'Phiên âm chưa được cấu hình'" @click="toggleCallCaptions">
+                <i class="fa-solid fa-closed-captioning" aria-hidden="true"></i><span>Phụ đề</span>
               </button>
 
               <div class="camera-effects-control">
@@ -514,17 +539,27 @@
                 </button>
                 <div v-if="showMoreMenu" class="call-more-menu" role="menu" aria-label="Tùy chọn cuộc gọi">
                   <template v-if="!moreMenuSection">
+                    <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'view-mode'"><span>Chế độ xem</span><small>{{ callViewModeLabel }}</small></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'reactions'"><span>Phản ứng</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="openCallDevicesMenu"><span>Thiết bị</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'effects'"><span>Hiệu ứng hình ảnh</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="toggleCallPictureInPicture">Picture-in-picture</button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="togglePresentationFullscreen">{{ presentationIsFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình' }}</button>
-                    <button type="button" class="call-more-menu-item is-unavailable" role="menuitem" disabled title="Phụ đề chưa sẵn sàng">Phụ đề <small>Chưa sẵn sàng</small></button>
-                    <button type="button" class="call-more-menu-item is-unavailable" role="menuitem" disabled title="Phím tắt đang được hỗ trợ cho mic và camera">Phím tắt <small>Ctrl/Cmd+D · Ctrl/Cmd+E</small></button>
+                    <button type="button" class="call-more-menu-item" :class="{ 'is-unavailable': !callTranscriptionCapabilities.configured }" role="menuitem" :disabled="!callTranscriptionCapabilities.configured" @click="moreMenuSection = 'captions'"><span>Phụ đề</span><small>{{ callTranscriptionCapabilities.configured ? callCaptionLanguageLabel : 'Chưa cấu hình' }}</small></button>
+                    <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'shortcuts'"><span>Phím tắt</span><small>Ctrl/Cmd+D · E</small></button>
                   </template>
                   <template v-else>
                     <button type="button" class="call-more-menu-back" @click="moreMenuSection = ''"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>Thêm</span></button>
-                    <div v-if="moreMenuSection === 'reactions'" class="call-reaction-picker" role="group" aria-label="Phản ứng">
+                    <div v-if="moreMenuSection === 'view-mode'" class="call-device-panel" role="radiogroup" aria-label="Chế độ xem">
+                      <span class="call-more-section-label">Bố cục cuộc họp</span>
+                      <button v-for="mode in callViewModes" :key="mode.value" type="button" class="call-device-option" role="radio" :aria-checked="callViewMode === mode.value" :class="{ selected: callViewMode === mode.value }" @click="setCallViewMode(mode.value)">{{ mode.label }}</button>
+                    </div>
+                    <div v-else-if="moreMenuSection === 'shortcuts'" class="call-device-panel">
+                      <span class="call-more-section-label">Phím tắt cuộc gọi</span>
+                      <span class="call-more-empty">Ctrl/Cmd + D — bật hoặc tắt microphone</span>
+                      <span class="call-more-empty">Ctrl/Cmd + E — bật hoặc tắt camera</span>
+                    </div>
+                    <div v-else-if="moreMenuSection === 'reactions'" class="call-reaction-picker" role="group" aria-label="Phản ứng">
                       <span class="call-more-section-label">Chọn một phản ứng</span>
                       <div class="call-reaction-options">
                         <button v-for="emoji in ['👍', '👏', '❤️', '😂', '🎉']" :key="emoji" type="button" class="call-reaction-option" :aria-label="`Gửi phản ứng ${emoji}`" @click="sendCallReaction(emoji)">{{ emoji }}</button>
@@ -537,6 +572,12 @@
                       <label v-if="speakerSelectionSupported" class="call-device-select">Loa<select v-model="selectedCallSpeakerId" @change="switchCallSpeaker"><option value="">Loa mặc định</option><option v-for="device in audioOutputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Loa' }}</option></select></label>
                       <span v-else class="call-more-empty">Trình duyệt chưa cho phép chọn loa.</span>
                       <span v-if="!callDevices.length" class="call-more-empty">Chưa tìm thấy thiết bị.</span>
+                    </div>
+                    <div v-else-if="moreMenuSection === 'captions'" class="call-device-panel">
+                      <span class="call-more-section-label">Ngôn ngữ phiên âm</span>
+                      <label class="call-device-select">Ngôn ngữ<select v-model="callCaptionLanguage" :disabled="callAiState.state === 'ACTIVE'" @change="setCallCaptionLanguage"><option v-for="language in callTranscriptionCapabilities.supportedLanguages" :key="language" :value="language">{{ language === 'vi' ? 'Tiếng Việt' : 'English' }}</option></select></label>
+                      <span v-if="callAiState.state === 'ACTIVE'" class="call-more-empty">Dừng biên bản trước khi đổi ngôn ngữ.</span>
+                      <button type="button" class="call-device-option" :class="{ selected: captionsEnabled }" @click="toggleCallCaptions">{{ captionsEnabled ? 'Tắt phụ đề' : 'Bật phụ đề' }}</button>
                     </div>
                     <div v-else class="call-effects-panel">
                       <span class="call-more-section-label">Hiệu ứng hình ảnh</span>
@@ -561,15 +602,30 @@
             <span v-for="reaction in callReactions" :key="reaction.id" class="call-reaction-bubble">{{ reaction.emoji }} <small>{{ reaction.displayName }}</small></span>
           </div>
           <div class="sr-only" aria-live="polite">{{ callLiveNotice }}</div>
-          <aside v-if="callChatOpen" class="call-chat-panel" aria-label="Call chat">
+          <aside v-if="callChatOpen || showMembersSidebar" class="call-chat-panel" :aria-label="callChatOpen ? 'Call chat' : 'Call participants'">
             <div class="call-chat-panel-header">
               <div class="call-chat-panel-title">
-                <span class="context-kicker">CALL CHAT</span>
+                <span class="context-kicker">MEETING</span>
                 <strong class="call-chat-channel-name" :title="activeVoiceChannel?.name || activeChannel?.name || 'Tin nhắn cuộc gọi'">{{ activeVoiceChannel?.name || activeChannel?.name || 'Tin nhắn cuộc gọi' }}</strong>
               </div>
-              <button type="button" class="context-close" aria-label="Đóng chat cuộc gọi" title="Đóng chat cuộc gọi" @click="callChatOpen = false"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+              <button type="button" class="context-close" aria-label="Đóng panel cuộc gọi" title="Đóng panel" @click="closeCallSidePanel"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
             </div>
-            <div ref="callChatThread" class="call-chat-thread">
+            <div class="context-tabs call-panel-tabs" role="tablist" aria-label="Nội dung cuộc gọi">
+              <button type="button" class="context-tab" :class="{ 'is-active': showMembersSidebar }" role="tab" :aria-selected="showMembersSidebar" @click="openCallParticipants">Người tham gia</button>
+              <button type="button" class="context-tab" :class="{ 'is-active': callChatOpen }" role="tab" :aria-selected="callChatOpen" @click="openVoiceChannelChat">Chat</button>
+            </div>
+            <div v-if="showMembersSidebar" class="context-member-list call-panel-participants">
+              <div class="context-call-summary">
+                <span class="context-status-dot"></span><div><strong>{{ activeVoiceChannel?.name }}</strong><span>{{ participantsInCall.length }} người trong phòng</span></div>
+              </div>
+              <div v-for="user in participantsInCall" :key="`call-panel-${user.connectionId}`" class="context-member-row">
+                <el-avatar :size="32" :src="user.connectionId === callConnectionId ? currentUser.avatar : user.avatarUrl">{{ (user.connectionId === callConnectionId ? currentUser.name : user.displayName)?.charAt(0) }}</el-avatar>
+                <span>{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</span>
+                <i v-if="!user.microphoneEnabled" class="fa-solid fa-microphone-slash" aria-label="Đang tắt micro"></i>
+                <i v-if="user.handRaised" class="fa-solid fa-hand call-hand-indicator" aria-label="Đang giơ tay" title="Đang giơ tay"></i>
+              </div>
+            </div>
+            <div v-if="callChatOpen" ref="callChatThread" class="call-chat-thread">
               <div v-for="msg in callChatMessages.slice(-40)" :key="`call-${msg.messageId || msg.clientMessageId}`" class="call-chat-message" :class="{ 'is-own': `${msg.senderId}` === `${currentUser.id}`, 'is-pending': msg.status === 'pending', 'is-failed': msg.status === 'failed' }">
                 <el-avatar :size="30" :src="msg.senderAvatar" :alt="`${msg.senderName} avatar`">
                   {{ msg.senderName?.charAt(0) || '?' }}
@@ -581,24 +637,11 @@
               </div>
               <span v-if="!callChatMessages.length" class="channel-utility-empty">Chưa có tin nhắn trong phòng này.</span>
             </div>
-            <form class="call-chat-composer" @submit.prevent="sendCallChatMessage">
+            <form v-if="callChatOpen" class="call-chat-composer" @submit.prevent="sendCallChatMessage">
               <textarea v-model="callChatDraft" :disabled="callChatSending || !callChatConnected" maxlength="4000" rows="1" aria-label="Nội dung chat cuộc gọi" placeholder="Gửi tin nhắn..." @keydown.enter.exact.prevent="sendCallChatMessage"></textarea>
               <button v-if="callChatDraft" type="button" class="call-chat-clear" aria-label="Xóa nội dung đang nhập" title="Xóa nội dung đang nhập" @click="callChatDraft = ''"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
               <button type="submit" :disabled="callChatSending || !callChatDraft.trim()" aria-label="Gửi tin nhắn cuộc gọi" title="Gửi tin nhắn cuộc gọi"><i :class="callChatSending ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'" aria-hidden="true"></i></button>
             </form>
-          </aside>
-          <aside v-if="presentationIsFullscreen && showMembersSidebar" class="call-fullscreen-panel" aria-label="Người tham gia cuộc gọi">
-            <div class="call-chat-panel-header">
-              <div class="call-chat-panel-title"><span class="context-kicker">MEETING</span><strong>Người tham gia</strong></div>
-              <button type="button" class="context-close" aria-label="Đóng danh sách người tham gia" title="Đóng danh sách người tham gia" @click="toggleContextPanel"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
-            </div>
-            <div class="context-member-list">
-              <div v-for="user in callParticipants" :key="`fullscreen-context-${user.connectionId}`" class="context-member-row">
-                <el-avatar :size="30" :src="user.avatarUrl">{{ user.displayName?.charAt(0) }}</el-avatar>
-                <span>{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</span>
-                <i v-if="user.handRaised" class="fa-solid fa-hand call-hand-indicator" aria-label="Đang giơ tay" title="Đang giơ tay"></i>
-              </div>
-            </div>
           </aside>
         </div>
       </template>
@@ -973,7 +1016,7 @@
         </div>
       </aside>
 
-      <aside v-if="showMembersSidebar" class="chat-context-panel" aria-label="Context panel">
+      <aside v-if="showMembersSidebar && !showVoiceCallMain" class="chat-context-panel" aria-label="Context panel">
         <div class="context-panel-header">
           <div><span class="context-kicker">CONTEXT</span><h3>{{ showVoiceCallMain && activeVoiceChannel ? 'Cuộc gọi' : 'Channel details' }}</h3></div>
           <button type="button" class="context-close" aria-label="Đóng panel context" title="Đóng panel" @click="toggleContextPanel"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
@@ -1512,6 +1555,7 @@ const presentationStage = ref(null)
 const meetingShell = ref(null)
 const presentationFocused = ref(false)
 const presentationIsFullscreen = ref(false)
+const callViewMode = ref('auto')
 const callMicrophoneEnabled = ref(true)
 const callParticipants = ref([])
 const remoteStreams = ref(new Map())
@@ -1525,10 +1569,16 @@ let callJoinPromise = null
 const callAiState = ref({ state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] })
 const callTranscriptChunks = ref([])
 const callTranscriptInterim = ref({ text: '', startedAt: '', speakerDisplayName: '' })
+const callTranscriptionCapabilities = ref({ configured: false, provider: 'Unavailable', supportedLanguages: [], defaultLanguage: 'vi', aiConfigured: false, aiProvider: 'Unavailable', aiTranscriptChunkSize: 8 })
+const callMeetingAiReport = ref(null)
+let callMeetingAiRefreshTimer = null
+const callCaptionLanguage = ref('vi')
+const captionsEnabled = ref(false)
 const localVideoElements = new Map()
 const presentationVideoElement = ref(null)
 const remoteVideoElements = new Map()
 const remoteAudioElements = new Map()
+const blockedMediaElements = new Set()
 const focusedParticipantConnectionId = ref('')
 const preJoinVoiceChannel = ref(null)
 const preJoinMicEnabled = ref(true)
@@ -1593,18 +1643,24 @@ const focusedCallParticipant = computed(() => participantsInCall.value.find(user
   user.connectionId === focusedParticipantConnectionId.value
 ))
 const hasCallParticipants = computed(() => participantsInCall.value.length > 0)
+const effectiveFocusedParticipantId = computed(() => focusedCallParticipant.value?.connectionId || (
+  ['spotlight', 'sidebar'].includes(callViewMode.value) ? participantsInCall.value[0]?.connectionId || '' : ''
+))
 const callLayoutMode = computed(() => {
+  if (callViewMode.value === 'tiled') return 'CAMERA_GRID'
+  if (callViewMode.value === 'spotlight' && activePresenter.value) return 'PRESENTATION_FOCUS'
+  if (callViewMode.value === 'sidebar' && activePresenter.value) return 'PRESENTATION'
   return getMeetingLayoutMode({
     hasPresenter: Boolean(activePresenter.value),
     presentationFocused: presentationFocused.value,
-    focusedParticipantId: focusedCallParticipant.value?.connectionId || '',
+    focusedParticipantId: effectiveFocusedParticipantId.value,
     participantCount: participantsInCall.value.length
   })
 })
 const meetingRenderCollections = computed(() => getMeetingRenderCollections({
   mode: callLayoutMode.value,
   participantsInCall: participantsInCall.value,
-  focusedParticipantId: focusedCallParticipant.value?.connectionId || ''
+  focusedParticipantId: effectiveFocusedParticipantId.value
 }))
 const cameraStageParticipants = computed(() => meetingRenderCollections.value.cameraStageParticipants)
 const callRailParticipants = computed(() => [
@@ -1614,7 +1670,8 @@ const callRailParticipants = computed(() => [
 const callLayoutClasses = computed(() => ({
   'is-presentation-mode': callLayoutMode.value.startsWith('PRESENTATION'),
   'is-camera-mode': callLayoutMode.value.startsWith('CAMERA'),
-  'is-focus-mode': callLayoutMode.value.endsWith('FOCUS')
+  'is-focus-mode': callLayoutMode.value.endsWith('FOCUS'),
+  'has-call-side-panel': callChatOpen.value || showMembersSidebar.value
 }))
 const focusParticipant = connectionId => {
   const participant = callParticipants.value.find(user => user.connectionId === connectionId)
@@ -1630,7 +1687,24 @@ const bindMediaElement = (element, stream, muted = false) => {
   if (element.srcObject !== stream) element.srcObject = stream || null
   if (stream) {
     const playback = element.play?.()
-    if (playback?.catch) void playback.catch(() => {})
+    if (playback?.then) {
+      void playback.then(() => blockedMediaElements.delete(element)).catch(error => {
+        if (error?.name === 'NotAllowedError') blockedMediaElements.add(element)
+      })
+    }
+  }
+}
+
+const resumeBlockedCallMedia = () => {
+  for (const element of [...blockedMediaElements]) {
+    const playback = element?.play?.()
+    if (!playback?.then) {
+      blockedMediaElements.delete(element)
+      continue
+    }
+    void playback.then(() => blockedMediaElements.delete(element)).catch(error => {
+      if (error?.name !== 'NotAllowedError') blockedMediaElements.delete(element)
+    })
   }
 }
 
@@ -1639,7 +1713,7 @@ const syncCallVideoElements = () => {
   for (const { connectionId, element } of remoteVideoElements.values()) {
     bindMediaElement(element, remoteStreams.value.get(connectionId)?.cameraStream, false)
   }
-  for (const [connectionId, element] of remoteAudioElements) {
+  for (const { connectionId, element } of remoteAudioElements.values()) {
     bindMediaElement(element, remoteStreams.value.get(connectionId)?.audioStream, false)
   }
   bindMediaElement(presentationVideoElement.value, activePresenterStream(), true)
@@ -1658,9 +1732,10 @@ const setRemoteVideoElement = (element, connectionId, slot = 'rail') => {
   bindMediaElement(element, remoteStreams.value.get(connectionId)?.cameraStream, false)
 }
 
-const setRemoteAudioElement = (element, connectionId) => {
-  if (element) remoteAudioElements.set(connectionId, element)
-  else remoteAudioElements.delete(connectionId)
+const setRemoteAudioElement = (element, connectionId, slot = 'rail') => {
+  const key = `${slot}:${connectionId}`
+  if (element) remoteAudioElements.set(key, { connectionId, element })
+  else remoteAudioElements.delete(key)
   bindMediaElement(element, remoteStreams.value.get(connectionId)?.audioStream, false)
 }
 
@@ -1670,14 +1745,36 @@ const setPresentationVideoElement = (element) => {
 }
 
 const callAiStateLabel = computed(() => ({
-  OFF: 'Trợ lý cuộc họp chưa sẵn sàng',
+  OFF: 'Đang tắt',
   WAITING_FOR_CONSENT: 'Đang chờ sự đồng ý',
   ACTIVE: 'AI đang ghi lời nói thành văn bản',
   PAUSED_CONSENT: 'AI đã tạm dừng — chờ đồng ý',
   STOPPING: 'Đang dừng AI',
   ERROR: 'AI gặp lỗi'
-}[callAiState.value.state] || 'Trợ lý cuộc họp chưa sẵn sàng'))
-const callAiButtonLabel = computed(() => callAiStateLabel.value)
+}[callAiState.value.state] || 'Đang tắt'))
+const callAiButtonLabel = computed(() => callTranscriptionCapabilities.value.configured
+  ? `Biên bản cuộc họp: ${callAiStateLabel.value}`
+  : 'Biên bản và AI chưa sẵn sàng vì phiên âm chưa được cấu hình')
+const callCaptionLanguageLabel = computed(() => callCaptionLanguage.value === 'en' ? 'English' : 'Tiếng Việt')
+const callViewModes = [
+  { value: 'auto', label: 'Tự động' },
+  { value: 'tiled', label: 'Dạng lưới' },
+  { value: 'spotlight', label: 'Tiêu điểm' },
+  { value: 'sidebar', label: 'Thanh bên' }
+]
+const callViewModeLabel = computed(() => callViewModes.find(mode => mode.value === callViewMode.value)?.label || 'Tự động')
+const setCallViewMode = mode => {
+  if (!callViewModes.some(item => item.value === mode)) return
+  callViewMode.value = mode
+  presentationFocused.value = mode === 'spotlight' && Boolean(activePresenter.value)
+  if (mode === 'auto' || mode === 'tiled') focusedParticipantConnectionId.value = ''
+  showMoreMenu.value = false
+  moreMenuSection.value = ''
+}
+const latestCallCaption = computed(() => {
+  if (callTranscriptInterim.value.text) return callTranscriptInterim.value
+  return callTranscriptChunks.value.at(-1) || { text: '', startedAt: '', speakerDisplayName: '' }
+})
 const currentCallConsentStatus = computed(() => {
   const currentUserId = currentUser.value?.id
   return callAiState.value.participants.find(item => `${item.userId}` === `${currentUserId}`)?.consentStatus || 'PENDING'
@@ -1703,6 +1800,49 @@ const handleCallAiState = value => {
   callAiState.value = normalizeCallAiState(value)
 }
 
+const normalizeMeetingAiReport = value => {
+  if (!value) return null
+  return {
+    status: value.status ?? value.Status ?? 'PROCESSING',
+    processedTranscriptChunkCount: value.processedTranscriptChunkCount ?? value.ProcessedTranscriptChunkCount ?? 0,
+    state: value.state ?? value.State ?? null,
+    evidence: value.evidence ?? value.Evidence ?? [],
+    autoCreatesTasks: value.autoCreatesTasks ?? value.AutoCreatesTasks ?? false
+  }
+}
+
+const formatAiEvidence = evidenceChunkIds => {
+  const requestedIds = new Set((evidenceChunkIds || []).map(value => `${value}`.toLowerCase()))
+  const evidence = (callMeetingAiReport.value?.evidence || []).find(item => requestedIds.has(`${item.transcriptChunkId ?? item.TranscriptChunkId}`.toLowerCase()))
+  if (!evidence) return ''
+  const speaker = evidence.speakerDisplayName ?? evidence.SpeakerDisplayName ?? 'Người tham gia'
+  const timestamp = evidence.timestamp ?? evidence.Timestamp
+  const excerpt = evidence.excerpt ?? evidence.Excerpt ?? ''
+  return `${speaker} · ${formatTime(timestamp)} · “${excerpt}”`
+}
+
+const loadMeetingAiReport = async voiceChannel => {
+  const sessionId = callAiState.value.callSessionId
+  if (!activeProjectId.value || !sessionId || !voiceChannel || !callTranscriptionCapabilities.value.aiConfigured) return
+  try {
+    const report = await collaborationApi.getMeetingAiReport(
+      activeProjectId.value,
+      `${voiceChannel.name}`.trim().toLocaleLowerCase(),
+      sessionId)
+    callMeetingAiReport.value = normalizeMeetingAiReport(report)
+  } catch (error) {
+    if (error?.response?.status !== 404 && error?.response?.status !== 403) console.warn('Unable to load meeting AI report', error)
+  }
+}
+
+const scheduleMeetingAiReportRefresh = () => {
+  if (!callTranscriptionCapabilities.value.aiConfigured || !activeVoiceChannel.value) return
+  const chunkSize = Math.max(1, Number(callTranscriptionCapabilities.value.aiTranscriptChunkSize) || 8)
+  if (callTranscriptChunks.value.length % chunkSize !== 0) return
+  window.clearTimeout(callMeetingAiRefreshTimer)
+  callMeetingAiRefreshTimer = window.setTimeout(() => void loadMeetingAiReport(activeVoiceChannel.value), 1200)
+}
+
 const handleTranscriptChunk = value => {
   const chunk = {
     id: value?.id ?? value?.Id,
@@ -1714,6 +1854,7 @@ const handleTranscriptChunk = value => {
   callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
   callTranscriptChunks.value = [...callTranscriptChunks.value.filter(item => item.id !== chunk.id), chunk]
     .sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt))
+  scheduleMeetingAiReportRefresh()
 }
 
 const handleTranscriptInterim = value => {
@@ -1741,6 +1882,7 @@ const loadCallTranscript = async voiceChannel => {
     callTranscriptChunks.value = []
     const chunks = Array.isArray(items) ? items : []
     chunks.forEach(handleTranscriptChunk)
+    await loadMeetingAiReport(voiceChannel)
   } catch (error) {
     if (error?.response?.status !== 404 && error?.response?.status !== 403) console.warn('Unable to load call transcript', error)
   }
@@ -1871,7 +2013,13 @@ const createCallSessionForVoiceChannel = (voiceChannel, options = {}) => createC
   onAiState: handleCallAiState,
   onTranscriptChunk: handleTranscriptChunk,
   onTranscriptInterim: handleTranscriptInterim,
-  onTranscriptionError: handleTranscriptionError
+  onTranscriptionError: handleTranscriptionError,
+  onTranscriptionCapabilities: capabilities => {
+    callTranscriptionCapabilities.value = capabilities
+    callCaptionLanguage.value = capabilities.supportedLanguages.includes(capabilities.defaultLanguage)
+      ? capabilities.defaultLanguage
+      : capabilities.supportedLanguages[0] || 'vi'
+  }
 })
 
 const toggleRaiseHand = async () => {
@@ -1887,7 +2035,7 @@ const loadCallDevices = async () => {
   if (!selectedCallMicrophoneId.value && microphones[0]) selectedCallMicrophoneId.value = microphones[0].deviceId
   if (!selectedCallCameraId.value && cameras[0]) selectedCallCameraId.value = cameras[0].deviceId
   const mediaElements = [
-    ...remoteAudioElements.values(),
+    ...[...remoteAudioElements.values()].map(item => item.element),
     ...[...remoteVideoElements.values()].map(item => item.element),
     presentationVideoElement.value
   ].filter(Boolean)
@@ -1907,7 +2055,7 @@ const switchCallDevice = async (kind, deviceId) => {
 }
 const switchCallSpeaker = async () => {
   const elements = [
-    ...remoteAudioElements.values(),
+    ...[...remoteAudioElements.values()].map(item => item.element),
     ...[...remoteVideoElements.values()].map(item => item.element),
     presentationVideoElement.value
   ].filter(Boolean)
@@ -2005,12 +2153,30 @@ const handleCallShortcut = event => {
 }
 
 const requestCallAi = async () => {
-  if (!callSession.value) return
+  if (!callSession.value || !callTranscriptionCapabilities.value.configured) return
   try {
     await callSession.value.requestAiTranscription()
   } catch (error) {
     handleCallError(error)
   }
+}
+
+const setCallCaptionLanguage = () => {
+  try {
+    callSession.value?.setTranscriptionLanguage?.(callCaptionLanguage.value)
+  } catch (error) {
+    handleCallError(error)
+  }
+}
+
+const toggleCallCaptions = async () => {
+  if (!callSession.value || !callTranscriptionCapabilities.value.configured) return
+  captionsEnabled.value = !captionsEnabled.value
+  showMoreMenu.value = false
+  moreMenuSection.value = ''
+  if (!captionsEnabled.value || callAiState.value.state !== 'OFF') return
+  setCallCaptionLanguage()
+  await requestCallAi()
 }
 
 const respondCallAiConsent = async accepted => {
@@ -2151,6 +2317,11 @@ const leaveVoiceChannel = async (showMessage = true) => {
   callParticipants.value = []
   callAiState.value = { state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] }
   callTranscriptChunks.value = []
+  callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
+  callMeetingAiReport.value = null
+  window.clearTimeout(callMeetingAiRefreshTimer)
+  callMeetingAiRefreshTimer = null
+  captionsEnabled.value = false
   remoteStreams.value = new Map()
   localCallStream.value = null
   localScreenStream.value = null
@@ -2162,6 +2333,7 @@ const leaveVoiceChannel = async (showMessage = true) => {
   cameraEffectNotice.value = ''
   showCameraEffectsMenu.value = false
   presentationFocused.value = false
+  callViewMode.value = 'auto'
   activeVoiceChannel.value = null
   showVoiceCallMain.value = false
   callChatOpen.value = false
@@ -2211,11 +2383,23 @@ const openVoiceChannelChat = async () => {
     return
   }
   callChatOpen.value = true
+  showMembersSidebar.value = false
   try {
     handleCallChatHistory(await callSession.value.getCallChatHistory())
   } catch (error) {
     handleCallError(error)
   }
+}
+
+const openCallParticipants = () => {
+  const shouldOpen = !showMembersSidebar.value
+  showMembersSidebar.value = shouldOpen
+  if (shouldOpen) callChatOpen.value = false
+}
+
+const closeCallSidePanel = () => {
+  callChatOpen.value = false
+  showMembersSidebar.value = false
 }
 
 const isCanceledRequest = (error) =>
@@ -3723,7 +3907,7 @@ const formatTime = (timeStr) => {
   }
 }
 
-const showMembersSidebar = ref(true)
+const showMembersSidebar = ref(false)
 const sidebarOpen = ref(false)
 const toggleMembersSidebar = () => {
   showMembersSidebar.value = !showMembersSidebar.value
@@ -5173,6 +5357,35 @@ const fetchProjectMembers = async () => {
   font-size: 18px;
 }
 
+.call-live-caption {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: 18px;
+  display: flex;
+  max-width: min(760px, calc(100% - 32px));
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 14px;
+  transform: translateX(-50%);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.88);
+  color: #f8fafc;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.call-live-caption strong {
+  flex: 0 0 auto;
+  color: #86efac;
+  font-size: 12px;
+}
+
+.call-live-caption span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .call-camera-stage {
   flex: 1 1 auto;
   display: grid;
@@ -5183,6 +5396,32 @@ const fetchProjectMembers = async () => {
   padding: 12px;
   overflow: auto;
   background: #080d16;
+}
+
+.call-camera-stage[data-participant-count="1"] {
+  grid-template-columns: minmax(0, min(880px, 100%));
+  align-content: center;
+  justify-content: center;
+}
+
+.call-camera-stage[data-participant-count="2"],
+.call-camera-stage[data-participant-count="3"],
+.call-camera-stage[data-participant-count="4"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: center;
+}
+
+.call-camera-stage[data-participant-count="1"] .call-camera-stage-tile,
+.call-camera-stage[data-participant-count="2"] .call-camera-stage-tile,
+.call-camera-stage[data-participant-count="3"] .call-camera-stage-tile,
+.call-camera-stage[data-participant-count="4"] .call-camera-stage-tile {
+  aspect-ratio: 16 / 9;
+}
+
+.call-camera-stage[data-participant-count="3"] .call-camera-stage-tile:last-child {
+  grid-column: 1 / -1;
+  width: calc(50% - 6px);
+  justify-self: center;
 }
 
 .call-camera-stage-tile {
@@ -5227,6 +5466,21 @@ const fetchProjectMembers = async () => {
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.call-camera-stage-muted {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(2, 6, 23, 0.74);
+  color: #f8fafc;
+  font-size: 12px;
 }
 
 .call-hand-indicator {
@@ -6057,6 +6311,15 @@ const fetchProjectMembers = async () => {
 .call-ai-state-pill.is-paused_consent, .call-ai-state-pill.is-waiting_for_consent { border-color: rgba(245, 190, 91, .4); color: #f5c66e; }
 .call-transcript-off, .call-transcript-consent, .call-transcript-active, .call-transcript-paused { border: 1px solid rgba(148, 163, 184, .14); border-radius: 10px; padding: 11px; background: rgba(255, 255, 255, .035); }
 .call-transcript-off p, .call-transcript-consent p { margin: 6px 0 10px; color: #9fb0bf; font-size: 11px; line-height: 1.4; }
+.meeting-ai-report { display: grid; gap: 10px; max-height: 280px; overflow: auto; border: 1px solid rgba(99, 210, 159, .2); border-radius: 10px; padding: 11px; background: rgba(99, 210, 159, .045); }
+.meeting-ai-report-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.meeting-ai-report-heading span, .meeting-ai-review-note, .meeting-ai-unavailable { color: #9fb0bf; font-size: 10px; line-height: 1.45; }
+.meeting-ai-summary { margin: 0; color: #dbe8f2; font-size: 11px; line-height: 1.5; }
+.meeting-ai-group { display: grid; gap: 4px; font-size: 11px; }
+.meeting-ai-group ul { display: grid; gap: 4px; margin: 0; padding-left: 16px; color: #cbd9e4; }
+.meeting-ai-group li { display: grid; gap: 2px; }
+.meeting-ai-group small { color: #9fb0bf; }
+.meeting-ai-unavailable { border: 1px dashed rgba(148, 163, 184, .2); border-radius: 8px; padding: 9px; }
 .call-consent-list { display: grid; gap: 6px; margin-bottom: 10px; font-size: 11px; }
 .call-consent-list > div { display: flex; justify-content: space-between; gap: 8px; }
 .call-consent-list > div span:last-child { color: #aab9c5; }
@@ -6102,6 +6365,10 @@ const fetchProjectMembers = async () => {
 .call-chat-panel { display: flex; width: 290px; min-width: 290px; flex-direction: column; border-left: 1px solid rgba(148, 163, 184, .13); background: #091725; }
 .call-workspace-body { position: relative; }
 .call-chat-panel { position: absolute; top: 0; right: 0; bottom: 0; z-index: 4; }
+.call-workspace-body.has-call-side-panel { padding-right: 372px; }
+.call-panel-tabs { flex: 0 0 auto; }
+.call-panel-participants { min-height: 0; flex: 1; overflow-y: auto; padding: 10px; }
+.call-panel-participants .context-call-summary { margin: 0 0 10px; }
 .call-fullscreen-panel { position: absolute; z-index: 8; top: 0; right: 0; bottom: 0; display: flex; width: min(300px, calc(100vw - 24px)); flex-direction: column; border-left: 1px solid rgba(148, 163, 184, .13); background: #091725; }
 .call-chat-panel-header strong { display: block; margin-top: 3px; color: #e7f2fb; font-size: 13px; }
 .call-chat-thread { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 9px; overflow-y: auto; padding: 13px; }
@@ -6154,6 +6421,7 @@ const fetchProjectMembers = async () => {
 .presentation-control:focus-visible,
 .call-participant-thumb:focus-visible { outline: 2px solid #63d29f; outline-offset: 3px; }
 @media (max-width: 900px) {
+  .call-workspace-body.has-call-side-panel { padding-right: 18px; }
   .call-workspace-body.is-presentation-mode { display: flex; flex-direction: column; }
   .call-workspace-body.is-presentation-mode .call-presentation-stage { min-height: 240px; }
   .call-workspace-body.is-presentation-mode .call-participant-rail {
@@ -6168,6 +6436,8 @@ const fetchProjectMembers = async () => {
 }
 @media (max-width: 560px) {
   .call-camera-stage { grid-template-columns: 1fr; min-height: 240px; padding: 8px; }
+  .call-camera-stage[data-participant-count] { grid-template-columns: 1fr; }
+  .call-camera-stage[data-participant-count="3"] .call-camera-stage-tile:last-child { grid-column: auto; width: auto; }
   .call-camera-stage-tile video { min-height: 210px; }
   .call-control-dock { max-width: 100%; overflow-x: auto; }
   .call-control-future-slot span { display: none; }

@@ -7,6 +7,7 @@ public sealed class CallTranscriptionOptions
     public bool Enabled { get; set; }
     public string Provider { get; set; } = "Deepgram";
     public string Language { get; set; } = "vi";
+    public string[] SupportedLanguages { get; set; } = ["vi", "en"];
     public int SampleRate { get; set; } = 16000;
     public int EndpointingMilliseconds { get; set; } = 450;
     public string Model { get; set; } = "nova-3";
@@ -15,7 +16,9 @@ public sealed class CallTranscriptionOptions
     public bool IsConfigured =>
         Enabled &&
         string.Equals(Provider, "Deepgram", StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(Language, "vi", StringComparison.OrdinalIgnoreCase) &&
+        SupportedLanguages.Length > 0 &&
+        SupportedLanguages.All(language => language is "vi" or "en") &&
+        SupportedLanguages.Contains(Language, StringComparer.OrdinalIgnoreCase) &&
         SampleRate is >= 8000 and <= 48000 &&
         !string.IsNullOrWhiteSpace(Model) &&
         !string.IsNullOrWhiteSpace(Deepgram.ApiKey);

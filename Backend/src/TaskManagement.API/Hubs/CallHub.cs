@@ -20,6 +20,7 @@ public sealed class CallHub : Hub
     private readonly ICallTranscriptionProvider _transcriptionProvider;
     private readonly ICallTranscriptService _transcripts;
     private readonly ICallChatService _callChat;
+    private readonly IMeetingAiAnalysisService? _meetingAi;
     private readonly ILogger<CallHub> _logger;
 
     public CallHub(
@@ -28,13 +29,15 @@ public sealed class CallHub : Hub
         ICallTranscriptionProvider transcriptionProvider,
         ICallTranscriptService transcripts,
         ICallChatService callChat,
-        ILogger<CallHub>? logger = null)
+        ILogger<CallHub>? logger = null,
+        IMeetingAiAnalysisService? meetingAi = null)
     {
         _rooms = rooms;
         _authorization = authorization;
         _transcriptionProvider = transcriptionProvider;
         _transcripts = transcripts;
         _callChat = callChat;
+        _meetingAi = meetingAi;
         _logger = logger ?? NullLogger<CallHub>.Instance;
     }
 
@@ -78,7 +81,17 @@ public sealed class CallHub : Hub
                 Context.ConnectionAborted);
         }
         Trace("JOIN_ACK", nameof(JoinVoiceRoom), roomId, result.Snapshot.AiState.CallSessionId, result.Snapshot.Participants.Count, "ok");
-        return result.Snapshot;
+        return result.Snapshot with
+        {
+            Transcription = new CallTranscriptionCapabilitiesDto(
+                _transcriptionProvider.IsConfigured,
+                _transcriptionProvider.ProviderName,
+                _transcriptionProvider.SupportedLanguages,
+                _transcriptionProvider.DefaultLanguage,
+                _meetingAi?.IsConfigured == true,
+                _meetingAi?.ProviderName ?? "Unavailable",
+                _meetingAi?.TranscriptChunkSize ?? 8)
+        };
     }
 
     public async Task LeaveVoiceRoom(string? projectId, string? voiceChannelId)
@@ -247,7 +260,8 @@ public sealed class CallHub : Hub
         string? mimeType,
         byte[]? audioBytes,
         DateTimeOffset startedAt,
-        DateTimeOffset endedAt)
+        DateTimeOffset endedAt,
+        string? language = null)
     {
         var normalizedRoomId = NormalizeRoomId(roomId);
         var sessionId = ParseGuid(callSessionId, "INVALID_CALL_SESSION_ID");
@@ -257,6 +271,11 @@ public sealed class CallHub : Hub
             throw new HubException("INVALID_AUDIO_MIME_TYPE");
         if (endedAt < startedAt || endedAt - startedAt > TimeSpan.FromSeconds(15))
             throw new HubException("INVALID_AUDIO_TIMESTAMP");
+        var normalizedLanguage = string.IsNullOrWhiteSpace(language)
+            ? _transcriptionProvider.DefaultLanguage
+            : language.Trim().ToLowerInvariant();
+        if (!_transcriptionProvider.SupportedLanguages.Contains(normalizedLanguage, StringComparer.OrdinalIgnoreCase))
+            throw new HubException("UNSUPPORTED_TRANSCRIPTION_LANGUAGE");
         if (!_rooms.TryAuthorizeTranscription(normalizedRoomId, Context.ConnectionId, sessionId, consentGeneration, out var participant))
             throw new HubException("AI_TRANSCRIPTION_NOT_ACTIVE");
         if (_transcriptionProvider is null || _transcripts is null)
@@ -272,7 +291,8 @@ public sealed class CallHub : Hub
             startedAt,
             endedAt,
             participant.ConsentGeneration,
-            Context.ConnectionId);
+            Context.ConnectionId,
+            normalizedLanguage);
         try
         {
             if (_transcriptionProvider is ICallStreamingTranscriptionProvider streamingProvider)
@@ -325,6 +345,8 @@ public sealed class CallHub : Hub
             foreach (var participant in _rooms.RemoveConnection(Context.ConnectionId))
             {
                 var nextAiState = _rooms.GetAiState(participant.RoomId);
+                if (_rooms.GetRoomParticipants(participant.RoomId).Count == 0)
+                    _meetingAi?.QueueFinalizeRoom(participant.RoomId);
                 try
                 {
                     await Clients.OthersInGroup(participant.RoomId).SendAsync(
@@ -419,6 +441,8 @@ public sealed class CallHub : Hub
         var previousAiState = _rooms.GetAiState(roomId);
         var participant = _rooms.Leave(roomId, Context.ConnectionId);
         if (participant == null) return;
+        if (_rooms.GetRoomParticipants(roomId).Count == 0)
+            _meetingAi?.QueueFinalize(previousAiState.CallSessionId);
         await StopRoomTranscriptionAsync(roomId, cancellationToken);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId, cancellationToken);
         await Clients.OthersInGroup(roomId).SendAsync(
@@ -500,6 +524,7 @@ public sealed class CallHub : Hub
         var transcript = await _transcripts.AppendAsync(source, result, Context.ConnectionAborted);
         if (transcript is not null)
         {
+            _meetingAi?.QueueIncremental(transcript);
             await Clients.Group(source.RoomId).SendAsync(
                 CallRealtimeEvents.CallTranscriptChunkAdded,
                 transcript,
