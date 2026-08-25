@@ -67,7 +67,17 @@ public sealed record CallRoomSnapshotDto(
     string RoomId,
     IReadOnlyList<CallParticipantDto> Participants,
     int MaximumParticipants,
-    CallAiStateDto AiState);
+    CallAiStateDto AiState,
+    CallTranscriptionCapabilitiesDto? Transcription = null);
+
+public sealed record CallTranscriptionCapabilitiesDto(
+    bool Configured,
+    string Provider,
+    IReadOnlyList<string> SupportedLanguages,
+    string DefaultLanguage,
+    bool AiConfigured = false,
+    string AiProvider = "Unavailable",
+    int AiTranscriptChunkSize = 8);
 
 public sealed record CallAiParticipantConsentDto(
     Guid UserId,

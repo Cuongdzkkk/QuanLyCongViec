@@ -5,6 +5,9 @@ namespace TaskManagement.Application.Interfaces;
 public interface ICallTranscriptionProvider
 {
     bool IsConfigured { get; }
+    string ProviderName => "Unavailable";
+    IReadOnlyList<string> SupportedLanguages => ["vi", "en"];
+    string DefaultLanguage => "vi";
 
     Task<CallTranscriptionResult?> TranscribeAsync(
         CallAudioChunk chunk,

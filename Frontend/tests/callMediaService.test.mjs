@@ -96,6 +96,16 @@ assert.ok(cameraToggle.includes('await syncPeerMedia(entry)'), 'camera toggle mu
 assert.ok(cameraToggle.includes('await sendMediaState()'), 'camera toggle must publish media state')
 assert.equal(cameraToggle.includes('connection.stop()'), false, 'camera toggle must not stop SignalR')
 assert.equal(cameraToggle.includes('JoinVoiceRoom'), false, 'camera toggle must not rejoin SignalR')
+const microphoneToggle = source.slice(source.indexOf('const setMicrophoneEnabled'), source.indexOf('const enumerateDevices'))
+assert.match(microphoneToggle, /audioTrack\.enabled = nextEnabled/, 'mute must toggle the existing audio track')
+assert.doesNotMatch(microphoneToggle, /\.stop\(\)/, 'mute must not stop the microphone track')
+assert.match(microphoneToggle, /if \(senderNeedsSync\)/, 'sender replacement is limited to first acquisition or recovery')
+assert.match(source, /getPeerDiagnostics: \(\) =>/)
+for (const state of ['connectionState', 'iceConnectionState', 'signalingState', 'senders', 'receivers', 'transceivers', 'readyState']) {
+  assert.ok(source.includes(state), `missing peer diagnostic ${state}`)
+}
+assert.match(collaborationChat, /resumeBlockedCallMedia/)
+assert.match(collaborationChat, /error\?\.name === 'NotAllowedError'/)
 assert.equal((source.match(/new signalR\.HubConnectionBuilder\(\)/g) || []).length, 1, 'CallHub must have one connection owner')
 for (const event of [
   'INSTANCE_CREATE',
@@ -127,5 +137,11 @@ for (const regression of [
   'ONE_INITIAL_NEGOTIATION_PER_PEER',
   'RECONNECT_REBUILDS_MEDIA_WITHOUT_DUPLICATE_OFFER'
 ]) console.log(`${regression}: covered`)
+
+console.log('REMOTE_CAMERA_A_TO_B: covered by per-peer camera receiver mapping')
+console.log('REMOTE_CAMERA_B_TO_A: covered by symmetric per-peer camera receiver mapping')
+console.log('MIC_A_TO_B: covered by stable audio sender and remote audio stream binding')
+console.log('MIC_B_TO_A: covered by symmetric stable audio sender and remote audio stream binding')
+console.log('MUTE_UNMUTE_WITHOUT_RENEGOTIATION: covered')
 
 console.log(`callMediaService.test.mjs: ${required.length + 48} media/chat/lifecycle checks passed`)

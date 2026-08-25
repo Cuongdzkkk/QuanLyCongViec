@@ -145,6 +145,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<CollaborationMessageAttachment> CollaborationMessageAttachments { get; set; }
         public DbSet<CallTranscriptChunk> CallTranscriptChunks { get; set; }
         public DbSet<CallChatMessage> CallChatMessages { get; set; }
+        public DbSet<MeetingAiReport> MeetingAiReports { get; set; }
 
         public DbSet<CustomFieldDefinition> CustomFieldDefinitions { get; set; }
         public DbSet<CustomFieldValue> CustomFieldValues { get; set; }
@@ -1469,6 +1470,16 @@ namespace TaskManagement.Infrastructure.Data
                 entity.Property(chunk => chunk.Text).HasMaxLength(12000).IsRequired();
                 entity.HasIndex(chunk => new { chunk.ProjectId, chunk.VoiceChannelId, chunk.CallSessionId, chunk.StartedAt });
                 entity.HasIndex(chunk => new { chunk.CallSessionId, chunk.CreatedAt });
+            });
+
+            modelBuilder.Entity<MeetingAiReport>(entity =>
+            {
+                entity.HasKey(report => report.Id);
+                entity.Property(report => report.VoiceChannelId).HasMaxLength(200).IsRequired();
+                entity.Property(report => report.Status).HasMaxLength(32).IsRequired();
+                entity.Property(report => report.StateJson).HasColumnType("nvarchar(max)").IsRequired();
+                entity.HasIndex(report => report.CallSessionId).IsUnique();
+                entity.HasIndex(report => new { report.ProjectId, report.VoiceChannelId, report.UpdatedAt });
             });
 
             modelBuilder.Entity<ChannelMessage>()

@@ -21,6 +21,9 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
     }
 
     public bool IsConfigured => _options.IsConfigured;
+    public string ProviderName => "Deepgram";
+    public IReadOnlyList<string> SupportedLanguages => _options.SupportedLanguages;
+    public string DefaultLanguage => _options.Language;
 
     public Task<CallTranscriptionResult?> TranscribeAsync(
         CallAudioChunk chunk,
@@ -159,7 +162,10 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
         {
             var socket = new ClientWebSocket();
             socket.Options.SetRequestHeader("Authorization", $"Token {options.Deepgram.ApiKey}");
-            var query = $"?model={Uri.EscapeDataString(options.Model)}&language={Uri.EscapeDataString(options.Language)}&encoding=linear16&sample_rate={options.SampleRate}&channels=1&interim_results=true&punctuate=true&endpointing={options.EndpointingMilliseconds}";
+            var language = options.SupportedLanguages.Contains(firstChunk.Language, StringComparer.OrdinalIgnoreCase)
+                ? firstChunk.Language.ToLowerInvariant()
+                : options.Language;
+            var query = $"?model={Uri.EscapeDataString(options.Model)}&language={Uri.EscapeDataString(language)}&encoding=linear16&sample_rate={options.SampleRate}&channels=1&interim_results=true&punctuate=true&endpointing={options.EndpointingMilliseconds}";
             await socket.ConnectAsync(new Uri(options.Deepgram.Endpoint + query), cancellationToken);
             var session = new DeepgramSession(socket, options, usageSink, firstChunk, onResult, canContinue);
             session._receiveTask = session.ReceiveLoopAsync(session._lifetime.Token);

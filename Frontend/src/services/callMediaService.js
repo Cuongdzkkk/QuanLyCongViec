@@ -52,6 +52,30 @@ const mediaError = (error, fallbackCode) => {
 
 const normalizeBackgroundEffect = value => value === 'blur' ? 'blur' : 'none'
 
+const describeTrack = track => track ? {
+  id: track.id || '',
+  kind: track.kind || '',
+  enabled: track.enabled !== false,
+  muted: track.muted === true,
+  readyState: track.readyState || 'unknown'
+} : null
+
+export const inspectPeerConnection = (connectionId, pc) => ({
+  connectionId,
+  connectionState: pc?.connectionState || 'unknown',
+  iceConnectionState: pc?.iceConnectionState || 'unknown',
+  signalingState: pc?.signalingState || 'unknown',
+  senders: (pc?.getSenders?.() || []).map(sender => describeTrack(sender.track)),
+  receivers: (pc?.getReceivers?.() || []).map(receiver => describeTrack(receiver.track)),
+  transceivers: (pc?.getTransceivers?.() || []).map(transceiver => ({
+    mid: transceiver.mid ?? null,
+    direction: transceiver.direction || '',
+    currentDirection: transceiver.currentDirection || null,
+    sender: describeTrack(transceiver.sender?.track),
+    receiver: describeTrack(transceiver.receiver?.track)
+  }))
+})
+
 const getIceServers = async () => {
   const response = await axiosClient.get('/webrtc/ice-servers')
   const payload = response?.data?.data ?? response?.data ?? {}
@@ -62,7 +86,7 @@ const getIceServers = async () => {
   }))
 }
 
-export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams, onAiState, onTranscriptChunk, onTranscriptInterim, onTranscriptionError, onHandChanged, onReaction, onSpeakerChanged, onForceMute, onForceRemoved, onCallMessage, onCallHistory, initialMicrophoneEnabled = true, initialMicrophoneStream = null, initialCameraEnabled = false, initialCameraStream = null, initialMicrophoneDeviceId = '', initialCameraDeviceId = '' }) => {
+export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams, onAiState, onTranscriptChunk, onTranscriptInterim, onTranscriptionError, onTranscriptionCapabilities, onHandChanged, onReaction, onSpeakerChanged, onForceMute, onForceRemoved, onCallMessage, onCallHistory, initialMicrophoneEnabled = true, initialMicrophoneStream = null, initialCameraEnabled = false, initialCameraStream = null, initialMicrophoneDeviceId = '', initialCameraDeviceId = '' }) => {
   let connection = null
   let startPromise = null
   let leavePromise = null
@@ -89,6 +113,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const remoteStreams = new Map()
   let transcriptionCapture = null
   let transcriptionQueue = Promise.resolve()
+  let transcriptionLanguage = 'vi'
   let selectedMicrophoneDeviceId = initialMicrophoneDeviceId || ''
   let selectedCameraDeviceId = initialCameraDeviceId || ''
   const instanceId = `call-hub-${++nextCallHubInstanceId}`
@@ -139,7 +164,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
             'audio/linear16;rate=16000;channels=1',
             payload,
             startedAt.toISOString(),
-            endedAt.toISOString())
+            endedAt.toISOString(),
+            capture.language)
         } catch (error) {
           if (!['AI_TRANSCRIPTION_NOT_ACTIVE', 'CALL_TRANSCRIPTION_NOT_CONFIGURED'].includes(error?.message)) onTranscriptionError?.({ code: 'INGEST_ERROR', message: 'Không thể gửi âm thanh cho biên bản cuộc gọi.' })
         }
@@ -181,6 +207,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       active: true,
       callSessionId,
       consentGeneration,
+      language: transcriptionLanguage,
       context,
       source,
       processor,
@@ -481,6 +508,19 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     joinedAck = true
     roomId = read(snapshot, 'roomId', 'RoomId')
     const aiState = read(snapshot, 'aiState', 'AiState')
+    const transcription = read(snapshot, 'transcription', 'Transcription') || {}
+    const supportedLanguages = read(transcription, 'supportedLanguages', 'SupportedLanguages') || []
+    const defaultLanguage = read(transcription, 'defaultLanguage', 'DefaultLanguage') || 'vi'
+    if (supportedLanguages.includes(defaultLanguage)) transcriptionLanguage = defaultLanguage
+    onTranscriptionCapabilities?.({
+      configured: read(transcription, 'configured', 'Configured') === true,
+      provider: read(transcription, 'provider', 'Provider') || 'Unavailable',
+      supportedLanguages,
+      defaultLanguage,
+      aiConfigured: read(transcription, 'aiConfigured', 'AiConfigured') === true,
+      aiProvider: read(transcription, 'aiProvider', 'AiProvider') || 'Unavailable',
+      aiTranscriptChunkSize: read(transcription, 'aiTranscriptChunkSize', 'AiTranscriptChunkSize') || 8
+    })
     callSessionId = read(aiState, 'callSessionId', 'CallSessionId') || null
     trace('JOIN_ACK', 'join-voice-room-ack')
     participants = new Map((read(snapshot, 'participants', 'Participants') ?? []).map(item => {
@@ -602,7 +642,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     })
   }
 
-  const acquireMicrophoneWithDevice = async deviceId => {
+  const acquireMicrophoneWithDevice = async (deviceId, enabled = microphoneEnabled) => {
     if (!navigator.mediaDevices?.getUserMedia) throw mediaError(null, 'UNSUPPORTED_BROWSER')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -615,7 +655,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         video: false
       })
       localStream = stream
-      microphoneEnabled = true
+      localStream.getAudioTracks().forEach(track => { track.enabled = Boolean(enabled) })
     } catch (error) {
       throw mediaError(error, 'MIC_UNAVAILABLE')
     }
@@ -690,13 +730,18 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
 
   const setMicrophoneEnabled = async enabled => {
     const nextEnabled = Boolean(enabled)
-    if (nextEnabled && !localStream) await acquireMicrophoneWithDevice(selectedMicrophoneDeviceId)
-    if (!nextEnabled && localStream) {
-      localStream.getTracks().forEach(track => track.stop())
-      localStream = null
+    let audioTrack = localStream?.getAudioTracks?.()[0] || null
+    let senderNeedsSync = false
+    if (nextEnabled && (!audioTrack || audioTrack.readyState !== 'live')) {
+      await acquireMicrophoneWithDevice(selectedMicrophoneDeviceId, true)
+      audioTrack = localStream?.getAudioTracks?.()[0] || null
+      senderNeedsSync = true
     }
+    if (audioTrack) audioTrack.enabled = nextEnabled
     microphoneEnabled = nextEnabled
-    for (const entry of peers.values()) await syncPeerMedia(entry)
+    if (senderNeedsSync) {
+      for (const entry of peers.values()) await syncPeerMedia(entry)
+    }
     await sendMediaState()
     emit('media')
   }
@@ -796,11 +841,16 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       joinedAck = false
       if (typeof RTCPeerConnection === 'undefined') throw mediaError(null, 'UNSUPPORTED_BROWSER')
       microphoneEnabled = Boolean(initialMicrophoneEnabled)
-      if (initialMicrophoneEnabled) {
-        if (initialMicrophoneStream) {
-          localStream = initialMicrophoneStream
-          localStream.getAudioTracks().forEach(track => { track.enabled = true })
-        } else await acquireMicrophoneWithDevice(selectedMicrophoneDeviceId)
+      if (initialMicrophoneStream) {
+        localStream = initialMicrophoneStream
+        localStream.getAudioTracks().forEach(track => { track.enabled = microphoneEnabled })
+      } else {
+        try {
+          await acquireMicrophoneWithDevice(selectedMicrophoneDeviceId, microphoneEnabled)
+        } catch (error) {
+          if (microphoneEnabled) throw error
+          localStream = null
+        }
       }
       cameraEnabled = false
       if (initialCameraEnabled) {
@@ -907,6 +957,10 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       'RespondToAiConsent', roomId, state?.callSessionId || state?.CallSessionId,
       state?.consentGeneration || state?.ConsentGeneration, accepted),
     stopAiTranscription: async () => connection?.invoke('StopAiTranscription', roomId),
+    setTranscriptionLanguage: language => {
+      if (!['vi', 'en'].includes(language)) throw new Error('UNSUPPORTED_TRANSCRIPTION_LANGUAGE')
+      transcriptionLanguage = language
+    },
     getLocalStream: () => cameraStream || localStream,
     getLocalCameraStream: () => cameraStream,
     getLocalScreenStream: () => screenStream,
@@ -914,6 +968,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     getCallSessionId: () => callSessionId,
     isJoined: () => joinedAck && Boolean(callSessionId),
     getConnectionId: localConnectionId,
+    getPeerDiagnostics: () => [...peers.values()].map(entry => inspectPeerConnection(entry.connectionId, entry.pc)),
     getMediaState: () => ({ microphoneEnabled, cameraEnabled, screenSharing, backgroundEffect })
   }
   return session
