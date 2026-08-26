@@ -4,6 +4,7 @@ namespace TaskManagement.Application.Interfaces;
 
 public interface IMeetingAiAnalysisService
 {
+    bool IsEnabled { get; }
     bool IsConfigured { get; }
     string ProviderName { get; }
     int TranscriptChunkSize { get; }

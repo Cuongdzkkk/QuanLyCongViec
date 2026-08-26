@@ -105,6 +105,14 @@ export const collaborationApi = {
     return unwrapData(response)
   },
 
+  async getMeetingCapabilities(projectId, voiceChannelId, options = {}) {
+    const response = await axiosClient.get(
+      `/projects/${projectId}/voice-channels/${encodeURIComponent(voiceChannelId)}/calls/capabilities`,
+      { signal: options.signal }
+    )
+    return unwrapData(response)
+  },
+
   async addChannelReaction(channelId, messageId, emoji, options = {}) {
     const response = await axiosClient.post(
       `/channels/${channelId}/messages/${messageId}/reactions`,

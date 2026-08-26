@@ -638,7 +638,7 @@
               <span v-if="!callChatMessages.length" class="channel-utility-empty">Chưa có tin nhắn trong phòng này.</span>
             </div>
             <form v-if="callChatOpen" class="call-chat-composer" @submit.prevent="sendCallChatMessage">
-              <textarea v-model="callChatDraft" :disabled="callChatSending || !callChatConnected" maxlength="4000" rows="1" aria-label="Nội dung chat cuộc gọi" placeholder="Gửi tin nhắn..." @keydown.enter.exact.prevent="sendCallChatMessage"></textarea>
+              <textarea ref="callChatComposer" v-model="callChatDraft" :disabled="callChatSending || !callChatConnected" maxlength="4000" rows="1" aria-label="Nội dung chat cuộc gọi" placeholder="Gửi tin nhắn..." @keydown.enter.exact.prevent="sendCallChatMessage"></textarea>
               <button v-if="callChatDraft" type="button" class="call-chat-clear" aria-label="Xóa nội dung đang nhập" title="Xóa nội dung đang nhập" @click="callChatDraft = ''"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
               <button type="submit" :disabled="callChatSending || !callChatDraft.trim()" aria-label="Gửi tin nhắn cuộc gọi" title="Gửi tin nhắn cuộc gọi"><i :class="callChatSending ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'" aria-hidden="true"></i></button>
             </form>
@@ -1591,6 +1591,7 @@ const callChatOpen = ref(false)
 const callChatDraft = ref('')
 const callChatSending = ref(false)
 const callChatThread = ref(null)
+const callChatComposer = ref(null)
 const callChatMessages = ref([])
 const selectedCallMicrophoneId = ref('')
 const selectedCallCameraId = ref('')
@@ -2407,6 +2408,8 @@ const openVoiceChannelChat = async () => {
   }
   callChatOpen.value = true
   showMembersSidebar.value = false
+  await nextTick()
+  callChatComposer.value?.focus()
   try {
     handleCallChatHistory(await callSession.value.getCallChatHistory())
   } catch (error) {
@@ -6388,6 +6391,7 @@ const fetchProjectMembers = async () => {
 .call-chat-panel { display: flex; width: 290px; min-width: 290px; flex-direction: column; border-left: 1px solid rgba(148, 163, 184, .13); background: #091725; }
 .call-workspace-body { position: relative; }
 .call-chat-panel { position: absolute; top: 0; right: 0; bottom: 0; z-index: 4; }
+.call-chat-panel, .call-chat-panel * { pointer-events: auto; }
 .call-workspace-body.has-call-side-panel { padding-right: 372px; }
 .call-panel-tabs { flex: 0 0 auto; }
 .call-panel-participants { min-height: 0; flex: 1; overflow-y: auto; padding: 10px; }
@@ -7564,6 +7568,7 @@ background-color: #111c2d !important;
 .chat-workspace .call-device-list button:hover { background: var(--chat-surface-2); color: var(--chat-ink); }
 .chat-workspace .camera-effects-notice { color: var(--color-warning, #a16207); }
 .chat-workspace .call-chat-panel { width: min(340px, calc(100% - 16px)); min-width: min(340px, calc(100% - 16px)); }
+.chat-workspace .call-chat-panel { isolation: isolate; }
 .chat-workspace .call-fullscreen-panel { width: min(340px, calc(100% - 16px)); }
 .chat-workspace .call-chat-panel-title { min-width: 0; flex: 1; }
 .chat-workspace .call-chat-channel-name { display: block; max-width: 100%; margin-top: 4px; overflow-wrap: anywhere; color: var(--chat-ink) !important; font-size: 14px; line-height: 1.25; }

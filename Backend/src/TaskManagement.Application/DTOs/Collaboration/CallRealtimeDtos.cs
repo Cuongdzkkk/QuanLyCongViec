@@ -79,6 +79,13 @@ public sealed record CallTranscriptionCapabilitiesDto(
     string AiProvider = "Unavailable",
     int AiTranscriptChunkSize = 8);
 
+public sealed record MeetingCapabilitiesDto(
+    bool TranscriptionEnabled,
+    string TranscriptionProvider,
+    IReadOnlyList<string> SupportedLanguages,
+    bool MeetingAiEnabled,
+    bool MeetingAiConfigured);
+
 public sealed record CallAiParticipantConsentDto(
     Guid UserId,
     string DisplayName,
