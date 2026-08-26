@@ -1,72 +1,57 @@
 <template>
-  <div class="goal-detail-wrapper" v-if="goal">
-    <!-- Cover Image -->
-    <div class="goal-cover">
-      <!-- Floating Back Button -->
-      <button class="back-floating-btn" @click="router.push(goalsBasePath)">
-        <i class="fa-solid fa-arrow-left"></i>
-        <span>{{ isVi ? 'Quay lại' : 'Back' }}</span>
-      </button>
-    </div>
+  <template v-if="goal">
+    <DetailLayout>
+    <template #hero>
+      <DetailHero
+        :cover-color="goal.ownerColor || '#091E42'"
+        cover-pattern="dynamic"
+        :back-url="goalsBasePath"
+        :back-text="isVi ? 'Quay lại' : 'Back'"
+        :title="goal.title"
+        avatar-type="boxy"
+        avatar-icon="fa-solid fa-bullseye"
+        :avatar-color="goal.ownerColor || '#0052cc'"
+      >
+        <template #badges>
+          <AppStatusBadge :status="goal.status" :statusText="goal.status" style="margin-left: 12px; margin-top: 4px;" />
+        </template>
+        
+        <template #actions>
+          <button
+            class="sprinta-icon-btn goal-star-button"
+            type="button"
+            :class="{ starred: isGoalStarred }"
+            :disabled="starredStore.isPending('Goal', goal.id)"
+            :aria-pressed="isGoalStarred"
+            :aria-label="isGoalStarred ? 'Bỏ gắn sao mục tiêu' : 'Gắn sao mục tiêu'"
+            @click="toggleStar"
+          >
+            <i :class="isGoalStarred ? 'fa-solid fa-star' : 'fa-regular fa-star'" aria-hidden="true"></i>
+          </button>
+        </template>
 
-    <!-- Entity Header -->
-    <div class="goal-header-wrapper">
-      <div class="goal-identity">
-        <div class="goal-icon-large">
-          <i class="fa-solid fa-bullseye"></i>
-        </div>
-        <div class="goal-title-block">
-          <div class="title-row">
-            <h1>{{ goal.title }}</h1>
-            <AppStatusBadge :status="goal.status" :statusText="goal.status" />
-          </div>
-          <p class="goal-meta-subtitle">
-            Cập nhật: <strong class="text-dark">{{ goal.lastUpdate || 'Vừa xong' }}</strong>
-          </p>
-        </div>
-      </div>
-      
-      <div class="header-actions">
-        <button class="secondary-btn" @click="toggleFollow">
-          <i class="fa-solid fa-eye"></i> {{ goal.isFollowing ? 'Đang theo dõi' : 'Theo dõi' }}
-        </button>
-        <button
-          class="secondary-btn icon-only goal-star-button"
-          type="button"
-          :class="{ starred: isGoalStarred }"
-          :disabled="starredStore.isPending('Goal', goal.id)"
-          :aria-pressed="isGoalStarred"
-          :aria-label="isGoalStarred ? 'Bỏ gắn sao mục tiêu' : 'Gắn sao mục tiêu'"
-          @click="toggleStar"
-        >
-          <i :class="isGoalStarred ? 'fa-solid fa-star' : 'fa-regular fa-star'" aria-hidden="true"></i>
-        </button>
-        <button class="secondary-btn icon-only" @click="toggleShare">
-          <i class="fa-solid fa-share-nodes"></i>
-        </button>
-        <button class="secondary-btn icon-only" @click="toggleMenu">
-          <i class="fa-solid fa-ellipsis"></i>
-        </button>
-      </div>
-    </div>
+        <template #overflow>
+          <button class="sprinta-menu-item" @click="archiveGoal"><i class="fa-solid fa-box-archive" style="width: 16px;"></i> Lưu trữ (Archive)</button>
+          <button class="sprinta-menu-item danger" @click="deleteGoal"><i class="fa-solid fa-trash" style="width: 16px;"></i> Xóa (Delete)</button>
+        </template>
+      </DetailHero>
+    </template>
 
     <!-- Navigation Tabs -->
-    <div class="tabs-nav">
-      <button class="tab-btn" :class="{ active: currentTab === 'overview' }" @click="currentTab = 'overview'">Tổng quan</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'updates' }" @click="currentTab = 'updates'">
+    <template #tabs>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'overview' }" @click="currentTab = 'overview'">Tổng quan</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'updates' }" @click="currentTab = 'updates'">
         Cập nhật <span v-if="updates.length" class="badge-count">{{ updates.length + 1 }}</span>
       </button>
-      <button class="tab-btn" :class="{ active: currentTab === 'jira' }" @click="currentTab = 'jira'">SprintA</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'projects' }" @click="currentTab = 'projects'">Dự án</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'learnings' }" @click="currentTab = 'learnings'">Bài học rút ra</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'risks' }" @click="currentTab = 'risks'">Rủi ro</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'decisions' }" @click="currentTab = 'decisions'">Quyết định</button>
-    </div>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'jira' }" @click="currentTab = 'jira'">SprintA</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'projects' }" @click="currentTab = 'projects'">Dự án</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'learnings' }" @click="currentTab = 'learnings'">Bài học rút ra</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'risks' }" @click="currentTab = 'risks'">Rủi ro</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'decisions' }" @click="currentTab = 'decisions'">Quyết định</button>
+    </template>
 
-    <!-- Main Content Grid -->
-    <div class="goal-content-grid">
-      <!-- Left Column: Main Information -->
-      <div class="main-column">
+    <template #main>
+      <div class="tab-pane">
         <!-- TỔNG QUAN TAB -->
         <template v-if="currentTab === 'overview'">
           <!-- Mô tả -->
@@ -273,19 +258,23 @@
 
         <!-- JIRA TAB -->
         <template v-if="currentTab === 'jira'">
-          <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 32px; background: white; margin-top: 16px;">
-            <div style="display: flex; gap: 24px; max-width: 600px; margin: 0 auto; position: relative;">
-               <div style="width: 64px; height: 64px; background: #0052CC; color: white; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 32px; position: relative; flex-shrink: 0;">
-                  <i class="fa-solid fa-layer-group"></i>
-                  <div style="position: absolute; bottom: -8px; right: -8px; width: 24px; height: 24px; background: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; border: 2px solid white;">
-                     <i class="fa-solid fa-plus"></i>
-                  </div>
-               </div>
-               <div>
-                 <h3 style="margin: 0 0 8px 0; font-size: 16px; color: #172B4D;">{{ isOwner ? 'Thêm công việc trong SprintA góp phần vào mục tiêu này' : 'Công việc SprintA' }}</h3>
-                 <p style="margin: 0 0 16px 0; font-size: 14px; color: #5E6C84; line-height: 1.5;">{{ isOwner ? 'Kết nối công việc của đội ngũ để xem mục tiêu này trong SprintA và liên kết các nội dung cập nhật với công việc.' : 'Chưa có công việc SprintA nào liên kết với mục tiêu này.' }} <a href="#" style="color: #0052CC; text-decoration: none;">Thông tin khác về mục tiêu trong SprintA</a></p>
-                 <div style="position: relative; display: inline-block;">
-                   <button v-if="isOwner" class="secondary-btn" @click="isSprintAInputOpen = !isSprintAInputOpen" style="background: white; border: 1px solid #DFE1E6; font-weight: 600;">Thêm hạng mục công việc SprintA</button>
+          <div class="section-header-row">
+            <h3>Công việc SprintA</h3>
+          </div>
+          <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px; background: white;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #EBECF0; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-brands fa-jira" style="font-size: 32px; color: #0052CC;"></i>
+                </div>
+                <div v-if="isOwner" style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" @click="isSprintAInputOpen = !isSprintAInputOpen">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">{{ isOwner ? 'Thêm công việc trong SprintA góp phần vào mục tiêu này' : 'Công việc SprintA' }}</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">{{ isOwner ? 'Kết nối công việc của đội ngũ để xem mục tiêu này trong SprintA và liên kết các nội dung cập nhật với công việc.' : 'Chưa có công việc SprintA nào liên kết với mục tiêu này.' }}</p>
+                <div style="position: relative; display: inline-block;">
+                  <button v-if="isOwner" class="secondary-btn" @click.stop="isSprintAInputOpen = !isSprintAInputOpen">Thêm hạng mục công việc SprintA</button>
                    
                    <!-- SprintA Input Dropdown -->
                    <div v-if="isSprintAInputOpen" class="dropdown-menu" style="position: absolute; top: 100%; left: 0; margin-top: 8px; background: white; border: 1px solid #DFE1E6; border-radius: 3px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); width: 320px; z-index: 1000; padding: 16px;">
@@ -295,27 +284,30 @@
                         <button class="primary-btn">Thêm</button>
                       </div>
                    </div>
-                 </div>
-               </div>
-            </div>
+                </div>
+             </div>
           </div>
         </template>
 
         <!-- DỰ ÁN TAB -->
         <template v-if="currentTab === 'projects'">
-          <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 32px; background: white; margin-top: 16px;">
-            <div style="display: flex; gap: 24px; max-width: 600px; margin: 0 auto; position: relative;">
-               <div style="width: 64px; height: 64px; background: #EBECF0; color: #172B4D; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 32px; position: relative; flex-shrink: 0;">
-                  <i class="fa-solid fa-rocket"></i>
-                  <div style="position: absolute; bottom: -8px; right: -8px; width: 24px; height: 24px; background: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; border: 2px solid white;">
-                     <i class="fa-solid fa-plus"></i>
-                  </div>
-               </div>
-               <div>
-                 <h3 style="margin: 0 0 8px 0; font-size: 16px; color: #172B4D;">{{ isOwner ? 'Thêm dự án để sắp xếp công việc của bạn với mục tiêu này' : 'Dự án đóng góp' }}</h3>
-                 <p style="margin: 0 0 16px 0; font-size: 14px; color: #5E6C84; line-height: 1.5;">{{ isOwner ? 'Sử dụng không gian này để theo dõi bất kỳ dự án nào đóng góp vào mục tiêu này, vì vậy đội ngũ và các bên liên quan của bạn có thể có được bức tranh toàn cảnh.' : 'Chưa có dự án nào liên kết với mục tiêu này.' }}</p>
-                 <div style="position: relative; display: inline-block;">
-                   <button v-if="isOwner" class="secondary-btn" @click="isProjectSearchOpen = !isProjectSearchOpen" style="background: white; border: 1px solid #DFE1E6; font-weight: 600;">Thêm dự án</button>
+          <div class="section-header-row">
+            <h3>Dự án đóng góp</h3>
+          </div>
+          <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px; background: white;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #EBECF0; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-solid fa-folder" style="font-size: 32px; color: #172B4D;"></i>
+                </div>
+                <div v-if="isOwner" style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" @click="isProjectSearchOpen = !isProjectSearchOpen">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">{{ isOwner ? 'Thêm dự án để sắp xếp công việc của bạn với mục tiêu này' : 'Dự án đóng góp' }}</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">{{ isOwner ? 'Sử dụng không gian này để theo dõi bất kỳ dự án nào đóng góp vào mục tiêu này, vì vậy đội ngũ và các bên liên quan của bạn có thể có được bức tranh toàn cảnh.' : 'Chưa có dự án nào liên kết với mục tiêu này.' }}</p>
+                <div style="position: relative; display: inline-block;">
+                  <button v-if="isOwner" class="secondary-btn" @click.stop="isProjectSearchOpen = !isProjectSearchOpen">Thêm dự án</button>
                    
                    <!-- Project Search Dropdown -->
                    <div v-if="isProjectSearchOpen" class="dropdown-menu" style="position: absolute; top: 100%; left: 0; margin-top: 8px; background: white; border: 1px solid #DFE1E6; border-radius: 3px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); width: 320px; z-index: 1000; padding: 12px 0;">
@@ -332,19 +324,33 @@
                         <span style="font-size: 14px; color: #5E6C84; cursor: pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Tạo dự án mới</span>
                       </div>
                    </div>
-                 </div>
-               </div>
-            </div>
+                </div>
+             </div>
           </div>
         </template>
 
         <!-- BÀI HỌC RÚT RA TAB -->
         <template v-if="currentTab === 'learnings'">
-          <AppEmptyState v-if="!editing.learnings && !goalStore.lessons?.length" icon="fa-solid fa-lightbulb" title="Những bộ óc vĩ đại có tư duy giống nhau sẽ chia sẻ kiến thức của họ" :description="isOwner ? 'Chia sẻ những gì bạn đã học được với công ty của bạn để giúp những người khác có một khởi đầu thuận lợi khi làm việc trên các mục tiêu tương tự.' : 'Chưa có bài học rút ra nào được ghi nhận cho mục tiêu này.'">
-            <template #actions v-if="isOwner">
-              <button class="secondary-btn" @click="editing.learnings = true">Thêm bài học rút ra mới</button>
-            </template>
-          </AppEmptyState>
+          <div class="section-header-row">
+            <h3>Bài học rút ra</h3>
+          </div>
+          <div v-if="!editing.learnings && !goalStore.lessons?.length" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px; background: white;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #FFF0B3; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-regular fa-lightbulb" style="font-size: 32px; color: #FF991F;"></i>
+                </div>
+                <div v-if="isOwner" style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" @click="editing.learnings = true">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Những bộ óc vĩ đại có tư duy giống nhau sẽ chia sẻ kiến thức của họ</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">{{ isOwner ? 'Chia sẻ những gì bạn đã học được với công ty của bạn để giúp những người khác có một khởi đầu thuận lợi khi làm việc trên các mục tiêu tương tự.' : 'Chưa có bài học rút ra nào được ghi nhận cho mục tiêu này.' }}</p>
+                <div style="position: relative; display: inline-block;">
+                  <button v-if="isOwner" class="secondary-btn" @click.stop="editing.learnings = true">Thêm bài học rút ra mới</button>
+                </div>
+             </div>
+          </div>
           <div v-else>
             <div v-if="editing.learnings && isOwner" class="tab-item-editor" style="margin-bottom: 24px; padding-top: 16px;">
                 <RichTextEditor v-model="newItem.text" @save="saveLearning" @cancel="editing.learnings = false; newItem.title = ''; newItem.text = ''" placeholder="Dùng không gian này để chia sẻ bài học rút ra...">
@@ -381,11 +387,26 @@
 
         <!-- RỦI RO TAB -->
         <template v-if="currentTab === 'risks'">
-          <AppEmptyState v-if="!editing.risks && !goalStore.risks?.length" icon="fa-solid fa-triangle-exclamation" title="Nắm bắt các rủi ro đã biết" :description="isOwner ? 'Theo dõi mọi rủi ro liên quan đến mục tiêu này để tránh những bất ngờ sau này.' : 'Chưa ghi nhận rủi ro nào cho mục tiêu này.'">
-            <template #actions v-if="isOwner">
-              <button class="secondary-btn" @click="editing.risks = true">Thêm rủi ro mới</button>
-            </template>
-          </AppEmptyState>
+          <div class="section-header-row">
+            <h3>Rủi ro</h3>
+          </div>
+          <div v-if="!editing.risks && !goalStore.risks?.length" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px; background: white;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #FFEBE6; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-solid fa-triangle-exclamation" style="font-size: 32px; color: #FF5630;"></i>
+                </div>
+                <div v-if="isOwner" style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" @click="editing.risks = true">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Nắm bắt các rủi ro đã biết</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">{{ isOwner ? 'Theo dõi mọi rủi ro liên quan đến mục tiêu này để tránh những bất ngờ sau này.' : 'Chưa ghi nhận rủi ro nào cho mục tiêu này.' }}</p>
+                <div style="position: relative; display: inline-block;">
+                  <button v-if="isOwner" class="secondary-btn" @click.stop="editing.risks = true">Thêm rủi ro mới</button>
+                </div>
+             </div>
+          </div>
           <div v-else>
             <div v-if="editing.risks && isOwner" class="tab-item-editor" style="margin-bottom: 24px; padding-top: 16px;">
                 <RichTextEditor v-model="newItem.text" @save="saveRisk" @cancel="editing.risks = false; newItem.title = ''; newItem.text = ''" placeholder="Mô tả rủi ro...">
@@ -422,11 +443,26 @@
 
         <!-- QUYẾT ĐỊNH TAB -->
         <template v-if="currentTab === 'decisions'">
-          <AppEmptyState v-if="!editing.decisions && !goalStore.decisions?.length" icon="fa-solid fa-check-circle" title="Truyền đạt các quyết định lớn" :description="isOwner ? 'Ghi lại các quyết định lớn cho mục tiêu này tại đây để chia sẻ trong bản cập nhật mới nhất của bạn.' : 'Chưa ghi nhận quyết định lớn nào cho mục tiêu này.'">
-            <template #actions v-if="isOwner">
-              <button class="secondary-btn" @click="editing.decisions = true">Thêm quyết định mới</button>
-            </template>
-          </AppEmptyState>
+          <div class="section-header-row">
+            <h3>Quyết định</h3>
+          </div>
+          <div v-if="!editing.decisions && !goalStore.decisions?.length" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px; background: white;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #E3FCEF; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-solid fa-check-circle" style="font-size: 32px; color: #36B37E;"></i>
+                </div>
+                <div v-if="isOwner" style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" @click="editing.decisions = true">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Truyền đạt các quyết định lớn</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">{{ isOwner ? 'Ghi lại các quyết định lớn cho mục tiêu này tại đây để chia sẻ trong bản cập nhật mới nhất của bạn.' : 'Chưa ghi nhận quyết định lớn nào cho mục tiêu này.' }}</p>
+                <div style="position: relative; display: inline-block;">
+                  <button v-if="isOwner" class="secondary-btn" @click.stop="editing.decisions = true">Thêm quyết định mới</button>
+                </div>
+             </div>
+          </div>
           <div v-else>
             <div v-if="editing.decisions && isOwner" class="tab-item-editor" style="margin-bottom: 24px; padding-top: 16px;">
                 <RichTextEditor v-model="newItem.text" @save="saveDecision" @cancel="editing.decisions = false; newItem.title = ''; newItem.text = ''" placeholder="Mô tả quyết định...">
@@ -461,8 +497,10 @@
           </div>
         </template>
       </div>
+    </template>
 
-      <!-- Right Column: Sidebar Details -->
+    <!-- Right Column: Sidebar Details -->
+    <template #sidebar>
       <div class="side-column">
         <div class="sidebar-card">
           <div class="sidebar-card-header">
@@ -628,19 +666,10 @@
           </div>
         </div>
       </div>
-    </div>
+    </template>
+  </DetailLayout>
 
-    <!-- Share Modal -->
-    <ShareModal 
-      :isOpen="isShareModalOpen" 
-      :entityId="goal?.id" 
-      entityType="Goal"
-      :entityName="goal?.title" 
-      :workspaceId="goal?.workspaceId"
-      :owner="{ fullName: goal?.owner, avatarColor: goal?.ownerColor, avatarUrl: goal?.ownerAvatarUrl }"
-      @close="isShareModalOpen = false" 
-    />
-  </div>
+</template>
 </template>
 
 <script setup>
@@ -658,6 +687,8 @@ import { hasSystemAdminAccess } from '@/utils/permissions'
 import RichTextEditor from '@/components/common/RichTextEditor.vue'
 import ShareModal from '@/components/common/ShareModal.vue'
 import CommentSection from '@/components/common/CommentSection.vue'
+import DetailLayout from '@/components/common/Detail/DetailLayout.vue'
+import DetailHero from '@/components/common/Detail/DetailHero.vue'
 
 import AppPageLayout from '@/components/common/Foundation/AppPageLayout.vue'
 import AppPageHeader from '@/components/common/Foundation/AppPageHeader.vue'
@@ -732,6 +763,17 @@ const goalOwnerData = computed(() => {
 const currentTab = ref('overview')
 const activityTab = ref('history')
 const showUpdateForm = ref(false)
+const isFollowersModalOpen = ref(false)
+const showStatusOptions = ref(false)
+
+const archiveGoal = () => {
+  console.log('Archive goal clicked')
+}
+
+const deleteGoal = () => {
+  console.log('Delete goal clicked')
+}
+
 const isUpdateStatusOpen = ref(false)
 const showStatusMenu = ref(false)
 
@@ -960,7 +1002,12 @@ const formatDate = (value) => {
 }
 
 const startEditingBio = () => {
-  tempBio.value = goal.value?.description || ''
+  let desc = goal.value?.description || ''
+  // Clear the known mock template text if it matches, treating it as a placeholder
+  if (desc.includes('Tối ưu các câu lệnh EF Core, viết store procedure')) {
+    desc = ''
+  }
+  tempBio.value = desc
   isEditingBio.value = true
 }
 
@@ -1316,7 +1363,7 @@ const postUpdate = () => {
 .content-section {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
 }
 
 .section-header {
@@ -1326,6 +1373,20 @@ const postUpdate = () => {
 }
 
 .section-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #172B4D;
+}
+
+.section-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.section-header-row h3 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
