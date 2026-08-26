@@ -284,7 +284,7 @@
                 <span class="presentation-hint">Nội dung được giữ nguyên tỷ lệ</span>
               </div>
               <button type="button" class="presentation-screen" :aria-label="presentationFocused ? 'Thu nhỏ màn hình chia sẻ' : 'Phóng to màn hình chia sẻ'" @click="togglePresentationFocus">
-                <video :ref="setPresentationVideoElement" autoplay playsinline muted></video>
+                <video :ref="el => setPresentationVideoElement(el, activePresenter?.connectionId || '')" autoplay playsinline muted></video>
               </button>
               <div class="presentation-toolbar" role="toolbar" aria-label="Presentation controls">
                 <button type="button" class="presentation-control" :title="presentationFocused ? 'Thu nhỏ' : 'Phóng to'" @click="togglePresentationFocus">
@@ -1187,7 +1187,7 @@ import {
   COLLABORATION_REALTIME_STATES,
   getCollaborationHubErrorCode
 } from '@/services/collaborationRealtime'
-import { createCallMediaSession, traceCallHubLifecycle } from '@/services/callMediaService'
+import { createCallMediaSession, traceCallHubLifecycle, traceWebRtcMedia } from '@/services/callMediaService'
 import {
   dedupeParticipantsByUser,
   getMeetingLayoutMode,
@@ -1679,17 +1679,40 @@ const focusParticipant = connectionId => {
   focusedParticipantConnectionId.value = focusedParticipantConnectionId.value === connectionId ? '' : connectionId
 }
 
-const bindMediaElement = (element, stream, muted = false) => {
+const bindMediaElement = (element, stream, muted = false, { peerId = '', mediaRole = '' } = {}) => {
   if (!element) return
+  const track = stream?.getVideoTracks?.()[0] || stream?.getAudioTracks?.()[0] || null
+  traceWebRtcMedia('VIDEO_ELEMENT_FOUND', {
+    peerId,
+    trackKind: track?.kind,
+    trackId: track?.id,
+    trackReadyState: track?.readyState,
+    mediaRole,
+    streamId: stream?.id || ''
+  })
   element.muted = muted
   element.autoplay = true
   element.playsInline = true
-  if (element.srcObject !== stream) element.srcObject = stream || null
+  if (element.srcObject !== stream) {
+    element.srcObject = stream || null
+    traceWebRtcMedia('VIDEO_SRC_OBJECT_SET', {
+      peerId,
+      trackKind: track?.kind,
+      trackId: track?.id,
+      trackReadyState: track?.readyState,
+      mediaRole,
+      streamId: stream?.id || ''
+    })
+  }
   if (stream) {
     const playback = element.play?.()
     if (playback?.then) {
-      void playback.then(() => blockedMediaElements.delete(element)).catch(error => {
+      void playback.then(() => {
+        blockedMediaElements.delete(element)
+        traceWebRtcMedia('VIDEO_PLAY_OK', { peerId, trackKind: track?.kind, trackId: track?.id, trackReadyState: track?.readyState, mediaRole, streamId: stream.id })
+      }).catch(error => {
         if (error?.name === 'NotAllowedError') blockedMediaElements.add(element)
+        traceWebRtcMedia('VIDEO_PLAY_FAILED', { peerId, trackKind: track?.kind, trackId: track?.id, trackReadyState: track?.readyState, mediaRole, streamId: stream.id })
       })
     }
   }
@@ -1709,39 +1732,39 @@ const resumeBlockedCallMedia = () => {
 }
 
 const syncCallVideoElements = () => {
-  for (const element of localVideoElements.values()) bindMediaElement(element, localCallStream.value, true)
+  for (const element of localVideoElements.values()) bindMediaElement(element, localCallStream.value, true, { peerId: callConnectionId.value, mediaRole: 'camera' })
   for (const { connectionId, element } of remoteVideoElements.values()) {
-    bindMediaElement(element, remoteStreams.value.get(connectionId)?.cameraStream, false)
+    bindMediaElement(element, remoteStreams.value.get(connectionId)?.cameraStream, false, { peerId: connectionId, mediaRole: 'camera' })
   }
   for (const { connectionId, element } of remoteAudioElements.values()) {
-    bindMediaElement(element, remoteStreams.value.get(connectionId)?.audioStream, false)
+    bindMediaElement(element, remoteStreams.value.get(connectionId)?.audioStream, false, { peerId: connectionId, mediaRole: 'audio' })
   }
-  bindMediaElement(presentationVideoElement.value, activePresenterStream(), true)
+  bindMediaElement(presentationVideoElement.value, activePresenterStream(), true, { peerId: activePresenter.value?.connectionId || '', mediaRole: 'screen' })
 }
 
 const setLocalVideoElement = (element, slot = 'rail') => {
   if (element) localVideoElements.set(slot, element)
   else localVideoElements.delete(slot)
-  bindMediaElement(element, localCallStream.value, true)
+  bindMediaElement(element, localCallStream.value, true, { peerId: callConnectionId.value, mediaRole: 'camera' })
 }
 
 const setRemoteVideoElement = (element, connectionId, slot = 'rail') => {
   const key = `${slot}:${connectionId}`
   if (element) remoteVideoElements.set(key, { connectionId, element })
   else remoteVideoElements.delete(key)
-  bindMediaElement(element, remoteStreams.value.get(connectionId)?.cameraStream, false)
+  bindMediaElement(element, remoteStreams.value.get(connectionId)?.cameraStream, false, { peerId: connectionId, mediaRole: 'camera' })
 }
 
 const setRemoteAudioElement = (element, connectionId, slot = 'rail') => {
   const key = `${slot}:${connectionId}`
   if (element) remoteAudioElements.set(key, { connectionId, element })
   else remoteAudioElements.delete(key)
-  bindMediaElement(element, remoteStreams.value.get(connectionId)?.audioStream, false)
+  bindMediaElement(element, remoteStreams.value.get(connectionId)?.audioStream, false, { peerId: connectionId, mediaRole: 'audio' })
 }
 
-const setPresentationVideoElement = (element) => {
+const setPresentationVideoElement = (element, connectionId = '') => {
   presentationVideoElement.value = element
-  bindMediaElement(element, activePresenterStream(), true)
+  bindMediaElement(element, activePresenterStream(), true, { peerId: connectionId, mediaRole: 'screen' })
 }
 
 const callAiStateLabel = computed(() => ({

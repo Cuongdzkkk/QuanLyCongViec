@@ -49,8 +49,21 @@ for (const needle of [
   'const updateRemoteStreams',
   'new MediaStream()',
   'stream.removeTrack(previousTrack)',
-  'entry.pc.ontrack = ({ streams, track }) => updateRemoteStreams'
+  'entry.pc.ontrack = ({ streams, track, transceiver }) => updateRemoteStreams'
 ]) assert.ok(source.includes(needle), `missing remote track merge contract: ${needle}`)
+
+for (const event of [
+  'LOCAL_TRACK_READY',
+  'SENDER_ATTACHED',
+  'TRANSCEIVER_STATE',
+  'PEER_CONNECTED',
+  'REMOTE_TRACK_RECEIVED',
+  'REMOTE_TRACK_CLASSIFIED',
+  'REMOTE_STREAM_CREATED',
+  'REMOTE_CAMERA_STREAM_ASSIGNED',
+  'REMOTE_SCREEN_STREAM_ASSIGNED',
+  'TRACK_ENDED'
+]) assert.ok(source.includes(`'${event}'`), `missing WebRTC media diagnostic ${event}`)
 
 for (const needle of [
   'cameraTransceiver',
@@ -66,6 +79,9 @@ for (const needle of [
   'mediaSources',
   'trackId',
   'remoteMediaSourcesByTrackId',
+  'remoteMediaSourcesByMid',
+  'classifyRemoteMediaRole',
+  'setStreams',
   'getLocalScreenStream',
   'const updateRemoteStreams',
   'cameraStream: new MediaStream()',
@@ -101,6 +117,10 @@ assert.match(microphoneToggle, /audioTrack\.enabled = nextEnabled/, 'mute must t
 assert.doesNotMatch(microphoneToggle, /\.stop\(\)/, 'mute must not stop the microphone track')
 assert.match(microphoneToggle, /if \(senderNeedsSync\)/, 'sender replacement is limited to first acquisition or recovery')
 assert.match(source, /getPeerDiagnostics: \(\) =>/)
+assert.match(source, /mid: entry\?\.cameraTransceiver\?\.mid \|\| null/)
+assert.match(source, /remoteMediaSourcesByMid\?\.get\(transceiver\.mid\)/)
+assert.match(collaborationChat, /traceWebRtcMedia\('VIDEO_SRC_OBJECT_SET'/)
+assert.match(collaborationChat, /traceWebRtcMedia\('VIDEO_PLAY_OK'/)
 for (const state of ['connectionState', 'iceConnectionState', 'signalingState', 'senders', 'receivers', 'transceivers', 'readyState']) {
   assert.ok(source.includes(state), `missing peer diagnostic ${state}`)
 }
@@ -143,5 +163,6 @@ console.log('REMOTE_CAMERA_B_TO_A: covered by symmetric per-peer camera receiver
 console.log('MIC_A_TO_B: covered by stable audio sender and remote audio stream binding')
 console.log('MIC_B_TO_A: covered by symmetric stable audio sender and remote audio stream binding')
 console.log('MUTE_UNMUTE_WITHOUT_RENEGOTIATION: covered')
+console.log('REMOTE_MEDIA_ROLE_CLASSIFICATION: transceiver-first with metadata fallback')
 
 console.log(`callMediaService.test.mjs: ${required.length + 48} media/chat/lifecycle checks passed`)

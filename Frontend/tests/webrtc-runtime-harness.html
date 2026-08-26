@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>WebRTC media runtime harness</title>
+<style>body{font:14px system-ui;margin:24px;background:#0b1220;color:#e5edf5}button{padding:8px 12px}pre{white-space:pre-wrap;background:#111c2d;padding:12px;border-radius:8px}</style>
+<button id="run">Run camera, screen, and late-join checks</button>
+<pre id="result">Idle</pre>
+<script type="module">
+  import { classifyRemoteMediaRole } from '/src/services/callMediaService.js'
+
+  const result = document.querySelector('#result')
+  const waitForIce = pc => new Promise(resolve => {
+    if (pc.iceGatheringState === 'complete') return resolve()
+    const timeout = setTimeout(resolve, 1500)
+    pc.addEventListener('icegatheringstatechange', () => {
+      if (pc.iceGatheringState === 'complete') { clearTimeout(timeout); resolve() }
+    })
+  })
+  const canvasTrack = label => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 32; canvas.height = 18
+    const context = canvas.getContext('2d')
+    context.fillStyle = label === 'screen' ? '#2563eb' : '#16a34a'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    return canvas.captureStream(10)
+  }
+  const createPeer = () => {
+    const pc = new RTCPeerConnection({ iceServers: [] })
+    return { pc, audioTransceiver: pc.addTransceiver('audio', { direction: 'recvonly' }), cameraTransceiver: pc.addTransceiver('video', { direction: 'recvonly' }), screenTransceiver: pc.addTransceiver('video', { direction: 'recvonly' }), remoteMediaSources: new Map(), remoteMediaSourcesByTrackId: new Map() }
+  }
+  const attach = (entry, camera, screen) => {
+    entry.cameraTransceiver.sender.replaceTrack(camera.getVideoTracks()[0])
+    entry.cameraTransceiver.sender.setStreams?.(camera)
+    entry.cameraTransceiver.direction = 'sendrecv'
+    entry.screenTransceiver.sender.replaceTrack(screen.getVideoTracks()[0])
+    entry.screenTransceiver.sender.setStreams?.(screen)
+    entry.screenTransceiver.direction = 'sendrecv'
+  }
+  const negotiate = async (sender, receiver) => {
+    const offer = await sender.pc.createOffer()
+    await sender.pc.setLocalDescription(offer); await waitForIce(sender.pc)
+    receiver.remoteMediaSourcesByMid = new Map([
+      [sender.cameraTransceiver.mid, 'camera'],
+      [sender.screenTransceiver.mid, 'screen']
+    ])
+    await receiver.pc.setRemoteDescription(sender.pc.localDescription)
+    const answer = await receiver.pc.createAnswer()
+    await receiver.pc.setLocalDescription(answer); await waitForIce(receiver.pc)
+    await sender.pc.setRemoteDescription(receiver.pc.localDescription)
+  }
+  const receiveRoles = entry => new Promise(resolve => {
+    const roles = []
+    entry.pc.ontrack = event => {
+      roles.push({ role: classifyRemoteMediaRole(entry, event.transceiver, event.track, event.streams), readyState: event.track.readyState, trackId: event.track.id, eventMid: event.transceiver.mid, cameraMid: entry.cameraTransceiver.mid, screenMid: entry.screenTransceiver.mid, transceiverIndex: entry.pc.getTransceivers().indexOf(event.transceiver) })
+      if (roles.some(item => item.role === 'camera') && roles.some(item => item.role === 'screen')) resolve(roles)
+    }
+    setTimeout(() => resolve(roles), 4000)
+  })
+  const runPair = async () => {
+    const sender = createPeer(); const receiver = createPeer()
+    const received = receiveRoles(receiver)
+    attach(sender, canvasTrack('camera'), canvasTrack('screen'))
+    await negotiate(sender, receiver)
+    const roles = await received
+    sender.pc.close(); receiver.pc.close()
+    return roles
+  }
+  document.querySelector('#run').addEventListener('click', async () => {
+    result.textContent = 'Running…'
+    try {
+      const concurrent = await runPair()
+      const lateJoin = await runPair()
+      const live = values => values.some(item => item.role === 'camera' && item.readyState === 'live') && values.some(item => item.role === 'screen' && item.readyState === 'live')
+      if (!live(concurrent) || !live(lateJoin)) throw new Error(`Missing live role: ${JSON.stringify({ concurrent, lateJoin })}`)
+      result.textContent = `PASS\nCAMERA_AND_SCREEN=${JSON.stringify(concurrent)}\nLATE_JOIN_SCREEN=${JSON.stringify(lateJoin)}`
+    } catch (error) { result.textContent = `FAIL\n${error.message}` }
+  })
+</script>
+</html>
