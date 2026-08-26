@@ -14,25 +14,21 @@
       </div>
       <slot name="search"></slot>
       <div class="ppt-group ppt-filters" v-if="$slots.filters"><slot name="filters"></slot></div>
-      <slot name="left"></slot>
-    </div>
-    <div class="ppt-right">
-      <!-- Standardized Slots for exact alignment -->
-
-
-
-      
       <div class="ppt-group ppt-sort" v-if="$slots.sort">
         <slot name="sort"></slot>
       </div>
+      <div class="ppt-group ppt-toggles" v-if="$slots.toggles">
+        <slot name="toggles"></slot>
+      </div>
+      <slot name="left"></slot>
+    </div>
+    <div class="ppt-right">
+      <!-- Actions stay on the far right; search/filter/sort/view stay together. -->
 
       <div class="ppt-group ppt-actions" v-if="$slots.actions">
         <slot name="actions"></slot>
       </div>
       
-      <div class="ppt-group ppt-toggles" v-if="$slots.toggles">
-        <slot name="toggles"></slot>
-      </div>
       <slot name="right"></slot>
     </div>
   </div>
@@ -83,12 +79,15 @@ defineEmits(['update:searchQuery'])
   gap: 8px;
 }
 
+:deep(.ppt-filters .toolbar-filter-control) { order: 1; }
+:deep(.ppt-filters .toolbar-sort-control) { order: 2; }
+
 /* Standardized Search Input */
 .ppt-search {
   position: relative;
   display: flex;
   align-items: center;
-  width: min(260px, 30vw);
+  width: min(325px, 32vw);
 }
 
 .ppt-search .search-icon {
@@ -134,10 +133,50 @@ defineEmits(['update:searchQuery'])
   transition: all 0.2s ease !important;
 }
 
+:deep(.icon-only-trigger) {
+  width: 42px !important;
+  min-width: 42px !important;
+  justify-content: center !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  position: relative;
+}
+
+:deep(.ppt-group button.icon-only-trigger) {
+  width: 42px !important;
+  min-width: 42px !important;
+  justify-content: center !important;
+  padding: 0 !important;
+}
+
+:deep(.icon-only-trigger .filter-count) {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+}
+
 :deep(.timeline-filter-trigger:hover),
 :deep(.timeline-filter-trigger.active) {
   border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
   background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
+}
+
+/* Work Items toolbar contract: compact icon controls with the same hover. */
+:deep(.ppt-group .icon-only-trigger) {
+  width: 42px !important;
+  min-width: 42px !important;
+  padding: 0 !important;
+  gap: 0 !important;
+}
+
+:deep(.ppt-group .icon-only-trigger i) {
+  color: currentColor !important;
+  transition: color 0.2s ease;
+}
+
+:deep(.ppt-group .icon-only-trigger:hover i),
+:deep(.ppt-group .icon-only-trigger.active i) {
   color: var(--color-accent) !important;
 }
 
@@ -235,4 +274,44 @@ defineEmits(['update:searchQuery'])
   .ppt-search { width: min(100%, 320px); }
 }
 
+/* Dropdown styling overrides for high-density components inside the toolbar */
+:deep(.filter-select-option),
+:deep(.sort-option) {
+  height: auto !important;
+  min-height: 32px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  font-size: 13px !important;
+  border-radius: 8px !important;
+  margin: 0 !important;
+  padding: 5px 9px !important;
+  border: 0 !important;
+  border-left: 4px solid transparent !important;
+  white-space: nowrap !important;
+  width: 100% !important;
+}
+
+:deep(.filter-select-option.selected),
+:deep(.sort-option.selected) {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)) !important;
+  border-left-color: var(--color-accent) !important;
+  border-radius: 8px !important;
+  color: var(--color-accent) !important;
+  font-weight: 650 !important;
+}
+
+:deep(.filter-select-option:hover),
+:deep(.sort-option:hover) {
+  background: var(--color-surface-hover) !important;
+  color: var(--color-text-primary) !important;
+}
+
+:deep(.sort-direction-inline button) {
+  height: 30px !important;
+  min-height: 30px !important;
+  width: 32px !important;
+  justify-content: center !important;
+  border-radius: 8px !important;
+}
 </style>

@@ -17,18 +17,31 @@ const props = defineProps({
   active: {
     type: Boolean,
     default: true
+  },
+  displayChips: {
+    type: Array,
+    default: () => []
+  },
+  fields: {
+    type: Array,
+    default: null
+  },
+  operators: {
+    type: Object,
+    default: null
+  },
+  customValueMeta: {
+    type: Function,
+    default: null
   }
 })
 
-const emit = defineEmits(['remove', 'clear', 'add', 'add-filter', 'apply', 'update:filters'])
+const emit = defineEmits([
+  'remove', 'clear', 'add', 'add-filter', 'apply', 'update:filters',
+  'remove-display-chip', 'clear-all'
+])
 
-const draft = ref({ field: 'status', operator: 'is', value: '' })
-const fieldSearch = ref('')
-const openSelect = ref(null)
-const selectPlacement = ref({})
-const selectRefs = ref({})
-
-const filterFields = [
+const defaultFilterFields = [
   { key: 'status', label: 'Status', icon: 'fa-regular fa-circle-dot', values: ['BACKLOG', 'TO DO', 'IN PROGRESS', 'IN REVIEW', 'DONE'] },
   { key: 'assignee', label: 'Assignee', icon: 'fa-regular fa-user', values: ['Unassigned'] },
   { key: 'creator', label: 'Creator', icon: 'fa-regular fa-user', values: ['Me'] },
@@ -42,7 +55,7 @@ const filterFields = [
   { key: 'updatedAt', label: 'Updated at', icon: 'fa-regular fa-calendar', values: ['Today', 'This week'] }
 ]
 
-const operatorsByField = {
+const defaultOperatorsByField = {
   status: ['is', 'is not', 'in', 'not in'],
   assignee: ['is', 'is not', 'empty', 'not empty'],
   creator: ['is', 'is not'],
@@ -56,16 +69,43 @@ const operatorsByField = {
   updatedAt: ['before', 'after', 'between']
 }
 
-const selectedField = computed(() => filterFields.find(field => field.key === draft.value.field) || filterFields[0])
+const filterFields = computed(() => props.fields || defaultFilterFields)
+const operatorsByField = computed(() => props.operators || defaultOperatorsByField)
+
+const draft = ref({ field: '', operator: '', value: '' })
+
+const initializeDraft = () => {
+  const fieldsVal = filterFields.value
+  if (fieldsVal && fieldsVal.length > 0) {
+    const firstField = fieldsVal[0].key
+    const ops = operatorsByField.value[firstField] || ['is']
+    draft.value = {
+      field: firstField,
+      operator: ops[0],
+      value: ''
+    }
+  }
+}
+
+watch(filterFields, () => {
+  initializeDraft()
+}, { immediate: true })
+
+const fieldSearch = ref('')
+const openSelect = ref(null)
+const selectPlacement = ref({})
+const selectRefs = ref({})
+
+const selectedField = computed(() => filterFields.value.find(field => field.key === draft.value.field) || filterFields.value[0] || { key: '', label: '', icon: '' })
 const visibleFilterFields = computed(() => {
   const query = fieldSearch.value.trim().toLowerCase()
-  if (!query) return filterFields
-  return filterFields.filter(field =>
+  if (!query) return filterFields.value
+  return filterFields.value.filter(field =>
     field.label.toLowerCase().includes(query) ||
     field.key.toLowerCase().includes(query)
   )
 })
-const availableOperators = computed(() => operatorsByField[draft.value.field] || ['is'])
+const availableOperators = computed(() => operatorsByField.value[draft.value.field] || ['is'])
 const valueRequired = computed(() => !['empty', 'not empty', 'overdue'].includes(draft.value.operator))
 const isChipsOnly = computed(() => props.variant === 'chips')
 
@@ -126,12 +166,27 @@ const priorityOptionMeta = {
 }
 
 const getValueMeta = (fieldKey, value) => {
+  if (props.customValueMeta) {
+    const customMeta = props.customValueMeta(fieldKey, value)
+    if (customMeta) return customMeta
+  }
   if (fieldKey === 'status') {
     const projectStatus = projectStatusValues.value.find(status => status.value === normalizeStatus(value))
     return projectStatus || statusOptionMeta[normalizeStatus(value)] || { icon: 'fa-regular fa-circle-dot', color: 'var(--color-text-muted)' }
   }
   if (fieldKey === 'priority') return priorityOptionMeta[value] || { icon: 'fa-solid fa-signal', color: 'var(--color-text-muted)' }
-  return null
+  const icons = {
+    assignee: 'fa-regular fa-user',
+    creator: 'fa-regular fa-user',
+    label: 'fa-solid fa-tag',
+    startDate: 'fa-regular fa-calendar-plus',
+    dueDate: 'fa-regular fa-calendar',
+    cycle: 'fa-solid fa-arrows-spin',
+    module: 'fa-solid fa-table-cells-large',
+    createdAt: 'fa-regular fa-calendar',
+    updatedAt: 'fa-regular fa-calendar'
+  }
+  return icons[fieldKey] ? { icon: icons[fieldKey], color: 'var(--color-text-muted)' } : null
 }
 
 const isSameFilter = (filter, candidate) =>
@@ -150,6 +205,7 @@ const clearAll = () => {
   emit('update:filters', [])
   emit('clear')
   emit('apply', [])
+  emit('clear-all')
 }
 
 const setSelectRef = (name, element) => {
@@ -187,7 +243,7 @@ watch(() => props.active, (isActive) => {
 
 const selectField = (fieldKey) => {
   draft.value.field = fieldKey
-  draft.value.operator = (operatorsByField[fieldKey] || ['is'])[0]
+  draft.value.operator = (operatorsByField.value[fieldKey] || ['is'])[0]
   draft.value.value = ''
   closeSelect()
 }
@@ -235,7 +291,7 @@ const applyFilter = () => {
   emit('add', filter)
   emit('add-filter', filter)
   emit('apply', next)
-  draft.value = { field: 'status', operator: 'is', value: '' }
+  initializeDraft()
   fieldSearch.value = ''
   closeSelect()
 }
@@ -259,6 +315,7 @@ const applyFilter = () => {
               :class="{ active: openSelect === 'field' }"
               @click="toggleSelect('field')"
             >
+              <i :class="selectedField.icon" class="selected-value-icon" aria-hidden="true"></i>
               <span>{{ selectedField.label }}</span>
               <i class="fa-solid fa-chevron-down"></i>
             </button>
@@ -312,6 +369,7 @@ const applyFilter = () => {
               :class="{ active: openSelect === 'value', placeholder: !draft.value }"
               @click="toggleSelect('value')"
             >
+              <i v-if="draft.value && getValueMeta(draft.field, draft.value)" :class="getValueMeta(draft.field, draft.value).icon" class="selected-value-icon" aria-hidden="true"></i>
               <span>{{ draft.value || 'Select value' }}</span>
               <i class="fa-solid fa-chevron-down"></i>
             </button>
@@ -339,9 +397,11 @@ const applyFilter = () => {
       </div>
 
       <div class="active-filter-panel">
-        <div class="filters-scroll-area" :class="{ empty: filters.length === 0 }">
-          <span v-if="filters.length === 0" class="empty-filter-copy">No filters applied</span>
-          <div v-else v-for="filter in filters" :key="filter.id" class="filter-chip">
+        <div class="filters-scroll-area" :class="{ empty: filters.length === 0 && displayChips.length === 0 }">
+          <span v-if="filters.length === 0 && displayChips.length === 0" class="empty-filter-copy">No filters applied</span>
+          
+          <!-- Filter Chips -->
+          <div v-for="filter in filters" :key="filter.id" class="filter-chip">
             <div class="chip-segment label-sec">
               <i v-if="filter.icon" :class="filter.icon" class="mr-2"></i>
               <span>{{ filter.label }}</span>
@@ -355,7 +415,24 @@ const applyFilter = () => {
               <i class="fa-solid fa-xmark"></i>
             </button>
           </div>
-          <button v-if="filters.length > 0 && !isChipsOnly" class="clear-all-inline" type="button" @click="clearAll">Clear all</button>
+
+          <!-- Display Chips -->
+          <div v-for="chip in displayChips" :key="chip.id" class="filter-chip" style="border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));">
+            <div class="chip-segment label-sec" style="color: var(--color-accent);">
+              <i v-if="chip.icon" :class="chip.icon" class="mr-2"></i>
+              <span>{{ chip.label }}</span>
+            </div>
+            <div class="chip-segment condition-sec" style="background: color-mix(in srgb, var(--color-accent) 5%, transparent); color: var(--color-accent);">is</div>
+            <div class="chip-segment value-sec" :class="{ 'has-value-color': chip.valueColor }" :style="chip.valueColor ? { '--chip-value-color': chip.valueColor } : null">
+              <i v-if="chip.valueIcon" :class="chip.valueIcon"></i>
+              <span>{{ chip.value }}</span>
+            </div>
+            <button class="chip-segment remove-sec" type="button" @click="$emit('remove-display-chip', chip)" aria-label="Remove display setting">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <button v-if="(filters.length > 0 || displayChips.length > 0) && !isChipsOnly" class="clear-all-inline" type="button" @click="clearAll">Clear all</button>
         </div>
       </div>
     </div>
@@ -644,6 +721,22 @@ const applyFilter = () => {
   font-size: 11px;
   transition: transform 0.18s ease, color 0.18s ease;
 }
+.filter-select-trigger .selected-value-icon {
+  flex: 0 0 15px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  transform: none !important;
+}
+.filter-select-trigger:hover .selected-value-icon,
+.filter-select-trigger.active .selected-value-icon,
+.filter-select-option:hover > i {
+  color: var(--color-accent) !important;
+}
+.filter-select-trigger:hover > span,
+.filter-select-trigger.active > span,
+.filter-select-option:hover > span {
+  color: var(--color-accent) !important;
+}
 
 .filter-select-trigger:hover,
 .filter-select-trigger.active {
@@ -652,7 +745,7 @@ const applyFilter = () => {
 }
 
 .filter-select-trigger.active {
-  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.12);
+  box-shadow: none;
 }
 
 .filter-select-trigger.active i {
@@ -673,7 +766,10 @@ const applyFilter = () => {
   max-height: min(260px, calc(100vh - 260px));
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 8px;
+  padding: 6px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 0 !important;
   border: 1px solid var(--color-border);
   border-radius: 10px;
   background: var(--color-surface-elevated);
@@ -712,11 +808,12 @@ const applyFilter = () => {
   justify-content: flex-start;
   gap: 8px;
   width: 100%;
-  min-height: 34px;
-  padding: 7px 9px;
+  min-height: 32px !important;
+  padding: 5px 9px !important;
+  margin: 0 !important;
   border: 0;
-  border-left: 4px solid transparent;
-  border-radius: 8px;
+  border-left: 4px solid transparent !important;
+  border-radius: 8px !important;
   background: transparent;
   color: var(--color-text-secondary);
   font-size: 13px;
@@ -732,15 +829,15 @@ const applyFilter = () => {
 }
 
 .filter-select-option.selected {
-  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
-  border-left-color: var(--color-accent);
-  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)) !important;
+  border-left-color: var(--color-accent) !important;
+  border-radius: 8px !important;
   color: var(--color-accent);
   font-weight: 650;
 }
 
 .filter-select-option.selected:hover {
-  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface));
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface)) !important;
   color: var(--color-accent);
 }
 

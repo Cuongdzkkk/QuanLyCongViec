@@ -255,6 +255,19 @@ const changePageSize = (event) => {
 
 onMounted(fetchOptions)
 watch(() => props.projectId, fetchOptions)
+
+defineExpose({
+  searchQuery,
+  statusFilter,
+  showOnlyAssigned,
+  hideDone,
+  showOnlyScheduled,
+  pageSize,
+  page,
+  totalPages,
+  changePage,
+  changePageSize
+})
 </script>
 
 <template>
@@ -949,5 +962,8 @@ th.sticky-work-item {
   background: var(--sa-primary-soft, var(--color-surface-hover));
   color: var(--sa-primary, var(--color-accent));
   border-color: color-mix(in srgb, var(--sa-primary, var(--color-accent)) 24%, var(--color-border));
+}
+.table-toolbar {
+  display: none !important;
 }
 </style>

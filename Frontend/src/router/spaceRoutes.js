@@ -4,7 +4,7 @@ import { buildSpacePath } from '@/utils/spaceRoute'
 const ensureProjectRoute = async (to) => {
   const projectId = String(to.params.id || '').trim()
   if (!projectId) {
-    return { path: '/dashboard' }
+    return { path: '/your-work' }
   }
 
   try {
@@ -15,7 +15,7 @@ const ensureProjectRoute = async (to) => {
 
     if (status === 404) {
       return {
-        path: '/dashboard',
+        path: '/your-work',
         query: { invalidProject: projectId }
       }
     }

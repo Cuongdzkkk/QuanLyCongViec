@@ -85,13 +85,14 @@ export const useTeamStore = defineStore('team', {
       try {
         const response = await axiosClient.get(`/departments/${id}/full`)
         const team = response.data?.data || response.data
+        const starredStore = useStarredStore()
         this.currentTeam = {
           id: team.id,
           name: team.name,
           avatarText: team.name ? team.name.substring(0, 2).toUpperCase() : 'T',
           coverImage: team.coverImage || 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=1200&q=80',
           status: team.isArchived ? 'Archived' : 'Active',
-          isStarred: false,
+          isStarred: starredStore.isStarred('Team', team.id),
           description: team.description || 'Department details.',
           manager: team.manager || null
         }
@@ -113,20 +114,30 @@ export const useTeamStore = defineStore('team', {
     async toggleArchive() {
       if (!this.currentTeam) return
       try {
-        await axiosClient.put(`/departments/${this.currentTeam.id}/archive`)
-        this.currentTeam.status = 'Archived'
+        if (this.currentTeam.status === 'Archived') {
+          await axiosClient.put(`/departments/${this.currentTeam.id}/restore`)
+        } else {
+          await axiosClient.put(`/departments/${this.currentTeam.id}/archive`)
+        }
+        
+        const newStatus = this.currentTeam.status === 'Archived' ? 'Active' : 'Archived'
+        this.currentTeam.status = newStatus
+        
+        // Cập nhật lại trong allTeams
+        const index = this.allTeams.findIndex(t => t.id === this.currentTeam.id)
+        if (index !== -1) {
+          this.allTeams[index].isArchived = newStatus === 'Archived'
+          this.allTeams[index].isActive = newStatus === 'Active'
+        }
       } catch (err) {
-        console.error('Failed to archive team', err)
+        console.error('Failed to toggle archive team', err)
       }
     },
     async toggleStar() {
       if (!this.currentTeam) return
       const starredStore = useStarredStore()
       await starredStore.toggleStar('Team', this.currentTeam.id)
-      this.currentTeam.isStarred = starredStore.starredItems.some(item =>
-        (item.itemId || item.ItemId) === this.currentTeam.id &&
-        (item.itemType || item.ItemType) === 'Team'
-      )
+      this.currentTeam.isStarred = starredStore.isStarred('Team', this.currentTeam.id)
     },
     async addMembers(userIds) {
       if (!this.currentTeam) return
@@ -192,7 +203,9 @@ export const useTeamStore = defineStore('team', {
     async deleteTeam() {
       if (!this.currentTeam) return
       try {
-        await axiosClient.delete(`/departments/${this.currentTeam.id}`)
+        const teamId = this.currentTeam.id
+        await axiosClient.delete(`/departments/${teamId}`)
+        this.allTeams = this.allTeams.filter(team => `${team.id}` !== `${teamId}`)
         this.currentTeam = null
       } catch (err) {
         console.error('Failed to delete team', err)

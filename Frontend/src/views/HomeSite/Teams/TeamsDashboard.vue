@@ -30,6 +30,9 @@
               </template>
             </ToolbarFilterMenu>
           </template>
+          <template #sort>
+            <ToolbarSortMenu v-model="teamSortBy" v-model:direction="teamSortDirection" :label="t('homeSite.teams.sortTeams') || 'Sắp xếp đội ngũ'" :options="teamSortOptions" />
+          </template>
           <template #toggles>
             <div class="view-toggles">
               <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" :title="t('homeSite.teams.gridView')">
@@ -201,6 +204,7 @@ import { AppModal, AppFormField } from '@/components/common/Foundation'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
 import ToolbarFilterMenu from '@/components/common/ToolbarFilterMenu.vue'
 import DropdownFilter from '@/components/common/DropdownFilter.vue'
+import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 
 const TEAM_TYPE_OFFICIAL = 'Đội ngũ chính thức'
 const TEAM_TYPE_GROUP = 'Nhóm'
@@ -220,6 +224,16 @@ const memberSearchQuery = ref('')
 const isMemberDropdownOpen = ref(false)
 const memberInputRef = ref(null)
 const viewMode = ref('grid')
+const teamSortDirection = ref('asc')
+const teamSortBy = ref('name')
+const teamSortOptions = computed(() => {
+  const isVi = i18nStore.locale === 'vi'
+  return [
+    { value: 'name', label: isVi ? 'Tên đội ngũ' : 'Team name', icon: 'fa-solid fa-font' },
+    { value: 'members', label: isVi ? 'Số thành viên' : 'Members count', icon: 'fa-solid fa-users' },
+    { value: 'children', label: isVi ? 'Đội ngũ con' : 'Child teams', icon: 'fa-solid fa-sitemap' }
+  ]
+})
 const filters = ref({
   type: '',
   manager: ''
@@ -325,7 +339,12 @@ const filteredTeams = computed(() => {
   if (filters.value.manager) {
     list = list.filter(team => team.managerName === filters.value.manager)
   }
-  return list
+  return list.sort((left, right) => {
+    const result = teamSortBy.value === 'name'
+      ? `${left.name || ''}`.localeCompare(`${right.name || ''}`)
+      : (Number(left[teamSortBy.value === 'members' ? 'memberCount' : 'childrenCount']) - Number(right[teamSortBy.value === 'members' ? 'memberCount' : 'childrenCount']))
+    return teamSortDirection.value === 'asc' ? result : -result
+  })
 })
 
 onMounted(() => {

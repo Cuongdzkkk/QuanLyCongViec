@@ -2,12 +2,14 @@
   <div class="toolbar-filter-menu" ref="menuRef">
     <button
       type="button"
-      class="timeline-filter-trigger"
+      class="timeline-filter-trigger icon-only-trigger"
+      :title="label"
+      :aria-label="label"
+      :aria-expanded="isOpen"
       :class="{ active: isOpen || active }"
-      @click="isOpen = !isOpen"
+      @click="toggleOpen"
     >
       <i class="fa-solid fa-filter"></i>
-      <span>{{ label }}</span>
       <span v-if="count > 0" class="filter-count">{{ count }}</span>
     </button>
 
@@ -73,6 +75,13 @@ const panelRef = ref(null)
 const panelStyle = ref({})
 const active = computed(() => props.count > 0)
 const normalizedSearch = computed(() => filterSearch.value.trim().toLowerCase())
+const toggleOpen = () => {
+  isOpen.value = !isOpen.value
+  if (isOpen.value) {
+    filterSearch.value = ''
+    window.dispatchEvent(new CustomEvent('toolbar-popup-open', { detail: menuRef.value }))
+  }
+}
 
 const updatePanelPosition = () => {
   const button = menuRef.value?.querySelector('button')
@@ -85,6 +94,10 @@ const updatePanelPosition = () => {
 }
 
 const handleClickOutside = (event) => {
+  if (event.type === 'toolbar-popup-open') {
+    if (event.detail !== menuRef.value) isOpen.value = false
+    return
+  }
   if (menuRef.value?.contains(event.target) || panelRef.value?.contains(event.target)) return
   isOpen.value = false
 }
@@ -97,12 +110,14 @@ watch(isOpen, async (open) => {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  window.addEventListener('toolbar-popup-open', handleClickOutside)
   window.addEventListener('resize', updatePanelPosition)
   window.addEventListener('scroll', updatePanelPosition, true)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('toolbar-popup-open', handleClickOutside)
   window.removeEventListener('resize', updatePanelPosition)
   window.removeEventListener('scroll', updatePanelPosition, true)
 })

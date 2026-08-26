@@ -7,7 +7,12 @@ export default [
       {
         path: 'dashboard',
         name: 'Dashboard',
-        component: () => import('../views/ForYou.vue')
+        redirect: to => {
+          return {
+            path: '/your-work',
+            query: to.query
+          }
+        }
       },
       {
         path: 'profile',

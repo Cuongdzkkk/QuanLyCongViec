@@ -1,8 +1,8 @@
 <template>
   <NexusLayout>
-    <router-view v-slot="{ Component }">
+    <router-view v-slot="{ Component, route }">
       <Transition name="route-soft" mode="out-in">
-        <component :is="Component" />
+        <component :is="Component" :key="route.fullPath" />
       </Transition>
     </router-view>
   </NexusLayout>

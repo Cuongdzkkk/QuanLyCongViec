@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, onBeforeUnmount, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
 import { ElNotification, ElMessage } from 'element-plus'
 import { useI18nStore } from '@/store/useI18nStore'
@@ -20,6 +20,7 @@ import { DEFAULT_PROJECT_BACKGROUND, DEFAULT_PROJECT_ICON } from '@/config/proje
 import { buildSpacePath } from '@/utils/spaceRoute'
 
 const router = useRouter()
+const route = useRoute()
 const i18nStore = useI18nStore()
 const authStore = useAuthStore()
 const siteStore = useSiteStore()
@@ -31,6 +32,30 @@ const demoText = (value) => translateDemoText(value, i18nStore.language || 'vi')
 
 const activeTab = ref('Summary')
 const tabs = ['Summary', 'Assigned', 'Worked', 'Starred', 'Created', 'Activity']
+
+watch(
+  () => route.query.tab,
+  (newTab) => {
+    if (newTab) {
+      const matched = tabs.find(t => t.toLowerCase() === String(newTab).toLowerCase())
+      if (matched) {
+        activeTab.value = matched
+      }
+    }
+  },
+  { immediate: true }
+)
+
+watch(activeTab, (newTab) => {
+  if (route.query.tab !== newTab) {
+    router.replace({
+      query: {
+        ...route.query,
+        tab: newTab
+      }
+    })
+  }
+})
 const tabLabel = (tab) => {
   const map = {
     Summary: t('yourWork.tabs.summary') || 'Summary',

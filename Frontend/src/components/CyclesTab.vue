@@ -15,7 +15,10 @@ import { currentTheme } from '@/utils/theme'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
+import ToolbarValueFilter from '@/components/common/ToolbarValueFilter.vue'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import FilterBar from '@/components/FilterBar.vue'
 
 
 import { use } from 'echarts/core'
@@ -53,7 +56,43 @@ const newCycle = ref({ name: '', description: '', startDate: null, endDate: null
 const showCycleSearch = ref(false)
 const showCycleFilters = ref(false)
 const cycleSearchQuery = ref('')
-const cycleProgressFilter = ref('all')
+const activeFilters = ref([])
+
+const cycleSortDirection = ref('desc')
+const cycleSortBy = ref('startDate')
+const cycleSortOptions = [
+  { value: 'startDate', label: 'Start date', icon: 'fa-regular fa-calendar' },
+  { value: 'endDate', label: 'End date', icon: 'fa-regular fa-calendar-check' },
+  { value: 'name', label: 'Name', icon: 'fa-solid fa-font' },
+  { value: 'progress', label: 'Progress', icon: 'fa-solid fa-chart-line' }
+]
+
+const cycleFilterFields = computed(() => [
+  { key: 'progress', label: 'Progress state', icon: 'fa-solid fa-chart-line', values: ['Not started', 'In progress', 'Completed'] }
+])
+
+const cycleOperators = {
+  progress: ['is', 'is not']
+}
+
+const customCycleValueMeta = (fieldKey, value) => {
+  if (fieldKey === 'progress') {
+    if (value === 'Not started') return { icon: 'fa-regular fa-circle', color: '#94a3b8' }
+    if (value === 'In progress') return { icon: 'fa-solid fa-spinner', color: '#38bdf8' }
+    if (value === 'Completed') return { icon: 'fa-solid fa-circle-check', color: '#22c55e' }
+  }
+  return null
+}
+
+const showFilterDropdown = ref(false)
+const toggleFilterDropdown = () => {
+  showFilterDropdown.value = !showFilterDropdown.value
+}
+const handleOutsideClick = (e) => {
+  if (!e.target.closest('.js-toolbar-popup-scope')) {
+    showFilterDropdown.value = false
+  }
+}
 
 const expandedTabs = ref({
   active: true,
@@ -93,25 +132,48 @@ const canManageSprint = computed(() => {
 })
 const filteredSprints = computed(() => {
   const keyword = cycleSearchQuery.value.trim().toLowerCase()
-  return allSprints.value.filter(cycle => {
+  const filtered = allSprints.value.filter(cycle => {
     const matchesSearch = !keyword ||
       `${cycle.name || ''}`.toLowerCase().includes(keyword) ||
       `${cycle.description || ''}`.toLowerCase().includes(keyword)
 
-    const progress = cycle.progressPercent || 0
-    const matchesProgress =
-      cycleProgressFilter.value === 'all' ||
-      (cycleProgressFilter.value === 'not-started' && progress === 0) ||
-      (cycleProgressFilter.value === 'in-progress' && progress > 0 && progress < 100) ||
-      (cycleProgressFilter.value === 'completed' && progress >= 100)
+    if (activeFilters.value.length > 0) {
+      return activeFilters.value.every(f => {
+        let val = ''
+        const progress = cycle.progressPercent || 0
+        if (progress === 0) val = 'Not started'
+        else if (progress < 100) val = 'In progress'
+        else val = 'Completed'
 
-    return matchesSearch && matchesProgress
+        const isMatch = val === f.value
+        return f.operator === 'is' ? isMatch : !isMatch
+      })
+    }
+
+    return matchesSearch
+  })
+  return [...filtered].sort((left, right) => {
+    let l
+    let r
+    if (cycleSortBy.value === 'name') {
+      l = `${left.name || ''}`.toLowerCase()
+      r = `${right.name || ''}`.toLowerCase()
+    } else if (cycleSortBy.value === 'progress') {
+      l = Number(left.progressPercent || 0)
+      r = Number(right.progressPercent || 0)
+    } else {
+      const field = cycleSortBy.value === 'endDate' ? 'endDate' : 'startDate'
+      l = new Date(left[field] || left.createdAt || 0).getTime()
+      r = new Date(right[field] || right.createdAt || 0).getTime()
+    }
+    const result = l < r ? -1 : (l > r ? 1 : 0)
+    return cycleSortDirection.value === 'asc' ? result : -result
   })
 })
 const activeSprints = computed(() => filteredSprints.value.filter(s => s.state === SPRINT_STATE.ACTIVE))
 const upcomingSprints = computed(() => filteredSprints.value.filter(s => s.state === SPRINT_STATE.UPCOMING))
 const completedSprints = computed(() => filteredSprints.value.filter(s => s.state === SPRINT_STATE.COMPLETED))
-const hasCycleFilters = computed(() => Boolean(cycleSearchQuery.value.trim()) || cycleProgressFilter.value !== 'all')
+const hasCycleFilters = computed(() => Boolean(cycleSearchQuery.value.trim()) || activeFilters.value.length > 0)
 
 const toggleTab = (tab) => {
   expandedTabs.value[tab] = !expandedTabs.value[tab]
@@ -665,6 +727,7 @@ let sprintRealtimeHandler = null
 let taskRealtimeHandler = null
 onMounted(() => {
   window.addEventListener('keydown', handleTransitionEscape)
+  document.addEventListener('click', handleOutsideClick)
   signalRService.startConnection(props.projectId)
   sprintRealtimeHandler = (event) => {
     if (event?.projectId && `${event.projectId}` !== `${props.projectId}`) return
@@ -708,6 +771,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleTransitionEscape)
+  document.removeEventListener('click', handleOutsideClick)
   burndownRequestSequence += 1
   if (cycleRefreshTimer) {
     window.clearInterval(cycleRefreshTimer)
@@ -744,19 +808,31 @@ onUnmounted(() => {
       >
         
         <template #filters>
-          <div class="cycle-filter-wrapper">
-            <button class="timeline-filter-trigger" type="button" @click="showCycleFilters = !showCycleFilters" :class="{ active: showCycleFilters || hasCycleFilters }">
-              <i class="fa-solid fa-filter"></i> {{ t('cyclesTab.filters', 'Filters') }}
+          <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
+            <button
+              class="timeline-filter-trigger icon-only-trigger"
+              type="button"
+              aria-label="Filters"
+              title="Bộ lọc"
+              @click="toggleFilterDropdown"
+              :class="{ active: showFilterDropdown || activeFilters.length }"
+            >
+              <i class="fa-solid fa-filter"></i>
+              <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
             </button>
-            <div class="cycle-filter-menu" v-if="showCycleFilters" @click.stop>
-              <div class="filter-title">{{ t('cyclesTab.progress', 'Progress') }}</div>
-              <label class="filter-option"><input type="radio" value="all" v-model="cycleProgressFilter" /> {{ t('cyclesTab.allCycles', 'All cycles') }}</label>
-              <label class="filter-option"><input type="radio" value="not-started" v-model="cycleProgressFilter" /> {{ t('cyclesTab.notStarted', 'Not started') }}</label>
-              <label class="filter-option"><input type="radio" value="in-progress" v-model="cycleProgressFilter" /> {{ t('cyclesTab.inProgress', 'In progress') }}</label>
-              <label class="filter-option"><input type="radio" value="completed" v-model="cycleProgressFilter" /> {{ t('cyclesTab.completed', 'Completed') }}</label>
-              <button class="clear-filter-btn" type="button" @click="clearCycleFilters">{{ t('cyclesTab.clearFilters', 'Clear filters') }}</button>
+            <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
+              <FilterBar
+                v-model:filters="activeFilters"
+                :fields="cycleFilterFields"
+                :operators="cycleOperators"
+                :custom-value-meta="customCycleValueMeta"
+                :active="showFilterDropdown"
+              />
             </div>
           </div>
+        </template>
+        <template #sort>
+          <ToolbarSortMenu v-model="cycleSortBy" v-model:direction="cycleSortDirection" label="Sort cycles" :options="cycleSortOptions" />
         </template>
       </ProjectPageToolbar>
 
@@ -2176,5 +2252,39 @@ onUnmounted(() => {
   .transition-modal-actions > button {
     width: 100%;
   }
+}
+
+.filter-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.plane-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1050;
+  width: 290px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  padding: 12px;
+}
+.filter-dropdown-menu {
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: none;
+  padding: 8px !important;
+  left: 0;
+  right: auto;
+  overflow: visible;
+}
+.filter-dropdown-menu :deep(.filter-bar-container) {
+  min-height: auto;
+  box-shadow: none;
+  background: transparent;
+  border: none;
+  padding: 0 !important;
+  overflow: visible;
 }
 </style>

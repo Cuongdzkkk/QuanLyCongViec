@@ -74,7 +74,7 @@
         </div>
       </div>
 
-      <div class="table-container" v-if="!isLoading">
+      <template v-if="!isLoading">
         <!-- Grid View -->
         <div v-if="viewMode === 'grid' && filteredUsers.length > 0" class="people-cards-grid">
           <div class="people-card" v-for="user in filteredUsers" :key="user.id" @click="goToProfile(user.id)" onmouseover="this.style.boxShadow='0 4px 8px rgba(9, 30, 66, 0.15)'" onmouseout="this.style.boxShadow='none'">
@@ -89,31 +89,32 @@
         </div>
 
         <!-- Table View -->
-        <table class="jira-table" v-if="viewMode === 'table' && filteredUsers.length > 0">
-          <thead>
-            <tr>
-              <th class="col-name">Tên</th>
-              <th>Chức danh nghề nghiệp</th>
-              <th>Phòng ban</th>
-              <th>Vị trí</th>
-              <th>Thông tin liên hệ</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="user in filteredUsers" :key="user.id" @click="goToProfile(user.id)">
-              <td>
-                <div class="user-cell">
-                  <AppUserChip :src="user.avatarUrl" :name="user.fullName" :email="user.email" />
-                </div>
-              </td>
-              <td>{{ user.position || '-' }}</td>
-              <td>{{ user.department || '-' }}</td>
-              <td>{{ user.location || '-' }}</td>
-              <td>{{ user.email || '-' }}</td>
-            </tr>
-          </tbody>
-        </table>
-        
+        <div class="table-container" v-if="viewMode === 'table' && filteredUsers.length > 0">
+          <table class="jira-table" v-resizable>
+            <thead>
+              <tr>
+                <th class="col-name">Tên</th>
+                <th>Chức danh nghề nghiệp</th>
+                <th>Phòng ban</th>
+                <th>Vị trí</th>
+                <th>Thông tin liên hệ</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="user in filteredUsers" :key="user.id" @click="goToProfile(user.id)">
+                <td>
+                  <div class="user-cell">
+                    <AppUserChip :src="user.avatarUrl" :name="user.fullName" :email="user.email" />
+                  </div>
+                </td>
+                <td>{{ user.position || '-' }}</td>
+                <td>{{ user.department || '-' }}</td>
+                <td>{{ user.location || '-' }}</td>
+                <td>{{ user.email || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         
         <AppEmptyState 
           v-if="filteredUsers.length === 0"
@@ -121,7 +122,7 @@
           title="Không tìm thấy ai"
           description="Chúng tôi không tìm thấy ai khớp với tiêu chí tìm kiếm của bạn."
         />
-      </div>
+      </template>
       
       <div class="loading-state" v-else>
         <div class="loader-spinner"></div>
@@ -420,7 +421,7 @@ const goToProfile = (id) => {
 }
 
 .module-header {
-  padding: 32px 40px 0;
+  padding: var(--app-shell-header-top, 18px) var(--app-shell-page-x, 18px) 0;
   background-color: #FFFFFF;
 }
 
@@ -488,7 +489,7 @@ const goToProfile = (id) => {
 }
 
 .module-content {
-  padding: 32px 40px 40px;
+  padding: 18px var(--app-shell-page-x, 18px) 28px;
   flex: 1;
 }
 

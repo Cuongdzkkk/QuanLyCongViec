@@ -39,7 +39,7 @@
       <img class="ai-pet-image" :src="petAsset" alt="" aria-hidden="true" draggable="false" />
     </button>
 
-    <div class="global-utility-rail" aria-label="Công cụ nhanh">
+    <div class="global-utility-rail" aria-label="Công cụ nhanh" v-draggable-y>
       <button
         type="button"
         :class="{ active: notesVisible }"
@@ -551,7 +551,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, defineProps, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DOMPurify from 'dompurify'
 import { useRoute, useRouter } from 'vue-router'

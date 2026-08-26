@@ -1,9 +1,12 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
 import { ElMessage } from 'element-plus'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
+import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
+import FilterBar from '@/components/FilterBar.vue'
 import { signalRService } from '@/api/signalrService'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
@@ -27,6 +30,72 @@ const intakePermissions = ref({
   canCreate: false,
   canReview: false
 })
+const intakeSearch = ref('')
+const activeFilters = ref([])
+
+const intakeFilterFields = computed(() => [
+  { key: 'status', label: 'Trạng thái', icon: 'fa-solid fa-circle-dot', values: ['Pending', 'Accepted', 'Declined'] }
+])
+
+const intakeOperators = {
+  status: ['is', 'is not']
+}
+
+const customIntakeValueMeta = (fieldKey, value) => {
+  if (fieldKey === 'status') {
+    const info = getStatusInfo(value)
+    if (info) return { icon: info.icon, color: info.color }
+  }
+  return null
+}
+
+const showFilterDropdown = ref(false)
+const toggleFilterDropdown = () => {
+  showFilterDropdown.value = !showFilterDropdown.value
+}
+const handleOutsideClick = (e) => {
+  if (!e.target.closest('.js-toolbar-popup-scope')) {
+    showFilterDropdown.value = false
+  }
+}
+
+const intakeSortDirection = ref('desc')
+const intakeSortBy = ref('createdAt')
+const intakeSortOptions = [
+  { value: 'createdAt', label: 'Ngày gửi', icon: 'fa-regular fa-calendar-plus' },
+  { value: 'updatedAt', label: 'Cập nhật gần nhất', icon: 'fa-regular fa-clock' },
+  { value: 'title', label: 'Tiêu đề', icon: 'fa-solid fa-font' },
+  { value: 'status', label: 'Trạng thái', icon: 'fa-solid fa-circle-dot' }
+]
+const filteredIntakes = computed(() => {
+  const query = intakeSearch.value.trim().toLowerCase()
+  const items = (intakes.value || []).filter(item => {
+    const matchesQuery = !query || `${item.title || ''} ${item.submittedByName || ''} ${item.source || ''}`.toLowerCase().includes(query)
+    
+    if (activeFilters.value.length > 0) {
+      return activeFilters.value.every(f => {
+        const val = item.status || 'Pending'
+        const isMatch = val === f.value
+        return f.operator === 'is' ? isMatch : !isMatch
+      })
+    }
+    
+    return matchesQuery
+  })
+  return [...items].sort((left, right) => {
+    let l
+    let r
+    if (intakeSortBy.value === 'title' || intakeSortBy.value === 'status') {
+      l = `${left[intakeSortBy.value] || ''}`.toLowerCase()
+      r = `${right[intakeSortBy.value] || ''}`.toLowerCase()
+    } else {
+      l = new Date(left[intakeSortBy.value] || 0).getTime()
+      r = new Date(right[intakeSortBy.value] || 0).getTime()
+    }
+    const result = l < r ? -1 : (l > r ? 1 : 0)
+    return intakeSortDirection.value === 'asc' ? result : -result
+  })
+})
 
 const newIntake = ref({
   title: '',
@@ -44,10 +113,14 @@ const handleIntakeRealtime = event => {
 
 onMounted(() => {
   signalRService.on('EntityChanged', handleIntakeRealtime)
+  document.addEventListener('click', handleOutsideClick)
   loadIntakes()
 })
 
-onUnmounted(() => signalRService.off('EntityChanged', handleIntakeRealtime))
+onUnmounted(() => {
+  signalRService.off('EntityChanged', handleIntakeRealtime)
+  document.removeEventListener('click', handleOutsideClick)
+})
 
 async function loadIntakes() {
   loading.value = true
@@ -174,6 +247,40 @@ function navigateToTask(taskId) {
       </template>
     </ProjectPageHeader>
 
+    <ProjectPageToolbar
+      v-model:searchQuery="intakeSearch"
+      show-search
+      search-placeholder="Tìm yêu cầu intake..."
+    >
+      <template #filters>
+        <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
+          <button
+            class="timeline-filter-trigger icon-only-trigger"
+            type="button"
+            aria-label="Filters"
+            title="Bộ lọc"
+            @click="toggleFilterDropdown"
+            :class="{ active: showFilterDropdown || activeFilters.length }"
+          >
+            <i class="fa-solid fa-filter"></i>
+            <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
+          </button>
+          <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
+            <FilterBar
+              v-model:filters="activeFilters"
+              :fields="intakeFilterFields"
+              :operators="intakeOperators"
+              :custom-value-meta="customIntakeValueMeta"
+              :active="showFilterDropdown"
+            />
+          </div>
+        </div>
+      </template>
+      <template #sort>
+        <ToolbarSortMenu v-model="intakeSortBy" v-model:direction="intakeSortDirection" label="Sắp xếp intake" :options="intakeSortOptions" />
+      </template>
+    </ProjectPageToolbar>
+
     <!-- Inbox List -->
     <div v-loading="loading" class="intake-content-area">
       <div v-if="!loading && loadError" class="intake-empty-state" role="alert">
@@ -198,21 +305,21 @@ function navigateToTask(taskId) {
 
       <!-- Table Listing -->
       <div v-else class="table-container">
-        <table class="intake-table">
+        <table v-resizable class="intake-table">
           <thead>
             <tr>
-              <th>Tiêu đề yêu cầu</th>
-              <th>Người gửi</th>
-              <th>Mức độ ưu tiên</th>
-              <th>Hạn mong muốn</th>
-              <th>Trạng thái</th>
-              <th>Ngày tạo</th>
-              <th class="actions-header">Hành động</th>
+              <th><i class="fa-solid fa-inbox"></i> Tiêu đề yêu cầu</th>
+              <th><i class="fa-solid fa-user-pen"></i> Người gửi</th>
+              <th><i class="fa-solid fa-signal"></i> Mức độ ưu tiên</th>
+              <th><i class="fa-regular fa-calendar"></i> Hạn mong muốn</th>
+              <th><i class="fa-regular fa-circle-dot"></i> Trạng thái</th>
+              <th><i class="fa-regular fa-clock"></i> Ngày tạo</th>
+              <th class="actions-header"><i class="fa-solid fa-bolt"></i> Hành động</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in intakes" :key="item.id" class="table-row">
-              <td class="title-cell font-bold" @click="viewDetail(item)">
+            <tr v-for="item in filteredIntakes" :key="item.id" class="table-row">
+              <td class="title-cell" @click="viewDetail(item)">
                 {{ item.title }}
                 <span class="source-tag text-[10px] ml-2">{{ item.source }}</span>
               </td>
@@ -395,7 +502,7 @@ function navigateToTask(taskId) {
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 0;
   font-family: 'Inter', system-ui, sans-serif;
   color: var(--color-text-primary);
 }
@@ -433,9 +540,9 @@ function navigateToTask(taskId) {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  margin-top: 14px;
 }
 
 .intake-table {
@@ -444,28 +551,44 @@ function navigateToTask(taskId) {
   text-align: left;
 }
 
-.intake-table th,
-.intake-table td {
-  padding: 14px 18px;
-  font-size: 13px;
-  border-bottom: 1px solid var(--color-border);
-}
-
 .intake-table th {
-  background: rgba(148, 163, 184, 0.04);
-  font-weight: 700;
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
+  background: var(--color-surface);
+  border-bottom: 2px solid var(--color-border) !important;
+  padding: 12px 16px !important;
   font-size: 11px;
   letter-spacing: 0.05em;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.intake-table th i {
+  color: inherit;
+  margin-right: 6px;
+  opacity: 0.88;
+}
+
+.intake-table td {
+  height: 50px;
+  padding: 10px 14px !important;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border) !important;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .table-row {
-  transition: background-color 0.2s;
+  box-shadow: inset 3px 0 0 transparent;
+  transition: all 0.2s ease;
 }
 
 .table-row:hover {
-  background-color: var(--color-surface-hover);
+  box-shadow: inset 3px 0 0 var(--sa-primary, var(--color-accent)) !important;
+}
+
+.table-row:hover td {
+  background: color-mix(in srgb, var(--sa-primary, var(--color-accent)) 8%, var(--color-surface)) !important;
 }
 
 .title-cell {
@@ -474,6 +597,8 @@ function navigateToTask(taskId) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-weight: 700;
+  color: var(--color-text-primary);
 }
 
 .title-cell:hover {
@@ -590,5 +715,39 @@ function navigateToTask(taskId) {
   .intake-portal {
     gap: 12px;
   }
+}
+
+.filter-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.plane-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1050;
+  width: 290px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  padding: 12px;
+}
+.filter-dropdown-menu {
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: none;
+  padding: 8px !important;
+  left: 0;
+  right: auto;
+  overflow: visible;
+}
+.filter-dropdown-menu :deep(.filter-bar-container) {
+  min-height: auto;
+  box-shadow: none;
+  background: transparent;
+  border: none;
+  padding: 0 !important;
+  overflow: visible;
 }
 </style>

@@ -9,7 +9,6 @@
       </div>
     </div>
     <div v-else class="plane-board-container" style="display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%;">
-
       <ProjectPageHeader
         icon="fa-solid fa-layer-group"
         :title="activeModuleFilterId ? (moduleDetail?.name || tr('Module', 'Module')) : t('Work Items')"
@@ -37,7 +36,6 @@
           />
         </template>
       </ProjectPageHeader>
-
       <section v-if="activeModuleFilterId" class="module-detail-context" aria-live="polite">
         <div v-if="moduleDetailLoading" class="module-state-panel module-loading-state">
           <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
@@ -46,7 +44,6 @@
             <span>{{ tr('Loading metadata and scoped work items...', 'Đang tải thông tin và danh sách công việc...') }}</span>
           </div>
         </div>
-
         <div v-else-if="moduleDetailError" class="module-state-panel module-error-state" role="alert">
           <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
           <div>
@@ -58,7 +55,6 @@
             {{ tr('Retry', 'Thử lại') }}
           </button>
         </div>
-
         <template v-else-if="moduleDetail">
           <div class="module-detail-heading">
             <div>
@@ -92,7 +88,6 @@
           </div>
         </template>
       </section>
-
       <ProjectPageToolbar
         v-if="!activeModuleFilterId"
         :showSearch="true"
@@ -107,14 +102,37 @@
             <button class="toggle-btn" :class="{ active: currentTab === 'spreadsheet' }" @click="currentTab = 'spreadsheet'" :title="t('Spreadsheet view')"><i class="fa-solid fa-table-cells"></i></button>
             <button class="toggle-btn" :class="{ active: currentTab === 'timeline' }" @click="currentTab = 'timeline'" :title="t('Gantt chart view')"><i class="fa-solid fa-chart-gantt"></i></button>
           </div>
+          <!-- Global Calendar Navigation controls -->
+          <div v-if="currentTab === 'calendar' && calendarTabRef" class="cal-nav-toolbar" style="display: flex; align-items: center; gap: 8px; margin-left: 12px; border-left: 1px solid var(--color-border); padding-left: 12px;">
+            <button class="plane-toolbar-btn icon-only-trigger" type="button" @click="calendarTabRef.prevMonth" :title="t('Previous month')"><i class="fa-solid fa-chevron-left"></i></button>
+            <button class="plane-toolbar-btn icon-only-trigger" type="button" @click="calendarTabRef.nextMonth" :title="t('Next month')"><i class="fa-solid fa-chevron-right"></i></button>
+            <span class="cal-month-label-global" style="font-size: 13px; font-weight: 700; color: var(--color-text-primary); margin: 0 4px; white-space: nowrap;">{{ calendarTabRef.monthLabel }}</span>
+            <button class="plane-toolbar-btn" type="button" @click="calendarTabRef.goToday" style="font-size: 11px; padding: 4px 10px; min-height: 28px; line-height: 1;">{{ t('Today') }}</button>
+          </div>
+          <!-- Global Timeline Navigation & View Modes controls -->
+          <div v-if="currentTab === 'timeline' && timelineTabRef" class="timeline-nav-toolbar" style="display: flex; align-items: center; gap: 8px; margin-left: 12px; border-left: 1px solid var(--color-border); padding-left: 12px;">
+            <button class="plane-toolbar-btn icon-only-trigger" type="button" @click="timelineTabRef.shiftTimeline(-1)" :title="t('Previous')"><i class="fa-solid fa-chevron-left"></i></button>
+            <button class="plane-toolbar-btn icon-only-trigger" type="button" @click="timelineTabRef.shiftTimeline(1)" :title="t('Next')"><i class="fa-solid fa-chevron-right"></i></button>
+            
+            <div class="tl-view-modes" style="display: flex; gap: 4px; margin-left: 4px; background: color-mix(in srgb, var(--color-surface-hover) 85%, transparent); border-radius: 8px; padding: 2px;">
+              <button
+                v-for="mode in timelineTabRef.viewModes"
+                :key="mode.key"
+                class="plane-toolbar-btn"
+                style="font-size: 11px; padding: 3px 8px; border: none; background: transparent; height: auto; min-height: 22px; line-height: 1;"
+                :style="timelineTabRef.viewMode === mode.key ? { background: 'var(--color-surface)', color: 'var(--color-accent)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } : {}"
+                @click="timelineTabRef.viewMode = mode.key"
+              >{{ mode.key }}</button>
+            </div>
+            
+            <button class="plane-toolbar-btn" type="button" @click="timelineTabRef.goToToday" style="font-size: 11px; padding: 4px 10px; min-height: 28px; line-height: 1; margin-left: 4px;">{{ t('Today') }}</button>
+            <button class="plane-toolbar-btn" type="button" :style="timelineTabRef.createMode ? { background: 'color-mix(in srgb, var(--color-accent) 15%, var(--color-surface))', color: 'var(--color-accent)', borderColor: 'var(--color-accent)' } : {}" @click="timelineTabRef.toggleCreateMode" style="font-size: 11px; padding: 4px 10px; min-height: 28px; line-height: 1;">{{ t('Create mode') }}</button>
+          </div>
         </template>
-
         <template #filters>
-
           <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
-            <button class="timeline-filter-trigger" type="button" @click.stop="toggleFilterDropdown" :class="{ active: showFilterDropdown || activeTaskFilters.length }">
+            <button class="timeline-filter-trigger icon-only-trigger" type="button" aria-label="Filters" :title="tr('Filters', 'Bộ lọc')" @click.stop="toggleFilterDropdown" :class="{ active: showFilterDropdown || activeTaskFilters.length }">
             <i class="fa-solid fa-filter"></i>
-            <span>{{ tr('Filters', 'Bộ lọc') }}</span>
             <span v-if="activeTaskFilters.length" class="filter-count">{{ activeTaskFilters.length }}</span>
           </button>
           <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
@@ -128,94 +146,318 @@
             />
           </div>
         </div>
+          <!-- Decoupled Sort Dropdown -->
+          <div v-if="currentTab === 'list' || currentTab === 'board'" class="display-dropdown-wrapper js-toolbar-popup-scope" style="position: relative; display: inline-block;">
+            <button class="timeline-filter-trigger icon-only-trigger" aria-label="Sort" :title="tr('Sort', 'Sắp xếp')" @click.stop="toggleSortDropdown" :class="{ 'active': showSortDropdown }">
+              <i class="fa-solid fa-arrow-down-wide-short"></i>
+            </button>
+            <div class="plane-dropdown-menu" v-show="showSortDropdown" @click.stop style="width: 340px; left: 0; right: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px; max-height: none; overflow: visible;">
+              <!-- Sort Search Input -->
+              <div class="filter-search-field">
+                <i class="fa-solid fa-magnifying-glass filter-search-icon"></i>
+                <input
+                  v-model="sortSearchQuery"
+                  type="text"
+                  class="filter-search-input"
+                  :placeholder="tr('Search sort fields...', 'Tìm kiếm trường sắp xếp...')"
+                  @click.stop
+                />
+              </div>
 
-          <div class="display-dropdown-wrapper js-toolbar-popup-scope">
-             <button class="plane-toolbar-btn display-trigger" @click.stop="toggleDisplayDropdown" :class="{ 'active': showDisplayDropdown }">{{ t('Display') }}</button>
-             <div class="plane-dropdown-menu display-dropdown-menu" v-show="showDisplayDropdown" @click.stop>
-                <div class="nexus-display-properties-dropdown dd-section">
-                   <div class="dd-title">
-                      <span>{{ t('Display Properties') }}</span>
-                      <i class="fa-solid fa-chevron-up"></i>
-                   </div>
-                   <div class="dd-btns">
+              <!-- Sort By Combobox -->
+              <div class="filter-combobox" style="position: relative;">
+                <span class="filter-label">{{ tr('Sort by', 'Sắp xếp theo') }}</span>
+                <div class="filter-select-trigger sort-combobox-trigger">
+                  <div style="display: flex; align-items: center; gap: 10px; flex: 1; cursor: pointer; min-width: 0;" @click="openSortSelect = (openSortSelect === 'sort' ? null : 'sort')">
+                    <i :class="displayOrderOptions.find(o => o.value === displayOrder)?.icon || 'fa-solid fa-hand'" style="font-size: 13px; color: var(--color-text-secondary); width: 15px; text-align: center;"></i>
+                    <span style="font-size: 13px; color: var(--color-text-primary); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ getDisplayOrderLabel(displayOrder) }}</span>
+                  </div>
+                  <!-- Asc/Desc buttons inside the trigger -->
+                  <div style="display: flex; align-items: center; gap: 4px; margin-right: 8px;">
+                    <button
+                      type="button"
+                      class="dir-mini-btn"
+                      :class="{ active: sortDirection === 'asc' }"
+                      @click="sortDirection = 'asc'"
+                      title="Ascending"
+                    >
+                      <i class="fa-solid fa-arrow-up-wide-short" style="font-size: 11px;"></i>
+                    </button>
+                    <button
+                      type="button"
+                      class="dir-mini-btn"
+                      :class="{ active: sortDirection === 'desc' }"
+                      @click="sortDirection = 'desc'"
+                      title="Descending"
+                    >
+                      <i class="fa-solid fa-arrow-down-short-wide" style="font-size: 11px;"></i>
+                    </button>
+                  </div>
+                  <i class="fa-solid fa-chevron-down" style="font-size: 10px; transition: transform 0.2s; cursor: pointer;" :style="openSortSelect === 'sort' ? { transform: 'rotate(180deg)', color: 'var(--color-accent)' } : {}" @click="openSortSelect = (openSortSelect === 'sort' ? null : 'sort')"></i>
+                </div>
+                <div v-show="openSortSelect === 'sort'" class="filter-select-menu" style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 200px; z-index: 110;">
+                  <button
+                    v-for="opt in filteredDisplayOrderOptions"
+                    :key="opt.value"
+                    class="filter-select-option"
+                    :class="{ selected: displayOrder === opt.value }"
+                    type="button"
+                    @click="displayOrder = opt.value"
+                  >
+                    <i :class="opt.icon"></i>
+                    <span>{{ opt.label }}</span>
+                    <!-- Ascending / Descending buttons on the right space of the selected option -->
+                    <div v-if="displayOrder === opt.value" style="display: flex; align-items: center; gap: 4px;" @click.stop>
                       <button
-                        v-for="property in displayPropertyOptions"
-                        :key="property.key"
-                        class="dd-tag"
                         type="button"
-                        :class="{ active: displayProperties[property.key] }"
-                        @click="toggleDisplayProperty(property.key)"
+                        class="dir-mini-btn"
+                        :class="{ active: sortDirection === 'asc' }"
+                        @click="sortDirection = 'asc'"
+                        title="Ascending"
                       >
-                        <i :class="property.icon"></i>
-                        <span>{{ property.label }}</span>
+                        <i class="fa-solid fa-arrow-up-wide-short"></i>
                       </button>
-                   </div>
+                      <button
+                        type="button"
+                        class="dir-mini-btn"
+                        :class="{ active: sortDirection === 'desc' }"
+                        @click="sortDirection = 'desc'"
+                        title="Descending"
+                      >
+                        <i class="fa-solid fa-arrow-down-short-wide"></i>
+                      </button>
+                    </div>
+                  </button>
                 </div>
-                <div class="dd-section border-top">
-                   <div class="dd-title">
-                      <span>{{ t('Order by') }}</span>
-                      <i class="fa-solid fa-chevron-up"></i>
-                   </div>
-                   <div class="dd-list">
-                      <label class="dd-item"><input type="radio" name="order" value="manual" v-model="displayOrder" /> {{ t('Manual') }}</label>
-                      <label class="dd-item"><input type="radio" name="order" value="created" v-model="displayOrder" /> {{ t('Last created') }}</label>
-                      <label class="dd-item"><input type="radio" name="order" value="updated" v-model="displayOrder" /> {{ t('Last updated') }}</label>
-                      <label class="dd-item"><input type="radio" name="order" value="priority" v-model="displayOrder" /> {{ t('Priority') }}</label>
-                   </div>
+              </div>
+
+              <!-- Group By Combobox -->
+              <div class="filter-combobox" style="position: relative;">
+                <span class="filter-label">{{ tr('Group by', 'Gom nhóm theo') }}</span>
+                <button
+                  class="filter-select-trigger"
+                  type="button"
+                  :class="{ active: openSortSelect === 'groupby' }"
+                  @click="openSortSelect = (openSortSelect === 'groupby' ? null : 'groupby')"
+                >
+                  <i :class="{ status: 'fa-solid fa-square-poll-vertical', priority: 'fa-solid fa-signal', assignee: 'fa-regular fa-user', sprint: 'fa-solid fa-arrows-spin', module: 'fa-solid fa-cubes' }[groupBy] || 'fa-solid fa-layer-group'" aria-hidden="true"></i>
+                  <span>{{ [
+                    { value: 'status', label: tr('Status', 'Trạng thái') },
+                    { value: 'priority', label: tr('Priority', 'Độ ưu tiên') },
+                    { value: 'assignee', label: tr('Assignee', 'Người thực hiện') },
+                    { value: 'sprint', label: tr('Sprint', 'Chu kỳ') },
+                    { value: 'module', label: tr('Module', 'Phân hệ') }
+                  ].find(g => g.value === groupBy)?.label }}</span>
+                  <i class="fa-solid fa-chevron-down" style="font-size: 10px; margin-left: auto; transition: transform 0.2s;" :style="openSortSelect === 'groupby' ? { transform: 'rotate(180deg)', color: 'var(--color-accent)' } : {}"></i>
+                </button>
+                <div v-show="openSortSelect === 'groupby'" class="filter-select-menu" style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 200px; z-index: 110;">
+                  <button
+                    v-for="grp in [
+                      { value: 'status', label: tr('Status', 'Trạng thái'), icon: 'fa-solid fa-square-poll-vertical' },
+                      { value: 'priority', label: tr('Priority', 'Độ ưu tiên'), icon: 'fa-solid fa-signal' },
+                      { value: 'assignee', label: tr('Assignee', 'Người thực hiện'), icon: 'fa-regular fa-user' },
+                      { value: 'sprint', label: tr('Sprint', 'Chu kỳ'), icon: 'fa-solid fa-arrows-spin' },
+                      { value: 'module', label: tr('Module', 'Phân hệ'), icon: 'fa-solid fa-cubes' }
+                    ]"
+                    :key="grp.value"
+                    class="filter-select-option"
+                    :class="{ selected: groupBy === grp.value }"
+                    type="button"
+                    @click="groupBy = grp.value; openSortSelect = null"
+                  >
+                    <i :class="grp.icon"></i>
+                    <span>{{ grp.label }}</span>
+                  </button>
                 </div>
-                <div class="dd-section border-top">
-                   <label class="dd-item checkbox">
-                     <input type="checkbox" v-model="showSubtasks" /> {{ t('Show sub-work items') }}
-                   </label>
-                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Updated Display Dropdown -->
+          <div class="display-dropdown-wrapper js-toolbar-popup-scope" style="position: relative; display: inline-block;">
+             <button class="timeline-filter-trigger icon-only-trigger" aria-label="Display" :title="t('Display')" @click.stop="toggleDisplayDropdown" :class="{ 'active': showDisplayDropdown }">
+               <i class="fa-solid fa-eye"></i>
+             </button>
+             <div class="plane-dropdown-menu" v-show="showDisplayDropdown" @click.stop style="width: 320px; display: flex; flex-direction: column; gap: 12px; padding: 12px; right: 0; left: auto; max-height: none;">
+                  <!-- List / Board view Display Options -->
+                  <template v-if="currentTab === 'list' || currentTab === 'board'">
+                     <!-- Display Properties -->
+                     <div class="dd-section" style="padding: 0;">
+                        <div class="dd-title filter-label" style="margin-bottom: 8px;">
+                           <span>{{ t('Display Properties') }}</span>
+                        </div>
+                        <div class="dd-btns" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                           <button
+                             v-for="property in displayPropertyOptions"
+                             :key="property.key"
+                             class="dd-tag"
+                             type="button"
+                             :class="{ active: displayProperties[property.key] }"
+                             @click="toggleDisplayProperty(property.key)"
+                             style="padding: 6px 12px; font-size: 13px; border-radius: 8px; font-weight: 500;"
+                           >
+                             <i :class="property.icon" style="font-size: 11px;"></i>
+                             <span>{{ property.label }}</span>
+                           </button>
+                        </div>
+                     </div>
+                     <div class="dd-divider" style="height: 1px; background: var(--color-border); margin: 4px 0;"></div>
+                     <!-- Show subtasks check -->
+                     <div class="dd-section" style="padding: 0;">
+                        <label 
+                          class="dd-item checkbox" 
+                          :style="showSubtasks ? { background: 'color-mix(in srgb, var(--color-accent) 10%, var(--color-surface))', color: 'var(--color-accent)', fontWeight: '600', borderColor: 'color-mix(in srgb, var(--color-accent) 55%, var(--color-border))' } : {}"
+                          style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; margin: 0; color: var(--color-text-secondary); border-radius: 8px; border: 1px solid transparent; transition: all 0.15s ease;"
+                        >
+                          <input type="checkbox" v-model="showSubtasks" style="width: 14px; height: 14px; accent-color: var(--color-accent); margin: 0;" /> 
+                          <span>{{ t('Show sub-work items') }}</span>
+                        </label>
+                     </div>
+                  </template>
+
+                  <!-- Calendar Display Options -->
+                  <template v-if="currentTab === 'calendar' && calendarTabRef">
+                    <div class="dd-section" style="padding: 0;">
+                      <div class="dd-title filter-label" style="margin-bottom: 8px;">
+                        <span>{{ t('Calendar Display') }}</span>
+                      </div>
+                      <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <label class="dd-item checkbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; margin: 0; color: var(--color-text-secondary); border-radius: 8px; border: 1px solid transparent; transition: all 0.15s ease;">
+                          <input type="checkbox" v-model="calendarTabRef.showOnlyDated" style="width: 14px; height: 14px; accent-color: var(--color-accent); margin: 0;" />
+                          <span>{{ t('Show dated work items') }}</span>
+                        </label>
+                        <label class="dd-item checkbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; margin: 0; color: var(--color-text-secondary); border-radius: 8px; border: 1px solid transparent; transition: all 0.15s ease;">
+                          <input type="checkbox" v-model="calendarTabRef.showDoneTasks" style="width: 14px; height: 14px; accent-color: var(--color-accent); margin: 0;" />
+                          <span>{{ t('Show done work items') }}</span>
+                        </label>
+                        <label class="dd-item checkbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; margin: 0; color: var(--color-text-secondary); border-radius: 8px; border: 1px solid transparent; transition: all 0.15s ease;">
+                          <input type="checkbox" v-model="calendarTabRef.highlightOverdue" style="width: 14px; height: 14px; accent-color: var(--color-accent); margin: 0;" />
+                          <span>{{ t('Highlight overdue') }}</span>
+                        </label>
+                      </div>
+                    </div>
+                  </template>
+
+                  <!-- Spreadsheet Display Options -->
+                  <template v-if="currentTab === 'spreadsheet' && spreadsheetTabRef">
+                    <div class="dd-section" style="padding: 0;">
+                      <div class="dd-title filter-label" style="margin-bottom: 8px;">
+                        <span>{{ t('Spreadsheet Display') }}</span>
+                      </div>
+                      <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <label class="dd-item checkbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; margin: 0; color: var(--color-text-secondary); border-radius: 8px; border: 1px solid transparent; transition: all 0.15s ease;">
+                          <input type="checkbox" v-model="spreadsheetTabRef.showOnlyAssigned" style="width: 14px; height: 14px; accent-color: var(--color-accent); margin: 0;" />
+                          <span>{{ t('Only assigned') }}</span>
+                        </label>
+                        <label class="dd-item checkbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; margin: 0; color: var(--color-text-secondary); border-radius: 8px; border: 1px solid transparent; transition: all 0.15s ease;">
+                          <input type="checkbox" v-model="spreadsheetTabRef.hideDone" style="width: 14px; height: 14px; accent-color: var(--color-accent); margin: 0;" />
+                          <span>{{ t('Hide done') }}</span>
+                        </label>
+                        <label class="dd-item checkbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; margin: 0; color: var(--color-text-secondary); border-radius: 8px; border: 1px solid transparent; transition: all 0.15s ease;">
+                          <input type="checkbox" v-model="spreadsheetTabRef.showOnlyScheduled" style="width: 14px; height: 14px; accent-color: var(--color-accent); margin: 0;" />
+                          <span>{{ t('Only dated') }}</span>
+                        </label>
+                      </div>
+                    </div>
+                    <div class="dd-divider" style="height: 1px; background: var(--color-border); margin: 4px 0;"></div>
+                    <!-- Page Size -->
+                    <div class="dd-section" style="padding: 0;">
+                      <div class="dd-title filter-label" style="margin-bottom: 8px;">
+                        <span>{{ t('Rows per page') }}</span>
+                      </div>
+                      <select :value="spreadsheetTabRef.pageSize" @change="spreadsheetTabRef.changePageSize" class="filter-select-trigger" style="width: 100%; border: 1px solid var(--color-border); padding: 6px 10px; font-size: 13px; border-radius: 8px; background: var(--color-input-bg); color: var(--color-text-primary);">
+                        <option :value="20">20 {{ t('rows') }}</option>
+                        <option :value="25">25 {{ t('rows') }}</option>
+                        <option :value="50">50 {{ t('rows') }}</option>
+                        <option :value="100">100 {{ t('rows') }}</option>
+                      </select>
+                    </div>
+                  </template>
+
+                  <!-- Timeline Display Options -->
+                  <template v-if="currentTab === 'timeline' && timelineTabRef">
+                    <div class="dd-section" style="padding: 0;">
+                      <div class="dd-title filter-label" style="margin-bottom: 8px;">
+                        <span>{{ t('Timeline Display') }}</span>
+                      </div>
+                      <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <label class="dd-item checkbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; margin: 0; color: var(--color-text-secondary); border-radius: 8px; border: 1px solid transparent; transition: all 0.15s ease;">
+                          <input type="checkbox" v-model="timelineTabRef.expanded.showOnlyScheduled" style="width: 14px; height: 14px; accent-color: var(--color-accent); margin: 0;" />
+                          <span>{{ t('Only scheduled items') }}</span>
+                        </label>
+                        <label class="dd-item checkbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; margin: 0; color: var(--color-text-secondary); border-radius: 8px; border: 1px solid transparent; transition: all 0.15s ease;">
+                          <input type="checkbox" v-model="timelineTabRef.expanded.hideDone" style="width: 14px; height: 14px; accent-color: var(--color-accent); margin: 0;" />
+                          <span>{{ t('Hide done items') }}</span>
+                        </label>
+                        <label class="dd-item checkbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; margin: 0; color: var(--color-text-secondary); border-radius: 8px; border: 1px solid transparent; transition: all 0.15s ease;">
+                          <input type="checkbox" v-model="timelineTabRef.expanded.onlyCurrentWindow" style="width: 14px; height: 14px; accent-color: var(--color-accent); margin: 0;" />
+                          <span>{{ t('Focus current window') }}</span>
+                        </label>
+                      </div>
+                    </div>
+                  </template>
              </div>
           </div>
         </template>
-
         <template #actions>
           <button class="plane-toolbar-btn" @click="showAnalyticsSidebar = true">{{ t('Analytics') }}</button>
         </template>
       </ProjectPageToolbar>
-
       <!-- Global Empty State for Work Items (List/Board views) -->
-      <div v-if="!activeModuleFilterId && !store.loading && filteredTasksList.length === 0 && (currentTab === 'list' || currentTab === 'board')" class="empty-state-global" style="padding: 60px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--color-surface); border-radius: 12px; border: 1px dashed var(--color-border); margin: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);">
-        <div class="empty-illustration-wrapper" style="font-size: 54px; color: var(--color-text-muted); margin-bottom: 16px; opacity: 0.8;">
-          <i class="fa-solid fa-folder-open"></i>
+      <div v-if="!activeModuleFilterId && !store.loading && filteredTasksList.length === 0 && (currentTab === 'list' || currentTab === 'board')" class="empty-state-global">
+        <div class="empty-spaces-icon" aria-hidden="true">
+          <i class="fa-regular fa-folder-open"></i>
         </div>
-        <h3 style="font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px 0;">Chưa có công việc nào trong dự án này.</h3>
-        <p style="font-size: 13px; color: var(--color-text-muted); margin: 0 0 20px 0; max-width: 400px; line-height: 1.5;">Hãy tạo công việc đầu tiên hoặc nạp dữ liệu công việc từ Excel/CSV.</p>
-        <div style="display: flex; gap: 12px; justify-content: center;">
-          <el-button type="primary" size="default" @click="openCreateTask('TO DO')" :disabled="!canCurrentUserCreateTask">
+        <div class="empty-spaces-copy">
+          <h3>Chưa có công việc nào trong dự án này.</h3>
+          <p style="margin-top: 6px;">Hãy tạo công việc đầu tiên hoặc nạp dữ liệu công việc từ Excel/CSV.</p>
+        </div>
+        <div style="display: flex; gap: 12px; justify-content: center; margin-top: 8px;">
+          <button
+            type="button"
+            class="empty-state-action-btn"
+            :class="{ active: selectedTask && selectedTask.isNew }"
+            @click="openCreateTask('TO DO')"
+            :disabled="!canCurrentUserCreateTask"
+          >
             <i class="fa-solid fa-plus mr-1"></i> Tạo công việc mới
-          </el-button>
-          <el-button type="info" plain size="default" @click="showDataImportModal = true" :disabled="!canCurrentUserCreateTask">
+          </button>
+          <button
+            type="button"
+            class="empty-state-action-btn"
+            :class="{ active: showDataImportModal }"
+            @click="showDataImportModal = true"
+            :disabled="!canCurrentUserCreateTask"
+          >
             <i class="fa-solid fa-file-import mr-1"></i> Nạp dữ liệu công việc
-          </el-button>
+          </button>
         </div>
       </div>
-
       <div v-if="activeModuleFilterId && moduleDetail && moduleDetail.taskCount === 0 && !moduleDetailLoading && !moduleDetailError" class="module-empty-state">
         <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
         <strong>{{ tr('This module has no work items yet.', 'Module này chưa có công việc.') }}</strong>
         <span>{{ tr('Work items assigned to this module will appear here.', 'Công việc được gán vào Module sẽ hiển thị tại đây.') }}</span>
       </div>
-
       <!-- Other Tab Views -->
       <div v-if="currentTab === 'list' && filteredTasksList.length > 0 && !moduleDetailLoading && !moduleDetailError" class="list-wrapper" style="padding: 16px;">
          <div class="plane-list-view">
            <div v-for="group in listViewGroups" :key="group.id" class="list-group">
-             <div class="group-header" @click="toggleListGroup(group.id)">
-               <div class="gh-left">
-                 <i class="gh-chevron fa-solid" :class="collapsedListGroups[group.id] ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
-                 <i class="status-icon" :class="group.icon" :style="{ color: group.color }"></i>
-                 <span class="group-name">{{ group.name }}</span>
-                 <span class="group-count">{{ group.items.length }}</span>
-               </div>
-               <div class="gh-right">
-                 <i class="fa-solid fa-plus add-icon" @click.stop="openCreateTask(group.statusName)"></i>
-               </div>
-             </div>
-
+             <div class="group-header" @click="toggleListGroup(group.id)" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); cursor: pointer;">
+                <div class="gh-left" style="display: flex; align-items: center; gap: 8px;">
+                  <i class="gh-chevron fa-solid" :class="collapsedListGroups[group.id] ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
+                  <i class="status-icon" :class="group.icon" :style="{ color: group.color }"></i>
+                  <span class="group-name" style="font-weight: 600; font-size: 13.5px; color: var(--color-text-primary);">{{ group.name }}</span>
+                  <span class="group-count" style="font-size: 11px; padding: 1px 6px; border-radius: 999px; background: rgba(148, 163, 184, 0.1); color: var(--color-text-secondary);">{{ group.items.length }}</span>
+                  <span v-if="group.items.length > 0" class="group-progress" style="font-size: 11px; color: var(--color-text-muted); margin-left: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;">
+                    <span>{{ group.items.filter(t => (t.statusName || '').toUpperCase() === 'DONE').length }}/{{ group.items.length }} {{ tr('completed', 'hoàn thành') }}</span>
+                    <span style="width: 50px; height: 4px; background: rgba(148, 163, 184, 0.1); border-radius: 999px; display: inline-block; overflow: hidden; position: relative; top: 1px;">
+                      <span :style="{ width: `${(group.items.filter(t => (t.statusName || '').toUpperCase() === 'DONE').length / group.items.length * 100)}%`, background: '#10B981', height: '100%', display: 'block', borderRadius: '999px', transition: 'width 0.3s ease' }"></span>
+                    </span>
+                  </span>
+                </div>
+                <div class="gh-right" style="display: flex; align-items: center;">
+                  <i class="fa-solid fa-plus add-icon cursor-pointer text-gray-400 hover:text-sky-500" @click.stop="openCreateTask(group.statusName)"></i>
+                </div>
+              </div>
              <div class="group-content" v-show="!collapsedListGroups[group.id]">
               <template v-for="task in group.items" :key="task.id">
                <div class="task-row" @click="openTaskDetail(task)">
@@ -252,7 +494,6 @@
                          </el-dropdown-menu>
                        </template>
                      </el-dropdown>
-
                      <el-dropdown :disabled="!canEditTaskDetails(task)" trigger="click" @command="(val) => updateTask(task, 'priority', val, task.priority)">
                        <div class="pill pill-priority cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--pill-color': getPriorityColor(task.priority) }">
                          <i :class="getPriorityIcon(task.priority)"></i>
@@ -267,7 +508,11 @@
                          </el-dropdown-menu>
                        </template>
                      </el-dropdown>
-
+                      <!-- Module Pill -->
+                      <div v-if="task.moduleName || task.moduleId" class="pill pill-module" style="--pill-color: #8b5cf6; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; border: 1px solid color-mix(in srgb, #8b5cf6 30%, var(--color-border)); background: color-mix(in srgb, #8b5cf6 8%, var(--color-surface)); color: #7c3aed;">
+                        <i class="fa-solid fa-cubes"></i>
+                        <span>{{ task.moduleName || `Module ${task.moduleId.substring(0,8).toUpperCase()}` }}</span>
+                      </div>
                      <el-popover :disabled="!canAssignTaskMember()" placement="bottom" trigger="click" width="260" popper-class="plane-popover">
                        <template #reference>
                          <div class="pill pill-user cursor-pointer hover:bg-[var(--color-border)]">
@@ -308,7 +553,6 @@
                  </div>
                </div>
                </template>
-
                <div class="add-row-placeholder" @click="openCreateTask(group.statusName)">
                  <i class="fa-solid fa-plus"></i> {{ t('New work item', 'Tạo công việc mới') }}
                </div>
@@ -317,10 +561,11 @@
          </div>
       </div>
       <div v-if="currentTab === 'calendar' && !moduleDetailLoading && !moduleDetailError && (!activeModuleFilterId || moduleDetail?.taskCount > 0)" class="calendar-wrapper">
-         <CalendarTab :tasks="filteredTasksList" @open-task="openTaskDetail" @create-task="openCreateTaskFromCalendar" />
+         <CalendarTab ref="calendarTabRef" :tasks="filteredTasksList" @open-task="openTaskDetail" @create-task="openCreateTaskFromCalendar" />
       </div>
-      <div v-if="currentTab === 'spreadsheet' && !moduleDetailLoading && !moduleDetailError && (!activeModuleFilterId || moduleDetail?.taskCount > 0)" class="spreadsheet-wrapper" style="display: flex; flex: 1; overflow: visible;">
+      <div v-if="currentTab === 'spreadsheet' && !moduleDetailLoading && !moduleDetailError && (!activeModuleFilterId || moduleDetail?.taskCount > 0)" class="spreadsheet-wrapper">
           <SpreadsheetTab
+            ref="spreadsheetTabRef"
             :tasks="filteredTasksList"
             :projectId="getProjectId()"
             :projectMembers="projectMembers"
@@ -334,9 +579,8 @@
           />
       </div>
       <div v-if="currentTab === 'timeline' && !moduleDetailLoading && !moduleDetailError && (!activeModuleFilterId || moduleDetail?.taskCount > 0)" class="timeline-wrapper">
-         <TimelineTab :projectId="getProjectId()" :tasks="filteredTasksList" :projectMembers="projectMembers" @open-task="openTaskDetail" @create-task="openCreateTaskFromCalendar" />
+          <TimelineTab ref="timelineTabRef" :projectId="getProjectId()" :tasks="filteredTasksList" :projectMembers="projectMembers" @open-task="openTaskDetail" @create-task="openCreateTaskFromCalendar" />
       </div>
-
       <!-- Kanban Board Layout -->
       <div
         class="kanban-wrapper"
@@ -348,7 +592,6 @@
           <i class="fa-solid fa-spinner fa-spin"></i>
           <span>{{ t('Loading data...') }}</span>
         </div>
-
         <!-- Error banner -->
         <div class="kanban-error-banner" v-if="store.error && !store.loading">
           <i class="fa-solid fa-triangle-exclamation"></i>
@@ -357,7 +600,6 @@
             <i class="fa-solid fa-rotate-right"></i> {{ t('Retry') }}
           </button>
         </div>
-
         <div
           class="kanban-col"
           v-for="col in kanbanColumns"
@@ -365,21 +607,29 @@
           :data-col-id="col.id"
           :style="{ '--col-color': col.color, '--col-bg': col.bgColor }"
         >
-          <div class="col-head">
-            <div class="col-title">
-              <i :class="col.icon" :style="{ color: col.color }"></i>
-              <span>{{ col.label || col.name }}</span>
-              <span class="col-count">{{ col.items.length }}</span>
+          <div class="col-head" style="display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 10px 12px; min-height: 56px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <div class="col-title" style="display: flex; align-items: center; gap: 8px;">
+                <i :class="col.icon" :style="{ color: col.color }"></i>
+                <span class="font-semibold text-[13px] truncate max-w-[140px]">{{ col.label || col.name }}</span>
+                <span class="col-count" style="font-size: 11px; padding: 1px 6px; border-radius: 999px; background: rgba(148, 163, 184, 0.1); color: var(--color-text-secondary);">{{ col.items.length }}</span>
+              </div>
+              <i v-if="canCurrentUserCreateTask && col.name !== 'FALLBACK_UNCLASSIFIED'" class="fa-solid fa-plus add-btn cursor-pointer text-gray-400 hover:text-sky-500" @click="openCreateTask(col.name)"></i>
             </div>
-            <i v-if="canCurrentUserCreateTask && col.name !== 'FALLBACK_UNCLASSIFIED'" class="fa-solid fa-plus add-btn" @click="openCreateTask(col.name)"></i>
+            <div v-if="col.items.length > 0" style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px;">
+              <span style="font-size: 10px; color: var(--color-text-muted);">
+                {{ col.items.filter(t => (t.statusName || '').toUpperCase() === 'DONE').length }}/{{ col.items.length }} {{ tr('done', 'hoàn thành') }}
+              </span>
+              <div style="width: 60px; height: 3px; background: rgba(148, 163, 184, 0.1); border-radius: 999px; overflow: hidden; margin-left: 8px;">
+                <div :style="{ width: `${(col.items.filter(t => (t.statusName || '').toUpperCase() === 'DONE').length / col.items.length * 100)}%`, background: 'linear-gradient(90deg, #10B981, #34D399)', height: '100%', borderRadius: '999px', transition: 'width 0.3s ease' }"></div>
+              </div>
+            </div>
           </div>
-
           <div v-if="col.isFallback" class="fallback-desc-container" style="padding: 6px 12px; background: rgba(244, 63, 94, 0.05); border-bottom: 1px solid rgba(244, 63, 94, 0.1);">
             <small style="color: #f43f5e; font-size: 11px; font-style: italic;">
               {{ t('Các công việc có trạng thái không còn tồn tại trong workflow hiện tại.') }}
             </small>
           </div>
-
           <div class="col-body" :class="{ 'is-creating': inlineCreateColId === col.id }">
             <div
               v-if="inlineCreateColId === col.id"
@@ -445,7 +695,6 @@
                   ref="inlineInput"
                 />
               </div>
-
               <div class="inline-create-meta" @click.stop>
                 <el-dropdown trigger="click" @command="(val) => inlineStatusName = val">
                   <div class="badge status-badge cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--badge-color': getStatusColor(inlineStatusName || col.name) }">
@@ -461,7 +710,6 @@
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
-
                 <el-dropdown trigger="click" @command="(val) => inlinePriority = val">
                   <div class="badge priority-badge cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--badge-color': getPriorityColor(inlinePriority) }">
                     <i :class="getPriorityIcon(inlinePriority)"></i>
@@ -477,9 +725,7 @@
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
-
               </div>
-
               <div class="inline-create-actions">
                 <button class="inline-cancel-btn" @click="inlineCreateColId = null">Hủy</button>
                 <button class="inline-submit-btn" @click="submitInlineTask(col)">
@@ -582,7 +828,6 @@
                          </el-dropdown-menu>
                        </template>
                      </el-dropdown>
-
                      <el-dropdown v-if="displayProperties.priority" :disabled="!canEditTaskDetails(element)" trigger="click" @command="(val) => updateTask(element, 'priority', val, element.priority)">
                       <div class="badge priority-badge cursor-pointer hover:bg-[var(--color-border)]" :style="{ '--badge-color': getPriorityColor(element.priority) }">
                         <i :class="getPriorityIcon(element.priority)"></i>
@@ -598,10 +843,14 @@
                          </el-dropdown-menu>
                        </template>
                      </el-dropdown>
+                     <!-- Module Badge -->
+                     <div v-if="element.moduleName || element.moduleId" class="badge module-badge" style="--badge-color: #8b5cf6; display: inline-flex; align-items: center; gap: 4px; border: 1px solid color-mix(in srgb, #8b5cf6 30%, var(--color-border)); background: color-mix(in srgb, #8b5cf6 8%, var(--color-surface)); color: #7c3aed; padding: 2px 6px; border-radius: 4px; font-size: 10px;">
+                       <i class="fa-solid fa-cubes"></i>
+                       <span>{{ element.moduleName || `Module ${element.moduleId.substring(0,8).toUpperCase()}` }}</span>
+                     </div>
                   </div>
                 </div>
               </template>
-
               <!-- Empty state per-column -->
               <template #footer>
                 <div 
@@ -622,7 +871,6 @@
                 </div>
               </template>
             </draggable>
-
             <!-- Inline create box nâng cấp (date + assignee) -->
             <div class="inline-create-box issue-card kanban-card-editor shadow-sm border border-[var(--color-border)] rounded-xl p-3 bg-[var(--color-surface)]" v-if="false && inlineCreateColId === col.id" @click.stop>
                <!-- Top Row: Date Range Picker (Height 34px, radius 9px, no text header) -->
@@ -734,9 +982,7 @@
           </div>
         </div>
       </div>
-
     </div>
-
     <!-- Task Detail Modal -->
     <TaskDetailModal
       v-if="selectedTask"
@@ -755,7 +1001,6 @@
       @refresh-tasks="fetchTasks({ preserveExisting: true, reset: false })"
       @created="handleTaskCreated"
     />
-
     <!-- Analytics Sidebar Overlay -->
     <div v-if="showAnalyticsSidebar" class="analytics-overlay" @click.self="closeAnalyticsSidebar">
       <div class="analytics-panel" :class="{ 'slide-in': showAnalyticsSidebar, 'is-expanded': isAnalyticsExpanded }">
@@ -766,7 +1011,6 @@
                <button class="icon-btn" @click="closeAnalyticsSidebar"><i class="fa-solid fa-xmark"></i></button>
             </div>
          </div>
-
          <div class="ap-body">
             <!-- Stats -->
             <div class="ap-stats-grid">
@@ -791,13 +1035,11 @@
                   <span class="val">{{ visibleTopLevelTasks.filter(t => t.statusName === 'DONE').length }}</span>
                </div>
             </div>
-
             <!-- Created vs Resolved Chart Overlay -->
             <div class="ap-chart-card mt-4">
                <h4>Đã tạo và đã xử lý</h4>
                <v-chart class="chart-container" :option="createdResolvedOptions" autoresize />
             </div>
-
             <!-- Customized Insights -->
             <div class="ap-chart-card mt-4">
                <div class="flex-between">
@@ -815,10 +1057,8 @@
                     </template>
                   </el-dropdown>
                </div>
-
                <v-chart class="chart-container mt-4" :option="insightChartOptions" autoresize />
             </div>
-
             <!-- Tables -->
             <div class="ap-table-wrap mt-4">
                <div class="table-head">
@@ -838,7 +1078,6 @@
                   </tbody>
                </table>
             </div>
-
             <div class="ap-table-wrap mt-4">
                <div class="table-head">
                   <span class="text-muted">{{ assigneeAnalyticsRows.length }} người thực hiện</span>
@@ -875,13 +1114,11 @@
     </div>
   </ProjectPageContainer>
 </template>
-
 <script setup>
 import PageContainer from '@/components/common/PageContainer.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import PageToolbar from '@/components/common/PageToolbar.vue'
 import TaskDataImportModal from '@/components/tasks/TaskDataImportModal.vue'
-
 // AI 3: CHUYÊN VIÊN GHÉP NỐI LOGIC FRONT-TO-BACK
 import { ref, onMounted, computed, defineAsyncComponent, watch, nextTick, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -904,7 +1141,6 @@ import {
   hasAssigneeOnlyTaskAccess,
   canDeleteTask 
 } from '@/utils/permissionGuard'
-
 import draggable from 'vuedraggable'
 import TaskDetailModal from '@/components/TaskDetailModal.vue'
 import CalendarTab from '@/components/CalendarTab.vue'
@@ -919,14 +1155,12 @@ import { useI18nStore } from '@/store/useI18nStore';
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { getProjectBackgroundStyle } from '@/config/projectAppearance'
 import { projectAccessRestrictionsEnabled } from '@/config/projectAccess'
-
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { LineChart, BarChart } from 'echarts/charts';
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components';
 import { LegacyGridContainLabel } from 'echarts/features';
 import VChart from 'vue-echarts';
-
 use([
   CanvasRenderer,
   LineChart,
@@ -937,28 +1171,39 @@ use([
   GridComponent,
   LegacyGridContainLabel
 ]);
+// Realtime SignalR handler state variables
+let unsubscribeAdminRealtime = null
+let signalRTaskUpdatedHandler = null
+let signalREntityChangedHandler = null
+let signalRProjectEventHandler = null
+let realtimeRefreshTimer = null
+
+const calendarTabRef = ref(null)
+const timelineTabRef = ref(null)
+const spreadsheetTabRef = ref(null)
 
 const showDisplayDropdown = ref(false)
 const showFilterDropdown = ref(false)
-
 function toggleFilterDropdown() {
   showFilterDropdown.value = !showFilterDropdown.value
   if (showFilterDropdown.value) {
     showDisplayDropdown.value = false
+    showSortDropdown.value = false
   }
 }
-
 function toggleDisplayDropdown() {
   showDisplayDropdown.value = !showDisplayDropdown.value
   if (showDisplayDropdown.value) {
     showFilterDropdown.value = false
+    showSortDropdown.value = false
   }
 }
-
 function handleGlobalDropdownClick(event) {
   if (event?.target?.closest?.('.js-toolbar-popup-scope')) return
   showFilterDropdown.value = false
   showDisplayDropdown.value = false
+  showSortDropdown.value = false
+  openSortSelect.value = null
 }
 const showAnalyticsSidebar = ref(false)
 const isAnalyticsExpanded = ref(false)
@@ -968,7 +1213,6 @@ const showSubtasks = ref(false)
 const collapsedListGroups = ref({})
 const assigneeSearch = ref('')
 const showDataImportModal = ref(false)
-
 async function handleExportTasks() {
   try {
     const res = await axiosClient.get(`/projects/${currentProjectId.value}/WorkTasks/export`, { responseType: 'blob' })
@@ -978,7 +1222,6 @@ async function handleExportTasks() {
     ElMessage.error('Không thể xuất dữ liệu công việc.')
   }
 }
-
 const router = useRouter()
 const route = useRoute()
 const currentProjectId = computed(() => route.params.id ? `${route.params.id}` : null)
@@ -1040,7 +1283,6 @@ const t = (key) => {
   }
   return key
 }
-
 const project = ref({})
 const rawTasks = ref([])
 const allTasks = ref([])
@@ -1060,12 +1302,44 @@ const inlineAssigneeIds = ref([])
 const inlineDateRange = ref([])
 const inlineStatusName = ref('BACKLOG')
 const inlinePriority = ref(0)
-
 const currentTab = ref('board')
 const searchQuery = ref('')
 const activeFilters = ref({ assignee: null })
 const activeTaskFilters = ref([])
 const displayOrder = ref('manual')
+const showSortDropdown = ref(false)
+const sortDirection = ref('asc')
+const openSortSelect = ref(null)
+const sortSearchQuery = ref('')
+function toggleSortDropdown() {
+  showSortDropdown.value = !showSortDropdown.value
+  openSortSelect.value = null
+  sortSearchQuery.value = ''
+  if (showSortDropdown.value) {
+    showDisplayDropdown.value = false
+    showFilterDropdown.value = false
+  }
+}
+const displayOrderOptions = computed(() => [
+  { value: 'manual', label: tr('Manual', 'Thủ công'), icon: 'fa-solid fa-hand' },
+  { value: 'created', label: tr('Created date', 'Ngày tạo'), icon: 'fa-regular fa-calendar-plus' },
+  { value: 'updated', label: tr('Updated date', 'Ngày cập nhật'), icon: 'fa-regular fa-pen-to-square' },
+  { value: 'priority', label: tr('Priority', 'Độ ưu tiên'), icon: 'fa-solid fa-signal' },
+  { value: 'dueDate', label: tr('Due date', 'Ngày hạn'), icon: 'fa-regular fa-clock' },
+  { value: 'title', label: tr('Title', 'Tiêu đề'), icon: 'fa-solid fa-font' },
+  { value: 'assignee', label: tr('Assignee', 'Người thực hiện'), icon: 'fa-regular fa-user' },
+  { value: 'sprint', label: tr('Sprint', 'Chu kỳ'), icon: 'fa-solid fa-arrows-spin' },
+  { value: 'module', label: tr('Module', 'Phân hệ'), icon: 'fa-solid fa-cubes' }
+])
+const filteredDisplayOrderOptions = computed(() => {
+  const q = sortSearchQuery.value.trim().toLowerCase()
+  if (!q) return displayOrderOptions.value
+  return displayOrderOptions.value.filter(opt => opt.label.toLowerCase().includes(q))
+})
+const getDisplayOrderLabel = (val) => {
+  const opt = displayOrderOptions.value.find(o => o.value === val)
+  return opt ? opt.label : val
+}
 const defaultDisplayProperties = {
   id: true,
   dueDate: true,
@@ -1088,7 +1362,6 @@ const analyticsInsightMode = ref('priority')
 const analyticsTheme = ref(document.documentElement.getAttribute('data-theme') || 'light')
 let analyticsThemeObserver = null
 const activeSprintFilterId = computed(() => route.query.sprintId || route.params.cycleId || null)
-
 const analyticsThemeColors = computed(() => {
   const isDark = analyticsTheme.value === 'dark'
   return {
@@ -1100,7 +1373,6 @@ const analyticsThemeColors = computed(() => {
     tooltipBorder: isDark ? 'rgba(148, 163, 184, 0.24)' : 'rgba(100, 116, 139, 0.18)'
   }
 })
-
 watch(currentTab, (val) => {
   if (val === 'board') {
     document.body.classList.add('no-shadow-context')
@@ -1108,7 +1380,6 @@ watch(currentTab, (val) => {
     document.body.classList.remove('no-shadow-context')
   }
 }, { immediate: true })
-
 onUnmounted(() => {
   document.body.classList.remove('no-shadow-context')
 })
@@ -1172,7 +1443,6 @@ const toggleDisplayProperty = (key) => {
     [key]: !displayProperties.value[key]
   }
 }
-
 const isForbiddenError = (error) => Number(error?.response?.status) === 403
 const getSessionIdentity = () => {
   const user = getStoredUserSession()
@@ -1203,19 +1473,15 @@ const clearModuleDetailState = ({ keepPage = false } = {}) => {
   }
   if (!keepPage) moduleTaskPage.value = 1
 }
-
 const resolveAccessibleProjectId = async (preferredProjectId = null) => {
   const projects = await projectStore.fetchAllProjects(true)
   const accessibleProjects = (projects || []).filter(item => item?.id)
   if (!accessibleProjects.length) return null
-
   if (preferredProjectId && accessibleProjects.some(item => `${item.id}` === `${preferredProjectId}`)) {
     return preferredProjectId
   }
-
   return accessibleProjects[0].id
 }
-
 const recoverFromForbiddenProject = async (forbiddenProjectId) => {
   const fallbackProjectId = await resolveAccessibleProjectId()
   if (!fallbackProjectId) {
@@ -1226,7 +1492,6 @@ const recoverFromForbiddenProject = async (forbiddenProjectId) => {
     ElMessage.error('You no longer have access to any project.')
     return false
   }
-
   if (`${fallbackProjectId}` === `${forbiddenProjectId}`) {
     rawTasks.value = []
     allTasks.value = []
@@ -1235,14 +1500,12 @@ const recoverFromForbiddenProject = async (forbiddenProjectId) => {
     ElMessage.error('You do not have permission to load work items for this project.')
     return false
   }
-
   dynamicProjectId = fallbackProjectId
   setScopedCurrentProjectId(fallbackProjectId)
   const fallbackProject = projectStore.allProjects.find(item => `${item.id}` === `${fallbackProjectId}`) || fallbackProjectId
   await router.replace(buildSpacePath(fallbackProject, 'work-items'))
   return true
 }
-
 const getParentTaskLinkId = (task) => (
   task?.parentTaskId ||
   task?.parentId ||
@@ -1250,14 +1513,12 @@ const getParentTaskLinkId = (task) => (
   task?.ParentId ||
   null
 )
-
 const isSubtask = (task) => Boolean(
   getParentTaskLinkId(task) ||
   task?.parentTaskTitle ||
   task?.parentTitle ||
   task?.parentName
 )
-
 const getTaskAssigneeIds = (task) => {
   return Array.from(new Set([
     ...(Array.isArray(task.assigneeIds) ? task.assigneeIds : []),
@@ -1265,55 +1526,44 @@ const getTaskAssigneeIds = (task) => {
     ...(task.assignedUserId ? [task.assignedUserId] : [])
   ]))
 }
-
 const getCurrentUserId = () => {
   const user = getStoredUserSession()
   return user?.id || user?.userId || null
 }
-
 const isCurrentUserAssignedToTask = (task) => {
   if (!task || task.isNew) return true
-
   const assigneeIds = getTaskAssigneeIds(task)
   if (!assigneeIds.length) return false
-
   const currentUserId = getCurrentUserId()
   return Boolean(currentUserId && assigneeIds.some(id => `${id}` === `${currentUserId}`))
 }
-
 const isAssigneeOnlyTaskAccessEnabled = computed(() => {
   if (!projectAccessRestrictionsEnabled) return false
   if (hasSystemAdminAccess(getStoredUserSession())) return false
   return hasAssigneeOnlyTaskAccess(permissionMatrix.value, currentProjectRole.value)
 })
-
 const canEditTaskDetails = (task) => {
   if (hasSystemAdminAccess(getStoredUserSession())) return true
   if (!canUpdateTask(permissionMatrix.value, currentProjectRole.value)) return false
   return !isAssigneeOnlyTaskAccessEnabled.value || isCurrentUserAssignedToTask(task)
 }
-
 const canMoveTaskStatus = (task) => {
   if (hasSystemAdminAccess(getStoredUserSession())) return true
   if (!canChangeTaskStatus(permissionMatrix.value, currentProjectRole.value)) return false
   return !isAssigneeOnlyTaskAccessEnabled.value || isCurrentUserAssignedToTask(task)
 }
-
 const canAssignTaskMember = () => {
   if (hasSystemAdminAccess(getStoredUserSession())) return true
   return canAssignTask(permissionMatrix.value, currentProjectRole.value)
 }
-
 const notifyAssignmentLock = () => {
   ElMessage.warning('Chỉ người được giao mới có thể thay đổi công việc này.')
 }
-
 const canEditTaskByAssignment = (task) => {
   const canEdit = canEditTaskDetails(task)
   if (!canEdit) notifyAssignmentLock()
   return canEdit
 }
-
 const canApplyTaskUpdate = (task, payload) => {
   const keys = Object.keys(payload || {})
   if (keys.length > 0 && keys.every(key => key === 'statusName' || key === 'taskStatusId')) {
@@ -1328,12 +1578,10 @@ const canApplyTaskUpdate = (task, payload) => {
   }
   return canEditTaskByAssignment(task)
 }
-
 const canMoveAssignedTask = (event) => {
   const task = event?.draggedContext?.element
   return canMoveTaskStatus(task) || (notifyAssignmentLock(), false)
 }
-
 const getTaskAssigneeSummary = (task) => {
   const ids = getTaskAssigneeIds(task)
   if (!ids.length) return { label: '', avatar: '' }
@@ -1342,19 +1590,15 @@ const getTaskAssigneeSummary = (task) => {
     const label = member?.fullName || member?.name || member?.email || task.assigneeName || 'Assignee'
     return { label, avatar: label.substring(0, 1).toUpperCase() }
   }
-
   return { label: `${ids.length} assignees`, avatar: `${ids.length}` }
 }
-
 const getAssigneeUser = (task) => {
   const ids = getTaskAssigneeIds(task)
   if (!ids.length) return null
   return projectMembers.value.find(item => (item.userId || item.id) === ids[0]) || { fullName: task.assigneeName || 'Unknown' }
 }
-
 const matchesTaskFilters = (task) => {
   if (!task) return false
-
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     const title = task.title?.toLowerCase?.() || ''
@@ -1363,14 +1607,11 @@ const matchesTaskFilters = (task) => {
       return false
     }
   }
-
   if (activeFilters.value.assignee) {
     return getTaskAssigneeIds(task).includes(activeFilters.value.assignee.userId)
   }
-
   return true
 }
-
 const topLevelTasks = computed(() => rawTasks.value)
 const visibleTasks = computed(() => {
   if (activeModuleFilterId.value) return allTasks.value || []
@@ -1386,7 +1627,6 @@ const defaultTaskStatusOptions = computed(() => [
   { name: 'DONE', label: tr('Done', 'Hoàn thành'), color: '#22C55E', icon: 'fa-solid fa-circle-check' },
   { name: 'CANCELLED', label: tr('Cancelled', 'Đã hủy'), color: '#F43F5E', icon: 'fa-regular fa-circle-xmark' }
 ])
-
 const normalizeText = (value) => `${value || ''}`.toLowerCase().trim()
 const normalizeStatus = (value) => `${value || 'BACKLOG'}`.toUpperCase().replace(/\s+/g, ' ').trim()
 const resolveStatusIcon = (value) => {
@@ -1407,7 +1647,6 @@ const taskStatusOptions = computed(() => {
       icon: resolveStatusIcon(status.name)
     }))
   }
-
   return defaultTaskStatusOptions.value
 })
 const normalizeDateOnly = (value) => {
@@ -1420,7 +1659,6 @@ const normalizeDateOnly = (value) => {
     const day = `${value.getDate()}`.padStart(2, '0')
     return `${year}-${month}-${day}`
   }
-
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return null
   const year = parsed.getFullYear()
@@ -1465,26 +1703,22 @@ const buildAnalyticsDateBuckets = (tasks) => {
     if (createdDate) dates.add(createdDate)
     if (resolvedDate) dates.add(resolvedDate)
   })
-
   const sortedDates = Array.from(dates).sort()
   const windowDates = sortedDates.length > 14 ? sortedDates.slice(-14) : sortedDates
   const fallbackDate = normalizeDateOnly(new Date())
   const labels = windowDates.length ? windowDates : [fallbackDate]
   const createdCounts = new Map(labels.map(date => [date, 0]))
   const resolvedCounts = new Map(labels.map(date => [date, 0]))
-
   tasks.forEach(task => {
     const createdDate = getTaskCreatedDate(task)
     if (createdCounts.has(createdDate)) {
       createdCounts.set(createdDate, createdCounts.get(createdDate) + 1)
     }
-
     const resolvedDate = getTaskResolvedDate(task)
     if (resolvedCounts.has(resolvedDate)) {
       resolvedCounts.set(resolvedDate, resolvedCounts.get(resolvedDate) + 1)
     }
   })
-
   return {
     labels,
     created: labels.map(date => createdCounts.get(date) || 0),
@@ -1539,7 +1773,6 @@ const currentUserId = () => {
   const user = getStoredUserSession()
   return user?.id || user?.userId || null
 }
-
 const toggleTaskStar = async (task) => {
   try {
     await starredStore.toggleStar(STARRED_ENTITY_TYPES.WORK_TASK, task.id)
@@ -1547,32 +1780,26 @@ const toggleTaskStar = async (task) => {
     ElMessage.error(starredStore.error || tr('Could not update starred item.', 'Không thể cập nhật mục gắn sao.'))
   }
 }
-
 const isTaskStarred = (taskId) => {
   return store.isTaskStarred(taskId)
 }
-
 const currentProjectRole = computed(() => {
   const currentUser = getStoredUserSession()
   const currentUserIdValue = currentUser?.id || currentUser?.userId
   const matchedMember = (projectMembers.value || [])
     .find(member => `${member.userId || member.id || ''}` === `${currentUserIdValue || ''}`)
   const membershipRole = matchedMember?.projectRole || matchedMember?.ProjectRole
-
   const role = membershipRole
     || project.value?.myRole
     || project.value?.MyRole
     || project.value?.projectRole
     || project.value?.ProjectRole
-
   return normalizeProjectRole(role)
 })
-
 // ────────────────────────────────────────────
 // SME Permissions Guard State & Computed Guards
 // ────────────────────────────────────────────
 const permissionMatrix = ref(getDefaultPermissionMatrix())
-
 const loadProjectPermissionMatrix = async () => {
   const pId = getProjectId()
   if (!pId) return
@@ -1587,35 +1814,27 @@ const loadProjectPermissionMatrix = async () => {
     permissionMatrix.value = getDefaultPermissionMatrix()
   }
 }
-
 const canCurrentUserCreateTask = computed(() => {
   if (hasSystemAdminAccess(getStoredUserSession())) return true
   return canCreateTask(permissionMatrix.value, currentProjectRole.value)
 })
-
 const canCurrentUserUpdateTask = computed(() => {
   if (hasSystemAdminAccess(getStoredUserSession())) return true
   return canUpdateTask(permissionMatrix.value, currentProjectRole.value)
 })
-
 const canCurrentUserDeleteTask = computed(() => {
   if (hasSystemAdminAccess(getStoredUserSession())) return true
   return canDeleteTask(permissionMatrix.value, currentProjectRole.value)
 })
-
 const canCurrentUserSeeTask = (task) => {
   const rules = projectExecutionRules.value || {}
-
   const currentUser = getStoredUserSession()
   if (hasSystemAdminAccess(currentUser)) return true
-
   if (rules.managerAlwaysSeeAllTasks && currentProjectRole.value && visibilityOverrideRoles.includes(currentProjectRole.value)) {
     return true
   }
-
   const visibilityMode = normalizeProjectRole(task?.visibilityMode || '').replace(/_scoped$/, '') || 'project'
   if (visibilityMode === 'project') return true
-
   const me = currentUserId()
   const assigneeIds = getTaskAssigneeIds(task)
   if (visibilityMode === 'assigned') {
@@ -1632,7 +1851,6 @@ const canCurrentUserSeeTask = (task) => {
       .map(role => normalizeProjectRole(role))
       .includes(currentProjectRole.value)
   }
-
   return true
 }
 const getTaskDate = (task, field) => {
@@ -1671,7 +1889,6 @@ const toTimestamp = (value) => {
 }
 const sortTasksByDisplayOrder = (tasks) => {
   const items = [...tasks]
-
   return items.sort((a, b) => {
     const aStarred = store.isTaskStarred(a.id)
     const bStarred = store.isTaskStarred(b.id)
@@ -1679,18 +1896,52 @@ const sortTasksByDisplayOrder = (tasks) => {
       return aStarred ? -1 : 1
     }
 
+    const isAsc = sortDirection.value === 'asc'
+    const sign = isAsc ? 1 : -1
+
     if (displayOrder.value === 'created') {
-      return toTimestamp(b.createdAt) - toTimestamp(a.createdAt) || (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
+      const diff = toTimestamp(a.createdAt) - toTimestamp(b.createdAt)
+      return (diff !== 0 ? diff * sign : 0) || (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
     }
-
     if (displayOrder.value === 'updated') {
-      return toTimestamp(b.updatedAt || b.createdAt) - toTimestamp(a.updatedAt || a.createdAt) || (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
+      const diff = toTimestamp(a.updatedAt || a.createdAt) - toTimestamp(b.updatedAt || b.createdAt)
+      return (diff !== 0 ? diff * sign : 0) || (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
     }
-
     if (displayOrder.value === 'priority') {
-      return prioritySortWeight(a.priority) - prioritySortWeight(b.priority) || (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
+      const diff = prioritySortWeight(a.priority) - prioritySortWeight(b.priority)
+      return (diff !== 0 ? diff * sign : 0) || (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
     }
-
+    if (displayOrder.value === 'dueDate') {
+      const dateA = a.dueDate ? new Date(a.dueDate).getTime() : (isAsc ? Infinity : -Infinity)
+      const dateB = b.dueDate ? new Date(b.dueDate).getTime() : (isAsc ? Infinity : -Infinity)
+      const diff = dateA - dateB
+      return (diff !== 0 ? diff * sign : 0) || (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
+    }
+    if (displayOrder.value === 'title') {
+      const titleA = (a.title || '').trim().toLowerCase()
+      const titleB = (b.title || '').trim().toLowerCase()
+      const diff = titleA.localeCompare(titleB)
+      return (diff !== 0 ? diff * sign : 0) || (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
+    }
+    if (displayOrder.value === 'assignee') {
+      const assigneeA = (a.assigneeName || '').trim().toLowerCase()
+      const assigneeB = (b.assigneeName || '').trim().toLowerCase()
+      const diff = assigneeA.localeCompare(assigneeB)
+      return (diff !== 0 ? diff * sign : 0) || (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
+    }
+    if (displayOrder.value === 'sprint') {
+      const sprintA = (a.sprintName || '').trim().toLowerCase()
+      const sprintB = (b.sprintName || '').trim().toLowerCase()
+      const diff = sprintA.localeCompare(sprintB)
+      return (diff !== 0 ? diff * sign : 0) || (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
+    }
+    if (displayOrder.value === 'module') {
+      const moduleA = (a.moduleName || '').trim().toLowerCase()
+      const moduleB = (b.moduleName || '').trim().toLowerCase()
+      const diff = moduleA.localeCompare(moduleB)
+      return (diff !== 0 ? diff * sign : 0) || (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
+    }
+    // Default manual sort order
     return (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
   })
 }
@@ -1710,21 +1961,18 @@ const taskMatchesFilter = (task, filter) => {
   const operator = filter.operator || filter.condition || 'is'
   const value = filter.value || filter.displayValue
   const field = filter.field
-
   if (field === 'status') {
     const left = normalizeStatus(task.statusName)
     const rightValues = filterValues(value).map(normalizeStatus)
     if (operator === 'is not' || operator === 'not in') return !rightValues.includes(left)
     return rightValues.includes(left)
   }
-
   if (field === 'priority') {
     const left = task.priority || null
     const rightValues = filterValues(value).map(normalizePriority)
     if (operator === 'is not' || operator === 'not in') return !rightValues.includes(left)
     return rightValues.includes(left)
   }
-
   if (field === 'assignee') {
     const assigneeIds = getTaskAssigneeIds(task)
     if (operator === 'empty') return assigneeIds.length === 0
@@ -1734,7 +1982,6 @@ const taskMatchesFilter = (task, filter) => {
     const hasMatch = filterValues(value).some(item => assigneeIds.includes(item) || valuesInclude(assigneeNames, item))
     return operator === 'is not' ? !hasMatch : hasMatch
   }
-
   if (field === 'creator') {
     const creatorIds = [task.reporterId, task.createdById, task.createdBy].filter(Boolean)
     const creatorNames = [task.reporterName, task.createdByName, task.creatorName, task.createdBy?.fullName].filter(Boolean)
@@ -1746,7 +1993,6 @@ const taskMatchesFilter = (task, filter) => {
     })
     return operator === 'is not' ? !hasMatch : hasMatch
   }
-
   if (field === 'label') {
     const labelIds = task.labelIds || []
     const labelNames = (task.labels || task.labelNames || []).map(item => item.name || item)
@@ -1754,7 +2000,6 @@ const taskMatchesFilter = (task, filter) => {
     const hasMatch = filterValues(value).some(item => labelIds.includes(item) || valuesInclude(labelNames, item))
     return operator === 'not includes' || operator === 'not_includes' ? !hasMatch : hasMatch
   }
-
   if (['startDate', 'dueDate', 'createdAt', 'updatedAt'].includes(field)) {
     const dateField = field === 'startDate' ? 'plannedStartDate' : field
     const date = getTaskDate(task, dateField)
@@ -1765,13 +2010,11 @@ const taskMatchesFilter = (task, filter) => {
     if (normalizeText(value) === 'this week') return isThisWeek(date)
     return true
   }
-
   if (field === 'cycle') {
     if (operator === 'empty' || normalizeText(value) === 'no cycle') return !task.sprintId
     const hasMatch = filterValues(value).some(item => task.sprintId === item || normalizeText(task.sprintName) === normalizeText(item))
     return operator === 'is not' ? !hasMatch : hasMatch
   }
-
   if (field === 'module') {
     if (operator === 'empty' || normalizeText(value) === 'no module') return !task.moduleId && !(task.moduleIds || []).length
     const moduleIds = [task.moduleId, ...(task.moduleIds || []), ...(task.modules || []).map(item => item.id || item.moduleId)].filter(Boolean)
@@ -1779,16 +2022,13 @@ const taskMatchesFilter = (task, filter) => {
     const hasMatch = filterValues(value).some(item => moduleIds.includes(item) || valuesInclude(moduleNames, item))
     return operator === 'is not' ? !hasMatch : hasMatch
   }
-
   return true
 }
-
 let dynamicProjectId = null;
 const getProjectId = () => {
     let p = currentProjectId.value || dynamicProjectId;
     return p === 'default' ? null : p;
 }
-
 const filteredProjectMembers = computed(() => {
   const keyword = assigneeSearch.value.trim().toLowerCase()
   let filtered = projectMembers.value
@@ -1812,12 +2052,9 @@ const filteredProjectMembers = computed(() => {
     };
   }).sort((a, b) => a.taskPercentage - b.taskPercentage);
 })
-
 const filteredTasksList = computed(() => {
   let filteredTasks = [...visibleTasks.value];
-
   if (activeModuleFilterId.value) return filteredTasks
-
   filteredTasks = filteredTasks.filter(matchesTaskFilters)
   if (activeSprintFilterId.value) {
      filteredTasks = filteredTasks.filter(t => taskMatchesSprintScope(t, activeSprintFilterId.value));
@@ -1828,12 +2065,10 @@ const filteredTasksList = computed(() => {
   if (activeTaskFilters.value.length) {
      filteredTasks = filteredTasks.filter(task => activeTaskFilters.value.every(filter => taskMatchesFilter(task, filter)));
   }
-
   const shouldIncludeSubtasks = showSubtasks.value
   const scopedTasks = shouldIncludeSubtasks ? filteredTasks : filteredTasks.filter(task => !isSubtask(task))
   return sortTasksByDisplayOrder(scopedTasks)
 });
-
 const createdResolvedOptions = computed(() => {
    const buckets = buildAnalyticsDateBuckets(visibleTopLevelTasks.value)
    const colors = analyticsThemeColors.value
@@ -1884,21 +2119,17 @@ const createdResolvedOptions = computed(() => {
       backgroundColor: 'transparent'
    }
 });
-
 const analyticsBreakdownRows = computed(() => {
   if (analyticsInsightMode.value === 'assignee') {
     const counts = new Map()
-
     visibleTopLevelTasks.value.forEach(task => {
       const ids = getTaskAssigneeIds(task)
       if (!ids.length) {
         counts.set('unassigned', (counts.get('unassigned') || 0) + 1)
         return
       }
-
       ids.forEach(id => counts.set(id, (counts.get(id) || 0) + 1))
     })
-
     return Array.from(counts.entries())
       .map(([id, count]) => {
         const member = projectMembers.value.find(item => (item.userId || item.id) === id)
@@ -1910,7 +2141,6 @@ const analyticsBreakdownRows = computed(() => {
       })
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
   }
-
   if (analyticsInsightMode.value === 'status') {
     return taskStatusOptions.value.map(option => ({
       label: option.label,
@@ -1918,7 +2148,6 @@ const analyticsBreakdownRows = computed(() => {
       color: option.color
     }))
   }
-
   return [
     { label: tr('Urgent', 'Khẩn cấp'), count: visibleTopLevelTasks.value.filter(task => task.priority === 1).length, color: '#EF4444' },
     { label: tr('High', 'Cao'), count: visibleTopLevelTasks.value.filter(task => task.priority === 2).length, color: '#F97316' },
@@ -1927,15 +2156,12 @@ const analyticsBreakdownRows = computed(() => {
     { label: tr('None', 'Không có'), count: visibleTopLevelTasks.value.filter(task => !task.priority).length, color: 'var(--color-text-muted)' }
   ]
 })
-
 const assigneeAnalyticsRows = computed(() => {
   const rows = new Map()
-
   visibleTopLevelTasks.value.forEach(task => {
     const ids = getTaskAssigneeIds(task)
     const bucket = analyticsStatusBucket(task.statusName)
     const targets = ids.length ? ids : ['unassigned']
-
     targets.forEach(id => {
       if (!rows.has(id)) {
         const member = projectMembers.value.find(item => (item.userId || item.id) === id)
@@ -1950,16 +2176,13 @@ const assigneeAnalyticsRows = computed(() => {
           total: 0
         })
       }
-
       const row = rows.get(id)
       row[bucket] += 1
       row.total += 1
     })
   })
-
   return Array.from(rows.values()).sort((a, b) => b.total - a.total || a.label.localeCompare(b.label))
 })
-
 const analyticsInsightLabel = computed(() => {
   if (analyticsInsightMode.value === 'status') return tr('Status Distribution', 'Phân bổ trạng thái')
   if (analyticsInsightMode.value === 'assignee') return tr('Assignee Distribution', 'Phân bổ người thực hiện')
@@ -1973,7 +2196,6 @@ const analyticsTableHeading = computed(() => {
 const setAnalyticsInsightMode = (mode) => {
   analyticsInsightMode.value = mode
 }
-
 const insightChartOptions = computed(() => {
   const colors = analyticsThemeColors.value
   return {
@@ -2009,7 +2231,6 @@ const insightChartOptions = computed(() => {
     backgroundColor: 'transparent'
   }
 })
-
 const kanbanColumns = computed(() => {
   // Map màu nền nhạt cho từng trạng thái (theo design spec)
   const statusBgMap = {
@@ -2020,7 +2241,146 @@ const kanbanColumns = computed(() => {
     'DONE':        'rgba(34, 197, 94, 0.05)',
     'CANCELLED':   'rgba(244, 63, 94, 0.05)'
   }
-
+  const validTasks = filteredTasksList.value || [];
+  if (groupBy.value === 'priority') {
+    const pGroups = [
+      { id: 'p1', name: 'URGENT', label: tr('Urgent', 'Khẩn cấp'), color: '#EF4444', icon: 'fa-solid fa-angles-up', bgColor: 'rgba(239,68,68,0.05)', priorityValue: 1, items: [] },
+      { id: 'p2', name: 'HIGH', label: tr('High', 'Cao'), color: '#F97316', icon: 'fa-solid fa-chevron-up', bgColor: 'rgba(249,115,22,0.05)', priorityValue: 2, items: [] },
+      { id: 'p3', name: 'NORMAL', label: tr('Normal', 'Bình thường'), color: '#3B82F6', icon: 'fa-solid fa-minus', bgColor: 'rgba(59,130,246,0.05)', priorityValue: 3, items: [] },
+      { id: 'p4', name: 'LOW', label: tr('Low', 'Thấp'), color: '#94A3B8', icon: 'fa-solid fa-chevron-down', bgColor: 'rgba(148,163,184,0.05)', priorityValue: 4, items: [] }
+    ];
+    validTasks.forEach(t => {
+      let col = pGroups.find(g => g.priorityValue === (t.priority || 3));
+      if (!col) col = pGroups[2];
+      col.items.push(t);
+    });
+    return pGroups;
+  }
+  if (groupBy.value === 'assignee') {
+    const aGroups = (projectMembers.value || []).map(member => ({
+      id: member.userId || member.id,
+      name: member.userId || member.id,
+      label: member.fullName || member.name || member.email,
+      color: '#3B82F6',
+      icon: 'fa-regular fa-user',
+      bgColor: 'rgba(59,130,246,0.04)',
+      priorityValue: null,
+      assigneeId: member.userId || member.id,
+      items: []
+    }));
+    aGroups.push({
+      id: 'unassigned',
+      name: 'UNASSIGNED',
+      label: tr('Unassigned', 'Chưa phân công'),
+      color: '#94A3B8',
+      icon: 'fa-solid fa-user-xmark',
+      bgColor: 'rgba(148,163,184,0.04)',
+      priorityValue: null,
+      assigneeId: 'unassigned',
+      items: []
+    });
+    validTasks.forEach(t => {
+      const ids = getTaskAssigneeIds(t);
+      if (ids && ids.length > 0) {
+        let col = aGroups.find(g => g.assigneeId === ids[0]);
+        if (col) {
+          col.items.push(t);
+        } else {
+          aGroups[aGroups.length - 1].items.push(t);
+        }
+      } else {
+        aGroups[aGroups.length - 1].items.push(t);
+      }
+    });
+    return aGroups;
+  }
+  if (groupBy.value === 'sprint') {
+    const sMap = new Map();
+    validTasks.forEach(t => {
+      if (t.sprintId) {
+        sMap.set(t.sprintId, t.sprintName || `Sprint ${t.sprintId.substring(0,8).toUpperCase()}`);
+      }
+    });
+    const sGroups = Array.from(sMap.entries()).map(([sid, sname]) => ({
+      id: sid,
+      name: sid,
+      label: sname,
+      color: '#10B981',
+      icon: 'fa-solid fa-arrows-spin',
+      bgColor: 'rgba(16,185,129,0.04)',
+      priorityValue: null,
+      sprintId: sid,
+      items: []
+    }));
+    sGroups.push({
+      id: 'no-sprint',
+      name: 'NO_SPRINT',
+      label: tr('No Sprint', 'Chưa có chu kỳ'),
+      color: '#94A3B8',
+      icon: 'fa-solid fa-ban',
+      bgColor: 'rgba(148,163,184,0.04)',
+      priorityValue: null,
+      sprintId: 'no-sprint',
+      items: []
+    });
+    validTasks.forEach(t => {
+      if (t.sprintId) {
+        let col = sGroups.find(g => g.sprintId === t.sprintId);
+        if (col) {
+          col.items.push(t);
+        } else {
+          sGroups[sGroups.length - 1].items.push(t);
+        }
+      } else {
+        sGroups[sGroups.length - 1].items.push(t);
+      }
+    });
+    return sGroups;
+  }
+  if (groupBy.value === 'module') {
+    const mMap = new Map();
+    validTasks.forEach(t => {
+      if (t.moduleId) {
+        mMap.set(t.moduleId, t.moduleName || `Module ${t.moduleId.substring(0,8).toUpperCase()}`);
+      }
+    });
+    const mGroups = Array.from(mMap.entries()).map(([mid, mname]) => ({
+      id: mid,
+      name: mid,
+      label: mname,
+      color: '#8B5CF6',
+      icon: 'fa-solid fa-cubes',
+      bgColor: 'rgba(139,92,246,0.04)',
+      priorityValue: null,
+      moduleId: mid,
+      items: []
+    }));
+    mGroups.push({
+      id: 'no-module',
+      name: 'NO_MODULE',
+      label: tr('No Module', 'Chưa có phân hệ'),
+      color: '#94A3B8',
+      icon: 'fa-solid fa-ban',
+      bgColor: 'rgba(148,163,184,0.04)',
+      priorityValue: null,
+      moduleId: 'no-module',
+      items: []
+    });
+    validTasks.forEach(t => {
+      if (t.moduleId) {
+        let col = mGroups.find(g => g.moduleId === t.moduleId);
+        if (col) {
+          col.items.push(t);
+        } else {
+          mGroups[mGroups.length - 1].items.push(t);
+        }
+      } else {
+        mGroups[mGroups.length - 1].items.push(t);
+      }
+    });
+    return mGroups;
+  }
+  // Fallback / default Group by Status
   const groups = taskStatusOptions.value.map((status, index) => ({
     id: `${status.name.toLowerCase().replace(/\s+/g, '-')}-${index}`,
     name: status.name,
@@ -2031,89 +2391,187 @@ const kanbanColumns = computed(() => {
     priorityValue: null,
     items: []
   }));
-
-  const pGroups = [
-    { id: 'p1', name: 'Urgent', color: '#EF4444', icon: 'fa-solid fa-angles-up', bgColor: 'rgba(239,68,68,0.05)', priorityValue: 1, items: [] },
-    { id: 'p2', name: 'High', color: '#F97316', icon: 'fa-solid fa-chevron-up', bgColor: 'rgba(249,115,22,0.05)', priorityValue: 2, items: [] },
-    { id: 'p3', name: 'Normal', color: '#3B82F6', icon: 'fa-solid fa-minus', bgColor: 'rgba(59,130,246,0.05)', priorityValue: 3, items: [] },
-    { id: 'p4', name: 'Low', color: '#94A3B8', icon: 'fa-solid fa-chevron-down', bgColor: 'rgba(148,163,184,0.05)', priorityValue: 4, items: [] }
-  ];
-
-  const validTasks = filteredTasksList.value || [];
-
-  if (groupBy.value === 'priority') {
-     validTasks.forEach(t => {
-       let col = pGroups.find(g => g.priorityValue === (t.priority || 3));
-       if (!col) col = pGroups[2];
-       col.items.push(t);
-     });
-     return pGroups;
-  } else {
-     const definedStatuses = taskStatusOptions.value.map(s => s.name.toUpperCase().trim())
-     const hasFallback = validTasks.some(t => !definedStatuses.includes((t.statusName || 'BACKLOG').toUpperCase().trim()))
-
-     if (hasFallback) {
-       groups.push({
-         id: 'fallback-unclassified-col',
-         name: 'FALLBACK_UNCLASSIFIED',
-         label: tr('Khác / Chưa phân loại', 'Khác / Chưa phân loại'),
-         color: '#f43f5e',
-         icon: 'fa-solid fa-triangle-exclamation',
-         bgColor: 'rgba(244, 63, 94, 0.05)',
-         priorityValue: null,
-         items: [],
-         isFallback: true
-       })
-     }
-
-     validTasks.forEach(t => {
-       const s = (t.statusName || 'BACKLOG').toUpperCase().trim();
-       let col = groups.find(group => group.name === s)
-       if (!col) {
-         col = groups.find(group => group.name === 'FALLBACK_UNCLASSIFIED') || groups[0];
-       }
-       col.items.push(t);
-     });
-     return groups;
+  const definedStatuses = taskStatusOptions.value.map(s => s.name.toUpperCase().trim())
+  const hasFallback = validTasks.some(t => !definedStatuses.includes((t.statusName || 'BACKLOG').toUpperCase().trim()))
+  if (hasFallback) {
+    groups.push({
+      id: 'fallback-unclassified-col',
+      name: 'FALLBACK_UNCLASSIFIED',
+      label: tr('Khác / Chưa phân loại', 'Khác / Chưa phân loại'),
+      color: '#f43f5e',
+      icon: 'fa-solid fa-triangle-exclamation',
+      bgColor: 'rgba(244, 63, 94, 0.05)',
+      priorityValue: null,
+      items: [],
+      isFallback: true
+    })
   }
-});
-
+  validTasks.forEach(t => {
+    const s = (t.statusName || 'BACKLOG').toUpperCase().trim();
+    let col = groups.find(group => group.name === s)
+    if (!col) {
+      col = groups.find(group => group.name === 'FALLBACK_UNCLASSIFIED') || groups[0];
+    }
+    col.items.push(t);
+  });
+  return groups;
+})
 const listViewGroups = computed(() => {
+  if (groupBy.value === 'priority') {
+    const pGroups = [
+      { id: 'lp1', name: tr('Urgent', 'Khẩn cấp'), statusName: 'URGENT', icon: 'fa-solid fa-angles-up', color: '#EF4444', priorityValue: 1, items: [] },
+      { id: 'lp2', name: tr('High', 'Cao'), statusName: 'HIGH', icon: 'fa-solid fa-chevron-up', color: '#F97316', priorityValue: 2, items: [] },
+      { id: 'lp3', name: tr('Normal', 'Bình thường'), statusName: 'NORMAL', icon: 'fa-solid fa-minus', color: '#3B82F6', priorityValue: 3, items: [] },
+      { id: 'lp4', name: tr('Low', 'Thấp'), statusName: 'LOW', icon: 'fa-solid fa-chevron-down', color: '#94A3B8', priorityValue: 4, items: [] }
+    ];
+    filteredTasksList.value.forEach(task => {
+      let target = pGroups.find(g => g.priorityValue === (task.priority || 3));
+      if (!target) target = pGroups[2];
+      target.items.push(task);
+    });
+    return pGroups;
+  }
+  if (groupBy.value === 'assignee') {
+    const aGroups = (projectMembers.value || []).map(member => ({
+      id: member.userId || member.id,
+      name: member.fullName || member.name || member.email,
+      statusName: member.userId || member.id,
+      icon: 'fa-regular fa-user',
+      color: '#3B82F6',
+      assigneeId: member.userId || member.id,
+      items: []
+    }));
+    aGroups.push({
+      id: 'unassigned',
+      name: tr('Unassigned', 'Chưa phân công'),
+      statusName: 'UNASSIGNED',
+      icon: 'fa-solid fa-user-xmark',
+      color: '#94A3B8',
+      assigneeId: 'unassigned',
+      items: []
+    });
+    filteredTasksList.value.forEach(task => {
+      const ids = getTaskAssigneeIds(task);
+      if (ids && ids.length > 0) {
+        let target = aGroups.find(g => g.assigneeId === ids[0]);
+        if (target) {
+          target.items.push(task);
+        } else {
+          aGroups[aGroups.length - 1].items.push(task);
+        }
+      } else {
+        aGroups[aGroups.length - 1].items.push(task);
+      }
+    });
+    return aGroups;
+  }
+  if (groupBy.value === 'sprint') {
+    const sMap = new Map();
+    filteredTasksList.value.forEach(task => {
+      if (task.sprintId) {
+        sMap.set(task.sprintId, task.sprintName || `Sprint ${task.sprintId.substring(0,8).toUpperCase()}`);
+      }
+    });
+    const sGroups = Array.from(sMap.entries()).map(([sid, sname]) => ({
+      id: sid,
+      name: sname,
+      statusName: sid,
+      icon: 'fa-solid fa-arrows-spin',
+      color: '#10B981',
+      sprintId: sid,
+      items: []
+    }));
+    sGroups.push({
+      id: 'no-sprint',
+      name: tr('No Sprint', 'Chưa có chu kỳ'),
+      statusName: 'NO_SPRINT',
+      icon: 'fa-solid fa-ban',
+      color: '#94A3B8',
+      sprintId: 'no-sprint',
+      items: []
+    });
+    filteredTasksList.value.forEach(task => {
+      if (task.sprintId) {
+        let target = sGroups.find(g => g.sprintId === task.sprintId);
+        if (target) {
+          target.items.push(task);
+        } else {
+          sGroups[sGroups.length - 1].items.push(task);
+        }
+      } else {
+        sGroups[sGroups.length - 1].items.push(task);
+      }
+    });
+    return sGroups;
+  }
+  if (groupBy.value === 'module') {
+    const mMap = new Map();
+    filteredTasksList.value.forEach(task => {
+      if (task.moduleId) {
+        mMap.set(task.moduleId, task.moduleName || `Module ${task.moduleId.substring(0,8).toUpperCase()}`);
+      }
+    });
+    const mGroups = Array.from(mMap.entries()).map(([mid, mname]) => ({
+      id: mid,
+      name: mname,
+      statusName: mid,
+      icon: 'fa-solid fa-cubes',
+      color: '#8B5CF6',
+      moduleId: mid,
+      items: []
+    }));
+    mGroups.push({
+      id: 'no-module',
+      name: tr('No Module', 'Chưa có phân hệ'),
+      statusName: 'NO_MODULE',
+      icon: 'fa-solid fa-ban',
+      color: '#94A3B8',
+      moduleId: 'no-module',
+      items: []
+    });
+    filteredTasksList.value.forEach(task => {
+      if (task.moduleId) {
+        let target = mGroups.find(g => g.moduleId === task.moduleId);
+        if (target) {
+          target.items.push(task);
+        } else {
+          mGroups[mGroups.length - 1].items.push(task);
+        }
+      } else {
+        mGroups[mGroups.length - 1].items.push(task);
+      }
+    });
+    return mGroups;
+  }
+  // Fallback / default Group by Status
   const groups = taskStatusOptions.value.map((status, index) => ({
-    id: `${status.name.toLowerCase().replace(/\s+/g, '-')}-${index}`,
+    id: status.name.toLowerCase().replace(/\s+/g, '-') + '-' + index,
     name: status.label,
     statusName: status.name,
     icon: status.icon,
     color: status.color,
     items: []
   }))
-
   filteredTasksList.value.forEach(task => {
     const status = normalizeStatus(task.statusName)
     const target = groups.find(group => group.statusName === status) || groups[0]
     target.items.push(task)
   })
-
-  return groups
+  return groups;
 })
-
 const toggleListGroup = (groupId) => {
   collapsedListGroups.value[groupId] = !collapsedListGroups.value[groupId]
 }
-
 const toggleTaskAssignee = (task, memberId) => {
   if (!canEditTaskByAssignment(task)) return
-
   const currentIds = getTaskAssigneeIds(task)
   const nextIds = currentIds.includes(memberId)
     ? currentIds.filter(id => id !== memberId)
     : Array.from(new Set([...currentIds, memberId]))
-
   task.assigneeIds = nextIds
   task.assignedUserId = nextIds[0] || null
   updateTask(task, 'assigneeIds', nextIds, currentIds)
 }
-
 const loadInitialData = async (options = {}) => {
   const { preserveExisting = false } = options
   let pid = getProjectId()
@@ -2123,7 +2581,6 @@ const loadInitialData = async (options = {}) => {
       store.clearTasks(null)
       return
   }
-
   const requestId = ++initialDataRequestId
   const contextKey = `${getSessionIdentity()}:${pid}:${activeModuleFilterId.value || ''}`
   try {
@@ -2147,7 +2604,6 @@ const loadInitialData = async (options = {}) => {
     ])
     const currentContextKey = `${getSessionIdentity()}:${getProjectId()}:${activeModuleFilterId.value || ''}`
     if (requestId !== initialDataRequestId || contextKey !== currentContextKey) return
-
     project.value = pRes.data.data
     projectMembers.value = (mRes.data.data || []).map(member => ({
       ...member,
@@ -2165,14 +2621,12 @@ const loadInitialData = async (options = {}) => {
       enableRoleBasedTaskVisibility: Boolean(executionRulesRes.data?.data?.enableRoleBasedTaskVisibility),
       managerAlwaysSeeAllTasks: executionRulesRes.data?.data?.managerAlwaysSeeAllTasks !== false
     }
-
     if (activeCarryOverSprintId.value) {
       const carryOverRes = await axiosClient.get(`/projects/${pid}/sprints/${activeCarryOverSprintId.value}/carry-over-tasks`)
       const latestContextKey = `${getSessionIdentity()}:${getProjectId()}:${activeModuleFilterId.value || ''}`
       if (requestId !== initialDataRequestId || contextKey !== latestContextKey) return
       carryOverTaskIds.value = (carryOverRes.data?.data || []).map(task => task.id)
     }
-
     await fetchTasks({ reset: false })
     openTaskFromRouteQuery()
     await loadProjectPermissionMatrix()
@@ -2185,24 +2639,20 @@ const loadInitialData = async (options = {}) => {
     }
   }
 }
-
 const fetchModuleTasks = async ({ page = moduleTaskPage.value } = {}) => {
   const pid = getProjectId()
   const moduleId = activeModuleFilterId.value
   if (!pid || !moduleId) return []
-
   moduleDetailAbortController?.abort()
   const controller = new AbortController()
   moduleDetailAbortController = controller
   const requestId = ++moduleDetailRequestId
   const sessionIdentity = getSessionIdentity()
   const contextKey = `${sessionIdentity}:${pid}:${moduleId}:${page}:${moduleTaskPageSize.value}`
-
   moduleDetailLoading.value = true
   moduleDetailError.value = null
   allTasks.value = []
   selectedTask.value = null
-
   try {
     const detail = await getModuleDetail(pid, moduleId, {
       page,
@@ -2213,12 +2663,10 @@ const fetchModuleTasks = async ({ page = moduleTaskPage.value } = {}) => {
     if (requestId !== moduleDetailRequestId || contextKey !== currentContextKey) {
       return []
     }
-
     if (detail.tasks.totalPages > 0 && page > detail.tasks.totalPages) {
       moduleTaskPage.value = detail.tasks.totalPages
       return fetchModuleTasks({ page: detail.tasks.totalPages })
     }
-
     moduleDetail.value = detail
     moduleTaskPage.value = detail.tasks.page
     moduleTaskPagination.value = { ...detail.tasks }
@@ -2247,7 +2695,6 @@ const fetchModuleTasks = async ({ page = moduleTaskPage.value } = {}) => {
     }
   }
 }
-
 const retryModuleDetail = () => fetchModuleTasks({ page: moduleTaskPage.value })
 const changeModuleTaskPage = (page) => {
   if (moduleDetailLoading.value || page < 1 || page === moduleTaskPage.value) return
@@ -2261,14 +2708,12 @@ const changeModuleTaskPageSize = (pageSize) => {
   moduleTaskPage.value = 1
   fetchModuleTasks({ page: 1 })
 }
-
 const fetchTasks = async (options = {}) => {
   const pid = getProjectId()
   if(!pid) return
   if (activeModuleFilterId.value) {
       return fetchModuleTasks({ page: moduleTaskPage.value })
   }
-
   clearModuleDetailState()
   try {
       const previousTasks = options.preserveExisting ? [...(allTasks.value || [])] : []
@@ -2287,7 +2732,6 @@ const fetchTasks = async (options = {}) => {
       if (options.preserveExisting) {
         store.tasks = allTasks.value
       }
-
       // Auto update selectedTask if open
       if (selectedTask.value) {
         const updatedTask = allTasks.value.find(t => t.id === selectedTask.value.id);
@@ -2298,14 +2742,11 @@ const fetchTasks = async (options = {}) => {
     console.error('Lỗi load tasks:', error)
   }
 }
-
 const upsertTaskIntoCurrentList = (task) => {
   const pid = getProjectId()
   if (!pid || !task) return null
-
   const normalizedTask = store.normalizeTaskRecord(task, pid)
   if (!normalizedTask?.id || `${normalizedTask.projectId || pid}` !== `${pid}`) return null
-
   const nextTasks = [...(allTasks.value || [])]
   const index = nextTasks.findIndex(item => `${item.id}` === `${normalizedTask.id}`)
   if (index >= 0) {
@@ -2313,23 +2754,19 @@ const upsertTaskIntoCurrentList = (task) => {
   } else {
     nextTasks.push(normalizedTask)
   }
-
   allTasks.value = nextTasks
   store.upsertTask(normalizedTask, pid)
   return normalizedTask
 }
-
 const handleTaskCreated = async (createdTask) => {
   upsertTaskIntoCurrentList(createdTask)
   await fetchTasks({ reset: false, preserveExisting: true })
 }
-
 const openTaskDetail = (task) => {
   taskDetailHistory.value = []
   selectedTask.value = task;
   starredStore.recordViewed(STARRED_ENTITY_TYPES.WORK_TASK, task.id).catch(() => {})
 }
-
 const openTaskFromRouteQuery = () => {
   const taskId = route.query.task
   if (!taskId) return
@@ -2356,7 +2793,6 @@ const closeTaskDetail = () => {
   taskDetailHistory.value = []
   selectedTask.value = null;
 }
-
 const putBackedTaskFields = new Set([
   'title',
   'description',
@@ -2368,10 +2804,8 @@ const putBackedTaskFields = new Set([
   'visibilityMode',
   'visibleToRoles'
 ])
-
 const buildPutTaskPayload = (task, overrides = {}) => {
   const mergedTask = { ...task, ...overrides }
-
   return {
     title: mergedTask.title || '',
     description: mergedTask.description ?? '',
@@ -2389,13 +2823,10 @@ const buildPutTaskPayload = (task, overrides = {}) => {
     rowVersion: mergedTask.rowVersion || null
   }
 }
-
 const syncTopLevelTasks = () => {
   rawTasks.value = (allTasks.value || []).filter(task => !isSubtask(task))
 }
-
 watch(allTasks, syncTopLevelTasks, { deep: true, immediate: true })
-
 watch(
   () => ({
     enableRoleBasedTaskVisibility: Boolean(projectExecutionRules.value?.enableRoleBasedTaskVisibility),
@@ -2403,37 +2834,30 @@ watch(
   }),
   async (rules) => {
     allTasks.value = (allTasks.value || []).filter(canCurrentUserSeeTask)
-
     if (selectedTask.value && !canCurrentUserSeeTask(selectedTask.value)) {
       selectedTask.value = null
     }
-
     await fetchTasks({ reset: false })
   },
   { deep: true }
 )
-
 const updateTask = async (task, field, value, previousValue = task ? task[field] : undefined) => {
   const pid = getProjectId()
   if (!pid || !task?.id) return
-
   const isBatchPayload = field && typeof field === 'object' && !Array.isArray(field)
   const payloadOverrides = isBatchPayload ? field : { [field]: value }
   if (!canApplyTaskUpdate(task, payloadOverrides)) return
   const previousValues = Object.fromEntries(
     Object.keys(payloadOverrides).map(key => [key, task?.[key]])
   )
-
   try {
     Object.entries(payloadOverrides).forEach(([key, nextValue]) => {
       task[key] = nextValue
     })
-
     const usesPutUpdate = !isBatchPayload && putBackedTaskFields.has(field)
     const payload = usesPutUpdate
       ? buildPutTaskPayload(task, payloadOverrides)
       : payloadOverrides
-
     await store.updateTask(pid, task.id, payload, { method: usesPutUpdate ? 'put' : 'patch' })
     await fetchTasks()
   } catch (error) {
@@ -2447,48 +2871,67 @@ const updateTask = async (task, field, value, previousValue = task ? task[field]
     await fetchTasks()
   }
 }
-
 const openCreateTask = (statusName, defaults = {}) => {
    taskDetailHistory.value = []
+   let defaultStatus = 'TO DO'
+   let defaultPriority = 3
+   let defaultAssigneeIds = []
+   let defaultSprintId = activeSprintFilterId.value || null
+   let defaultModuleId = activeModuleFilterId.value || null
+   if (groupBy.value === 'priority') {
+     if (statusName === 'URGENT') defaultPriority = 1
+     else if (statusName === 'HIGH') defaultPriority = 2
+     else if (statusName === 'NORMAL') defaultPriority = 3
+     else if (statusName === 'LOW') defaultPriority = 4
+     else defaultPriority = 3
+   } else if (groupBy.value === 'assignee') {
+     if (statusName && statusName !== 'UNASSIGNED') {
+       defaultAssigneeIds = [statusName]
+     }
+   } else if (groupBy.value === 'sprint') {
+     if (statusName && statusName !== 'NO_SPRINT') {
+       defaultSprintId = statusName
+     }
+   } else if (groupBy.value === 'module') {
+     if (statusName && statusName !== 'NO_MODULE') {
+       defaultModuleId = statusName
+     }
+   } else {
+     defaultStatus = statusName || 'BACKLOG'
+   }
    selectedTask.value = {
      isNew: true,
      title: '',
      description: '',
-     statusName: statusName || 'BACKLOG',
-     priority: 3,
-     sprintId: activeSprintFilterId.value || null,
+     statusName: defaultStatus,
+     priority: defaultPriority,
+     sprintId: defaultSprintId,
+     moduleId: defaultModuleId,
      plannedStartDate: defaults?.plannedStartDate || null,
-     dueDate: defaults?.dueDate || null
+     dueDate: defaults?.dueDate || null,
+     assigneeIds: defaultAssigneeIds
    };
 }
-
 const handleGlobalCreateTask = (e) => {
   openCreateTask(e.detail?.statusName || 'TO DO')
 }
-
 onMounted(() => {
   window.addEventListener('open-create-task', handleGlobalCreateTask)
 })
-
 onUnmounted(() => {
   window.removeEventListener('open-create-task', handleGlobalCreateTask)
 })
-
 const toggleAnalyticsExpand = () => {
   isAnalyticsExpanded.value = !isAnalyticsExpanded.value
 }
-
 const closeAnalyticsSidebar = () => {
   showAnalyticsSidebar.value = false
   isAnalyticsExpanded.value = false
 }
-
 const openCreateTaskFromCalendar = (dates) => {
    openCreateTask('TO DO', dates);
 }
-
 const inlineInput = ref(null);
-
 const openInlineCreate = (colId) => {
    inlineCreateColId.value = colId;
    inlineTaskTitle.value = '';
@@ -2508,7 +2951,6 @@ const openInlineCreate = (colId) => {
            inlineInput.value.focus();
         }
      }
-
      // Focus can scroll the input into view before the full editor is laid out.
      // Scroll again after layout so the complete create form remains visible.
      const scrollEditorIntoView = () => {
@@ -2527,7 +2969,6 @@ const openInlineCreate = (colId) => {
        requestAnimationFrame(scrollEditorIntoView);
        window.setTimeout(scrollEditorIntoView, 120);
      });
-
      const editor = targetColumn?.querySelector('.inline-create-box');
      if (targetColumn && editor && typeof ResizeObserver !== 'undefined') {
        const resizeObserver = new ResizeObserver(scrollEditorIntoView);
@@ -2536,19 +2977,47 @@ const openInlineCreate = (colId) => {
      }
    });
 }
-
 const submitInlineTask = async (col) => {
    if(!inlineTaskTitle.value.trim()) {
       inlineCreateColId.value = null;
       return;
    }
    try {
+      let defaultStatus = 'TO DO'
+      let defaultPriority = 3
+      let defaultAssigneeIds = []
+      let defaultSprintId = activeSprintFilterId.value || null
+      let defaultModuleId = activeModuleFilterId.value || null
+      if (groupBy.value === 'priority') {
+         defaultStatus = 'TO DO'
+         defaultPriority = col?.priorityValue || 3
+      } else if (groupBy.value === 'assignee') {
+         defaultStatus = 'TO DO'
+         if (col?.assigneeId && col.assigneeId !== 'unassigned') {
+            defaultAssigneeIds = [col.assigneeId]
+         }
+      } else if (groupBy.value === 'sprint') {
+         defaultStatus = 'TO DO'
+         if (col?.sprintId && col.sprintId !== 'no-sprint') {
+            defaultSprintId = col.sprintId
+         }
+      } else if (groupBy.value === 'module') {
+         defaultStatus = 'TO DO'
+         if (col?.moduleId && col.moduleId !== 'no-module') {
+            defaultModuleId = col.moduleId
+         }
+      } else {
+         defaultStatus = inlineStatusName.value || col?.name || 'BACKLOG'
+         defaultPriority = Number.isFinite(Number(inlinePriority.value)) ? Number(inlinePriority.value) : 0
+      }
       const payload = {
          title: inlineTaskTitle.value.trim(),
          description: '',
-         statusName: inlineStatusName.value || col?.name || 'BACKLOG',
-         priority: Number.isFinite(Number(inlinePriority.value)) ? Number(inlinePriority.value) : 0,
-         sprintId: activeSprintFilterId.value || null
+         statusName: defaultStatus,
+         priority: defaultPriority,
+         sprintId: defaultSprintId,
+         moduleId: defaultModuleId,
+         assigneeIds: defaultAssigneeIds
       }
       if (inlineDateRange.value && Array.isArray(inlineDateRange.value) && inlineDateRange.value.length === 2) {
          payload.plannedStartDate = inlineDateRange.value[0];
@@ -2557,7 +3026,9 @@ const submitInlineTask = async (col) => {
       } else if (inlineDueDate.value) {
          payload.dueDate = inlineDueDate.value;
       }
-      if (inlineAssigneeIds.value.length) payload.assigneeIds = inlineAssigneeIds.value
+      if (inlineAssigneeIds.value.length && !defaultAssigneeIds.length) {
+         payload.assigneeIds = inlineAssigneeIds.value
+      }
       const response = await axiosClient.post(`/projects/${getProjectId()}/WorkTasks`, payload);
       upsertTaskIntoCurrentList(response.data?.data || response.data);
       inlineTaskTitle.value = '';
@@ -2572,7 +3043,6 @@ const submitInlineTask = async (col) => {
       ElMessage.error(e.response?.data?.message || 'Không thể tạo công việc.');
    }
 }
-
 const handleListTaskCreate = async (payload) => {
    const pid = getProjectId();
    if (!pid) return;
@@ -2591,7 +3061,6 @@ const handleListTaskCreate = async (payload) => {
       ElMessage.error(error.response?.data?.message || 'Khong the tao cong viec');
    }
 }
-
 const handleDraggableChange = async (evt, group) => {
   if (evt.added || evt.moved) {
     const element = evt.added ? evt.added.element : evt.moved.element;
@@ -2605,13 +3074,11 @@ const handleDraggableChange = async (evt, group) => {
       const sortOrder = Number(task?.sortOrder);
       return Number.isFinite(sortOrder) ? sortOrder : fallback;
     };
-
     if (group.name === 'FALLBACK_UNCLASSIFIED') {
       ElMessage.warning('Không thể chuyển tác vụ vào cột Khác / Chưa phân loại.');
       fetchTasks();
       return;
     }
-
     // Math cho LexoRank
     let newSortOrder = 65536;
     if (group.items.length === 1) {
@@ -2624,40 +3091,78 @@ const handleDraggableChange = async (evt, group) => {
        const beforeSort = getSortOrder(group.items[newIndex - 1], 0);
        const afterSort = getSortOrder(group.items[newIndex + 1], beforeSort + 131072);
        newSortOrder = (beforeSort + afterSort) / 2.0;
-    }
-
-    element.sortOrder = newSortOrder;
-
-    if (groupBy.value === 'status') {
-       element.statusName = group.name; // Cập nhật Optimistic UI
-       try {
-         await store.reorderTask(getProjectId(), element.id, newSortOrder, group.name);
-         await fetchTasks();
-       } catch (error) {
-         Object.assign(element, previousTask);
-         ElMessage.error(error.response?.data?.message || 'Khong the cap nhat bang Kanban');
-         console.error('Lỗi API reorder:', error);
-         fetchTasks(); // Load lại data nếu gặp lỗi
-       }
-    } else if (groupBy.value === 'priority') {
-       element.priority = group.priorityValue;
-       try {
-         await store.updateTask(getProjectId(), element.id, {
-           sortOrder: newSortOrder,
-           priority: group.priorityValue
-          });
+     }
+     element.sortOrder = newSortOrder;
+     if (groupBy.value === 'status') {
+        element.statusName = group.name; // Cập nhật Optimistic UI
+        try {
+          await store.reorderTask(getProjectId(), element.id, newSortOrder, group.name);
           await fetchTasks();
         } catch (error) {
           Object.assign(element, previousTask);
-          ElMessage.error(error.response?.data?.message || 'Khong the cap nhat do uu tien');
-         console.error('Lỗi API reorder:', error);
-         fetchTasks();
-       }
-    }
+          ElMessage.error(error.response?.data?.message || 'Khong the cap nhat bang Kanban');
+          console.error('Lỗi API reorder:', error);
+          fetchTasks(); // Load lại data nếu gặp lỗi
+        }
+     } else if (groupBy.value === 'priority') {
+        element.priority = group.priorityValue;
+        try {
+          await store.updateTask(getProjectId(), element.id, {
+            sortOrder: newSortOrder,
+            priority: group.priorityValue
+           });
+           await fetchTasks();
+         } catch (error) {
+           Object.assign(element, previousTask);
+           ElMessage.error(error.response?.data?.message || 'Khong the cap nhat do uu tien');
+          console.error('Lỗi API reorder:', error);
+          fetchTasks();
+        }
+     } else if (groupBy.value === 'assignee') {
+        const newAssignees = group.assigneeId === 'unassigned' ? [] : [group.assigneeId];
+        element.assigneeIds = newAssignees;
+        try {
+          await store.updateTask(getProjectId(), element.id, {
+            sortOrder: newSortOrder,
+            assigneeIds: newAssignees
+           });
+           await fetchTasks();
+         } catch (error) {
+           Object.assign(element, previousTask);
+           ElMessage.error(error.response?.data?.message || 'Không thể cập nhật người thực hiện');
+           fetchTasks();
+         }
+     } else if (groupBy.value === 'sprint') {
+        const newSprintId = group.sprintId === 'no-sprint' ? null : group.sprintId;
+        element.sprintId = newSprintId;
+        try {
+          await store.updateTask(getProjectId(), element.id, {
+            sortOrder: newSortOrder,
+            sprintId: newSprintId
+           });
+           await fetchTasks();
+         } catch (error) {
+           Object.assign(element, previousTask);
+           ElMessage.error(error.response?.data?.message || 'Không thể cập nhật chu kỳ');
+           fetchTasks();
+         }
+     } else if (groupBy.value === 'module') {
+        const newModuleId = group.moduleId === 'no-module' ? null : group.moduleId;
+        element.moduleId = newModuleId;
+        try {
+          await store.updateTask(getProjectId(), element.id, {
+            sortOrder: newSortOrder,
+            moduleId: newModuleId
+           });
+           await fetchTasks();
+         } catch (error) {
+           Object.assign(element, previousTask);
+           ElMessage.error(error.response?.data?.message || 'Không thể cập nhật phân hệ');
+           fetchTasks();
+         }
+     }
   }
 }
-
-
 const handleGlobalCreate = (event) => {
     const detail = event?.detail || {};
     openCreateTask(detail.statusName || 'TO DO', {
@@ -2665,7 +3170,6 @@ const handleGlobalCreate = (event) => {
       dueDate: detail.dueDate || null
     });
 }
-
 const syncFiltersToUrl = () => {
   const query = { ...route.query }
   if (activeTaskFilters.value.length) {
@@ -2675,22 +3179,18 @@ const syncFiltersToUrl = () => {
   }
   router.replace({ query })
 }
-
 const applyTaskFilters = (filters) => {
   activeTaskFilters.value = Array.isArray(filters) ? filters : activeTaskFilters.value
   syncFiltersToUrl()
 }
-
 const removeTaskFilter = (id) => {
   activeTaskFilters.value = activeTaskFilters.value.filter(filter => filter.id !== id)
   syncFiltersToUrl()
 }
-
 const clearTaskFilters = () => {
   activeTaskFilters.value = []
   syncFiltersToUrl()
 }
-
 const hydrateFiltersFromUrl = () => {
   if (!route.query.filters) return
   try {
@@ -2701,7 +3201,6 @@ const hydrateFiltersFromUrl = () => {
     activeTaskFilters.value = []
   }
 }
-
 const exportAnalyticsCsv = (mode = analyticsInsightMode.value) => {
   const rows = mode === 'assignee'
     ? [
@@ -2721,7 +3220,6 @@ const exportAnalyticsCsv = (mode = analyticsInsightMode.value) => {
   link.click()
   URL.revokeObjectURL(url)
 }
-
 onMounted(() => {
   hydrateFiltersFromUrl()
   loadInitialData()
@@ -2731,13 +3229,6 @@ onMounted(() => {
   analyticsThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
   window.addEventListener('global-create-task', handleGlobalCreate)
 })
-
-let unsubscribeAdminRealtime = null
-let signalRTaskUpdatedHandler = null
-let signalREntityChangedHandler = null
-let signalRProjectEventHandler = null
-let realtimeRefreshTimer = null
-
 const handleRealtimeTaskUpdated = (task) => {
   if (!task?.id) return
   if (activeModuleFilterId.value) {
@@ -2759,14 +3250,12 @@ const handleRealtimeTaskUpdated = (task) => {
     }, 120)
     return
   }
-
   const index = allTasks.value.findIndex(item => item.id === normalizedTask.id)
   if (index >= 0) {
     allTasks.value[index] = { ...allTasks.value[index], ...normalizedTask }
   } else {
     allTasks.value = [...allTasks.value, normalizedTask]
   }
-
   if (selectedTask.value?.id === normalizedTask.id) {
     if (canCurrentUserSeeTask(normalizedTask)) {
       selectedTask.value = { ...selectedTask.value, ...normalizedTask }
@@ -2774,13 +3263,11 @@ const handleRealtimeTaskUpdated = (task) => {
       selectedTask.value = null
     }
   }
-
   clearTimeout(realtimeRefreshTimer)
   realtimeRefreshTimer = setTimeout(() => {
     fetchTasks({ reset: false })
   }, 120)
 }
-
 const startTaskRealtime = async (projectId) => {
   if (!projectId) return
   if (signalRTaskUpdatedHandler) {
@@ -2796,7 +3283,6 @@ const startTaskRealtime = async (projectId) => {
   if (signalREntityChangedHandler) {
     signalRService.off('EntityChanged', signalREntityChangedHandler)
   }
-
   await signalRService.startConnection(projectId)
   signalRTaskUpdatedHandler = handleRealtimeTaskUpdated
   signalRService.on('TaskUpdated', signalRTaskUpdatedHandler)
@@ -2817,7 +3303,6 @@ const startTaskRealtime = async (projectId) => {
   }
   signalRService.on('ProjectRealtimeEvent', signalRProjectEventHandler)
 }
-
 onMounted(() => {
   window.addEventListener('click', handleGlobalDropdownClick, true)
   startTaskRealtime(getProjectId())
@@ -2825,7 +3310,6 @@ onMounted(() => {
     const pid = getProjectId()
     if (!pid) return
     if (payload?.projectId && `${payload.projectId}` !== `${pid}`) return
-
     if (
       [
         'project-settings-updated',
@@ -2838,14 +3322,12 @@ onMounted(() => {
     }
   })
 })
-
 watch(
   () => [currentProjectId.value, activeModuleFilterId.value],
   ([projectId, moduleId], [previousProjectId, previousModuleId]) => {
     if (!projectId || (projectId === previousProjectId && moduleId === previousModuleId)) {
       return
     }
-
     clearModuleDetailState()
     rawTasks.value = []
     allTasks.value = []
@@ -2861,15 +3343,12 @@ watch(
   },
   { immediate: false }
 )
-
 watch(showSubtasks, (value) => {
   persistShowSubtasksPreference(value)
 })
-
 watch(displayProperties, (value) => {
   persistDisplayPropertiesPreference(value)
 }, { deep: true })
-
 watch(
   () => [route.query.tab, route.query.sprintId, route.query.moduleId, route.params.cycleId, route.query.carryOverFromSprintId],
   () => {
@@ -2881,14 +3360,12 @@ watch(
   },
   { immediate: true }
 )
-
 watch(
   () => route.query.carryOverFromSprintId,
   () => {
     loadInitialData()
   }
 )
-
 onUnmounted(() => {
   window.removeEventListener('click', handleGlobalDropdownClick, true)
   window.removeEventListener('global-create-task', handleGlobalCreate)
@@ -2913,7 +3390,6 @@ onUnmounted(() => {
   unsubscribeAdminRealtime?.()
 })
 </script>
-
 <style scoped>
 /* ==================================
    PLANE.SO PROJECT KANBAN THEME
@@ -2929,21 +3405,18 @@ onUnmounted(() => {
   font-family: 'Inter', sans-serif;
   overflow: visible;
 }
-
 .module-detail-context {
   flex: 0 0 auto;
   padding: 12px var(--sa-page-x, 24px);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
 }
-
 .module-state-panel,
 .module-detail-heading {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-
 .module-state-panel {
   min-height: 72px;
   padding: 14px 16px;
@@ -2951,7 +3424,6 @@ onUnmounted(() => {
   border-radius: 8px;
   color: var(--color-text-primary);
 }
-
 .module-state-panel > div {
   display: flex;
   min-width: 0;
@@ -2959,25 +3431,20 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 3px;
 }
-
 .module-state-panel span {
   color: var(--color-text-muted);
   font-size: 13px;
 }
-
 .module-loading-state > i {
   color: var(--color-accent);
 }
-
 .module-error-state {
   border-color: color-mix(in srgb, #ef4444 45%, var(--color-border));
   background: color-mix(in srgb, #ef4444 7%, var(--color-surface));
 }
-
 .module-error-state > i {
   color: #ef4444;
 }
-
 .module-retry-btn {
   display: inline-flex;
   align-items: center;
@@ -2991,24 +3458,20 @@ onUnmounted(() => {
   font-weight: 750;
   cursor: pointer;
 }
-
 .module-retry-btn:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--color-accent) 32%, transparent);
   outline-offset: 2px;
 }
-
 .module-detail-heading {
   justify-content: space-between;
   min-width: 0;
 }
-
 .module-detail-heading > div:first-child {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 10px;
 }
-
 .module-detail-heading strong {
   overflow: hidden;
   color: var(--color-text-primary);
@@ -3016,7 +3479,6 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .module-status-label {
   flex: 0 0 auto;
   padding: 4px 7px;
@@ -3027,7 +3489,6 @@ onUnmounted(() => {
   font-size: 11px;
   font-weight: 800;
 }
-
 .module-progress {
   display: flex;
   flex: 0 0 auto;
@@ -3037,7 +3498,6 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 800;
 }
-
 .module-progress-track {
   width: 112px;
   height: 6px;
@@ -3045,20 +3505,17 @@ onUnmounted(() => {
   border-radius: 3px;
   background: var(--color-border);
 }
-
 .module-progress-track > span {
   display: block;
   height: 100%;
   background: #22c55e;
 }
-
 .module-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin-top: 12px;
 }
-
 .module-summary-item {
   display: flex;
   min-width: 0;
@@ -3071,13 +3528,11 @@ onUnmounted(() => {
   border-radius: 7px;
   background: var(--color-bg-secondary);
 }
-
 .module-summary-item.is-complete { border-left-color: #22c55e; }
 .module-summary-item.is-progress { border-left-color: #0ea5e9; }
 .module-summary-item.is-overdue { border-left-color: #ef4444; }
 .module-summary-item span { overflow-wrap: anywhere; color: var(--color-text-muted); font-size: 12px; }
 .module-summary-item strong { color: var(--color-text-primary); font-size: 17px; }
-
 .module-empty-state {
   display: flex;
   flex: 1;
@@ -3090,57 +3545,58 @@ onUnmounted(() => {
   color: var(--color-text-muted);
   text-align: center;
 }
-
 .module-empty-state i {
   margin-bottom: 4px;
   font-size: 38px;
 }
-
 .module-empty-state strong {
   color: var(--color-text-primary);
   font-size: 15px;
 }
-
 .module-empty-state span {
   font-size: 13px;
 }
-
 @media (max-width: 640px) {
   .module-detail-context {
     padding: 10px 12px;
   }
-
   .module-detail-heading,
   .module-state-panel {
     align-items: stretch;
     flex-direction: column;
   }
-
   .module-progress {
     width: 100%;
   }
-
   .module-progress-track {
     flex: 1;
     width: auto;
   }
-
   .module-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
   .module-retry-btn {
     justify-content: center;
     width: 100%;
   }
 }
-
 .timeline-wrapper {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.calendar-wrapper {
   flex: 1;
   min-height: 0;
   overflow: auto;
 }
-
+.spreadsheet-wrapper {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
 /* ── PLANE HEADER ── */
 .plane-space-header {
   min-height: 64px;
@@ -3155,7 +3611,6 @@ onUnmounted(() => {
     linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 92%, var(--sa-bg, var(--color-bg)) 8%), var(--color-surface));
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
 }
-
 .breadcrumb {
   display: flex;
   align-items: center;
@@ -3205,7 +3660,6 @@ onUnmounted(() => {
   font-size: 11px;
   font-weight: 800;
 }
-
 .sh-right {
   display: flex;
   align-items: center;
@@ -3213,7 +3667,6 @@ onUnmounted(() => {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
-
 .view-toggles {
   display: flex;
   background: var(--color-surface);
@@ -3245,7 +3698,6 @@ onUnmounted(() => {
   color: var(--sa-primary, var(--color-accent));
   border-color: color-mix(in srgb, var(--sa-primary, var(--color-accent)) 26%, var(--color-border));
 }
-
 .plane-toolbar-btn {
   min-height: 38px;
   background: var(--color-surface);
@@ -3288,7 +3740,6 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--color-surface) 86%, var(--sa-bg, var(--color-bg)));
   flex-shrink: 0;
 }
-
 .plane-primary-btn {
   min-height: 38px;
   background: linear-gradient(135deg, var(--sa-primary, var(--color-accent)), color-mix(in srgb, var(--sa-primary, var(--color-accent)) 78%, #2563eb));
@@ -3308,7 +3759,6 @@ onUnmounted(() => {
   background: linear-gradient(135deg, var(--color-accent-hover), var(--sa-primary, var(--color-accent)));
   box-shadow: 0 12px 26px color-mix(in srgb, var(--sa-primary, var(--color-accent)) 24%, transparent);
 }
-
 /* Kanban Board */
 .space-summary-page,
 .plane-board-container {
@@ -3319,7 +3769,6 @@ onUnmounted(() => {
   height: 100%;
   overflow: hidden;
 }
-
 .kanban-wrapper {
   display: flex;
   gap: 14px;
@@ -3332,7 +3781,6 @@ onUnmounted(() => {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 20%, transparent), transparent 220px);
 }
-
 .kanban-col {
   min-width: 284px;
   width: 284px;
@@ -3345,7 +3793,6 @@ onUnmounted(() => {
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--col-color) 18%, var(--color-border));
 }
-
 /* Loading indicator thanh ngang */
 .kanban-loading-bar {
   position: fixed;
@@ -3365,7 +3812,6 @@ onUnmounted(() => {
   box-shadow: var(--shadow-popover);
   pointer-events: none;
 }
-
 /* Error banner */
 .kanban-error-banner {
   display: flex;
@@ -3383,7 +3829,6 @@ onUnmounted(() => {
   width: 100%;
   max-width: 560px;
 }
-
 .kanban-retry-btn {
   margin-left: auto;
   background: #ef4444;
@@ -3400,7 +3845,6 @@ onUnmounted(() => {
   transition: background 0.2s;
 }
 .kanban-retry-btn:hover { background: #dc2626; }
-
 .issue-card-header {
   position: relative;
   min-height: 56px;
@@ -3410,14 +3854,12 @@ onUnmounted(() => {
   align-items: start;
   gap: 10px;
 }
-
 .issue-card-heading-copy {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-
 .card-top-right {
   position: relative;
   display: grid;
@@ -3430,7 +3872,6 @@ onUnmounted(() => {
   min-width: 36px;
   overflow: visible;
 }
-
 .issue-card-header .star-task-btn.small {
   position: absolute;
   top: 1px;
@@ -3442,7 +3883,6 @@ onUnmounted(() => {
   padding: 0;
   font-size: 11px;
 }
-
 /* Due date badge */
 .card-due-badge {
   display: inline-flex;
@@ -3482,12 +3922,10 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
 }
-
 .card-due-compact span {
   overflow: visible;
   text-overflow: clip;
 }
-
 .card-assignee-trigger {
   grid-column: 1;
   grid-row: 2;
@@ -3506,19 +3944,16 @@ onUnmounted(() => {
   cursor: pointer;
   overflow: hidden;
 }
-
 .card-assignee-trigger:hover {
   border-color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
 }
-
 .card-assignee-trigger.is-empty {
   border: 1px dashed var(--color-text-muted);
   background: #e2e8f0;
   color: #64748b;
   font-size: 11px;
 }
-
 .card-assignee-count {
   width: 30px;
   height: 30px;
@@ -3539,7 +3974,6 @@ onUnmounted(() => {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
 }
-
 /* Empty state per-column */
 .col-empty-state {
   display: flex;
@@ -3562,31 +3996,26 @@ onUnmounted(() => {
   box-sizing: border-box;
   transition: background 160ms ease, transform 160ms ease, border-color 160ms ease, color 160ms ease;
 }
-
 .col-empty-state.clickable {
   cursor: pointer;
 }
-
 .col-empty-state.clickable:hover {
   color: var(--color-text-primary);
   background: color-mix(in srgb, var(--col-color) 14%, var(--color-bg));
   border-color: color-mix(in srgb, var(--col-color) 62%, var(--color-border));
   transform: translateY(-1px);
 }
-
 .col-empty-state.col-bottom-add {
   height: 100px;
   min-height: 100px;
   padding: 12px 16px;
   margin-top: 0;
 }
-
 .col-empty-state .add-action-text {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-
 /* Inline create extras row */
 .ic-extras {
   display: flex;
@@ -3614,7 +4043,6 @@ onUnmounted(() => {
   max-width: 120px;
 }
 .ic-date-input:focus { border-color: var(--color-accent); }
-
 .ic-assignee-btn {
   display: flex;
   align-items: center;
@@ -3632,7 +4060,6 @@ onUnmounted(() => {
   border-color: var(--color-accent);
   color: var(--color-accent);
 }
-
 /* Inline create action buttons */
 .ic-actions {
   display: flex;
@@ -3672,7 +4099,6 @@ onUnmounted(() => {
   transition: all 0.15s;
 }
 .ic-cancel-btn:hover { background: var(--color-surface-hover); color: var(--color-text-primary); }
-
 .col-head {
   display: flex;
   justify-content: space-between;
@@ -3685,7 +4111,6 @@ onUnmounted(() => {
     linear-gradient(135deg, color-mix(in srgb, var(--col-color) 15%, transparent), transparent 58%),
     color-mix(in srgb, var(--color-bg) 58%, transparent);
 }
-
 .col-title {
   display: flex;
   align-items: center;
@@ -3694,7 +4119,6 @@ onUnmounted(() => {
   font-weight: 800;
   color: var(--color-text-primary);
 }
-
 .col-count {
   background: color-mix(in srgb, var(--col-color) 16%, var(--color-surface-hover));
   color: color-mix(in srgb, var(--col-color) 28%, var(--color-text-primary));
@@ -3703,7 +4127,6 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 800;
 }
-
 .add-btn {
   color: color-mix(in srgb, var(--col-color) 44%, var(--color-text-secondary));
   cursor: pointer;
@@ -3721,7 +4144,6 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--col-color) 16%, transparent);
   transform: translateY(-1px);
 }
-
 .col-body {
   display: flex;
   flex-direction: column;
@@ -3736,13 +4158,11 @@ onUnmounted(() => {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--col-color) 42%, var(--color-border)) transparent;
 }
-
 .col-body::-webkit-scrollbar,
 .kanban-wrapper::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
-
 .col-body::-webkit-scrollbar-thumb,
 .kanban-wrapper::-webkit-scrollbar-thumb {
   border-radius: 999px;
@@ -3750,18 +4170,15 @@ onUnmounted(() => {
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-
 .col-body::-webkit-scrollbar-track,
 .kanban-wrapper::-webkit-scrollbar-track {
   background: color-mix(in srgb, var(--color-surface) 44%, transparent);
   border-radius: 999px;
 }
-
 .chart-container {
   width: 100%;
   height: 230px;
 }
-
 .col-draggable {
   display: flex;
   flex-direction: column;
@@ -3769,7 +4186,6 @@ onUnmounted(() => {
   min-height: min-content;
   padding-bottom: 16px;
 }
-
 .issue-card {
   position: relative;
   overflow: hidden;
@@ -3785,7 +4201,6 @@ onUnmounted(() => {
     inset 0 1px 0 rgba(255, 255, 255, 0.74);
   transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 180ms ease, box-shadow 180ms ease;
 }
-
 .issue-card::before {
   content: "";
   position: absolute;
@@ -3795,7 +4210,6 @@ onUnmounted(() => {
   z-index: 1;
   transition: width 180ms ease, opacity 180ms ease;
 }
-
 .issue-card::after {
   content: "";
   position: absolute;
@@ -3807,7 +4221,6 @@ onUnmounted(() => {
   clip-path: polygon(0 0, 4px 0, 4px 100%, 0 100%);
   transition: clip-path 240ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 160ms ease;
 }
-
 .issue-card:hover {
   transform: translateY(-2px);
   border-color: color-mix(in srgb, var(--task-status-color) 48%, var(--color-border));
@@ -3815,25 +4228,21 @@ onUnmounted(() => {
     0 12px 28px rgba(15, 23, 42, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
-
 .issue-card:hover::before,
 .issue-card.active-card::before {
   width: 2px;
 }
-
 .issue-card:hover::after,
 .issue-card.active-card::after {
   opacity: 1;
   clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
 }
-
 .issue-card.active-card {
   border-color: color-mix(in srgb, var(--task-status-color) 72%, var(--color-border));
   box-shadow:
     0 12px 28px rgba(15, 23, 42, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
-
 [data-theme='dark'] .issue-card {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
@@ -3842,7 +4251,6 @@ onUnmounted(() => {
     0 14px 34px rgba(0, 0, 0, 0.24),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-
 .issue-sequence {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 11px;
@@ -3851,14 +4259,12 @@ onUnmounted(() => {
   font-weight: 800;
   letter-spacing: 0.02em;
 }
-
 .status-badge {
   border: 1px solid color-mix(in srgb, var(--badge-color, var(--color-accent)) 50%, var(--color-border)) !important;
   background: color-mix(in srgb, var(--badge-color, var(--color-accent)) 14%, var(--color-surface)) !important;
   color: color-mix(in srgb, var(--badge-color, var(--color-accent)) 92%, var(--color-text-primary)) !important;
   font-weight: 700 !important;
 }
-
 .status-badge i,
 .status-badge span {
   color: var(--badge-color, var(--color-accent)) !important;
@@ -3877,17 +4283,14 @@ onUnmounted(() => {
   line-height: 1.42;
   overflow-wrap: anywhere;
 }
-
 .issue-meta {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
-
 .id { font-size: 12px; color: var(--color-text-muted); font-weight: 600; }
 .ms-auto { margin-left: auto; }
-
 .avatar-xs {
   width: 20px;
   height: 20px;
@@ -3901,14 +4304,12 @@ onUnmounted(() => {
   color: var(--color-text-secondary);
   border: 1px solid var(--color-border);
 }
-
 /* Colors for priority icons */
 .text-muted { color: var(--color-text-muted); }
 .text-blue { color: #3B82F6; }
 .text-orange { color: #F59E0B; }
 .text-red { color: #EF4444; }
 .text-green { color: #10B981; }
-
 .badge {
   border: 1px solid color-mix(in srgb, var(--badge-color, var(--color-border)) 32%, var(--color-border));
   border-radius: 8px;
@@ -3921,8 +4322,6 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--badge-color, var(--color-surface-hover)) 9%, transparent);
   font-weight: 800;
 }
-
-
 .inline-create-box {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -3942,12 +4341,10 @@ onUnmounted(() => {
   max-width: 100%;
   overflow-x: hidden;
 }
-
 .space-summary-page {
   width: 100%;
   min-width: 0;
 }
-
 .plane-board-container > .project-page-header,
 .plane-board-container > .work-filter-row,
 .plane-board-container > .list-wrapper,
@@ -3956,14 +4353,12 @@ onUnmounted(() => {
   padding-left: var(--sa-page-x) !important;
   padding-right: var(--sa-page-x) !important;
 }
-
 .plane-board-container > .project-page-toolbar {
   width: calc(100% - (var(--sa-page-x) * 2)) !important;
   margin-left: var(--sa-page-x) !important;
   margin-right: var(--sa-page-x) !important;
   box-sizing: border-box !important;
 }
-
 .ic-top {
   display: flex;
   align-items: center;
@@ -3984,7 +4379,6 @@ onUnmounted(() => {
   padding: 0;
 }
 .ic-input::placeholder { color: var(--color-text-muted); }
-
 .ic-bottom {
   display: flex;
   align-items: center;
@@ -4007,13 +4401,11 @@ onUnmounted(() => {
   color: #3F3F46;
   border-radius: 50%;
 }
-
 /* Scrollbar */
 .kanban-wrapper::-webkit-scrollbar, .col-body::-webkit-scrollbar { width: 6px; height: 6px; }
 .kanban-wrapper::-webkit-scrollbar-track, .col-body::-webkit-scrollbar-track { background: transparent; }
 .kanban-wrapper::-webkit-scrollbar-thumb, .col-body::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
 .kanban-wrapper::-webkit-scrollbar-thumb:hover, .col-body::-webkit-scrollbar-thumb:hover { background: #3F3F46; }
-
 /* Display Dropdown Styles */
 .display-dropdown-wrapper,
 .filter-dropdown-wrapper { position: relative; display: inline-block; }
@@ -4041,17 +4433,16 @@ onUnmounted(() => {
   max-width: calc(100vw - 32px);
   max-height: none;
   overflow: visible;
-  padding: 0;
+  padding: 8px !important;
 }
 .filter-dropdown-menu .filter-bar-container {
   border: none;
   background: transparent;
-  padding: 8px;
+  padding: 0 !important;
   min-height: auto;
   box-shadow: none;
   overflow: visible;
 }
-
 .display-trigger:hover,
 .display-trigger.active {
   border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
@@ -4059,7 +4450,6 @@ onUnmounted(() => {
   color: var(--color-accent) !important;
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.12);
 }
-
 .display-dropdown-menu {
   right: auto;
   left: 0;
@@ -4072,39 +4462,32 @@ onUnmounted(() => {
   overflow: visible;
   padding: 8px;
 }
-
 .display-dropdown-menu .dd-section {
   min-width: 0;
   padding: 10px 12px;
 }
-
 .display-dropdown-menu .dd-section.border-top {
   border-top: 0;
   border-left: 1px solid var(--color-border);
 }
-
 .display-dropdown-menu .dd-title {
   min-height: 24px;
 }
-
 .display-dropdown-menu .dd-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(120px, 1fr));
   gap: 8px;
 }
-
 .display-dropdown-menu .dd-item {
   min-height: 34px;
   padding: 7px 9px;
   white-space: nowrap;
 }
-
 .display-dropdown-menu .dd-item.checkbox {
   min-height: 74px;
   align-items: flex-start;
   white-space: normal;
 }
-
 .display-dropdown-menu .dd-tag {
   min-width: 0;
   height: 34px;
@@ -4116,39 +4499,44 @@ onUnmounted(() => {
   gap: 7px;
   padding: 0 10px;
 }
-
 .display-dropdown-menu .dd-tag i {
   font-size: 11px;
 }
-
 .dd-section { padding: 8px; }
 .dd-section.border-top { border-top: 1px solid var(--color-border); }
 .dd-title { display: flex; justify-content: space-between; color: var(--color-text-muted); font-size: 12px; font-weight: 700; margin-bottom: 8px; }
 .dd-btns { display: flex; gap: 8px; flex-wrap: wrap; }
-.dd-tag { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-primary); border-radius: 999px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
-.dd-tag.active { background: var(--color-accent); color: #ffffff; border-color: var(--color-accent); }
+.dd-tag { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-secondary); border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; transition: all 0.15s ease; font-weight: 500; }
+.dd-tag:hover,
+.dd-tag.active:hover {
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+}
+.dd-tag.active { border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important; background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important; color: var(--color-accent) !important; font-weight: 600 !important; }
+.dd-tag { display: inline-flex; align-items: center; gap: 6px; }
+.dd-tag:hover i,
+.dd-tag.active:hover i { color: var(--color-accent) !important; }
+.dd-tag:hover span,
+.dd-tag.active:hover span { color: var(--color-accent) !important; }
 .dd-list { display: flex; flex-direction: column; gap: 8px; }
 .dd-item { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 7px 8px; border-radius: 8px; color: var(--color-text-secondary); }
 .dd-item:hover { background: var(--color-surface-hover); color: var(--color-text-primary); }
 .dd-item input[type="radio"], .dd-item input[type="checkbox"] { accent-color: var(--color-accent); cursor: pointer; width: 14px; height: 14px; }
-
 .plane-list-view {
   display: flex;
   flex-direction: column;
   color: var(--color-text-primary);
 }
-
 .list-wrapper {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
-
 .list-group {
   margin-bottom: 24px;
 }
-
 .group-header {
   display: flex;
   justify-content: space-between;
@@ -4158,48 +4546,40 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--color-border);
   margin-bottom: 8px;
 }
-
 .group-header:hover .add-icon {
   opacity: 1;
 }
-
 .gh-left,
 .gh-right,
 .pill-group {
   display: flex;
   align-items: center;
 }
-
 .group-content {
   display: flex;
   flex-direction: column;
   align-items: stretch;
 }
-
 .gh-left {
   gap: 10px;
 }
-
 .gh-chevron {
   font-size: 10px;
   color: var(--color-text-muted);
   width: 14px;
   text-align: center;
 }
-
 .group-name {
   font-size: 14px;
   font-weight: 600;
   color: var(--color-text-primary);
 }
-
 .group-count {
   font-size: 12px;
   font-weight: 500;
   color: var(--color-text-muted);
   margin-left: 4px;
 }
-
 .add-icon {
   color: var(--color-text-muted);
   font-size: 14px;
@@ -4207,7 +4587,6 @@ onUnmounted(() => {
   transition: opacity 0.2s;
   padding: 4px;
 }
-
 .task-row {
   display: flex;
   justify-content: space-between;
@@ -4217,32 +4596,26 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--color-border);
   cursor: pointer;
 }
-
 .task-row:hover {
   background-color: var(--color-surface);
 }
-
 .subtask-row {
   margin-left: 28px;
   border-left: 1px dashed var(--color-border);
   background: rgba(22, 24, 29, 0.55);
 }
-
 .subtask-row:hover {
   background: rgba(30, 32, 37, 0.92);
 }
-
 .tr-left,
 .tr-right {
   display: flex;
   align-items: center;
 }
-
 .tr-left {
   gap: 16px;
   min-width: 0;
 }
-
 .subtask-indent {
   width: 18px;
   color: var(--color-text-muted);
@@ -4251,18 +4624,15 @@ onUnmounted(() => {
   align-items: center;
   flex-shrink: 0;
 }
-
 .tr-right {
   justify-content: flex-end;
 }
-
 .task-id {
   font-size: 12px;
   color: var(--color-text-muted);
   font-weight: 600;
   min-width: 86px;
 }
-
 .task-title {
   color: var(--color-text-primary);
   font-size: 14px;
@@ -4270,12 +4640,10 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .pill-group {
   gap: 8px;
   flex-wrap: wrap;
 }
-
 .pill {
   display: inline-flex;
   align-items: center;
@@ -4286,14 +4654,12 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--color-text-secondary);
 }
-
 .pill-user-text {
   max-width: 140px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .avatar-xxs {
   width: 18px;
   height: 18px;
@@ -4306,24 +4672,20 @@ onUnmounted(() => {
   font-size: 10px;
   border: 1px solid var(--color-border);
 }
-
 .add-row-placeholder {
   color: var(--color-text-muted);
   font-size: 13px;
   padding: 10px 0 10px 24px;
   cursor: pointer;
 }
-
 .add-row-placeholder:hover {
   color: var(--color-text-primary);
   background: var(--color-surface);
 }
-
 .plane-dropdown {
   background: var(--bg-secondary) !important;
   border: 1px solid var(--border-color) !important;
 }
-
 :global(.plane-popover) {
   background: var(--bg-secondary) !important;
   border: 1px solid var(--border-color) !important;
@@ -4332,17 +4694,14 @@ onUnmounted(() => {
   border-radius: 10px !important;
   color: var(--text-primary) !important;
 }
-
 :global(.assignee-plane-popover),
 :global(.plane-popover.assignee-plane-popover) {
   border-radius: 10px !important;
   padding: 8px !important;
 }
-
 .assignee-popover-content {
   padding-top: 0;
 }
-
 .assignee-search-field {
   position: relative;
   display: flex;
@@ -4359,7 +4718,6 @@ onUnmounted(() => {
   color: var(--color-text-muted);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-
 .assignee-search-icon {
   position: static;
   transform: none;
@@ -4372,7 +4730,6 @@ onUnmounted(() => {
   font-size: 14px;
   pointer-events: none;
 }
-
 .assignee-search-input {
   width: 100% !important;
   height: 100% !important;
@@ -4389,35 +4746,28 @@ onUnmounted(() => {
   -webkit-appearance: none;
   appearance: none;
 }
-
 .assignee-search-input::placeholder {
   color: var(--color-text-muted);
 }
-
 .assignee-search-field:focus-within {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.14);
 }
-
 :global(.plane-dropdown .el-dropdown-menu__item) {
   color: var(--badge-color, var(--color-text-primary)) !important;
 }
-
 :global(.plane-dropdown .el-dropdown-menu__item.color-option),
 :global(.plane-dropdown .el-dropdown-menu__item.color-option span),
 :global(.plane-dropdown .el-dropdown-menu__item.color-option i) {
   color: var(--option-color) !important;
 }
-
 .no-shadow-context :global(.plane-popover) {
   box-shadow: none !important;
 }
-
 :global(.plane-popover .el-popper__arrow::before) {
   background: var(--bg-secondary) !important;
   border: 1px solid var(--border-color) !important;
 }
-
 :global(.plane-popover .popover-item) {
   width: calc(100% - 8px);
   margin: 0 4px;
@@ -4425,20 +4775,16 @@ onUnmounted(() => {
   border-radius: 8px;
   box-sizing: border-box;
 }
-
 :global(.plane-popover .popover-item.assignee-option-selected) {
   background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)) !important;
   border-left-color: var(--color-accent);
   border-radius: 8px;
   color: var(--color-accent) !important;
 }
-
 :global(.plane-popover .popover-item.assignee-option-selected:hover) {
   background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface)) !important;
   color: var(--color-accent) !important;
 }
-
-
 .plane-search-input {
   width: 100%;
   background: var(--bg-tertiary);
@@ -4450,16 +4796,12 @@ onUnmounted(() => {
   font-size: 13px;
   transition: all 0.2s;
 }
-
 .plane-search-input:focus {
   border-color: var(--color-accent);
 }
-
 .plane-search-input::placeholder {
   color: var(--color-text-muted);
 }
-
-
 .plane-list {
   display: flex;
   flex-direction: column;
@@ -4467,7 +4809,6 @@ onUnmounted(() => {
   max-height: 220px;
   overflow-y: auto;
 }
-
 .plane-list-item {
   display: flex;
   align-items: center;
@@ -4479,19 +4820,15 @@ onUnmounted(() => {
   transition: all 0.2s;
   font-size: 13px;
 }
-
-
 .plane-list-item:hover {
   background: var(--hover-bg);
 }
-
 .plane-list-item input[type="checkbox"] {
   accent-color: var(--color-accent);
   width: 14px;
   height: 14px;
   cursor: pointer;
 }
-
 .star-task-btn {
   appearance: none;
   -webkit-appearance: none;
@@ -4523,8 +4860,6 @@ onUnmounted(() => {
 }
 .star-task-btn:disabled { cursor: wait; }
 .star-task-btn i { width: 1em; line-height: 1; text-align: center; }
-
-
 /* Analytics Sidebar */
 .forbidden-overlay { display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; background: var(--color-bg); }
 .forbidden-content { text-align: center; max-width: 400px; padding: 40px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 16px; }
@@ -4532,7 +4867,6 @@ onUnmounted(() => {
 .forbidden-content h2 { margin: 0 0 12px 0; font-size: 20px; color: var(--color-text-primary); }
 .forbidden-content p { margin: 0 0 24px 0; color: var(--color-text-secondary); line-height: 1.5; }
 .forbidden-content .mt-4 { margin-top: 16px; }
-
 .analytics-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -4576,13 +4910,11 @@ onUnmounted(() => {
 .ap-actions { display: flex; gap: 12px; }
 .icon-btn { background: transparent; border: none; color: var(--color-text-muted); font-size: 14px; cursor: pointer; }
 .icon-btn:hover { color: var(--color-text-primary); }
-
 .ap-body {
   padding: 16px 18px 22px;
   overflow-y: auto;
   flex: 1;
 }
-
 /* Stats Grid */
 .ap-stats-grid {
   display: grid;
@@ -4619,7 +4951,6 @@ onUnmounted(() => {
 }
 .stat-box .lbl { color: var(--color-text-muted); font-size: 11px; font-weight: 650; line-height: 1.35; }
 .stat-box .val { color: var(--color-text-primary); font-size: 21px; font-weight: 850; line-height: 1; }
-
 .ap-chart-card {
   margin-top: 12px;
   padding: 13px;
@@ -4630,7 +4961,6 @@ onUnmounted(() => {
 }
 .ap-chart-card h4 { margin: 0; font-size: 14px; font-weight: 800; color: var(--color-text-primary); }
 .chart-container { height: 220px; }
-
 .line-chart-mock {
   position: relative;
   height: 200px;
@@ -4653,15 +4983,12 @@ onUnmounted(() => {
 .dot.blue { border-color: #0EA5E9; z-index: 2; }
 .dot.green { border-color: #10B981; z-index: 1; }
 .x-label { position: absolute; bottom: -20px; font-size: 11px; color: var(--color-text-muted); }
-
 .chart-legend { display: flex; gap: 16px; font-size: 12px; color: var(--color-text-primary); margin-top: 24px; }
 .leg-item { display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .box { width: 8px; height: 8px; border-radius: 2px; }
 .bg-green { background: #10B981; }
 .bg-blue { background: #0EA5E9; }
-
 .insight-filters { display: flex; gap: 8px; }
-
 .bar-chart-mock {
   position: relative;
   height: 250px;
@@ -4681,7 +5008,6 @@ onUnmounted(() => {
 .bg-orange { background: #F97316; }
 .bg-gray { background: #D4D4D8; }
 .bg-red { background: #EF4444; }
-
 .y-label {
   position: absolute;
   left: -40px;
@@ -4691,7 +5017,6 @@ onUnmounted(() => {
   color: var(--color-text-muted);
   letter-spacing: 1px;
 }
-
 .ap-table-wrap {
   margin-top: 16px;
   padding: 16px;
@@ -4703,22 +5028,18 @@ onUnmounted(() => {
 .flex-center { display: flex; align-items: center; }
 .export-btn { background: transparent; border: 1px solid var(--color-border); color: var(--color-text-secondary); border-radius: 6px; padding: 5px 8px; font-size: 12px; cursor: pointer; }
 .export-btn:hover { background: var(--color-bg-secondary); color: var(--color-text-primary); }
-
 .ap-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--color-text-primary); }
 .ap-table th { color: var(--color-text-muted); font-weight: 650; border-bottom: 1px solid var(--color-border); padding: 10px 0; text-align: left; }
 .ap-table td { padding: 11px 0; border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); }
 .ap-table tr:hover { background: color-mix(in srgb, var(--color-surface) 82%, transparent); }
-
 @media (max-width: 920px) {
   .ap-stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-
 .nexus-controls-row {
   gap: 8px;
 }
-
 .nexus-btn,
 .nexus-btn-primary,
 .view-btn,
@@ -4729,90 +5050,73 @@ onUnmounted(() => {
   padding: 6px 10px;
   font-size: 12.5px;
 }
-
 .view-toggle {
   border-radius: 9px;
   padding: 2px;
 }
-
 .kanban-board {
   gap: 14px !important;
 }
-
 .kanban-column,
 .col {
   min-width: 284px !important;
   width: 284px !important;
   border-radius: 10px !important;
 }
-
 .column-header,
 .col-header {
   min-height: 48px !important;
   padding: 10px 12px !important;
   border-radius: 8px !important;
 }
-
 .column-title,
 .col-title {
   font-size: 12.5px !important;
 }
-
 .work-item-card,
 .task-card {
   border-radius: 8px !important;
   padding: 12px !important;
 }
-
 .task-title,
 .card-title {
   font-size: 13px !important;
   line-height: 1.3 !important;
   overflow-wrap: anywhere !important;
 }
-
 .col-body {
   gap: 10px !important;
   padding: 10px !important;
 }
-
 .list-wrapper {
   padding: 12px var(--sa-page-x, 24px) !important;
 }
-
 .group-header,
 .task-row {
   min-height: 38px !important;
   padding: 8px 10px !important;
 }
-
 .ap-panel {
   border-radius: 10px !important;
 }
-
 .ap-header {
   padding: 14px 18px !important;
 }
-
 .ap-body {
   padding: 16px 18px 22px !important;
 }
-
 .ap-stats-grid {
   gap: 10px !important;
 }
-
 .stat-box,
 .ap-chart-card,
 .ap-table-wrap {
   border-radius: 8px !important;
   padding: 12px !important;
 }
-
 .stat-box .val {
   font-size: 20px !important;
 }
-
 @media (max-width: 760px) {
   .nexus-project-header {
     align-items: stretch !important;
@@ -4820,30 +5124,25 @@ onUnmounted(() => {
     gap: 8px !important;
     padding: 10px 12px !important;
   }
-
   .nexus-controls-row {
     overflow-x: auto !important;
     justify-content: flex-start !important;
   }
-
   .board-wrapper,
   .kanban-wrapper,
   .list-wrapper {
     padding: 12px !important;
   }
-
   .kanban-column,
   .col {
     min-width: min(82vw, 284px) !important;
     width: min(82vw, 284px) !important;
   }
 }
-
 /* Polished list view and analytics panel */
 .list-wrapper {
   background: var(--color-bg);
 }
-
 .list-group {
   overflow: hidden;
   margin-bottom: 12px !important;
@@ -4851,7 +5150,6 @@ onUnmounted(() => {
   border-radius: 10px;
   background: color-mix(in srgb, var(--color-surface) 90%, transparent);
 }
-
 .group-header {
   min-height: 36px !important;
   margin: 0 !important;
@@ -4859,13 +5157,11 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--color-surface-hover) 58%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
 }
-
 .group-name {
   font-size: 13.5px !important;
   font-weight: 850 !important;
   letter-spacing: 0.01em;
 }
-
 .group-count {
   min-width: 22px;
   height: 22px;
@@ -4878,30 +5174,25 @@ onUnmounted(() => {
   font-size: 11px !important;
   font-weight: 850 !important;
 }
-
 .task-row {
   min-height: 42px !important;
   padding: 7px 10px 7px 14px !important;
   border-bottom-color: color-mix(in srgb, var(--color-border) 70%, transparent) !important;
   transition: background 0.16s ease, box-shadow 0.16s ease;
 }
-
 .task-row:hover {
   background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface)) !important;
   box-shadow: inset 3px 0 0 var(--color-accent);
 }
-
 .task-id {
   min-width: 92px !important;
   color: color-mix(in srgb, var(--color-accent) 72%, var(--color-text-primary)) !important;
   font-weight: 850 !important;
 }
-
 .task-title {
   font-size: 13px !important;
   font-weight: 650;
 }
-
 .pill {
   min-height: 24px;
   padding: 3px 8px !important;
@@ -4910,24 +5201,20 @@ onUnmounted(() => {
   color: var(--color-text-primary) !important;
   font-weight: 700;
 }
-
 .tr-left,
 .tr-right {
   gap: 8px !important;
 }
-
 .task-title-btn,
 .task-title {
   font-size: 13px !important;
   line-height: 1.25 !important;
 }
-
 .task-seq-id,
 .task-id,
 .id {
   font-size: 11px !important;
 }
-
 .priority-badge,
 .task-status-tag,
 .badge {
@@ -4935,26 +5222,21 @@ onUnmounted(() => {
   padding: 3px 8px !important;
   font-size: 11px !important;
 }
-
 .add-row-placeholder {
   padding: 12px 16px !important;
   background: color-mix(in srgb, var(--color-surface-hover) 42%, transparent);
 }
-
 .analytics-panel {
   background: var(--color-bg) !important;
 }
-
 .ap-header {
   background: color-mix(in srgb, var(--color-surface) 88%, transparent) !important;
 }
-
 .stat-box,
 .ap-chart-card,
 .ap-table-wrap {
   background: color-mix(in srgb, var(--color-surface) 88%, transparent) !important;
 }
-
 .stat-box .lbl,
 .ap-table th,
 .table-head,
@@ -4963,18 +5245,15 @@ onUnmounted(() => {
 .grid-l span {
   color: var(--color-text-muted) !important;
 }
-
 .stat-box .val,
 .ap-chart-card h4,
 .ap-table td {
   color: var(--color-text-primary) !important;
 }
-
 /* Stronger state color system for list and analytics */
 .group-header {
   border-left: 3px solid color-mix(in srgb, var(--color-accent) 70%, transparent);
 }
-
 .pill-status {
   border-color: color-mix(in srgb, var(--pill-color, var(--color-accent)) 34%, var(--color-border)) !important;
   background:
@@ -4982,11 +5261,9 @@ onUnmounted(() => {
     color-mix(in srgb, var(--pill-color, var(--color-accent)) 8%, var(--color-surface)) !important;
   color: var(--color-text-primary) !important;
 }
-
 .pill-status i {
   color: var(--pill-color, var(--color-accent)) !important;
 }
-
 .priority-badge,
 .pill-priority {
   border: 1px solid color-mix(in srgb, var(--pill-color, var(--badge-color, var(--color-accent))) 50%, var(--color-border)) !important;
@@ -4997,48 +5274,40 @@ onUnmounted(() => {
   border-radius: 6px !important;
   transition: all 0.2s ease;
 }
-
 .priority-badge i,
 .pill-priority i {
   color: var(--pill-color, var(--badge-color, var(--color-accent))) !important;
   font-size: 12px !important;
   font-weight: 900 !important;
 }
-
 .analytics-panel {
   background: var(--color-bg) !important;
 }
-
 .ap-header {
   min-height: 56px;
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 13%, transparent), transparent 58%),
     color-mix(in srgb, var(--color-surface) 92%, transparent) !important;
 }
-
 .ap-header h3 {
   color: var(--color-text-primary) !important;
   font-size: 16px !important;
   font-weight: 900 !important;
 }
-
 .ap-body {
   background: transparent !important;
 }
-
 .stat-box {
   position: relative;
   overflow: hidden;
   min-height: 72px;
   border-left: 3px solid var(--stat-color, var(--color-accent)) !important;
 }
-
 .stat-box:nth-child(1) { --stat-color: #38bdf8; }
 .stat-box:nth-child(2) { --stat-color: #f59e0b; }
 .stat-box:nth-child(3) { --stat-color: #8b5cf6; }
 .stat-box:nth-child(4) { --stat-color: #fb7185; }
 .stat-box:nth-child(5) { --stat-color: #22c55e; }
-
 .stat-box::after {
   content: "";
   position: absolute;
@@ -5046,36 +5315,29 @@ onUnmounted(() => {
   background: linear-gradient(135deg, color-mix(in srgb, var(--stat-color) 13%, transparent), transparent 62%);
   pointer-events: none;
 }
-
 .stat-box .lbl,
 .stat-box .val {
   position: relative;
   z-index: 1;
 }
-
 .stat-box .val {
   color: color-mix(in srgb, var(--stat-color) 38%, var(--color-text-primary)) !important;
 }
-
 .ap-chart-card {
   border-left: 3px solid color-mix(in srgb, var(--color-accent) 76%, #22c55e) !important;
 }
-
 .ap-table-wrap {
   overflow: hidden;
 }
-
 .ap-table tbody tr {
   background: linear-gradient(90deg, color-mix(in srgb, var(--row-color, var(--color-accent)) 8%, transparent), transparent 68%);
 }
-
 .analytics-row-label {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-weight: 750;
 }
-
 .analytics-row-dot {
   width: 8px;
   height: 8px;
@@ -5083,17 +5345,14 @@ onUnmounted(() => {
   background: var(--row-color, var(--color-accent));
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--row-color, var(--color-accent)) 14%, transparent);
 }
-
 [data-theme='light'] .analytics-overlay {
   background: rgba(15, 23, 42, 0.36) !important;
 }
-
 .toolbar-actions-wrapper {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
-
 @media (max-width: 760px) {
   .toolbar-actions-wrapper {
     display: flex !important;
@@ -5102,29 +5361,24 @@ onUnmounted(() => {
     gap: 8px !important;
     margin-top: 10px !important;
   }
-
   .list-wrapper {
     padding: 12px !important;
   }
-
   .task-row {
     align-items: flex-start !important;
     flex-direction: column !important;
     gap: 8px !important;
   }
-
   .tr-right {
     width: 100%;
     justify-content: flex-start !important;
   }
 }
-
 /* SprintA premium board pass */
 .plane-board-container {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--color-bg) 70%, var(--color-surface)), var(--color-bg)) !important;
 }
-
 .kanban-wrapper {
   display: flex !important;
   gap: 14px !important;
@@ -5138,36 +5392,29 @@ onUnmounted(() => {
   touch-action: pan-x pan-y;
   box-sizing: border-box !important;
 }
-
 .kanban-wrapper::before,
 .kanban-wrapper::after {
   content: "";
   flex: 0 0 var(--sa-page-x, 18px);
 }
-
 .kanban-col:last-child {
   margin-right: 0 !important;
 }
-
 .kanban-wrapper::-webkit-scrollbar {
   height: 12px !important;
 }
-
 .kanban-wrapper::-webkit-scrollbar-track {
   border-radius: 999px;
   background: color-mix(in srgb, var(--sp-blue-600) 8%, var(--color-bg)) !important;
 }
-
 .kanban-wrapper::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
   border-radius: 999px !important;
   background: linear-gradient(90deg, var(--sp-blue-600), var(--sp-sky-400)) padding-box !important;
 }
-
 .kanban-wrapper::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(90deg, var(--sp-blue-700), var(--sp-sky-400)) padding-box !important;
 }
-
 .kanban-col {
   min-width: 284px !important;
   width: 284px !important;
@@ -5179,7 +5426,6 @@ onUnmounted(() => {
     0 12px 30px color-mix(in srgb, #020617 8%, transparent),
     inset 0 1px 0 rgba(255,255,255,0.10);
 }
-
 .col-head {
   min-height: 42px !important;
   margin-bottom: 10px !important;
@@ -5189,7 +5435,6 @@ onUnmounted(() => {
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--col-color) 14%, var(--color-surface)), color-mix(in srgb, var(--color-surface) 88%, transparent)) !important;
 }
-
 .issue-card {
   border-radius: 12px !important;
   padding: 11px 12px !important;
@@ -5199,32 +5444,26 @@ onUnmounted(() => {
     0 10px 24px color-mix(in srgb, #020617 8%, transparent),
     inset 0 1px 0 rgba(255,255,255,0.10) !important;
 }
-
 .issue-title,
 .task-title,
 .group-name {
   overflow-wrap: anywhere;
 }
-
 .badge,
 .pill,
 .priority-badge,
 .task-status-tag {
   white-space: nowrap;
 }
-
 .add-btn-bottom,
 .add-row-placeholder,
 .col-empty-state {
   border-radius: 11px !important;
 }
-
 [data-theme='dark'] .kanban-col {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--col-color) 10%, #17233a), color-mix(in srgb, var(--color-surface) 78%, #020617)) !important;
 }
-
-
 .inline-create-box {
   background: var(--color-surface);
   border: 1px solid color-mix(in srgb, var(--sp-blue-500, #3b82f6) 40%, var(--color-border));
@@ -5264,7 +5503,6 @@ onUnmounted(() => {
   justify-content: end;
   gap: 8px;
 }
-
 .inline-assignee-slot {
   width: 30px;
   height: 30px;
@@ -5272,7 +5510,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
 }
-
 .inline-date-slot {
   width: 156px !important;
   min-width: 156px !important;
@@ -5281,14 +5518,12 @@ onUnmounted(() => {
   min-height: 30px;
   overflow: hidden;
 }
-
 .inline-date-slot :deep(.el-date-editor),
 .inline-date-slot .ic-date-range-inline {
   width: 156px !important;
   min-width: 156px !important;
   max-width: 156px !important;
 }
-
 .inline-assignee-slot :deep(.el-popover__reference-wrapper),
 .inline-assignee-slot :deep(.el-tooltip__trigger),
 .inline-assignee-slot :deep(.el-popper__trigger) {
@@ -5299,7 +5534,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
 }
-
 .inline-assignee-trigger {
   width: 30px;
   min-width: 30px;
@@ -5316,12 +5550,10 @@ onUnmounted(() => {
   font-weight: 700;
   cursor: pointer;
 }
-
 .inline-assignee-trigger:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
 }
-
 .inline-assignee-count {
   width: 22px;
   height: 22px;
@@ -5403,8 +5635,6 @@ onUnmounted(() => {
 .ic-date-editor :deep(.el-range-input) {
   font-size: 11.5px !important;
 }
-
-
 .ic-title-input {
   width: 100% !important;
   height: 34px !important;
@@ -5421,7 +5651,6 @@ onUnmounted(() => {
   border-color: var(--color-accent) !important;
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important;
 }
-
 .ic-date-range-picker {
   width: 100% !important;
   min-width: 0 !important;
@@ -5486,7 +5715,6 @@ onUnmounted(() => {
 .ic-date-range-picker :deep(.el-range__icon) {
   font-size: 13px !important;
 }
-
 /* Keep the active create form aligned with the compact task-card header. */
 .inline-create-box .inline-create-planning {
   display: grid !important;
@@ -5497,15 +5725,12 @@ onUnmounted(() => {
   justify-content: end !important;
   margin-left: auto !important;
 }
-
 .inline-create-box {
   gap: 8px !important;
 }
-
 .inline-create-box .inline-create-meta {
   margin-top: 0 !important;
 }
-
 .inline-create-box .inline-date-slot {
   width: 220px !important;
   min-width: 0 !important;
@@ -5514,7 +5739,6 @@ onUnmounted(() => {
   min-height: 22px !important;
   overflow: visible !important;
 }
-
 .inline-create-box .inline-date-slot :deep(.el-date-editor.ic-date-range-inline) {
   width: 220px !important;
   min-width: 0 !important;
@@ -5527,7 +5751,6 @@ onUnmounted(() => {
   box-sizing: border-box !important;
   font-size: 10.5px !important;
 }
-
 .inline-create-box .inline-date-slot :deep(.el-range-input) {
   width: 76px !important;
   min-width: 0 !important;
@@ -5535,7 +5758,6 @@ onUnmounted(() => {
   font-size: 10.5px !important;
   line-height: 20px !important;
 }
-
 .inline-create-box .inline-date-slot :deep(.el-range-separator) {
   width: 10px !important;
   min-width: 10px !important;
@@ -5543,19 +5765,16 @@ onUnmounted(() => {
   font-size: 10.5px !important;
   line-height: 20px !important;
 }
-
 .inline-create-box .inline-date-slot :deep(.el-range__icon),
 .inline-create-box .inline-date-slot :deep(.el-range__close-icon) {
   flex: 0 0 auto !important;
   font-size: 11px !important;
   line-height: 20px !important;
 }
-
 .inline-create-box .inline-assignee-slot {
   width: 22px !important;
   height: 22px !important;
 }
-
 .inline-create-box .inline-assignee-slot :deep(.el-popover__reference-wrapper),
 .inline-create-box .inline-assignee-slot :deep(.el-tooltip__trigger),
 .inline-create-box .inline-assignee-slot :deep(.el-popper__trigger),
@@ -5564,21 +5783,18 @@ onUnmounted(() => {
   min-width: 22px !important;
   height: 22px !important;
 }
-
 .inline-create-box .inline-assignee-trigger {
   font-size: 10px !important;
   border: 1px dashed var(--color-text-muted) !important;
   background: #e2e8f0 !important;
   color: #64748b !important;
 }
-
 .inline-create-box .inline-create-actions {
   gap: 8px !important;
   margin-top: 0 !important;
   padding-top: 0 !important;
   border-top: 0 !important;
 }
-
 .inline-create-box .inline-cancel-btn,
 .inline-create-box .inline-submit-btn {
   flex: 1 1 0 !important;
@@ -5587,28 +5803,348 @@ onUnmounted(() => {
   box-shadow: none !important;
   transform: none !important;
 }
-
 .inline-create-box .inline-cancel-btn {
   background: #ef4444 !important;
   border-color: #ef4444 !important;
   color: #ffffff !important;
 }
-
 .inline-create-box .inline-cancel-btn:hover {
   background: #dc2626 !important;
   border-color: #dc2626 !important;
   color: #ffffff !important;
 }
-
 .inline-create-box .inline-submit-btn {
   background: #0ea5e9 !important;
   border-color: #0ea5e9 !important;
   color: #ffffff !important;
 }
-
 .inline-create-box .inline-submit-btn:hover {
   background: #0284c7 !important;
   border-color: #0284c7 !important;
   color: #ffffff !important;
+}
+/* Sort Popup Custom Combobox styling */
+.filter-combobox {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+.filter-label {
+  display: flex;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.filter-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  padding: 0 12px;
+  outline: none;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.filter-select-trigger:hover,
+.filter-select-trigger.active {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
+  box-shadow: none !important;
+}
+.sort-combobox-trigger:hover,
+.sort-combobox-trigger.active,
+.timeline-filter-trigger:hover,
+.timeline-filter-trigger.active {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
+  box-shadow: none !important;
+}
+.filter-select-trigger:hover > i,
+.filter-select-trigger.active > i,
+.sort-combobox-trigger:hover i,
+.sort-combobox-trigger.active i,
+.timeline-filter-trigger:hover i,
+.timeline-filter-trigger.active i {
+  color: var(--color-accent) !important;
+}
+.filter-select-trigger:hover > span,
+.filter-select-trigger.active > span,
+.sort-combobox-trigger:hover span,
+.sort-combobox-trigger.active span,
+.timeline-filter-trigger:hover span,
+.timeline-filter-trigger.active span {
+  color: var(--color-accent) !important;
+}
+.icon-only-trigger {
+  position: relative;
+  width: 42px;
+  min-width: 42px;
+  justify-content: center;
+  padding: 0 !important;
+}
+.icon-only-trigger .filter-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+}
+.filter-select-trigger:hover,
+.filter-select-trigger.active {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface));
+}
+.filter-select-trigger span {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-select-trigger i {
+  color: var(--color-text-secondary);
+}
+.filter-select-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 120;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px !important;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow-popover);
+  display: flex;
+  flex-direction: column;
+  gap: 0 !important;
+}
+.filter-select-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px !important;
+  padding: 5px 9px !important;
+  margin: 0 !important;
+  border: 0;
+  border-left: 4px solid transparent !important;
+  border-radius: 8px !important;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.filter-select-option:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+.filter-select-option.selected {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)) !important;
+  border-left-color: var(--color-accent) !important;
+  border-radius: 8px !important;
+  color: var(--color-accent);
+  font-weight: 650;
+}
+.filter-select-option.selected:hover {
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface)) !important;
+  color: var(--color-accent);
+}
+.filter-select-option > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.filter-select-option > i:first-child {
+  width: 15px;
+  color: currentColor;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Sort Search field styling matching FilterBar */
+.filter-search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  height: 34px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  padding: 0 12px;
+  color: var(--color-text-muted);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.filter-search-icon {
+  position: static;
+  transform: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  font-size: 14px;
+  pointer-events: none;
+  color: var(--color-text-muted);
+}
+.filter-search-input {
+  width: 100% !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--color-text-primary) !important;
+  padding: 0 !important;
+  outline: none !important;
+  font-size: 13.5px !important;
+  line-height: 34px !important;
+  text-indent: 0 !important;
+  appearance: none;
+}
+.filter-search-input::placeholder {
+  color: var(--color-text-muted);
+}
+.filter-search-field:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.14);
+}
+
+/* Mini direction buttons next to selected sort item */
+.dir-mini-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.dir-mini-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+.dir-mini-btn.active {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  color: var(--color-accent) !important;
+  font-weight: 600 !important;
+}
+
+/* Global Empty State layout matching YourWorkView */
+.empty-state-global {
+  min-height: 204px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 20px !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  text-align: center;
+  margin: 16px auto !important;
+}
+.empty-spaces-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  color: var(--color-accent);
+  font-size: 23px;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12);
+}
+.empty-spaces-copy {
+  max-width: 380px;
+  text-align: center;
+}
+.empty-spaces-copy h3 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+.empty-spaces-copy p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.empty-state-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.empty-state-action-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+.empty-state-action-btn:active,
+.empty-state-action-btn.active {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  color: var(--color-accent) !important;
+}
+.empty-state-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.timeline-filter-trigger:active,
+.timeline-filter-trigger.active,
+:deep(.timeline-filter-trigger:active),
+:deep(.timeline-filter-trigger.active) {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  color: var(--color-accent) !important;
 }
 </style>
