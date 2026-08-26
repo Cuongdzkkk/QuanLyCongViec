@@ -30,11 +30,13 @@ public sealed class MeetingAiAnalysisService : IMeetingAiAnalysisService
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
-        IsConfigured = configuration.GetValue("MeetingAi:Enabled", false) &&
+        IsEnabled = configuration.GetValue("MeetingAi:Enabled", false);
+        IsConfigured = IsEnabled &&
                        !string.IsNullOrWhiteSpace(configuration["ZenMux:ApiKey"]);
         TranscriptChunkSize = Math.Clamp(configuration.GetValue("MeetingAi:TranscriptChunkSize", 8), 4, 20);
     }
 
+    public bool IsEnabled { get; }
     public bool IsConfigured { get; }
     public string ProviderName => IsConfigured ? "ZenMux" : "Unavailable";
     public int TranscriptChunkSize { get; }
