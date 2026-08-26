@@ -422,14 +422,14 @@
             </article>
           </section>
 
-          <aside v-if="callAiState.state !== 'OFF' || callTranscriptChunks.length || callTranscriptInterim.text" class="call-transcript-panel" aria-label="AI call transcript">
+          <aside v-if="callAiState.state !== 'OFF' || callTranscriptChunks.length || callTranscriptInterim.text" class="call-transcript-panel" aria-label="Biên bản cuộc gọi">
             <div class="call-transcript-header">
-              <div><span class="context-kicker">CALL TRANSCRIPT</span><strong>Biên bản cuộc gọi</strong></div>
+              <div class="call-transcript-title"><span class="context-kicker">Live transcript</span><strong>Biên bản cuộc gọi</strong><small>{{ callTranscriptionCapabilities.provider }} · {{ callCaptionLanguageLabel }}</small></div>
               <span class="call-ai-state-pill" :class="`is-${callAiState.state.toLowerCase()}`">{{ callAiStateLabel }}</span>
             </div>
             <div v-if="callAiState.state === 'OFF'" class="call-transcript-off">
-              <strong>Trợ lý cuộc họp chưa sẵn sàng</strong>
-              <p>Quản trị viên chưa cấu hình phiên âm cuộc họp.</p>
+              <strong>Phụ đề chưa được cấu hình</strong>
+              <p>Quản trị viên chưa cấu hình phiên âm cuộc họp. Bạn vẫn có thể tiếp tục cuộc gọi.</p>
             </div>
             <div v-else-if="callAiState.state === 'WAITING_FOR_CONSENT' || callAiState.state === 'PAUSED_CONSENT'" class="call-transcript-consent">
               <strong>{{ callAiState.state === 'PAUSED_CONSENT' ? 'AI đã tạm dừng — chờ đồng ý' : 'Đang chờ sự đồng ý' }}</strong>
@@ -538,15 +538,15 @@
                 <i class="fa-solid fa-table-cells" aria-hidden="true"></i><span>Thu về lưới</span>
               </button>
 
-              <button type="button" class="call-control-label-btn" aria-label="Mở chat cuộc gọi" title="Chat" :aria-pressed="callChatOpen" @click="openVoiceChannelChat">
+              <button type="button" class="call-control-label-btn" :class="{ active: callChatOpen }" aria-label="Mở chat cuộc gọi" title="Chat" :aria-pressed="callChatOpen" @click="openVoiceChannelChat">
                 <i class="fa-solid fa-message" aria-hidden="true"></i><span>Chat</span>
               </button>
 
-              <button type="button" class="call-control-label-btn" aria-label="Mở danh sách người tham gia" title="Người tham gia" :aria-pressed="showMembersSidebar" @click="openCallParticipants">
+              <button type="button" class="call-control-label-btn" :class="{ active: showMembersSidebar }" aria-label="Mở danh sách người tham gia" title="Người tham gia" :aria-pressed="showMembersSidebar" @click="openCallParticipants">
                 <i class="fa-solid fa-users" aria-hidden="true"></i><span>Người tham gia</span>
               </button>
 
-              <button type="button" class="call-control-label-btn" :class="{ active: captionsEnabled }" :disabled="!callTranscriptionCapabilities.configured" :aria-pressed="captionsEnabled" :aria-label="captionsEnabled ? 'Tắt phụ đề' : 'Bật phụ đề'" :title="callTranscriptionCapabilities.configured ? (captionsEnabled ? 'Tắt phụ đề' : 'Bật phụ đề') : 'Phiên âm chưa được cấu hình'" @click="toggleCallCaptions">
+              <button type="button" class="call-control-label-btn" :class="{ active: captionsEnabled }" :disabled="!callTranscriptionCapabilities.configured" :aria-pressed="captionsEnabled" :aria-label="captionsEnabled ? 'Tắt phụ đề' : 'Bật phụ đề'" :title="callTranscriptionCapabilities.configured ? (captionsEnabled ? 'Tắt phụ đề' : 'Bật phụ đề') : 'Phụ đề chưa được cấu hình'" @click="toggleCallCaptions">
                 <i class="fa-solid fa-closed-captioning" aria-hidden="true"></i><span>Phụ đề</span>
               </button>
 
@@ -6420,9 +6420,11 @@ const fetchProjectMembers = async () => {
 .chat-workspace .call-control-circle-btn { transition: background-color 160ms ease-out, color 160ms ease-out, transform 120ms ease-out; }
 .chat-workspace .call-control-circle-btn.hang-up { background: #bd4d5c; }
 .chat-workspace .call-control-circle-btn.hang-up:hover { background: #d35d6c; }
-.call-transcript-panel { display: flex; width: 310px; min-width: 310px; flex-direction: column; gap: 12px; padding: 14px; border-left: 1px solid rgba(148, 163, 184, .13); background: #091725; color: #e7f2fb; }
-.call-transcript-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.call-transcript-header strong { display: block; margin-top: 3px; font-size: 13px; }
+.call-transcript-panel { display: flex; width: 310px; min-width: 310px; flex-direction: column; gap: 10px; padding: 14px; border-left: 1px solid rgba(148, 163, 184, .13); background: #091725; color: #e7f2fb; }
+.call-transcript-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 2px; }
+.call-transcript-title { display: grid; min-width: 0; gap: 3px; }
+.call-transcript-header strong { display: block; font-size: 14px; letter-spacing: -.01em; }
+.call-transcript-title small { overflow: hidden; color: #8295a6; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .call-ai-state-pill { border: 1px solid rgba(99, 210, 159, .35); border-radius: 999px; padding: 3px 7px; color: #8be5b8; font-size: 9px; line-height: 1.2; text-align: right; }
 .call-ai-state-pill.is-off { border-color: rgba(148, 163, 184, .3); color: #b4c1cd; }
 .call-ai-state-pill.is-paused_consent, .call-ai-state-pill.is-waiting_for_consent { border-color: rgba(245, 190, 91, .4); color: #f5c66e; }
@@ -6444,6 +6446,7 @@ const fetchProjectMembers = async () => {
 .call-transcript-indicator { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; color: #8be5b8; font-size: 11px; }
 .call-transcript-indicator span { width: 7px; height: 7px; border-radius: 50%; background: #55d994; box-shadow: 0 0 0 4px rgba(85, 217, 148, .12); }
 .call-transcript-list { display: flex; min-height: 120px; max-height: 240px; flex-direction: column; gap: 12px; overflow: auto; padding-top: 3px; }
+.call-transcript-list:empty { min-height: 0; }
 .call-transcript-chunk { border-bottom: 1px solid rgba(148, 163, 184, .1); padding-bottom: 9px; }
 .call-transcript-chunk > div { display: flex; align-items: center; gap: 7px; color: #8be5b8; font-size: 10px; }
 .call-transcript-chunk time { color: #8295a6; }
@@ -7613,6 +7616,7 @@ background-color: #111c2d !important;
 .chat-workspace .call-transcript-off p, .chat-workspace .call-transcript-consent p, .chat-workspace .call-consent-list > div span:last-child { color: var(--chat-muted) !important; }
 .chat-workspace .call-transcript-chunk { border-bottom-color: var(--chat-line) !important; }
 .chat-workspace .call-transcript-chunk p, .chat-workspace .call-chat-message span { color: var(--chat-ink) !important; }
+.chat-workspace .call-transcript-title small { color: var(--chat-faint) !important; }
 .chat-workspace .call-chat-message small { color: var(--chat-faint) !important; }
 .chat-workspace .call-chat-composer { border-top-color: var(--chat-line) !important; }
 .chat-workspace .call-header + .call-workspace-body { background: var(--chat-bg) !important; }

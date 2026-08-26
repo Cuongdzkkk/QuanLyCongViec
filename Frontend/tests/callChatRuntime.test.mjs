@@ -20,6 +20,7 @@ assert.match(hub, /Clients\.Group\(normalizedRoomId\)\.SendAsync\(/)
 assert.match(hub, /SendCallMessage/)
 assert.match(service, /message\.RoomId == roomId && message\.CallSessionId == callSessionId/)
 assert.match(view, /callChatMessages\.value = \[\]/)
+assert.match(view, /:class="\{ active: callChatOpen \}"/)
 
 console.log('CALL_CHAT_COMPOSER_CAN_FOCUS: PASS')
 console.log('CALL_CHAT_CAN_TYPE: PASS')
