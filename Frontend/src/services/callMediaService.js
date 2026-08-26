@@ -17,12 +17,37 @@ const callHubTraceEnabled = () => {
   }
 }
 
+const webRtcMediaTraceEnabled = () => {
+  try {
+    return Boolean(import.meta.env?.DEV || globalThis.localStorage?.getItem('debug_webrtc_media') === '1')
+  } catch {
+    return false
+  }
+}
+
 export const traceCallHubLifecycle = (event, detail = {}) => {
   if (!callHubTraceEnabled()) return
   console.info('[CALL_HUB]', {
     timestamp: new Date().toISOString(),
     event,
     ...detail
+  })
+}
+
+export const traceWebRtcMedia = (event, detail = {}) => {
+  if (!webRtcMediaTraceEnabled()) return
+  console.info('[WEBRTC_MEDIA]', {
+    timestamp: new Date().toISOString(),
+    event,
+    peerId: detail.peerId || '',
+    connectionState: detail.connectionState || 'unknown',
+    iceConnectionState: detail.iceConnectionState || 'unknown',
+    signalingState: detail.signalingState || 'unknown',
+    trackKind: detail.trackKind || '',
+    trackId: detail.trackId || '',
+    trackReadyState: detail.trackReadyState || '',
+    mediaRole: detail.mediaRole || '',
+    streamId: detail.streamId || ''
   })
 }
 
@@ -75,6 +100,18 @@ export const inspectPeerConnection = (connectionId, pc) => ({
     receiver: describeTrack(transceiver.receiver?.track)
   }))
 })
+
+export const classifyRemoteMediaRole = (entry, transceiver, track, streams = []) => {
+  if (track?.kind === 'audio') return 'audio'
+  if (transceiver === entry?.screenTransceiver) return 'screen'
+  if (transceiver === entry?.cameraTransceiver) return 'camera'
+  if (transceiver?.mid && transceiver.mid === entry?.screenTransceiver?.mid) return 'screen'
+  if (transceiver?.mid && transceiver.mid === entry?.cameraTransceiver?.mid) return 'camera'
+  const source = (transceiver?.mid && entry?.remoteMediaSourcesByMid?.get(transceiver.mid))
+    || streams.map(stream => entry?.remoteMediaSources?.get(stream?.id)).find(Boolean)
+    || entry?.remoteMediaSourcesByTrackId?.get(track?.id)
+  return source === 'screen' ? 'screen' : 'camera'
+}
 
 const getIceServers = async () => {
   const response = await axiosClient.get('/webrtc/ice-servers')
@@ -296,16 +333,33 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     screenStream: new MediaStream()
   })
 
+  const peerDiagnostic = (entry, detail = {}) => ({
+    peerId: entry?.connectionId || detail.peerId || '',
+    connectionState: entry?.pc?.connectionState || detail.connectionState || 'unknown',
+    iceConnectionState: entry?.pc?.iceConnectionState || detail.iceConnectionState || 'unknown',
+    signalingState: entry?.pc?.signalingState || detail.signalingState || 'unknown',
+    ...detail
+  })
+
   const removeRemoteTrack = (connectionId, source, track) => {
     const media = remoteStreams.get(connectionId)
     const stream = media?.[`${source}Stream`]
     if (!stream || !stream.getTracks().includes(track)) return
     stream.removeTrack(track)
+    traceWebRtcMedia('TRACK_ENDED', {
+      peerId: connectionId,
+      trackKind: track.kind,
+      trackId: track.id,
+      trackReadyState: track.readyState,
+      mediaRole: source,
+      streamId: stream.id
+    })
     emitRemoteStreams()
   }
 
-  const addRemoteTrack = (connectionId, source, track) => {
+  const addRemoteTrack = (connectionId, source, track, entry) => {
     if (!source || !track) return
+    const isNewPeerMedia = !remoteStreams.has(connectionId)
     const media = remoteStreams.get(connectionId) || emptyRemoteMedia()
     const stream = media[`${source}Stream`]
     const previousTrack = stream.getTracks().find(item => item.kind === track.kind)
@@ -313,20 +367,35 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     if (!stream.getTracks().includes(track)) stream.addTrack(track)
     track.onended = () => removeRemoteTrack(connectionId, source, track)
     remoteStreams.set(connectionId, media)
+    if (isNewPeerMedia) traceWebRtcMedia('REMOTE_STREAM_CREATED', peerDiagnostic(entry, { streamId: stream.id, mediaRole: source }))
+    traceWebRtcMedia(source === 'screen' ? 'REMOTE_SCREEN_STREAM_ASSIGNED' : source === 'camera' ? 'REMOTE_CAMERA_STREAM_ASSIGNED' : 'REMOTE_STREAM_CREATED', peerDiagnostic(entry, {
+      trackKind: track.kind,
+      trackId: track.id,
+      trackReadyState: track.readyState,
+      mediaRole: source,
+      streamId: stream.id
+    }))
     emitRemoteStreams()
   }
 
-  const sourceForStream = (entry, stream) => entry.remoteMediaSources?.get(stream?.id) || null
-  const sourceForTrack = (entry, track) => entry.remoteMediaSourcesByTrackId?.get(track?.id) || null
-
-  const updateRemoteStreams = (connectionId, entry, streams, track) => {
-    for (const stream of streams ?? []) {
-      const source = sourceForStream(entry, stream)
-      for (const incomingTrack of stream.getTracks()) {
-        addRemoteTrack(connectionId, incomingTrack.kind === 'audio' ? 'audio' : source || sourceForTrack(entry, incomingTrack), incomingTrack)
-      }
-    }
-    if (track) addRemoteTrack(connectionId, track.kind === 'audio' ? 'audio' : sourceForTrack(entry, track), track)
+  const updateRemoteStreams = (connectionId, entry, streams, track, transceiver) => {
+    const incomingStreams = streams ?? []
+    const source = classifyRemoteMediaRole(entry, transceiver, track, incomingStreams)
+    traceWebRtcMedia('REMOTE_TRACK_RECEIVED', peerDiagnostic(entry, {
+      trackKind: track?.kind,
+      trackId: track?.id,
+      trackReadyState: track?.readyState,
+      mediaRole: source,
+      streamId: incomingStreams[0]?.id || ''
+    }))
+    traceWebRtcMedia('REMOTE_TRACK_CLASSIFIED', peerDiagnostic(entry, {
+      trackKind: track?.kind,
+      trackId: track?.id,
+      trackReadyState: track?.readyState,
+      mediaRole: source,
+      streamId: incomingStreams[0]?.id || ''
+    }))
+    if (track) addRemoteTrack(connectionId, source, track, entry)
   }
 
   const closePeer = (connectionId) => {
@@ -360,31 +429,48 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       await entry.pc.setLocalDescription()
       await sendSignal('SendWebRtcOffer', entry.connectionId, {
         description: entry.pc.localDescription,
-        mediaSources: getLocalMediaSources()
+        mediaSources: getLocalMediaSources(entry)
       })
     } finally {
       entry.makingOffer = false
     }
   }
 
-  const getLocalMediaSources = () => [
-    cameraStream && { streamId: cameraStream.id, trackId: cameraTrack?.id, source: 'camera' },
-    screenStream && { streamId: screenStream.id, trackId: screenTrack?.id, source: 'screen' }
+  const getLocalMediaSources = entry => [
+    cameraStream && { streamId: cameraStream.id, trackId: cameraTrack?.id, mid: entry?.cameraTransceiver?.mid || null, source: 'camera' },
+    screenStream && { streamId: screenStream.id, trackId: screenTrack?.id, mid: entry?.screenTransceiver?.mid || null, source: 'screen' }
   ].filter(Boolean)
 
-  const syncVideoSender = async (entry, senderKey, track) => {
+  const syncVideoSender = async (entry, senderKey, track, stream, mediaRole) => {
     const transceiver = entry[senderKey]
     if (!transceiver) return
     if (transceiver.sender.track !== track) await transceiver.sender.replaceTrack(track)
+    if (typeof transceiver.sender.setStreams === 'function') transceiver.sender.setStreams(...(track && stream ? [stream] : []))
     transceiver.direction = track ? 'sendrecv' : 'recvonly'
+    traceWebRtcMedia('SENDER_ATTACHED', peerDiagnostic(entry, {
+      trackKind: track?.kind,
+      trackId: track?.id,
+      trackReadyState: track?.readyState,
+      mediaRole,
+      streamId: stream?.id || ''
+    }))
+    traceWebRtcMedia('TRANSCEIVER_STATE', peerDiagnostic(entry, {
+      trackKind: track?.kind,
+      trackId: track?.id,
+      trackReadyState: track?.readyState,
+      mediaRole,
+      streamId: stream?.id || ''
+    }))
   }
 
   const syncPeerMedia = async entry => {
     const audioTrack = localStream?.getAudioTracks?.()[0] || null
     if (entry.audioTransceiver?.sender.track !== audioTrack) await entry.audioTransceiver.sender.replaceTrack(audioTrack)
+    if (typeof entry.audioTransceiver?.sender.setStreams === 'function') entry.audioTransceiver.sender.setStreams(...(audioTrack && localStream ? [localStream] : []))
     if (entry.audioTransceiver) entry.audioTransceiver.direction = audioTrack ? 'sendrecv' : 'recvonly'
-    await syncVideoSender(entry, 'cameraTransceiver', cameraTrack)
-    await syncVideoSender(entry, 'screenTransceiver', screenTrack)
+    traceWebRtcMedia('SENDER_ATTACHED', peerDiagnostic(entry, { trackKind: audioTrack?.kind, trackId: audioTrack?.id, trackReadyState: audioTrack?.readyState, mediaRole: 'audio', streamId: localStream?.id || '' }))
+    await syncVideoSender(entry, 'cameraTransceiver', cameraTrack, cameraStream, 'camera')
+    await syncVideoSender(entry, 'screenTransceiver', screenTrack, screenStream, 'screen')
   }
 
   const recoverPeer = async (connectionId) => {
@@ -415,7 +501,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       screenTransceiver: null,
       pendingCandidates: [],
       remoteMediaSources: new Map(),
-      remoteMediaSourcesByTrackId: new Map()
+      remoteMediaSourcesByTrackId: new Map(),
+      remoteMediaSourcesByMid: new Map()
     }
     peers.set(connectionId, entry)
     entry.audioTransceiver = entry.pc.addTransceiver('audio', { direction: 'recvonly' })
@@ -425,14 +512,17 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     entry.pc.onicecandidate = ({ candidate }) => {
       if (candidate) void sendSignal('SendIceCandidate', connectionId, candidate)
     }
-    entry.pc.ontrack = ({ streams, track }) => updateRemoteStreams(connectionId, entry, streams, track)
+    entry.pc.ontrack = ({ streams, track, transceiver }) => updateRemoteStreams(connectionId, entry, streams, track, transceiver)
     entry.pc.onnegotiationneeded = () => {
       if (entry.initialNegotiationComplete || entry.initiateInitialOffer) void negotiate(entry)
     }
     entry.pc.onconnectionstatechange = () => {
+      traceWebRtcMedia(entry.pc.connectionState === 'connected' ? 'PEER_CONNECTED' : 'TRANSCEIVER_STATE', peerDiagnostic(entry))
       if (['failed', 'disconnected'].includes(entry.pc.connectionState)) void recoverPeer(connectionId)
       if (entry.pc.connectionState === 'connected') recoveryAttempts = 0
     }
+    entry.pc.oniceconnectionstatechange = () => traceWebRtcMedia('TRANSCEIVER_STATE', peerDiagnostic(entry))
+    entry.pc.onsignalingstatechange = () => traceWebRtcMedia('TRANSCEIVER_STATE', peerDiagnostic(entry))
     await syncPeerMedia(entry)
     // The existing room member receives ParticipantJoined and creates the
     // pair's single initial offer. The joiner's snapshot-created peer waits
@@ -450,6 +540,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     if (!entry || !description) return
     entry.remoteMediaSources = new Map(mediaSources.map(item => [read(item, 'streamId', 'StreamId'), read(item, 'source', 'Source')]))
     entry.remoteMediaSourcesByTrackId = new Map(mediaSources.map(item => [read(item, 'trackId', 'TrackId'), read(item, 'source', 'Source')]))
+    entry.remoteMediaSourcesByMid = new Map(mediaSources.map(item => [read(item, 'mid', 'Mid'), read(item, 'source', 'Source')]).filter(([mid]) => mid !== null && mid !== undefined && mid !== ''))
     const offerCollision = entry.makingOffer || entry.pc.signalingState !== 'stable'
     entry.ignoreOffer = !entry.polite && offerCollision
     if (entry.ignoreOffer) return
@@ -461,7 +552,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     await entry.pc.setLocalDescription()
     await sendSignal('SendWebRtcAnswer', connectionId, {
       description: entry.pc.localDescription,
-      mediaSources: getLocalMediaSources()
+      mediaSources: getLocalMediaSources(entry)
     })
     entry.initialNegotiationComplete = true
   }
@@ -475,6 +566,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     if (entry) {
       entry.remoteMediaSources = new Map(mediaSources.map(item => [read(item, 'streamId', 'StreamId'), read(item, 'source', 'Source')]))
       entry.remoteMediaSourcesByTrackId = new Map(mediaSources.map(item => [read(item, 'trackId', 'TrackId'), read(item, 'source', 'Source')]))
+      entry.remoteMediaSourcesByMid = new Map(mediaSources.map(item => [read(item, 'mid', 'Mid'), read(item, 'source', 'Source')]).filter(([mid]) => mid !== null && mid !== undefined && mid !== ''))
     }
     if (entry && description) {
       await entry.pc.setRemoteDescription(description)
@@ -656,6 +748,13 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       })
       localStream = stream
       localStream.getAudioTracks().forEach(track => { track.enabled = Boolean(enabled) })
+      for (const track of localStream.getAudioTracks()) traceWebRtcMedia('LOCAL_TRACK_READY', {
+        trackKind: track.kind,
+        trackId: track.id,
+        trackReadyState: track.readyState,
+        mediaRole: 'audio',
+        streamId: localStream.id
+      })
     } catch (error) {
       throw mediaError(error, 'MIC_UNAVAILABLE')
     }
@@ -692,6 +791,13 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     cameraTrack = await getCameraOutputTrack()
     cameraStream = new MediaStream([cameraTrack])
     cameraEnabled = true
+    traceWebRtcMedia('LOCAL_TRACK_READY', {
+      trackKind: cameraTrack.kind,
+      trackId: cameraTrack.id,
+      trackReadyState: cameraTrack.readyState,
+      mediaRole: 'camera',
+      streamId: cameraStream.id
+    })
   }
 
   const setCameraEnabled = async enabled => {
@@ -819,6 +925,13 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       screenTrack = stream.getVideoTracks()[0]
       screenStream = stream
       screenSharing = true
+      traceWebRtcMedia('LOCAL_TRACK_READY', {
+        trackKind: screenTrack.kind,
+        trackId: screenTrack.id,
+        trackReadyState: screenTrack.readyState,
+        mediaRole: 'screen',
+        streamId: screenStream.id
+      })
       for (const entry of peers.values()) await syncPeerMedia(entry)
       screenTrack.onended = () => { void stopScreenShare() }
       await sendMediaState()
