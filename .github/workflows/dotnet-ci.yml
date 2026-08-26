@@ -12,6 +12,7 @@ on:
       - main
       - develop
       - feature/*
+      - diagnostics/*
   pull_request:
     branches: 
       - main
