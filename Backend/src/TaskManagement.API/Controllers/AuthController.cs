@@ -287,6 +287,7 @@ namespace TaskManagement.API.Controllers
                     {
                         requiresLogin = result.RequiresLogin,
                         redirectPath = result.RedirectPath,
+                        projectId = result.ProjectId,
                         auth = result.Response == null ? null : new
                         {
                             accessToken = result.Response.AccessToken,
@@ -307,9 +308,62 @@ namespace TaskManagement.API.Controllers
             {
                 return BadRequest(new { statusCode = 400, message = ex.Message });
             }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { statusCode = 409, message = ex.Message });
+            }
             catch (Exception ex)
             {
                 return StatusCode(500, new { statusCode = 500, message = "Internal server error: " + ex.Message });
+            }
+        }
+
+        [HttpPost("/api/project-invitations/{invitationId:guid}/accept")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public async Task<IActionResult> AcceptProjectInvitation(Guid invitationId)
+        {
+            if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized(new { statusCode = 401, message = "Authenticated user is required." });
+
+            try
+            {
+                var result = await _authService.AcceptProjectInvitationAsync(invitationId, userId);
+                return Ok(new
+                {
+                    statusCode = 200,
+                    message = "Lời mời đã được chấp nhận.",
+                    data = new { projectId = result.ProjectId, redirectPath = result.RedirectPath }
+                });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { statusCode = 404, message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { statusCode = 409, message = ex.Message });
+            }
+        }
+
+        [HttpPost("/api/project-invitations/{invitationId:guid}/decline")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public async Task<IActionResult> DeclineProjectInvitation(Guid invitationId)
+        {
+            if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized(new { statusCode = 401, message = "Authenticated user is required." });
+
+            try
+            {
+                await _authService.DeclineProjectInvitationAsync(invitationId, userId);
+                return Ok(new { statusCode = 200, message = "Lời mời đã được từ chối." });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { statusCode = 404, message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { statusCode = 409, message = ex.Message });
             }
         }
 

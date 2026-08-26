@@ -16,6 +16,9 @@ namespace TaskManagement.Domain.Entities
         public bool IsRead { get; set; } = false;
         public DateTime CreatedAt { get; set; }
 
+        /// <summary>Stable application-owned key used to make event notifications idempotent.</summary>
+        public string? DedupeKey { get; set; }
+
         // Enhanced fields for rich notifications
         /// <summary>TASK_STATUS_CHANGED, TASK_ASSIGNED, COMMENT_ADDED, TASK_DUE_SOON, etc.</summary>
         public string NotificationType { get; set; } = "GENERAL";
@@ -30,6 +33,10 @@ namespace TaskManagement.Domain.Entities
         public CollaborationChannel? CollaborationChannel { get; set; }
         public Guid? ChannelMessageId { get; set; }
         public ChannelMessage? ChannelMessage { get; set; }
+
+        public Guid? RelatedInvitationId { get; set; }
+        public ProjectInvitation? RelatedInvitation { get; set; }
+        public string? ActionState { get; set; }
 
         /// <summary>Who triggered this notification</summary>
         public Guid? TriggeredByUserId { get; set; }

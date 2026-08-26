@@ -4,6 +4,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.API.Extensions;
 
@@ -15,7 +16,17 @@ ProjectAccessPolicy.Configure(
     builder.Configuration.GetValue("Features:ProjectAccessRestrictionsEnabled", true));
 
 builder.Services.AddControllers();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    // Keep the transport alive through a short proxy/network interruption without masking a dead client.
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+    options.AddFilter(typeof(TaskManagement.API.Hubs.CallHubInvocationDiagnosticsFilter));
+})
+    .AddHubOptions<TaskManagement.API.Hubs.CallHub>(options =>
+    {
+        options.MaximumReceiveMessageSize = TaskManagement.API.Hubs.CallHub.MaximumReceiveMessageSize;
+    });
 builder.Services.AddHttpClient();
 builder.Services.AddOpenApi();
 builder.Services.AddMemoryCache();
@@ -222,7 +233,7 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-    context.Response.Headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=(self)";
+    context.Response.Headers["Permissions-Policy"] = "camera=(self), geolocation=(), microphone=(self)";
     context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'";
     await next();
 });
@@ -245,8 +256,9 @@ app.UseStaticFiles();
 
 app.MapControllers();
 app.MapHub<TaskManagement.API.Hubs.KanbanHub>(TaskManagement.API.Hubs.KanbanHub.Route);
-app.MapHub<TaskManagement.API.Hubs.NotificationHub>("/notification-hub");
+app.MapHub<TaskManagement.API.Hubs.NotificationHub>(TaskManagement.API.Hubs.NotificationHub.Route);
 app.MapHub<TaskManagement.API.Hubs.ChatHub>(TaskManagement.API.Hubs.ChatHub.Route);
+app.MapHub<TaskManagement.API.Hubs.CallHub>(TaskManagement.API.Hubs.CallHub.Route);
 
 if (await app.Services.RunDatabaseDeploymentCommandAsync(args, app.Environment, builder.Configuration)) return;
 

@@ -19,6 +19,8 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using TaskManagement.API.Hubs;
 using TaskManagement.Application.DTOs.Collaboration;
+using TaskManagement.Application.Interfaces;
+using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Infrastructure.Services;
 
@@ -52,6 +54,90 @@ public sealed class ChatRealtimeIntegrationTests
         var apiQueryToken = await client.GetAsync(
             $"/api/users/me?access_token={validToken}");
         apiQueryToken.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task CallHubSupportsQueryTokenAndRejectsAnonymousConnections()
+    {
+        await using var factory = new ChatApplicationFactory();
+        var userId = Guid.NewGuid();
+        await SeedUserAsync(factory, userId, active: true);
+
+        await using var missing = CreateCallConnection(factory, accessToken: null);
+        await missing.Invoking(connection => connection.StartAsync())
+            .Should().ThrowAsync<Exception>();
+
+        using var client = factory.CreateClient();
+        var response = await client.PostAsync(
+            $"{CallHub.Route}/negotiate?negotiateVersion=1&access_token={CreateToken(factory, userId)}",
+            content: null);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task CallHubUsesBounded128KbReceiveMessageLimit()
+    {
+        await using var factory = new ChatApplicationFactory();
+
+        var options = factory.Services.GetRequiredService<IOptions<HubOptions<CallHub>>>().Value;
+
+        options.MaximumReceiveMessageSize.Should().Be(CallHub.MaximumReceiveMessageSize);
+        options.MaximumReceiveMessageSize.Should().Be(131072);
+    }
+
+    [Fact]
+    public async Task NotificationHubRequiresAuthAndOnlyDeliversToAuthenticatedUserGroup()
+    {
+        await using var factory = new ChatApplicationFactory();
+        var userA = Guid.NewGuid();
+        var userB = Guid.NewGuid();
+        await SeedUserAsync(factory, userA, active: true);
+        await SeedUserAsync(factory, userB, active: true);
+
+        await using var missing = CreateNotificationConnection(factory, null);
+        await missing.Invoking(connection => connection.StartAsync())
+            .Should().ThrowAsync<Exception>();
+
+        await using var connection = CreateNotificationConnection(factory, CreateToken(factory, userA));
+        var received = NewSignal<Notification>();
+        connection.On<Notification>("ReceiveNotification", notification => received.TrySetResult(notification));
+        await connection.StartAsync();
+        await connection.InvokeAsync("JoinUserChannel");
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var notifier = scope.ServiceProvider.GetRequiredService<ISignalRClientNotifier>();
+        var own = new Notification { Id = Guid.NewGuid(), UserId = userA, Title = "Own", Content = "Own" };
+        var other = new Notification { Id = Guid.NewGuid(), UserId = userB, Title = "Other", Content = "Other" };
+        await notifier.SendNotificationAsync(userA, own);
+        await notifier.SendNotificationAsync(userB, other);
+
+        (await received.Task.WaitAsync(TimeSpan.FromSeconds(5))).Id.Should().Be(own.Id);
+    }
+
+    [Fact]
+    public async Task NotificationHubQueryTokenIsAcceptedOnlyWithValidToken()
+    {
+        await using var factory = new ChatApplicationFactory();
+        var userId = Guid.NewGuid();
+        await SeedUserAsync(factory, userId, active: true);
+
+        using var client = factory.CreateClient();
+        var validToken = CreateToken(factory, userId);
+
+        var valid = await client.PostAsync(
+            $"{NotificationHub.Route}/negotiate?negotiateVersion=1&access_token={validToken}",
+            content: null);
+        valid.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var missing = await client.PostAsync(
+            $"{NotificationHub.Route}/negotiate?negotiateVersion=1",
+            content: null);
+        missing.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        var invalid = await client.PostAsync(
+            $"{NotificationHub.Route}/negotiate?negotiateVersion=1&access_token=invalid-token",
+            content: null);
+        invalid.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -326,6 +412,21 @@ public sealed class ChatRealtimeIntegrationTests
                 })
             .Build();
 
+    private static HubConnection CreateCallConnection(
+        ChatApplicationFactory factory,
+        string? accessToken) =>
+        new HubConnectionBuilder()
+            .WithUrl(
+                new Uri(factory.Server.BaseAddress, CallHub.Route),
+                options =>
+                {
+                    options.Transports = HttpTransportType.LongPolling;
+                    options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                    if (accessToken != null)
+                        options.AccessTokenProvider = () => Task.FromResult(accessToken)!;
+                })
+            .Build();
+
     private static HubConnection CreateKanbanConnection(
         ChatApplicationFactory factory,
         string accessToken) =>
@@ -337,6 +438,21 @@ public sealed class ChatRealtimeIntegrationTests
                     options.Transports = HttpTransportType.LongPolling;
                     options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
                     options.AccessTokenProvider = () => Task.FromResult(accessToken)!;
+                })
+            .Build();
+
+    private static HubConnection CreateNotificationConnection(
+        ChatApplicationFactory factory,
+        string? accessToken) =>
+        new HubConnectionBuilder()
+            .WithUrl(
+                new Uri(factory.Server.BaseAddress, NotificationHub.Route),
+                options =>
+                {
+                    options.Transports = HttpTransportType.LongPolling;
+                    options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                    if (accessToken != null)
+                        options.AccessTokenProvider = () => Task.FromResult(accessToken)!;
                 })
             .Build();
 

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { getStoredUserSession, getStoredAccessToken, saveAuthSession, clearAuthSession } from '@/utils/authSession'
+import { getStoredUserSession, getStoredAccessToken, saveAuthSession, clearAuthSession, AUTH_SESSION_CHANGED } from '@/utils/authSession'
+import { useProjectStore } from '@/store/useProjectStore'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -25,7 +26,8 @@ export const useAuthStore = defineStore('auth', {
       this.isAuthenticated = !!this.token
 
       // Listen for cross-tab login/logout/update
-      window.addEventListener('storage', this.handleStorageEvent)
+      window.addEventListener('storage', (event) => this.handleStorageEvent(event))
+      window.addEventListener(AUTH_SESSION_CHANGED, () => this.handleAuthSessionChanged())
     },
     
     login(authData) {
@@ -36,6 +38,7 @@ export const useAuthStore = defineStore('auth', {
     },
     
     logout() {
+      useProjectStore().clearWorkspaceData()
       clearAuthSession()
       this.user = {}
       this.token = ''
@@ -56,6 +59,19 @@ export const useAuthStore = defineStore('auth', {
         accessToken: this.token,
         ...this.user
       })
+    },
+
+    handleAuthSessionChanged() {
+      const previousUserId = this.user?.id || this.user?.Id || ''
+      const storedUser = getStoredUserSession()
+      const storedToken = getStoredAccessToken()
+      const nextUserId = storedUser?.id || storedUser?.Id || ''
+      if (`${previousUserId}` !== `${nextUserId}` || (!!this.token !== !!storedToken)) {
+        useProjectStore().clearWorkspaceData()
+      }
+      this.user = storedUser
+      this.token = storedToken
+      this.isAuthenticated = !!storedToken
     },
     
     handleStorageEvent(event) {

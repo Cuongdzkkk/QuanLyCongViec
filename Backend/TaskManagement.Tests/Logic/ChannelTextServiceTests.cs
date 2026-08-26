@@ -36,6 +36,83 @@ public sealed class ChannelTextServiceTests
     }
 
     [Fact]
+    public async Task ReplyReferenceIsPersistedAndRenderedAsCompactQuote()
+    {
+        await using var context = CreateContext();
+        var seed = await ChannelSeed.InsertAsync(context);
+        var service = CreateService(context);
+        var original = await service.SendAsync(seed.ChannelAId, seed.UserAId, "Original message");
+
+        var reply = await service.SendWithMentionsAsync(
+            seed.ChannelAId, seed.UserAId, "Follow-up", [], [],
+            replyToMessageId: original.MessageId);
+
+        reply.Message.ReplyTo.Should().NotBeNull();
+        reply.Message.ReplyTo!.MessageId.Should().Be(original.MessageId);
+        reply.Message.ReplyTo.Content.Should().Be("Original message");
+        (await context.ChannelMessages.SingleAsync(item => item.Id == reply.Message.MessageId))
+            .ReplyToMessageId.Should().Be(original.MessageId);
+    }
+
+    [Fact]
+    public async Task ReactionsArePersistedDeduplicatedAndCurrentUserScoped()
+    {
+        await using var context = CreateContext();
+        var seed = await ChannelSeed.InsertAsync(context);
+        var service = CreateService(context);
+        var message = await service.SendAsync(seed.ChannelAId, seed.UserAId, "React here");
+
+        await service.AddReactionAsync(seed.ChannelAId, message.MessageId, seed.UserAId, "👍");
+        await service.AddReactionAsync(seed.ChannelAId, message.MessageId, seed.UserAId, "👍");
+        await service.AddReactionAsync(seed.ChannelAId, message.MessageId, seed.UserBId, "👍");
+
+        var history = await service.GetHistoryAsync(seed.ChannelAId, seed.UserAId, 1, 20);
+        history.Items.Single().Reactions.Should().ContainSingle()
+            .Which.Should().Be(new ChannelMessageReactionDto("👍", 2, true));
+        (await context.CollaborationMessageReactions.CountAsync()).Should().Be(2);
+
+        await service.RemoveReactionAsync(seed.ChannelAId, message.MessageId, seed.UserAId, "👍");
+        var afterRemove = await service.GetHistoryAsync(seed.ChannelAId, seed.UserAId, 1, 20);
+        afterRemove.Items.Single().Reactions!.Single().Should()
+            .Be(new ChannelMessageReactionDto("👍", 1, false));
+    }
+
+    [Fact]
+    public async Task SearchAndInteractionAuthorizationAreChannelScoped()
+    {
+        await using var context = CreateContext();
+        var seed = await ChannelSeed.InsertAsync(context);
+        var service = CreateService(context);
+        var message = await service.SendAsync(seed.ChannelAId, seed.UserAId, "private alpha phrase");
+        context.ChannelMessages.Add(Message(seed.ChannelBId, seed.OutsiderId, "private alpha phrase"));
+        await context.SaveChangesAsync();
+
+        var results = await service.SearchAsync(seed.ChannelAId, seed.UserAId, "alpha", 1, 20);
+        results.Items.Should().ContainSingle().Which.MessageId.Should().Be(message.MessageId);
+
+        await service.Invoking(item => item.SearchAsync(seed.ChannelAId, seed.OutsiderId, "alpha", 1, 20))
+            .Should().ThrowAsync<ChannelNotFoundException>();
+        await service.Invoking(item => item.AddReactionAsync(seed.ChannelAId, message.MessageId, seed.OutsiderId, "👀"))
+            .Should().ThrowAsync<ChannelNotFoundException>();
+        await service.Invoking(item => item.PinAsync(seed.ChannelAId, message.MessageId, seed.UserBId))
+            .Should().ThrowAsync<ChannelManageForbiddenException>();
+    }
+
+    [Fact]
+    public async Task ReplyCannotReferenceAnotherChannel()
+    {
+        await using var context = CreateContext();
+        var seed = await ChannelSeed.InsertAsync(context);
+        var service = CreateService(context);
+        var foreign = await service.SendAsync(seed.ChannelAId, seed.UserAId, "Only in A");
+
+        await service.Invoking(item => item.SendWithMentionsAsync(
+                seed.ChannelBId, seed.OutsiderId, "Cross-channel", [], [],
+                replyToMessageId: foreign.MessageId))
+            .Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
     public async Task NewContextCanReadPersistedMessageAndMemberBMayRead()
     {
         var databaseName = $"channel-persistence-{Guid.NewGuid():N}";

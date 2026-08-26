@@ -6,7 +6,7 @@ namespace TaskManagement.Application.Interfaces
 {
     public interface IProjectMemberService
     {
-        Task<ProjectInvitationOutcome> InviteMemberAsync(Guid projectId, ProjectMemberRequestDto request, string inviterName);
+        Task<ProjectInvitationOutcome> InviteMemberAsync(Guid projectId, ProjectMemberRequestDto request, string inviterName, Guid? inviterUserId = null);
         Task RemoveMemberAsync(Guid projectId, Guid userId, Guid removedBy, string? removalReason = null);
         Task UpdateMemberRoleAsync(Guid projectId, Guid userId, string newRole);
         Task<System.Collections.Generic.IEnumerable<ProjectMemberResponseDto>> GetProjectMembersAsync(Guid projectId);

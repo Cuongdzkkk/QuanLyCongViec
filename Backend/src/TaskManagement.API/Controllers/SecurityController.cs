@@ -8,6 +8,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System;
 using System.Security.Claims;
+using TaskManagement.Application.Interfaces;
+using TaskManagement.Application.Common;
 
 namespace TaskManagement.API.Controllers
 {
@@ -27,10 +29,14 @@ namespace TaskManagement.API.Controllers
         };
 
         private readonly ApplicationDbContext _context;
+        private readonly IResourceAuthorizationService _authorization;
 
-        public SecurityController(ApplicationDbContext context)
+        public SecurityController(
+            ApplicationDbContext context,
+            IResourceAuthorizationService authorization)
         {
             _context = context;
+            _authorization = authorization;
         }
 
         public class IpWhitelistEntry
@@ -140,38 +146,9 @@ namespace TaskManagement.API.Controllers
                 return Unauthorized(new { statusCode = 401, message = "Unauthorized." });
             }
 
-            var userRoles = await _context.UserRoles
-                .Where(ur => ur.UserId == userId)
-                .Select(ur => ur.Role.Name)
-                .ToListAsync();
-
-            var normalizedRoles = userRoles
-                .Select(role => role.Trim().ToLowerInvariant())
-                .ToHashSet();
-
-            var canAccessAllProjects = normalizedRoles.Overlaps(new[]
-            {
-                "superadmin",
-                "admin",
-                "system admin",
-                "organization admin",
-                "accessadmin",
-                "access admin"
-            });
-
+            var accessibleProjectIds = await _authorization.GetAccessibleProjectIdsAsync(userId);
             var query = _context.Projects
-                .Where(project => !project.IsDeleted && !project.IsArchived);
-
-            if (!canAccessAllProjects)
-            {
-                var assignedProjectIds = await _context.ProjectMembers
-                    .Where(member => member.UserId == userId && member.Status)
-                    .Select(member => member.ProjectId)
-                    .Distinct()
-                    .ToListAsync();
-
-                query = query.Where(project => assignedProjectIds.Contains(project.Id));
-            }
+                .Where(project => accessibleProjectIds.Contains(project.Id));
 
             var projects = await query
                 .OrderBy(project => project.Name)
@@ -190,7 +167,7 @@ namespace TaskManagement.API.Controllers
                 statusCode = 200,
                 data = new
                 {
-                    canAccessAllProjects,
+                    canAccessAllProjects = !ProjectAccessPolicy.RestrictionsEnabled,
                     items = projects
                 }
             });

@@ -1,11 +1,14 @@
 import * as signalR from '@microsoft/signalr'
 import { getStoredAccessToken } from '@/utils/authSession'
+import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 
 export const COLLABORATION_REALTIME_EVENTS = Object.freeze({
   CHANNEL_MESSAGE_CREATED: 'ChannelMessageCreated',
   DIRECT_MESSAGE_CREATED: 'DirectMessageCreated',
   READ_STATE_CHANGED: 'CollaborationReadStateChanged',
-  MENTION_CREATED: 'CollaborationMentionCreated'
+  MENTION_CREATED: 'CollaborationMentionCreated',
+  CHANNEL_MESSAGE_REACTION_CHANGED: 'ChannelMessageReactionChanged',
+  CHANNEL_MESSAGE_PIN_CHANGED: 'ChannelMessagePinChanged'
 })
 
 export const COLLABORATION_REALTIME_STATES = Object.freeze({
@@ -52,6 +55,8 @@ class CollaborationRealtimeService {
     this.directSubscribers = new Set()
     this.readStateSubscribers = new Set()
     this.mentionSubscribers = new Set()
+    this.reactionSubscribers = new Set()
+    this.pinSubscribers = new Set()
     this.stateSubscribers = new Set()
     this.reconnectedSubscribers = new Set()
   }
@@ -69,11 +74,10 @@ class CollaborationRealtimeService {
 
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api'
     const hubBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '')
-    const connection = new signalR.HubConnectionBuilder()
+    const connection = configureRealtimeHub(new signalR.HubConnectionBuilder())
       .withUrl(`${hubBaseUrl}/hubs/chat`, {
         accessTokenFactory: () => getStoredAccessToken() || ''
       })
-      .withAutomaticReconnect([0, 2000, 10000, 30000])
       .configureLogging(signalR.LogLevel.None)
       .build()
 
@@ -93,6 +97,14 @@ class CollaborationRealtimeService {
       COLLABORATION_REALTIME_EVENTS.MENTION_CREATED,
       payload => this.mentionSubscribers.forEach(handler => handler(payload))
     )
+    connection.on(
+      COLLABORATION_REALTIME_EVENTS.CHANNEL_MESSAGE_REACTION_CHANGED,
+      payload => this.reactionSubscribers.forEach(handler => handler(payload))
+    )
+    connection.on(
+      COLLABORATION_REALTIME_EVENTS.CHANNEL_MESSAGE_PIN_CHANGED,
+      payload => this.pinSubscribers.forEach(handler => handler(payload))
+    )
     connection.onreconnecting(() => {
       if (!this.intentionalStop) this.emitState(COLLABORATION_REALTIME_STATES.RECONNECTING)
     })
@@ -107,7 +119,8 @@ class CollaborationRealtimeService {
 
   async start() {
     if (!getStoredAccessToken()) throw createClientError('AUTH_REQUIRED')
-    if (this.isConnected) return
+    if ([signalR.HubConnectionState.Connected, signalR.HubConnectionState.Connecting, signalR.HubConnectionState.Reconnecting]
+      .includes(this.state)) return this.startPromise
     if (this.startPromise) return this.startPromise
     if (this.stopPromise) await this.stopPromise
 
@@ -161,6 +174,7 @@ class CollaborationRealtimeService {
         await this.invokeLeave('LeaveDirectConversation', conversationId)
       }
       await connection.stop()
+      if (this.connection === connection) this.connection = null
       this.emitState(COLLABORATION_REALTIME_STATES.DISCONNECTED)
     })().finally(() => {
       this.stopPromise = null
@@ -237,6 +251,16 @@ class CollaborationRealtimeService {
   subscribeMention(handler) {
     this.mentionSubscribers.add(handler)
     return () => this.mentionSubscribers.delete(handler)
+  }
+
+  subscribeReaction(handler) {
+    this.reactionSubscribers.add(handler)
+    return () => this.reactionSubscribers.delete(handler)
+  }
+
+  subscribePin(handler) {
+    this.pinSubscribers.add(handler)
+    return () => this.pinSubscribers.delete(handler)
   }
 
   subscribeState(handler) {

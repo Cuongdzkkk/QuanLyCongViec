@@ -58,6 +58,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<SiteAuditLog> SiteAuditLogs { get; set; }
         public DbSet<Notification> Notifications { get; set; }
+        public DbSet<ProjectInvitation> ProjectInvitations { get; set; }
         public DbSet<NotificationPreference> NotificationPreferences { get; set; }
         public DbSet<RecentView> RecentViews { get; set; }
 
@@ -76,7 +77,13 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<AiUsageLedger> AiUsageLedgerEntries { get; set; }
         public DbSet<AiSubscription> AiSubscriptions { get; set; }
         public DbSet<AiCreditAdjustment> AiCreditAdjustments { get; set; }
+        public DbSet<AiCreditBucket> AiCreditBuckets { get; set; }
+        public DbSet<AiCreditReservation> AiCreditReservations { get; set; }
+        public DbSet<AiCreditReservationAllocation> AiCreditReservationAllocations { get; set; }
         public DbSet<PaymentOrder> PaymentOrders { get; set; }
+        public DbSet<PaymentTransaction> PaymentTransactions { get; set; }
+        public DbSet<PaymentWebhookEvent> PaymentWebhookEvents { get; set; }
+        public DbSet<PaymentEmailDelivery> PaymentEmailDeliveries { get; set; }
         public DbSet<AIFeedback> AIFeedbacks { get; set; }
         public DbSet<AITrainingDataset> AITrainingDatasets { get; set; }
         public DbSet<TaskVectorEmbedding> TaskVectorEmbeddings { get; set; }
@@ -129,11 +136,16 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<DirectConversationParticipant> DirectConversationParticipants { get; set; }
         public DbSet<ChannelMessage> ChannelMessages { get; set; }
         public DbSet<ChannelMessageMention> ChannelMessageMentions { get; set; }
+        public DbSet<CollaborationMessageReaction> CollaborationMessageReactions { get; set; }
+        public DbSet<CollaborationMessagePin> CollaborationMessagePins { get; set; }
         public DbSet<CollaborationChannel> CollaborationChannels { get; set; }
         public DbSet<CollaborationChannelMember> CollaborationChannelMembers { get; set; }
         public DbSet<CollaborationChannelReadState> CollaborationChannelReadStates { get; set; }
         public DbSet<DirectConversationReadState> DirectConversationReadStates { get; set; }
         public DbSet<CollaborationMessageAttachment> CollaborationMessageAttachments { get; set; }
+        public DbSet<CallTranscriptChunk> CallTranscriptChunks { get; set; }
+        public DbSet<CallChatMessage> CallChatMessages { get; set; }
+        public DbSet<MeetingAiReport> MeetingAiReports { get; set; }
 
         public DbSet<CustomFieldDefinition> CustomFieldDefinitions { get; set; }
         public DbSet<CustomFieldValue> CustomFieldValues { get; set; }
@@ -558,6 +570,38 @@ namespace TaskManagement.Infrastructure.Data
                 entity.HasOne(n => n.ChannelMessage).WithMany()
                     .HasForeignKey(n => n.ChannelMessageId)
                     .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(n => n.RelatedInvitation).WithMany()
+                    .HasForeignKey(n => n.RelatedInvitationId)
+                    .OnDelete(DeleteBehavior.NoAction);
+                entity.Property(n => n.ActionState).HasMaxLength(32);
+            });
+
+            modelBuilder.Entity<CallChatMessage>(entity =>
+            {
+                entity.Property(message => message.RoomId).HasMaxLength(300).IsRequired();
+                entity.Property(message => message.Content).HasMaxLength(4000).IsRequired();
+                entity.HasIndex(message => new { message.CallSessionId, message.CreatedAt });
+                entity.HasIndex(message => new { message.RoomId, message.CreatedAt });
+                entity.HasOne<User>().WithMany()
+                    .HasForeignKey(message => message.SenderUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<ProjectInvitation>(entity =>
+            {
+                entity.HasKey(invitation => invitation.Id);
+                entity.Property(invitation => invitation.InvitedEmail).HasMaxLength(320).IsRequired();
+                entity.Property(invitation => invitation.Status).HasMaxLength(32).IsRequired();
+                entity.HasIndex(invitation => new { invitation.ProjectId, invitation.UserId, invitation.Status });
+                entity.HasOne(invitation => invitation.Project).WithMany()
+                    .HasForeignKey(invitation => invitation.ProjectId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(invitation => invitation.User).WithMany()
+                    .HasForeignKey(invitation => invitation.UserId)
+                    .OnDelete(DeleteBehavior.NoAction);
+                entity.HasOne(invitation => invitation.InvitedByUser).WithMany()
+                    .HasForeignKey(invitation => invitation.InvitedByUserId)
+                    .OnDelete(DeleteBehavior.NoAction);
             });
 
             modelBuilder.Entity<SystemAuditLog>()
@@ -766,10 +810,71 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<PaymentOrder>().Property(x => x.TransferCode).HasMaxLength(64);
             modelBuilder.Entity<PaymentOrder>().Property(x => x.AmountVnd).HasPrecision(18, 2);
             modelBuilder.Entity<PaymentOrder>().Property(x => x.AdminNote).HasMaxLength(1000);
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.IncludedAiCreditsSnapshot).IsRequired();
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.PlanNameSnapshot).HasMaxLength(128);
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.Currency).HasMaxLength(8).HasDefaultValue("VND");
+            modelBuilder.Entity<PaymentOrder>().Property(x => x.Provider).HasMaxLength(64).HasDefaultValue("manual_bank_transfer");
+            modelBuilder.Entity<PaymentOrder>().HasIndex(x => new { x.UserId, x.PlanCode, x.Status });
+            modelBuilder.Entity<PaymentTransaction>().HasIndex(x => new { x.Provider, x.ProviderTransactionId }).IsUnique();
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.Provider).HasMaxLength(64);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.ProviderTransactionId).HasMaxLength(128);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.Currency).HasMaxLength(8);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.Status).HasMaxLength(32);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.ProviderReference).HasMaxLength(256);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.SubscriptionPeriodStart);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.SubscriptionPeriodEnd);
+            modelBuilder.Entity<PaymentTransaction>().Property(x => x.Amount).HasPrecision(18, 2);
+            modelBuilder.Entity<PaymentTransaction>().HasOne(x => x.PaymentOrder).WithMany(x => x.Transactions).HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PaymentWebhookEvent>().HasIndex(x => new { x.Provider, x.ProviderEventId }).IsUnique();
+            modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.Provider).HasMaxLength(64);
+            modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.ProviderEventId).HasMaxLength(128);
+            modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.EventType).HasMaxLength(64);
+            modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.Status).HasMaxLength(32);
+            modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.RawPayload).HasColumnType("nvarchar(max)");
+            modelBuilder.Entity<PaymentWebhookEvent>().Property(x => x.FailureReason).HasMaxLength(500);
+            modelBuilder.Entity<PaymentWebhookEvent>().HasIndex(x => x.PaymentOrderId);
+            modelBuilder.Entity<PaymentEmailDelivery>().Property(x => x.RecipientEmail).HasMaxLength(320);
+            modelBuilder.Entity<PaymentEmailDelivery>().Property(x => x.Kind).HasMaxLength(64);
+            modelBuilder.Entity<PaymentEmailDelivery>().Property(x => x.Status).HasMaxLength(32);
+            modelBuilder.Entity<PaymentEmailDelivery>().Property(x => x.ProviderMessageId).HasMaxLength(128);
+            modelBuilder.Entity<PaymentEmailDelivery>().Property(x => x.FailureReason).HasMaxLength(500);
+            modelBuilder.Entity<PaymentEmailDelivery>().HasIndex(x => new { x.PaymentOrderId, x.Kind, x.IsAutomatic }).IsUnique().HasFilter("[IsAutomatic] = 1");
+            modelBuilder.Entity<PaymentEmailDelivery>().HasIndex(x => new { x.PaymentOrderId, x.Kind, x.Attempt }).IsUnique();
+            modelBuilder.Entity<PaymentEmailDelivery>().HasOne(x => x.PaymentOrder).WithMany().HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PaymentEmailDelivery>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<AiCreditReservation>().HasIndex(x => x.IdempotencyKey).IsUnique();
+            modelBuilder.Entity<AiCreditReservation>().HasIndex(x => new { x.UserId, x.Status, x.ExpiresAt });
+            modelBuilder.Entity<AiCreditReservation>().Property(x => x.IdempotencyKey).HasMaxLength(200);
+            modelBuilder.Entity<AiCreditReservation>().Property(x => x.Status).HasMaxLength(32);
+            modelBuilder.Entity<AiCreditReservation>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<PaymentOrder>()
                 .HasOne(x => x.User).WithMany(x => x.PaymentOrders).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<PaymentOrder>()
                 .HasOne(x => x.ApprovedByUser).WithMany().HasForeignKey(x => x.ApprovedByUserId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<AiCreditBucket>().HasIndex(x => new { x.UserId, x.ValidFrom, x.ExpiresAt });
+            modelBuilder.Entity<AiCreditBucket>().HasIndex(x => new { x.UserId, x.ExpiresAt, x.CreatedAt });
+            modelBuilder.Entity<AiCreditBucket>().HasIndex(x => x.SourcePaymentOrderId).IsUnique()
+                .HasFilter("[SourcePaymentOrderId] IS NOT NULL");
+            modelBuilder.Entity<AiCreditBucket>().HasIndex(x => new { x.SourceType, x.SourceReference }).IsUnique()
+                .HasFilter("[SourceReference] IS NOT NULL");
+            modelBuilder.Entity<AiCreditBucket>().Property(x => x.PlanCode).HasMaxLength(64);
+            modelBuilder.Entity<AiCreditBucket>().Property(x => x.SourceType).HasMaxLength(32);
+            modelBuilder.Entity<AiCreditBucket>().Property(x => x.SourceReference).HasMaxLength(200);
+            modelBuilder.Entity<AiCreditBucket>().Property(x => x.RowVersion).IsRowVersion();
+            modelBuilder.Entity<AiCreditBucket>().HasOne(x => x.User).WithMany()
+                .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<AiCreditBucket>().HasOne(x => x.SourcePaymentOrder).WithMany(x => x.AiCreditBuckets)
+                .HasForeignKey(x => x.SourcePaymentOrderId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<AiCreditReservation>().HasIndex(x => new { x.UserId, x.IdempotencyKey }).IsUnique();
+            modelBuilder.Entity<AiCreditReservation>().Property(x => x.IdempotencyKey).HasMaxLength(200);
+            modelBuilder.Entity<AiCreditReservation>().Property(x => x.Status).HasMaxLength(32);
+            modelBuilder.Entity<AiCreditReservation>().HasOne(x => x.User).WithMany()
+                .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<AiCreditReservationAllocation>().HasIndex(x => new { x.ReservationId, x.CreditBucketId }).IsUnique();
+            modelBuilder.Entity<AiCreditReservationAllocation>().HasOne(x => x.Reservation).WithMany(x => x.Allocations)
+                .HasForeignKey(x => x.ReservationId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<AiCreditReservationAllocation>().HasOne(x => x.CreditBucket).WithMany(x => x.ReservationAllocations)
+                .HasForeignKey(x => x.CreditBucketId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<AiActionExecution>().HasIndex(x => new { x.UserId, x.IdempotencyKey }).IsUnique();
             modelBuilder.Entity<AiActionExecution>().HasIndex(x => new { x.UserId, x.State, x.UpdatedAt });
             modelBuilder.Entity<AiActionExecution>().Property(x => x.ActionType).HasMaxLength(128);
@@ -779,6 +884,8 @@ namespace TaskManagement.Infrastructure.Data
             modelBuilder.Entity<AiActionExecution>().Property(x => x.ErrorCode).HasMaxLength(64);
             modelBuilder.Entity<AiActionExecution>().Property(x => x.RowVersion).IsRowVersion();
             modelBuilder.Entity<NotificationPreference>().HasIndex(x => new { x.UserId, x.Category }).IsUnique();
+            modelBuilder.Entity<Notification>().Property(x => x.DedupeKey).HasMaxLength(200);
+            modelBuilder.Entity<Notification>().HasIndex(x => x.DedupeKey).IsUnique().HasFilter("[DedupeKey] IS NOT NULL");
             modelBuilder.Entity<NotificationPreference>()
                 .HasOne(x => x.User).WithMany(x => x.NotificationPreferences).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
 
@@ -1275,6 +1382,38 @@ namespace TaskManagement.Infrastructure.Data
                     .WithMany(channel => channel.Messages)
                     .HasForeignKey(message => message.CollaborationChannelId)
                     .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(message => message.ReplyToMessage)
+                    .WithMany(message => message.Replies)
+                    .HasForeignKey(message => message.ReplyToMessageId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasIndex(message => message.ReplyToMessageId);
+            });
+
+            modelBuilder.Entity<CollaborationMessageReaction>(entity =>
+            {
+                entity.Property(reaction => reaction.Emoji).HasMaxLength(32).IsRequired();
+                entity.HasIndex(reaction => new { reaction.ChannelMessageId, reaction.UserId, reaction.Emoji }).IsUnique();
+                entity.HasIndex(reaction => new { reaction.ChannelMessageId, reaction.Emoji });
+                entity.HasOne(reaction => reaction.ChannelMessage)
+                    .WithMany(message => message.Reactions)
+                    .HasForeignKey(reaction => reaction.ChannelMessageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(reaction => reaction.User).WithMany()
+                    .HasForeignKey(reaction => reaction.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<CollaborationMessagePin>(entity =>
+            {
+                entity.HasIndex(pin => pin.ChannelMessageId).IsUnique();
+                entity.HasIndex(pin => new { pin.ChannelMessageId, pin.PinnedAt });
+                entity.HasOne(pin => pin.ChannelMessage)
+                    .WithOne(message => message.Pin)
+                    .HasForeignKey<CollaborationMessagePin>(pin => pin.ChannelMessageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(pin => pin.PinnedByUser).WithMany()
+                    .HasForeignKey(pin => pin.PinnedByUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<ChannelMessageMention>(entity =>
@@ -1321,6 +1460,26 @@ namespace TaskManagement.Infrastructure.Data
                 entity.HasOne(item => item.UploadedByUser).WithMany()
                     .HasForeignKey(item => item.UploadedByUserId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<CallTranscriptChunk>(entity =>
+            {
+                entity.HasKey(chunk => chunk.Id);
+                entity.Property(chunk => chunk.VoiceChannelId).HasMaxLength(200).IsRequired();
+                entity.Property(chunk => chunk.SpeakerDisplayName).HasMaxLength(256).IsRequired();
+                entity.Property(chunk => chunk.Text).HasMaxLength(12000).IsRequired();
+                entity.HasIndex(chunk => new { chunk.ProjectId, chunk.VoiceChannelId, chunk.CallSessionId, chunk.StartedAt });
+                entity.HasIndex(chunk => new { chunk.CallSessionId, chunk.CreatedAt });
+            });
+
+            modelBuilder.Entity<MeetingAiReport>(entity =>
+            {
+                entity.HasKey(report => report.Id);
+                entity.Property(report => report.VoiceChannelId).HasMaxLength(200).IsRequired();
+                entity.Property(report => report.Status).HasMaxLength(32).IsRequired();
+                entity.Property(report => report.StateJson).HasColumnType("nvarchar(max)").IsRequired();
+                entity.HasIndex(report => report.CallSessionId).IsUnique();
+                entity.HasIndex(report => new { report.ProjectId, report.VoiceChannelId, report.UpdatedAt });
             });
 
             modelBuilder.Entity<ChannelMessage>()

@@ -108,7 +108,7 @@
 
         <!-- STEP 2: FINISH SETTING UP ACCOUNT / REGISTERED USERS -->
         <div v-if="step === 2" class="step-container">
-          <h1 class="text-center">{{ invite.isRegistered ? 'Tài khoản đã tồn tại' : 'Hoàn tất thiết lập tài khoản' }}</h1>
+          <h1 class="text-center">{{ invite.requiresAccountSetup ? 'Hoàn tất thiết lập tài khoản' : 'Tài khoản đã tồn tại' }}</h1>
 
           <div class="verified-email">
             <span class="label">Địa chỉ email</span> <i class="fa-solid fa-circle-check text-success"></i>
@@ -116,11 +116,16 @@
             <strong>{{ invite.email }}</strong>
           </div>
 
-          <p v-if="invite.isRegistered" class="subtitle text-center">
+          <p v-if="!invite.requiresAccountSetup" class="subtitle text-center">
             Bạn đã có tài khoản trên hệ thống. Chỉ cần chấp nhận lời mời này để tham gia dự án.
           </p>
 
-          <div v-else class="invite-form">
+          <div v-if="accountMismatch" class="account-mismatch" role="alert">
+            Lời mời này dành cho <strong>{{ invite.email }}</strong>. Bạn đang đăng nhập bằng tài khoản khác.
+            <button type="button" class="secondary-btn" @click="switchAccount">Đăng xuất và chuyển tài khoản</button>
+          </div>
+
+          <div v-else-if="invite.requiresAccountSetup" class="invite-form">
             <div class="field">
               <span class="field-label">Họ và tên *</span>
               <input v-model="form.fullName" type="text" placeholder="Nhập họ tên của bạn" />
@@ -140,11 +145,11 @@
           <button
             type="button"
             class="primary-btn"
-            :disabled="isSubmitting"
+            :disabled="isSubmitting || accountMismatch"
             @click="acceptInvite"
           >
             <i v-if="isSubmitting" class="fa-solid fa-spinner fa-spin"></i>
-            <span>Tiếp tục</span>
+            <span>{{ invite.requiresAccountSetup ? 'Tiếp tục' : 'Chấp nhận lời mời' }}</span>
           </button>
         </div>
       </template>
@@ -157,7 +162,7 @@
   import { useRoute, useRouter } from 'vue-router'
   import { ElMessage } from 'element-plus'
   import axiosClient from '@/api/axiosClient'
-  import { saveAuthSession } from '@/utils/authSession'
+import { clearAuthSession, getStoredAccessToken, getStoredUserSession, saveAuthSession } from '@/utils/authSession'
   import logoImg from '@/assets/logo_QLCV.png'
 
 const route = useRoute()
@@ -169,6 +174,7 @@ const loading = ref(true)
 const error = ref('')
 const success = ref(false)
 const requiresLogin = ref(false)
+const accountMismatch = ref(false)
 const redirectPath = ref('/dashboard')
 const step = ref(0) 
 
@@ -272,6 +278,12 @@ const form = reactive({
   password: ''
 })
 
+const hasMatchingAuthenticatedUser = () => {
+  const session = getStoredUserSession()
+  return Boolean(getStoredAccessToken() && session.email && invite.value.email &&
+    session.email.toLowerCase() === invite.value.email.toLowerCase())
+}
+
 const loadInvite = async () => {
   token.value = String(route.query.token || '')
   if (!token.value) {
@@ -288,11 +300,18 @@ const loadInvite = async () => {
     invite.value = response.data?.data || {}
     form.fullName = invite.value.fullName || ''
     
-    if (!invite.value.isRegistered) {
+    if (invite.value.requiresAccountSetup) {
       await sendOtp()
       step.value = 1
     } else {
       step.value = 2
+      if (getStoredAccessToken()) {
+        if (hasMatchingAuthenticatedUser()) {
+          await acceptInvite()
+        } else {
+          accountMismatch.value = true
+        }
+      }
     }
   } catch (err) {
     error.value = err.response?.data?.message || 'Liên kết mời không tồn tại hoặc đã hết hạn.'
@@ -302,7 +321,15 @@ const loadInvite = async () => {
 }
 
 const acceptInvite = async () => {
-  if (!invite.value.isRegistered) {
+  if (!invite.value.requiresAccountSetup && !getStoredAccessToken()) {
+    router.push({ path: '/login', query: { redirect: route.fullPath } })
+    return
+  }
+  if (!invite.value.requiresAccountSetup && !hasMatchingAuthenticatedUser()) {
+    accountMismatch.value = true
+    return
+  }
+  if (invite.value.requiresAccountSetup) {
     if (!form.fullName || !form.password) {
       ElMessage.warning('Vui lòng nhập đầy đủ thông tin.')
       return
@@ -313,8 +340,8 @@ const acceptInvite = async () => {
   try {
     const payload = {
       token: token.value,
-      fullName: invite.value.isRegistered ? null : form.fullName,
-      password: invite.value.isRegistered ? null : form.password
+      fullName: invite.value.requiresAccountSetup ? form.fullName : null,
+      password: invite.value.requiresAccountSetup ? form.password : null
     }
 
     const response = await axiosClient.post('/auth/accept-invite-token', payload)
@@ -332,6 +359,11 @@ const acceptInvite = async () => {
   } finally {
     isSubmitting.value = false
   }
+}
+
+const switchAccount = () => {
+  clearAuthSession()
+  router.push({ path: '/login', query: { redirect: route.fullPath } })
 }
 
 const continueAfterSuccess = () => {
@@ -486,6 +518,27 @@ h1 {
 .state-block i { color: var(--color-accent); font-size: 48px; margin-bottom: 24px; }
 .state-block i.success { color: #10b981; }
 .state-block i.danger { color: #ef4444; }
+
+.account-mismatch {
+  margin-bottom: 24px;
+  padding: 14px;
+  border: 1px solid #f2b8b5;
+  border-radius: 8px;
+  color: #9f2d28;
+  background: #fff5f4;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.secondary-btn {
+  display: block;
+  margin: 12px auto 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-weight: 700;
+}
 
 @media (max-width: 560px) {
   .invite-card { padding: 32px 24px; }

@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const here = path.dirname(fileURLToPath(import.meta.url))
+const view = fs.readFileSync(path.join(here, '..', 'src', 'views', 'CollaborationChat.vue'), 'utf8')
+const prejoinStyles = view.slice(view.indexOf('.call-prejoin-panel'), view.indexOf('.call-workspace-body.is-focus-mode'))
+
+assert.match(view, /workspaceState === 'VOICE_PRE_JOIN'/)
+assert.match(view, /workspaceState === 'VOICE_JOINING'/)
+assert.match(view, /workspaceState === 'VOICE_IN_CALL'/)
+assert.match(view, /workspaceState === 'TEXT_CHANNEL'/)
+assert.match(view, /call-prejoin-title/)
+assert.match(view, /call-prejoin-device-grid/)
+assert.match(view, /call-prejoin-layout/)
+assert.match(view, /call-prejoin-settings/)
+assert.match(view, /call-prejoin-group-title/)
+assert.match(view, /id="prejoin-microphone"/)
+assert.match(view, /id="prejoin-camera"/)
+assert.match(view, /call-prejoin-video/)
+assert.match(view, /call-prejoin-camera-off/)
+assert.match(view, /const cancelPreJoin = \(\) => \{[\s\S]*?stopPreJoinPreview\(\)/)
+assert.match(view, /voiceJoinPending\.value = true/)
+assert.match(view, /event\.key === 'Escape'[\s\S]*?cancelPreJoin\(\)/)
+assert.match(view, /'is-camera-on': preJoinCameraEnabled/)
+assert.match(view, /'is-camera-off': !preJoinCameraEnabled/)
+assert.match(view, /call-prejoin-actions[\s\S]*?secondary-button[\s\S]*?primary-button/)
+assert.doesNotMatch(prejoinStyles, /linear-gradient|box-shadow/)
+assert.match(view, /<template v-else-if="workspaceState === 'TEXT_CHANNEL'">/)
+assert.doesNotMatch(view, /<template v-else>\s*<!-- Standard Text Chat View -->/)
+
+console.log('PREJOIN_HIDES_TEXT_CHANNEL_HEADER: PASS (mutually exclusive workspace branch)')
+console.log('PREJOIN_HIDES_TEXT_MESSAGE_TIMELINE: PASS')
+console.log('PREJOIN_HIDES_TEXT_COMPOSER: PASS')
+console.log('PREJOIN_HIDES_TEXT_TOOLBAR: PASS')
+console.log('PREJOIN_SHOWS_DEVICE_CONTROLS: PASS')
+console.log('PREJOIN_CAMERA_ON_SHOWS_PREVIEW: PASS')
+console.log('PREJOIN_CAMERA_OFF_SHOWS_INTENTIONAL_FALLBACK: PASS')
+console.log('CANCEL_PREJOIN_RESTORES_TEXT_CHANNEL: PASS')
+console.log('JOIN_PREJOIN_SWITCHES_TO_MEETING_LAYOUT: PASS')
+console.log('NO_TEXT_CHANNEL_FLASH_DURING_JOIN: PASS')

@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.Application.DTOs.Common;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.Application.Common;
+using TaskManagement.Application.Interfaces;
 
 namespace TaskManagement.API.Controllers
 {
@@ -13,10 +15,14 @@ namespace TaskManagement.API.Controllers
     public class UserContextController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IResourceAuthorizationService _authorization;
 
-        public UserContextController(ApplicationDbContext context)
+        public UserContextController(
+            ApplicationDbContext context,
+            IResourceAuthorizationService authorization)
         {
             _context = context;
+            _authorization = authorization;
         }
 
         [HttpGet]
@@ -76,10 +82,14 @@ namespace TaskManagement.API.Controllers
                 })
                 .ToListAsync();
 
-            var workspaceIds = workspaces.Select(item => item.Id).ToList();
-            var projects = await _context.Projects
+            var accessibleProjectIds = await _authorization.GetAccessibleProjectIdsAsync(userId);
+            var projectQuery = _context.Projects
                 .AsNoTracking()
-                .Where(item => workspaceIds.Contains(item.WorkspaceId) && !item.IsDeleted && !item.IsArchived)
+                .Where(item => accessibleProjectIds.Contains(item.Id) &&
+                    !item.IsDeleted &&
+                    !item.IsArchived &&
+                    item.Status);
+            var projects = await projectQuery
                 .OrderBy(item => item.Name)
                 .Select(item => new
                 {

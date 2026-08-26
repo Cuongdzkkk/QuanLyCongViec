@@ -8,8 +8,16 @@ public sealed class AiCreditUsageDto
     public int IncludedCredits { get; set; }
     public int UsedCredits { get; set; }
     public int AdjustmentCredits { get; set; }
+    public int TotalRemainingCredits { get; set; }
     public int RemainingCredits => Math.Max(0, IncludedCredits + AdjustmentCredits - UsedCredits);
-    public bool IsQuotaExceeded => IncludedCredits + AdjustmentCredits > 0 && UsedCredits >= IncludedCredits + AdjustmentCredits;
+    public bool IsQuotaExceeded
+    {
+        get
+        {
+            var entitlement = IncludedCredits + AdjustmentCredits;
+            return entitlement < 0 || (entitlement == 0 && UsedCredits > 0) || (entitlement > 0 && UsedCredits >= entitlement);
+        }
+    }
     public bool HasConfiguredEntitlement { get; set; }
     public long TotalTokens { get; set; }
     public DateTime CurrentPeriodStart { get; set; }

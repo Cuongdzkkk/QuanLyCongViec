@@ -63,11 +63,6 @@ namespace TaskManagement.Infrastructure.Services
                 return new(false, FailureReason: "Project does not exist in an active workspace.");
             }
 
-            if (ProjectAccessPolicy.IsUnrestricted)
-            {
-                return new(true, "Admin", "Admin");
-            }
-
             var workspaceMembership = await _dbContext.WorkspaceMembers
                 .AsNoTracking()
                 .Where(member =>
@@ -81,6 +76,19 @@ namespace TaskManagement.Infrastructure.Services
             if (string.IsNullOrWhiteSpace(workspaceMembership))
             {
                 return new(false, FailureReason: "Active workspace membership is required.");
+            }
+
+            if (ProjectAccessPolicy.IsUnrestricted)
+            {
+                var fallbackProjectRole = ResourcePermissionPolicy.NormalizeWorkspaceRole(workspaceMembership) is "owner" or "admin"
+                    ? "admin"
+                    : "developer";
+                if (!ResourcePermissionPolicy.ProjectRoleHasPermission(fallbackProjectRole, permissionCode))
+                {
+                    return new(false, workspaceMembership, fallbackProjectRole, "Workspace permission is required.");
+                }
+
+                return new(true, workspaceMembership, fallbackProjectRole);
             }
 
             var membership = await _dbContext.ProjectMembers
@@ -106,6 +114,31 @@ namespace TaskManagement.Infrastructure.Services
             }
 
             return new(true, workspaceMembership, membership);
+        }
+
+        public async Task<List<Guid>> GetAccessibleProjectIdsAsync(
+            Guid userId,
+            bool includeArchived = false,
+            bool includeDeleted = false)
+        {
+            var query = _dbContext.Projects
+                .AsNoTracking()
+                .Where(project =>
+                    project.Workspace.Members.Any(member =>
+                        member.UserId == userId &&
+                        member.IsActive) &&
+                    (includeDeleted || !project.IsDeleted) &&
+                    (includeArchived || !project.IsArchived));
+
+            if (ProjectAccessPolicy.RestrictionsEnabled)
+            {
+                query = query.Where(project =>
+                    project.ProjectMembers.Any(member =>
+                        member.UserId == userId &&
+                        member.Status));
+            }
+
+            return await query.Select(project => project.Id).ToListAsync();
         }
     }
 }

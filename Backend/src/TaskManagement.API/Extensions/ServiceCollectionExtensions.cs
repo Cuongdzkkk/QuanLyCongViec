@@ -10,6 +10,7 @@ using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.AI;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Infrastructure.Services;
+using TaskManagement.Infrastructure.Payments;
 
 namespace TaskManagement.API.Extensions
 {
@@ -36,7 +37,9 @@ namespace TaskManagement.API.Extensions
             });
             services.AddScoped<IAiCreditUsageService, AiCreditUsageService>();
             services.AddScoped<IBillingService, BillingService>();
+            services.AddScoped<IPaymentProvider, SePayPaymentProvider>();
             services.AddScoped<IAiIntegrationService, AiIntegrationService>();
+            services.AddScoped<IAiChannelAnalysisService, AiChannelAnalysisService>();
             services.AddHttpClient<IAiService, GeminiAiService>(client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Gemini:TimeoutSeconds", 30), 5, 120));
@@ -50,13 +53,31 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<IDirectConversationService, DirectConversationService>();
             services.AddScoped<ICollaborationReadStateService, CollaborationReadStateService>();
             services.AddScoped<ICollaborationRealtimeAuthorizationService, CollaborationRealtimeAuthorizationService>();
+            services.AddScoped<ICallRoomAuthorizationService, CallRoomAuthorizationService>();
+            services.AddScoped<ICallChatService, CallChatService>();
+            services.AddSingleton<ICallRoomRegistry, TaskManagement.API.Services.CallRoomRegistry>();
+            services.AddScoped<ICallTranscriptService, CallTranscriptService>();
+            var callTranscriptionOptions = configuration
+                .GetSection(CallTranscriptionOptions.SectionName)
+                .Get<CallTranscriptionOptions>() ?? new CallTranscriptionOptions();
+            services.AddSingleton<ICallTranscriptionUsageSink, CallTranscriptionUsageSink>();
+            services.AddSingleton<ICallTranscriptionProvider>(_ => callTranscriptionOptions.IsConfigured
+                ? new DeepgramCallTranscriptionProvider(callTranscriptionOptions, _.GetRequiredService<ICallTranscriptionUsageSink>())
+                : new UnavailableCallTranscriptionProvider());
+            services.AddSingleton<IMeetingAiAnalysisService, MeetingAiAnalysisService>();
             services.AddSingleton<ICollaborationRealtimePublisher, TaskManagement.API.Services.ChatRealtimePublisher>();
             services.AddScoped<TaskManagement.API.Services.ICollaborationAttachmentStorage, TaskManagement.API.Services.CollaborationAttachmentStorage>();
             services.AddScoped<ITaskDependencyService, TaskDependencyService>();
             
             services.AddMemoryCache();
             services.AddHttpContextAccessor();
+            services.AddHttpClient("GoogleCalendar", client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("IntegrationOAuth:GoogleCalendar:TimeoutSeconds", 30), 5, 120));
+            });
             services.AddHttpClient();
+            services.AddSingleton<IOAuthStateStore, OAuthStateStore>();
+            services.AddScoped<IGoogleCalendarIntegrationService, GoogleCalendarIntegrationService>();
 
             // Cấu hình JWT Authentication
             var jwtConfig = configuration.GetSection("Jwt");
@@ -88,7 +109,9 @@ namespace TaskManagement.API.Extensions
                     {
                         var requestPath = context.HttpContext.Request.Path;
                         if ((requestPath.StartsWithSegments(TaskManagement.API.Hubs.ChatHub.Route) ||
-                                requestPath.StartsWithSegments(TaskManagement.API.Hubs.KanbanHub.Route)) &&
+                                requestPath.StartsWithSegments(TaskManagement.API.Hubs.KanbanHub.Route) ||
+                                requestPath.StartsWithSegments(TaskManagement.API.Hubs.NotificationHub.Route) ||
+                                requestPath.StartsWithSegments(TaskManagement.API.Hubs.CallHub.Route)) &&
                             context.Request.Query.TryGetValue("access_token", out var accessToken) &&
                             !string.IsNullOrWhiteSpace(accessToken))
                         {

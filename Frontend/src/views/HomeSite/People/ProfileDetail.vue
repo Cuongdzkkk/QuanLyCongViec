@@ -428,6 +428,7 @@ const router = useRouter()
 const peopleStore = usePeopleStore()
 const goalStore = useGoalStore()
 const projectStore = useProjectStore()
+const profileUserId = computed(() => String(route.params.profileId || route.params.id || '').trim())
 
 
 const editingBio = ref(false)
@@ -442,7 +443,7 @@ const saveBio = async () => {
   try {
     await peopleStore.updateProfile({ bio: tempBio.value })
     editingBio.value = false
-    await peopleStore.fetchProfileDetail(route.params.id)
+    await peopleStore.fetchProfileDetail(profileUserId.value)
   } catch(e) { console.error('Save bio failed', e) }
 }
 
@@ -458,7 +459,7 @@ const saveHobbies = async () => {
   try {
     await peopleStore.updateProfile({ hobbies: tempHobbies.value })
     editingHobbies.value = false
-    await peopleStore.fetchProfileDetail(route.params.id)
+    await peopleStore.fetchProfileDetail(profileUserId.value)
   } catch(e) { console.error('Save hobbies failed', e) }
 }
 
@@ -492,13 +493,12 @@ const history = computed(() => peopleStore.history)
 
 const isInactive = computed(() => user.value?.status === 'Inactive')
 
-const userGoals = computed(() => goalStore.goals.filter(g => g.ownerId === user.value.id || g.owner === user.value.fullName))
-const userProjects = computed(() => projectStore.projects.filter(p => p.ownerId === user.value.id || p.owner === user.value.fullName))
-
 onMounted(async () => {
   goalStore.fetchGoals();
   projectStore.fetchProjects();
-  await peopleStore.fetchProfileDetail(route.params.id)
+  if (profileUserId.value) {
+    await peopleStore.fetchProfileDetail(profileUserId.value)
+  }
   document.addEventListener('click', closeMenuOnOutsideClick)
 })
 
@@ -584,7 +584,7 @@ const saveProfile = async () => {
     }
     await peopleStore.updateProfile(payload)
     isEditModalOpen.value = false
-    await peopleStore.fetchProfileDetail(route.params.id) // reload
+    await peopleStore.fetchProfileDetail(profileUserId.value) // reload
   } catch (err) {
     editError.value = err.response?.data?.message || err.message || 'Failed to update profile'
   } finally {

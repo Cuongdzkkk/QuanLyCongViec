@@ -93,13 +93,13 @@ public sealed class ChannelMessagesController : ControllerBase
         if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
         try
         {
-            var sendResult = request.Mentions.Count == 0
+            var sendResult = request.Mentions.Count == 0 && !request.ReplyToMessageId.HasValue
                 ? new SendChannelMessageResult(
                     await _channelTextService.SendAsync(
                         channelId, userId, request.Content, cancellationToken),
                     [])
                 : await _channelTextService.SendWithMentionsAsync(
-                    channelId, userId, request.Content, request.Mentions, [], cancellationToken);
+                    channelId, userId, request.Content, request.Mentions, [], cancellationToken, request.ReplyToMessageId);
             await PublishCreatedAsync(sendResult, cancellationToken);
             return StatusCode(
                 StatusCodes.Status201Created,
@@ -145,13 +145,13 @@ public sealed class ChannelMessagesController : ControllerBase
             foreach (var file in request.Files)
                 validated.Add(await UploadSecurity.ReadCollaborationFileAsync(file, cancellationToken));
             stored = await _attachmentStorage.StoreAsync(validated, cancellationToken);
-            var sendResult = request.Mentions.Count == 0
+            var sendResult = request.Mentions.Count == 0 && !request.ReplyToMessageId.HasValue
                 ? new SendChannelMessageResult(
                     await _channelTextService.SendWithAttachmentsAsync(
                         channelId, userId, request.Content, stored, cancellationToken),
                     [])
                 : await _channelTextService.SendWithMentionsAsync(
-                    channelId, userId, request.Content, request.Mentions, stored, cancellationToken);
+                    channelId, userId, request.Content, request.Mentions, stored, cancellationToken, request.ReplyToMessageId);
             persisted = true;
             await PublishCreatedAsync(sendResult, cancellationToken);
             return StatusCode(
@@ -187,6 +187,142 @@ public sealed class ChannelMessagesController : ControllerBase
         {
             if (!persisted) _attachmentStorage.Delete(stored);
             return StatusCode(500, ApiResponse<object>.Error("The attachment message could not be stored.", 500));
+        }
+    }
+
+    [HttpGet("search")]
+    public async Task<IActionResult> Search(
+        Guid channelId,
+        [FromQuery] string query,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        try
+        {
+            var result = await _channelTextService.SearchAsync(
+                channelId, userId, query, page, pageSize, cancellationToken);
+            return Ok(ApiResponse<ChannelMessagePageDto>.Success(result));
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(ApiResponse<object>.Error(exception.Message));
+        }
+        catch (ChannelNotFoundException exception)
+        {
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+    }
+
+    [HttpPost("{messageId:guid}/reactions")]
+    public async Task<IActionResult> AddReaction(
+        Guid channelId,
+        Guid messageId,
+        [FromBody] ChannelMessageReactionRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        try
+        {
+            var result = await _channelTextService.AddReactionAsync(
+                channelId, messageId, userId, request.Emoji, cancellationToken);
+            await _realtimePublisher.PublishChannelReactionChangedAsync(result, cancellationToken);
+            return Ok(ApiResponse<ChannelMessageReactionChangeDto>.Success(result));
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(ApiResponse<object>.Error(exception.Message));
+        }
+        catch (ChannelNotFoundException exception)
+        {
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+    }
+
+    [HttpDelete("{messageId:guid}/reactions")]
+    public async Task<IActionResult> RemoveReaction(
+        Guid channelId,
+        Guid messageId,
+        [FromQuery] string emoji,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        try
+        {
+            var result = await _channelTextService.RemoveReactionAsync(
+                channelId, messageId, userId, emoji, cancellationToken);
+            await _realtimePublisher.PublishChannelReactionChangedAsync(result, cancellationToken);
+            return Ok(ApiResponse<ChannelMessageReactionChangeDto>.Success(result));
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(ApiResponse<object>.Error(exception.Message));
+        }
+        catch (ChannelNotFoundException exception)
+        {
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+    }
+
+    [HttpGet("/api/channels/{channelId:guid}/pins")]
+    public async Task<IActionResult> GetPins(Guid channelId, CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        try
+        {
+            var result = await _channelTextService.GetPinsAsync(channelId, userId, cancellationToken);
+            return Ok(ApiResponse<IReadOnlyList<ChannelPinnedMessageDto>>.Success(result));
+        }
+        catch (ChannelNotFoundException exception)
+        {
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+    }
+
+    [HttpPost("/api/channels/{channelId:guid}/messages/{messageId:guid}/pin")]
+    public async Task<IActionResult> Pin(
+        Guid channelId,
+        Guid messageId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        try
+        {
+            var result = await _channelTextService.PinAsync(channelId, messageId, userId, cancellationToken);
+            await _realtimePublisher.PublishChannelPinChangedAsync(result, cancellationToken);
+            return Ok(ApiResponse<ChannelMessagePinChangeDto>.Success(result));
+        }
+        catch (ChannelManageForbiddenException exception)
+        {
+            return StatusCode(403, ApiResponse<object>.Error(exception.Message, 403));
+        }
+        catch (ChannelNotFoundException exception)
+        {
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
+        }
+    }
+
+    [HttpDelete("/api/channels/{channelId:guid}/messages/{messageId:guid}/pin")]
+    public async Task<IActionResult> Unpin(
+        Guid channelId,
+        Guid messageId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetCurrentUserId(out var userId)) return Unauthorized();
+        try
+        {
+            var result = await _channelTextService.UnpinAsync(channelId, messageId, userId, cancellationToken);
+            await _realtimePublisher.PublishChannelPinChangedAsync(result, cancellationToken);
+            return Ok(ApiResponse<ChannelMessagePinChangeDto>.Success(result));
+        }
+        catch (ChannelManageForbiddenException exception)
+        {
+            return StatusCode(403, ApiResponse<object>.Error(exception.Message, 403));
+        }
+        catch (ChannelNotFoundException exception)
+        {
+            return NotFound(ApiResponse<object>.Error(exception.Message, 404));
         }
     }
 
@@ -243,4 +379,5 @@ public sealed class CollaborationMessageForm
     public string? Content { get; set; }
     public List<IFormFile> Files { get; set; } = [];
     public List<ChannelMessageMentionRequestDto> Mentions { get; set; } = [];
+    public Guid? ReplyToMessageId { get; set; }
 }

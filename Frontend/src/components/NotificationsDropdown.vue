@@ -23,6 +23,12 @@
             <p>Loading notifications...</p>
           </div>
 
+          <div v-else-if="errorMessage" class="notif-empty-state notif-error-state">
+            <div class="empty-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <p>{{ errorMessage }}</p>
+            <el-button type="primary" link size="small" @click="retryNotifications">Thử lại</el-button>
+          </div>
+
           <div v-else-if="filteredNotifications.length === 0" class="notif-empty-state">
             <div class="empty-icon"><i class="fa-solid fa-flag"></i></div>
             <p>Không có thông báo phù hợp trong 30 ngày gần đây.</p>
@@ -34,8 +40,7 @@
               :key="notification.id"
               class="notif-item-wrapper"
             >
-              <button
-                type="button"
+              <div
                 class="notif-item"
                 :class="{ unread: !notification.isRead }"
                 @click="openNotification(notification)"
@@ -52,18 +57,29 @@
                     <span class="notif-title-badge">{{ notification.title }}</span>
                     <span class="time-ago">{{ formatTimeAgo(notification.createdAt) }}</span>
                   </div>
+                  <div
+                    v-if="isPendingInvitation(notification)"
+                    class="invitation-actions"
+                    @click.stop
+                  >
+                    <el-button type="primary" size="small" :loading="invitationActionId === notification.id" @click="acceptInvitation(notification)">Chấp nhận</el-button>
+                    <el-button size="small" :loading="invitationActionId === notification.id" @click="declineInvitation(notification)">Từ chối</el-button>
+                  </div>
+                  <div v-else-if="isResolvedInvitation(notification)" class="invitation-resolved">
+                    {{ notification.actionState === 'Accepted' ? 'Bạn đã tham gia dự án này.' : 'Bạn đã từ chối lời mời tham gia dự án này.' }}
+                  </div>
                 </div>
                 <div v-if="!notification.isRead" class="unread-dot-box" @click.stop="markAsRead(notification)">
                   <div class="unread-dot"></div>
                   <div class="mark-read-hint">Đánh dấu đã đọc</div>
                 </div>
-              </button>
+              </div>
             </div>
           </div>
         </div>
 
         <div class="notif-footer">
-          <el-button type="primary" link size="small" @click="router.push('/notifications')">Xem tất cả thông báo</el-button>
+          <el-button type="primary" link size="small" @click="router.push('/home/notifications')">Xem tất cả thông báo</el-button>
         </div>
       </div>
     </template>
@@ -81,7 +97,13 @@ import { isExpectedNetworkError } from '@/utils/errorTelemetry'
 import { getStoredAccessToken } from '@/utils/authSession'
 import { useAuthStore } from '@/store/useAuthStore'
 import { collaborationRealtime } from '@/services/collaborationRealtime'
-import { buildSpacePath } from '@/utils/spaceRoute'
+import { configureRealtimeHub } from '@/services/realtimeHubConfig'
+import {
+  isPendingInvitation,
+  isResolvedInvitation,
+  navigateNotification,
+  normalizeNotification
+} from '@/utils/notificationNavigation'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -95,17 +117,16 @@ let unsubscribeCollaborationMention = null
 let unsubscribeCollaborationReconnect = null
 let notificationRequestId = 0
 let notificationAbortController = null
+let notificationStartPromise = null
+let notificationLifecycle = 0
 
-const unreadCount = computed(() => notifications.value.filter(item => !item.isRead).length)
+const unreadCount = ref(0)
+const invitationActionId = ref(null)
+const errorMessage = ref('')
 const filteredNotifications = computed(() => {
   if (onlyUnread.value) return notifications.value.filter(item => !item.isRead)
   return notifications.value
 })
-
-const getInitials = (name) => {
-  if (!name) return '?'
-  return name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase()
-}
 
 const formatTimeAgo = (dateStr) => {
   if (!dateStr || dateStr.startsWith('0001-01-01')) return 'Vừa xong'
@@ -142,16 +163,12 @@ const getTypeClass = (type) => {
   }
 }
 
-const normalizeLink = (notification) => {
-  if (notification.linkUrl?.startsWith('/chat')) return notification.linkUrl
-  if (notification.linkUrl?.startsWith('/space/')) return notification.linkUrl
-  if (notification.relatedProjectId && notification.relatedTaskId) return `${buildSpacePath(notification.relatedProjectId, 'work-items')}?task=${notification.relatedTaskId}`
-  if (notification.relatedProjectId) return buildSpacePath(notification.relatedProjectId, 'work-items')
-  if (notification.linkUrl?.startsWith('/projects/')) {
-    const parts = notification.linkUrl.split('/').filter(Boolean)
-    if (parts[1]) return buildSpacePath(parts[1], 'work-items')
-  }
-  return notification.linkUrl || null
+const notificationRows = (payload) => {
+  const data = payload?.data
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(payload)) return payload
+  return []
 }
 
 const fetchNotifications = async () => {
@@ -160,6 +177,7 @@ const fetchNotifications = async () => {
   notificationAbortController = controller
   const requestId = ++notificationRequestId
   const requestToken = authStore.token
+  errorMessage.value = ''
   loading.value = true
   try {
     const response = await axiosClient.get('/notifications', {
@@ -167,12 +185,9 @@ const fetchNotifications = async () => {
       signal: controller.signal
     })
     if (requestId !== notificationRequestId || authStore.token !== requestToken) return
-    notifications.value = (response.data?.data || []).map(item => ({
-      ...item,
-      linkUrl: normalizeLink(item)
-    }))
+    notifications.value = notificationRows(response.data).map(normalizeNotification)
   } catch (error) {
-    if (error?.code !== 'ERR_CANCELED') ElMessage.error('Could not load notifications')
+    if (error?.code !== 'ERR_CANCELED') errorMessage.value = 'Không thể tải thông báo. Vui lòng thử lại.'
   } finally {
     if (requestId === notificationRequestId) {
       loading.value = false
@@ -181,13 +196,29 @@ const fetchNotifications = async () => {
   }
 }
 
+const retryNotifications = () => {
+  void fetchNotifications()
+  void fetchUnreadCount()
+}
+
+const fetchUnreadCount = async () => {
+  try {
+    const response = await axiosClient.get('/notifications/unread-count')
+    unreadCount.value = Number(response.data?.data ?? 0)
+  } catch (error) {
+    if (!isExpectedNetworkError(error)) ElMessage.error('Could not load unread notification count')
+  }
+}
+
 const markAsRead = async (notification) => {
   if (notification.isRead) return
   try {
     notification.isRead = true
     await axiosClient.put(`/notifications/${notification.id}/read`)
+    await fetchUnreadCount()
   } catch (error) {
     notification.isRead = false
+    await fetchUnreadCount()
     ElMessage.error('Could not update notification')
   }
 }
@@ -197,7 +228,14 @@ const openNotification = async (notification) => {
     if (!notification.isRead) {
       await markAsRead(notification)
     }
-    if (notification.linkUrl) router.push(notification.linkUrl)
+    await navigateNotification(router, notification, {
+      fetchProject: async projectId => {
+        const response = await axiosClient.get(`/projects/${projectId}`)
+        return response.data?.data || response.data
+      },
+      onDenied: () => ElMessage.warning('Bạn không còn quyền truy cập dự án này.'),
+      onInvalid: () => ElMessage.info('Thông báo này không còn liên kết hợp lệ.')
+    })
   } catch (error) {
     // Error handled in markAsRead
   }
@@ -207,46 +245,126 @@ const markAllAsRead = async () => {
   try {
     await axiosClient.put('/notifications/read-all')
     notifications.value = notifications.value.map(item => ({ ...item, isRead: true }))
+    unreadCount.value = 0
   } catch (error) {
     ElMessage.error('Could not mark all notifications as read')
   }
 }
 
 const handleDropdownOpen = (visible) => {
-  if (visible) fetchNotifications()
+  if (visible) {
+    void fetchNotifications()
+    void fetchUnreadCount()
+  }
 }
 
-const initSignalR = () => {
-    const token = getStoredAccessToken() || localStorage.getItem('token')
+const acceptInvitation = async (notification) => {
+  if (!isPendingInvitation(notification) || invitationActionId.value) return
+  invitationActionId.value = notification.id
+  try {
+    await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/accept`)
+    notification.actionState = 'Accepted'
+    notification.isRead = true
+    await fetchUnreadCount()
+    await navigateNotification(router, notification, {
+      fetchProject: async projectId => {
+        const projectResponse = await axiosClient.get(`/projects/${projectId}`)
+        return projectResponse.data?.data || projectResponse.data
+      },
+      onDenied: () => ElMessage.warning('Bạn không còn quyền truy cập dự án này.'),
+      onInvalid: () => ElMessage.info('Lời mời đã được xử lý.')
+    })
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Không thể chấp nhận lời mời.')
+  } finally {
+    invitationActionId.value = null
+  }
+}
+
+const declineInvitation = async (notification) => {
+  if (!isPendingInvitation(notification) || invitationActionId.value) return
+  invitationActionId.value = notification.id
+  try {
+    await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/decline`)
+    notification.actionState = 'Declined'
+    notification.isRead = true
+    await fetchUnreadCount()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Không thể từ chối lời mời.')
+  } finally {
+    invitationActionId.value = null
+  }
+}
+
+const initSignalR = async () => {
+  const token = getStoredAccessToken()
   if (!token) return
+  if ([signalR.HubConnectionState.Connected, signalR.HubConnectionState.Connecting, signalR.HubConnectionState.Reconnecting]
+    .includes(connection.value?.state)) return notificationStartPromise
+  if (notificationStartPromise) return notificationStartPromise
+  const lifecycle = ++notificationLifecycle
+  const previousConnection = connection.value
+  connection.value = null
+  if (previousConnection) await previousConnection.stop().catch(() => {})
 
   const hubUrl = new URL(apiBaseUrl, window.location.origin)
   hubUrl.pathname = '/notification-hub'
   hubUrl.search = ''
   hubUrl.hash = ''
 
-  connection.value = new signalR.HubConnectionBuilder()
+  const nextConnection = configureRealtimeHub(new signalR.HubConnectionBuilder())
     .withUrl(hubUrl.toString(), {
         accessTokenFactory: () => getStoredAccessToken() || token
     })
-    .withAutomaticReconnect()
     .configureLogging(signalR.LogLevel.None)
     .build()
+  connection.value = nextConnection
 
-  connection.value.on('ReceiveNotification', (notification) => {
-    if (notifications.value.some(item => item.id === notification.id)) return
-    notifications.value.unshift({
+  nextConnection.on('ReceiveNotification', (notification) => {
+    const normalized = {
       ...notification,
       isRead: false,
-      linkUrl: normalizeLink(notification)
-    })
-  })
-
-  connection.value.start().catch((error) => {
-    if (!isExpectedNetworkError(error)) {
-      console.error('Notification hub connection failed:', error)
+      linkUrl: normalizeNotification(notification).linkUrl
+    }
+    const index = notifications.value.findIndex(item => item.id === normalized.id)
+    if (index >= 0) {
+      notifications.value[index] = { ...notifications.value[index], ...normalized }
+    } else {
+      notifications.value.unshift(normalized)
+      unreadCount.value += 1
     }
   })
+
+  nextConnection.on('NotificationUpdated', (notification) => {
+    const index = notifications.value.findIndex(item => item.id === notification.id)
+    if (index >= 0) notifications.value[index] = { ...notifications.value[index], ...notification }
+    else void fetchNotifications()
+    void fetchUnreadCount()
+  })
+
+  nextConnection.onreconnected(async () => {
+    if (lifecycle !== notificationLifecycle || connection.value !== nextConnection) return
+    try {
+      await connection.value.invoke('JoinUserChannel')
+    } catch (error) {
+      if (!isExpectedNetworkError(error)) console.error('Notification channel join failed:', error)
+    }
+    await fetchUnreadCount()
+    await fetchNotifications()
+  })
+
+  notificationStartPromise = nextConnection.start()
+    .then(() => nextConnection.invoke('JoinUserChannel'))
+    .catch((error) => {
+      if (!isExpectedNetworkError(error)) {
+        console.error('Notification hub connection failed:', error)
+      }
+      if (connection.value === nextConnection) connection.value = null
+    })
+    .finally(() => {
+      if (lifecycle === notificationLifecycle) notificationStartPromise = null
+    })
+  return notificationStartPromise
 }
 
 let notificationRefreshTimer = null
@@ -258,6 +376,7 @@ const handleNotificationEntityChanged = (event) => {
 
 watch(onlyUnread, () => {
   fetchNotifications()
+  fetchUnreadCount()
 })
 
 watch(() => authStore.token, (token, previousToken) => {
@@ -265,13 +384,14 @@ watch(() => authStore.token, (token, previousToken) => {
   notificationAbortController?.abort()
   notificationRequestId += 1
   notifications.value = []
-  if (connection.value) {
-    void connection.value.stop()
-    connection.value = null
-  }
+  ++notificationLifecycle
+  const previousConnection = connection.value
+  connection.value = null
+  notificationStartPromise = null
+  if (previousConnection) void previousConnection.stop()
   if (token) {
     void fetchNotifications()
-    initSignalR()
+    void initSignalR()
   }
 })
 
@@ -280,6 +400,7 @@ const handleNotificationReset = () => {
   notificationAbortController?.abort()
   notificationRequestId += 1
   notifications.value = []
+  errorMessage.value = ''
 }
 const handlePrivateMention = (notification) => {
   if (!notification?.notificationId || collaborationMentionIds.has(notification.notificationId)) return
@@ -390,6 +511,18 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
+}
+
+.invitation-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.invitation-resolved {
+  margin-top: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .notif-item:hover {
