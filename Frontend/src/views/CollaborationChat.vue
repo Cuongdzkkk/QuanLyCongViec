@@ -221,29 +221,39 @@
 
     <!-- Active Chat Area -->
     <div class="chat-main">
-      <section v-if="workspaceState === 'VOICE_PRE_JOIN'" class="call-prejoin-panel" aria-labelledby="call-prejoin-title">
+      <section v-if="workspaceState === 'VOICE_PRE_JOIN'" class="call-prejoin-panel" :class="{ 'is-camera-on': preJoinCameraEnabled, 'is-camera-off': !preJoinCameraEnabled }" aria-labelledby="call-prejoin-title">
         <div class="call-prejoin-copy">
           <span class="context-kicker">PRE-JOIN</span>
           <h2 id="call-prejoin-title">Tham gia {{ preJoinVoiceChannel.name }}</h2>
           <p>Kiểm tra thiết bị trước khi vào phòng. Bạn có thể tham gia khi tắt microphone và camera.</p>
         </div>
-        <div class="call-prejoin-preview" :class="{ 'is-camera-off': !preJoinCameraEnabled }" aria-live="polite">
-          <video v-if="preJoinCameraEnabled" ref="preJoinVideo" class="call-prejoin-video" autoplay muted playsinline aria-label="Xem trước camera"></video>
-          <div v-else class="call-prejoin-camera-off" aria-label="Camera đang tắt">
-            <el-avatar :size="72" :src="currentUser.avatar">{{ currentUser.name?.charAt(0) || '?' }}</el-avatar>
-            <strong>Camera đang tắt</strong>
-            <span>Bạn có thể bật camera trước khi tham gia.</span>
+        <div class="call-prejoin-layout">
+          <div class="call-prejoin-preview" aria-live="polite">
+            <video v-if="preJoinCameraEnabled" ref="preJoinVideo" class="call-prejoin-video" autoplay muted playsinline aria-label="Xem trước camera"></video>
+            <div v-else class="call-prejoin-camera-off" aria-label="Camera đang tắt">
+              <el-avatar :size="64" :src="currentUser.avatar">{{ currentUser.name?.charAt(0) || '?' }}</el-avatar>
+              <strong>Camera đang tắt</strong>
+              <span>Bạn có thể bật camera trước khi tham gia.</span>
+            </div>
+          </div>
+          <div class="call-prejoin-settings">
+            <div class="call-prejoin-group">
+              <span class="call-prejoin-group-title">Thiết bị trong cuộc gọi</span>
+              <div class="call-prejoin-controls">
+                <button type="button" class="call-prejoin-toggle" :class="{ active: preJoinMicEnabled }" @click="preJoinMicEnabled = !preJoinMicEnabled"><i :class="preJoinMicEnabled ? 'fa-solid fa-microphone' : 'fa-solid fa-microphone-slash'" aria-hidden="true"></i>{{ preJoinMicEnabled ? 'Microphone bật' : 'Microphone tắt' }}</button>
+                <button type="button" class="call-prejoin-toggle" :class="{ active: preJoinCameraEnabled }" @click="togglePreJoinCamera"><i :class="preJoinCameraEnabled ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'" aria-hidden="true"></i>{{ preJoinCameraEnabled ? 'Camera bật' : 'Camera tắt' }}</button>
+              </div>
+            </div>
+            <div class="call-prejoin-group">
+              <span class="call-prejoin-group-title">Chọn thiết bị</span>
+              <div class="call-prejoin-device-grid">
+                <label for="prejoin-microphone">Microphone<select id="prejoin-microphone" v-model="preJoinMicrophoneId"><option value="">Thiết bị mặc định</option><option v-for="device in audioInputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Microphone' }}</option></select></label>
+                <label for="prejoin-camera">Camera<select id="prejoin-camera" v-model="preJoinCameraId" @change="switchPreJoinCamera"><option value="">Thiết bị mặc định</option><option v-for="device in videoInputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Camera' }}</option></select></label>
+              </div>
+            </div>
+            <div class="call-prejoin-actions"><button type="button" class="secondary-button" @click="cancelPreJoin">Hủy</button><button type="button" class="primary-button" :disabled="voiceJoinPending" @click="confirmJoinVoiceChannel">Tham gia</button></div>
           </div>
         </div>
-        <div class="call-prejoin-controls">
-          <button type="button" class="call-prejoin-toggle" :class="{ active: preJoinMicEnabled }" @click="preJoinMicEnabled = !preJoinMicEnabled"><i :class="preJoinMicEnabled ? 'fa-solid fa-microphone' : 'fa-solid fa-microphone-slash'"></i>{{ preJoinMicEnabled ? 'Microphone bật' : 'Microphone tắt' }}</button>
-          <button type="button" class="call-prejoin-toggle" :class="{ active: preJoinCameraEnabled }" @click="togglePreJoinCamera"><i :class="preJoinCameraEnabled ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'"></i>{{ preJoinCameraEnabled ? 'Camera bật' : 'Camera tắt' }}</button>
-        </div>
-        <div class="call-prejoin-device-grid">
-          <label for="prejoin-microphone">Microphone<select id="prejoin-microphone" v-model="preJoinMicrophoneId"><option value="">Thiết bị mặc định</option><option v-for="device in audioInputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Microphone' }}</option></select></label>
-          <label for="prejoin-camera">Camera<select id="prejoin-camera" v-model="preJoinCameraId" @change="switchPreJoinCamera"><option value="">Thiết bị mặc định</option><option v-for="device in videoInputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Camera' }}</option></select></label>
-        </div>
-        <div class="call-prejoin-actions"><button type="button" class="secondary-button" @click="cancelPreJoin">Hủy</button><button type="button" class="primary-button" :disabled="voiceJoinPending" @click="confirmJoinVoiceChannel">Tham gia</button></div>
       </section>
 
       <section v-else-if="workspaceState === 'VOICE_JOINING'" class="call-prejoin-panel call-prejoin-joining" aria-live="polite" aria-labelledby="call-joining-title">
@@ -5848,13 +5858,12 @@ const fetchProjectMembers = async () => {
 
 .call-prejoin-panel {
   display: grid;
-  gap: 18px;
-  width: min(100% - 32px, 780px);
-  max-width: 780px;
-  min-height: min(620px, calc(100% - 32px));
+  gap: 24px;
+  width: min(calc(100% - 40px), 820px);
+  max-width: 820px;
   box-sizing: border-box;
   margin: auto;
-  padding: clamp(20px, 4vw, 36px);
+  padding: clamp(22px, 3vw, 34px);
   color: #e2e8f0;
   background: #111827;
   border: 1px solid #334155;
@@ -5862,8 +5871,9 @@ const fetchProjectMembers = async () => {
 }
 
 .call-prejoin-copy h2 {
-  margin: 6px 0 8px;
-  font-size: clamp(22px, 4vw, 32px);
+  margin: 7px 0 8px;
+  font-size: clamp(22px, 3vw, 30px);
+  letter-spacing: -.02em;
 }
 
 .call-prejoin-copy p {
@@ -5872,22 +5882,37 @@ const fetchProjectMembers = async () => {
   line-height: 1.5;
 }
 
+.call-prejoin-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(250px, .85fr);
+  align-items: stretch;
+  gap: clamp(22px, 4vw, 38px);
+}
+
+.call-prejoin-panel.is-camera-off .call-prejoin-layout {
+  grid-template-columns: minmax(200px, .78fr) minmax(250px, 1fr);
+}
+
 .call-prejoin-preview {
   display: grid;
   place-items: center;
   width: 100%;
-  min-height: 240px;
-  aspect-ratio: 16 / 9;
+  min-height: 230px;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
   background: #020617;
   border: 1px solid #475569;
-  border-radius: 10px;
+  border-radius: 9px;
+}
+
+.call-prejoin-panel.is-camera-off .call-prejoin-preview {
+  min-height: 180px;
+  aspect-ratio: 5 / 3;
 }
 
 .call-prejoin-video {
-  width: min(100%, 520px);
+  width: 100%;
   height: 100%;
-  aspect-ratio: 16 / 9;
   object-fit: cover;
   background: #020617;
 }
@@ -5896,7 +5921,8 @@ const fetchProjectMembers = async () => {
   display: grid;
   justify-items: center;
   gap: 8px;
-  padding: 24px;
+  max-width: 230px;
+  padding: 22px;
   color: #e2e8f0;
   text-align: center;
 }
@@ -5908,6 +5934,25 @@ const fetchProjectMembers = async () => {
   line-height: 1.45;
 }
 
+.call-prejoin-settings {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.call-prejoin-group {
+  display: grid;
+  gap: 10px;
+}
+
+.call-prejoin-group-title {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
 .call-prejoin-controls,
 .call-prejoin-actions {
   display: flex;
@@ -5917,13 +5962,22 @@ const fetchProjectMembers = async () => {
 
 .call-prejoin-toggle,
 .call-prejoin-actions button {
-  min-height: 38px;
-  padding: 0 14px;
+  min-height: 40px;
+  padding: 0 12px;
   color: #cbd5e1;
   background: #1e293b;
   border: 1px solid #475569;
-  border-radius: 8px;
+  border-radius: 7px;
   cursor: pointer;
+}
+
+.call-prejoin-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1 1 0;
+  white-space: nowrap;
 }
 
 .call-prejoin-toggle.active {
@@ -5934,7 +5988,6 @@ const fetchProjectMembers = async () => {
 
 .call-prejoin-device-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -5942,11 +5995,33 @@ const fetchProjectMembers = async () => {
   display: grid;
   gap: 6px;
   color: #cbd5e1;
+  font-weight: 600;
   font-size: 12px;
 }
 
+.call-prejoin-device-grid select {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
 .call-prejoin-actions {
+  margin-top: auto;
   justify-content: flex-end;
+  padding-top: 4px;
+  border-top: 1px solid rgba(148, 163, 184, .16);
+}
+
+.call-prejoin-actions button {
+  min-width: 92px;
+}
+
+.call-prejoin-toggle:hover,
+.call-prejoin-toggle:focus-visible,
+.call-prejoin-actions button:focus-visible {
+  border-color: #63d29f;
+  background: #273449;
+  outline: none;
 }
 
 .call-prejoin-joining {
@@ -5973,17 +6048,30 @@ const fetchProjectMembers = async () => {
 @media (max-width: 620px) {
   .call-prejoin-panel {
     width: min(100% - 20px, 780px);
-    min-height: calc(100% - 20px);
     gap: 14px;
     padding: 18px;
   }
 
-  .call-prejoin-preview {
-    min-height: 190px;
+  .call-prejoin-layout {
+    grid-template-columns: 1fr;
+    gap: 18px;
   }
 
-  .call-prejoin-device-grid {
+  .call-prejoin-panel.is-camera-off .call-prejoin-layout {
     grid-template-columns: 1fr;
+  }
+
+  .call-prejoin-preview {
+    min-height: 0;
+    aspect-ratio: 16 / 9;
+  }
+
+  .call-prejoin-actions {
+    gap: 8px;
+  }
+
+  .call-prejoin-actions button {
+    flex: 1 1 0;
   }
 }
 
@@ -7604,6 +7692,7 @@ background-color: #111c2d !important;
 .chat-workspace .call-prejoin-panel { background: var(--chat-surface) !important; color: var(--chat-ink) !important; }
 .chat-workspace .call-prejoin-copy p,
 .chat-workspace .call-prejoin-camera-off span { color: var(--chat-muted) !important; }
+.chat-workspace .call-prejoin-group-title { color: var(--chat-muted) !important; }
 .chat-workspace .call-prejoin-toggle,
 .chat-workspace .call-prejoin-actions .secondary-button,
 .chat-workspace .call-prejoin-device-grid select { border-color: var(--chat-line); background: var(--chat-surface-2); color: var(--chat-ink); }
