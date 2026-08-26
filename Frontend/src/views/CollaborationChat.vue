@@ -476,7 +476,7 @@
               </template>
               <small class="meeting-ai-review-note">AI không tự tạo WorkItem. Mọi đề xuất cần được bạn xem lại.</small>
             </section>
-            <div v-else-if="callTranscriptionCapabilities.configured" class="meeting-ai-unavailable">Phân tích AI chưa được cấu hình. Phiên âm vẫn hoạt động độc lập.</div>
+            <div v-else-if="callTranscriptionCapabilities.configured" class="meeting-ai-unavailable">Trợ lý cuộc họp chưa sẵn sàng. Quản trị viên chưa cấu hình phiên âm cuộc họp; phiên âm vẫn hoạt động độc lập khi được bật.</div>
             <div class="call-transcript-list" aria-live="polite">
               <div v-for="chunk in callTranscriptChunks" :key="chunk.id" class="call-transcript-chunk">
                 <div><time>{{ formatTime(chunk.startedAt) }}</time><strong>{{ chunk.speakerDisplayName }}</strong></div>
@@ -2192,7 +2192,40 @@ const openPreJoinVoiceChannel = async voiceChannel => {
   preJoinCameraEnabled.value = false
   preJoinMicrophoneId.value = ''
   preJoinCameraId.value = ''
+  await loadMeetingCapabilities(voiceChannel)
   await refreshPreJoinDevices()
+}
+
+const loadMeetingCapabilities = async voiceChannel => {
+  if (!activeProjectId.value || !voiceChannel?.id) return
+  try {
+    const value = await collaborationApi.getMeetingCapabilities(activeProjectId.value, voiceChannel.id)
+    const supportedLanguages = Array.isArray(value?.supportedLanguages)
+      ? value.supportedLanguages.map(language => `${language}`.toLowerCase()).filter(language => ['vi', 'en'].includes(language))
+      : []
+    callTranscriptionCapabilities.value = {
+      ...callTranscriptionCapabilities.value,
+      configured: value?.transcriptionEnabled === true,
+      provider: value?.transcriptionProvider || 'Unavailable',
+      supportedLanguages,
+      defaultLanguage: supportedLanguages.includes('vi') ? 'vi' : (supportedLanguages[0] || 'vi'),
+      aiConfigured: value?.meetingAiConfigured === true,
+      aiProvider: value?.meetingAiConfigured === true ? 'ZenMux' : 'Unavailable'
+    }
+    if (callTranscriptionCapabilities.value.configured && supportedLanguages.length) {
+      callCaptionLanguage.value = callTranscriptionCapabilities.value.defaultLanguage
+    }
+  } catch (error) {
+    callTranscriptionCapabilities.value = {
+      ...callTranscriptionCapabilities.value,
+      configured: false,
+      provider: 'Unavailable',
+      supportedLanguages: [],
+      aiConfigured: false,
+      aiProvider: 'Unavailable'
+    }
+    if (error?.response?.status !== 403) console.warn('Unable to load meeting capabilities', error)
+  }
 }
 
 const cancelPreJoin = () => {
@@ -6420,6 +6453,231 @@ const fetchProjectMembers = async () => {
 .voice-action-btn-small.active {
   background-color: rgba(99, 102, 241, 0.1);
   color: var(--color-primary);
+}
+</style>
+
+<style>
+/* Final cascade guard for the meeting shell at 100% browser zoom. */
+.chat-workspace .call-header + .call-workspace-body {
+  display: grid !important;
+  min-height: 0 !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+}
+
+.chat-workspace .call-presentation-stage,
+.chat-workspace .call-camera-stage,
+.chat-workspace .call-camera-stage-tile video,
+.chat-workspace .call-camera-stage-avatar {
+  min-height: 0 !important;
+}
+
+.chat-workspace .call-prejoin-preview,
+.chat-workspace .call-prejoin-panel.is-camera-off .call-prejoin-preview {
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+.chat-workspace .call-prejoin-camera-off,
+.chat-workspace .call-prejoin-camera-off strong,
+.chat-workspace .call-prejoin-camera-off span,
+.chat-workspace .presentation-heading,
+.chat-workspace .presentation-hint,
+.chat-workspace .call-thumb-caption,
+.chat-workspace .call-transcript-panel,
+.chat-workspace .call-transcript-panel strong,
+.chat-workspace .call-transcript-chunk p,
+.chat-workspace .meeting-ai-summary,
+.chat-workspace .meeting-ai-group ul {
+  color: var(--meeting-fg-secondary) !important;
+}
+
+.chat-workspace .call-prejoin-camera-off strong,
+.chat-workspace .call-transcript-panel strong,
+.chat-workspace .call-live-caption {
+  color: var(--meeting-fg) !important;
+}
+
+@media (max-height: 820px) and (min-width: 761px) {
+  .chat-workspace .call-prejoin-panel { padding-block: 16px !important; }
+  .chat-workspace .call-prejoin-settings { gap: 12px !important; }
+  .chat-workspace .call-prejoin-group { gap: 7px !important; }
+}
+</style>
+
+<style>
+/* Meeting density and semantic contrast: keep the call surface usable at 100% zoom. */
+.chat-workspace {
+  --meeting-fg: #f4f8fb;
+  --meeting-fg-secondary: #d2e0ea;
+  --meeting-fg-muted: #a9bdca;
+  --meeting-surface: #091522;
+  --meeting-surface-raised: #112235;
+}
+
+.chat-workspace .call-header + .call-workspace-body {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: clamp(8px, 1.2vh, 14px);
+  padding: clamp(10px, 1.35vw, 18px);
+  overflow: hidden;
+  background: var(--chat-bg) !important;
+}
+
+.chat-workspace .call-presentation-stage {
+  min-height: 0;
+  background: var(--meeting-surface);
+  border-color: color-mix(in srgb, var(--meeting-fg-secondary) 22%, transparent);
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.chat-workspace .call-camera-stage {
+  min-height: 0;
+  padding: clamp(8px, 1vw, 12px);
+  gap: clamp(8px, 1vw, 12px);
+  background: var(--meeting-surface);
+}
+
+.chat-workspace .call-camera-stage-tile,
+.chat-workspace .call-camera-stage-avatar,
+.chat-workspace .call-thumb-media {
+  background: #0d1b2a;
+}
+
+.chat-workspace .call-camera-stage-tile video,
+.chat-workspace .call-camera-stage-avatar {
+  min-height: 0;
+}
+
+.chat-workspace .presentation-heading,
+.chat-workspace .call-camera-stage-label,
+.chat-workspace .call-camera-stage-muted,
+.chat-workspace .call-thumb-caption,
+.chat-workspace .call-live-caption {
+  color: var(--meeting-fg) !important;
+}
+
+.chat-workspace .presentation-hint,
+.chat-workspace .call-thumb-caption > i,
+.chat-workspace .call-transcript-title small,
+.chat-workspace .meeting-ai-review-note,
+.chat-workspace .meeting-ai-unavailable,
+.chat-workspace .call-transcript-off p,
+.chat-workspace .call-transcript-consent p {
+  color: var(--meeting-fg-muted) !important;
+}
+
+.chat-workspace .call-transcript-panel,
+.chat-workspace .call-chat-panel {
+  background: var(--meeting-surface) !important;
+  color: var(--meeting-fg) !important;
+}
+
+.chat-workspace .call-transcript-chunk p,
+.chat-workspace .meeting-ai-summary,
+.chat-workspace .meeting-ai-group ul,
+.chat-workspace .call-consent-list > div span:first-child {
+  color: var(--meeting-fg-secondary) !important;
+}
+
+.chat-workspace .call-transcript-chunk time,
+.chat-workspace .meeting-ai-group small,
+.chat-workspace .call-consent-list > div span:last-child {
+  color: var(--meeting-fg-muted) !important;
+}
+
+.chat-workspace .call-control-dock {
+  gap: clamp(5px, .7vw, 10px);
+  padding: 7px 9px;
+  border-color: color-mix(in srgb, var(--meeting-fg-secondary) 22%, transparent);
+  border-radius: 10px;
+  background: var(--meeting-surface-raised);
+  box-shadow: none;
+}
+
+.chat-workspace .call-control-circle-btn,
+.chat-workspace .call-control-label-btn,
+.chat-workspace .presentation-control {
+  min-height: 36px;
+  color: var(--meeting-fg-secondary);
+}
+
+.chat-workspace .call-control-label-btn {
+  min-width: 64px;
+  height: 36px;
+  border-radius: 7px;
+}
+
+.chat-workspace .call-prejoin-panel {
+  width: min(calc(100% - 32px), 900px) !important;
+  max-width: 900px !important;
+  gap: clamp(14px, 2vh, 22px);
+  padding: clamp(18px, 2.2vw, 28px) !important;
+}
+
+.chat-workspace .call-prejoin-copy h2 {
+  font-size: clamp(21px, 2.2vw, 28px);
+  line-height: 1.12;
+}
+
+.chat-workspace .call-prejoin-copy p,
+.chat-workspace .call-prejoin-camera-off span,
+.chat-workspace .call-prejoin-group-title,
+.chat-workspace .call-prejoin-device-grid label {
+  color: var(--meeting-fg-secondary) !important;
+}
+
+.chat-workspace .call-prejoin-layout {
+  grid-template-columns: minmax(0, 1.08fr) minmax(250px, .92fr) !important;
+  gap: clamp(16px, 2.4vw, 28px);
+}
+
+.chat-workspace .call-prejoin-preview {
+  min-height: 0 !important;
+  max-height: clamp(190px, 34vh, 320px) !important;
+  aspect-ratio: 16 / 9 !important;
+}
+
+.chat-workspace .call-prejoin-panel.is-camera-off .call-prejoin-preview {
+  min-height: 0 !important;
+  max-height: clamp(170px, 30vh, 280px) !important;
+  aspect-ratio: 16 / 9 !important;
+}
+
+.chat-workspace .call-prejoin-camera-off {
+  color: var(--meeting-fg) !important;
+}
+
+.chat-workspace .call-prejoin-settings {
+  gap: clamp(14px, 2vh, 20px);
+}
+
+.chat-workspace .call-prejoin-toggle,
+.chat-workspace .call-prejoin-actions button,
+.chat-workspace .call-prejoin-device-grid select {
+  color: var(--meeting-fg) !important;
+  background: var(--meeting-surface-raised);
+  border-color: color-mix(in srgb, var(--meeting-fg-secondary) 30%, transparent);
+}
+
+.chat-workspace .call-prejoin-toggle.active {
+  color: #d8fae8 !important;
+}
+
+@media (max-height: 820px) and (min-width: 761px) {
+  .chat-workspace .call-prejoin-panel { padding-block: 16px; }
+  .chat-workspace .call-prejoin-copy h2 { margin-block: 4px 6px; }
+  .chat-workspace .call-prejoin-settings { gap: 12px; }
+  .chat-workspace .call-prejoin-group { gap: 7px; }
+  .chat-workspace .call-prejoin-toggle,
+  .chat-workspace .call-prejoin-actions button { min-height: 36px; }
+}
+
+@media (max-width: 900px) and (min-width: 621px) {
+  .chat-workspace .call-prejoin-layout { grid-template-columns: minmax(0, 1fr) minmax(220px, .9fr); }
 }
 </style>
 
