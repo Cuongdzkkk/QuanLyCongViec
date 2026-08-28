@@ -25,6 +25,30 @@ const webRtcMediaTraceEnabled = () => {
   }
 }
 
+const captionTransportTraceEnabled = () => {
+  try {
+    return globalThis.localStorage?.getItem('debug_caption_transport') === '1'
+  } catch {
+    return false
+  }
+}
+
+const traceCaptionTransport = (event, detail = {}) => {
+  if (!captionTransportTraceEnabled()) return
+  console.info('[CAPTION_TRACE]', {
+    timestamp: new Date().toISOString(),
+    event,
+    ...detail
+  })
+}
+
+const safeCaptionErrorMessage = error => {
+  const message = `${error?.message || 'Unknown SignalR error'}`
+    .replace(/access_token=[^&\s"']+/gi, 'access_token=[redacted]')
+    .replace(/https?:\/\/[^\s"']+/gi, '[url-redacted]')
+  return message.length <= 256 ? message : `${message.slice(0, 253)}...`
+}
+
 export const traceCallHubLifecycle = (event, detail = {}) => {
   if (!callHubTraceEnabled()) return
   console.info('[CALL_HUB]', {
@@ -192,6 +216,17 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       .catch(() => {})
       .then(async () => {
         if (!capture.active || connection?.state !== signalR.HubConnectionState.Connected || capture !== transcriptionCapture) return
+        const started = performance.now()
+        traceCaptionTransport('SEND_BEGIN', {
+          connectionState: connection.state,
+          callSessionIdPresent: capture.callSessionId ? 'YES' : 'NO',
+          projectIdPresent: projectId ? 'YES' : 'NO',
+          voiceChannelIdPresent: voiceChannelId ? 'YES' : 'NO',
+          language: capture.language,
+          sampleRate: 16000,
+          channelCount: 1,
+          chunkBytes: bytes.byteLength
+        })
         try {
           await connection.invoke(
             'SubmitCallAudioChunk',
@@ -203,7 +238,14 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
             startedAt.toISOString(),
             endedAt.toISOString(),
             capture.language)
+          traceCaptionTransport('SEND_OK', { elapsedMs: Math.round(performance.now() - started) })
         } catch (error) {
+          traceCaptionTransport('SEND_FAIL', {
+            errorName: error?.name || 'Error',
+            errorMessage: safeCaptionErrorMessage(error),
+            connectionState: connection?.state || 'unknown',
+            elapsedMs: Math.round(performance.now() - started)
+          })
           if (!['AI_TRANSCRIPTION_NOT_ACTIVE', 'CALL_TRANSCRIPTION_NOT_CONFIGURED'].includes(error?.message)) onTranscriptionError?.({ code: 'INGEST_ERROR', message: 'Không thể gửi âm thanh cho biên bản cuộc gọi.' })
         }
       })

@@ -263,23 +263,62 @@ public sealed class CallHub : Hub
         DateTimeOffset endedAt,
         string? language = null)
     {
+        var roomMetadata = DescribeCaptionRoom(roomId);
+        var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? Context.User?.FindFirstValue("sub") ?? "unknown";
+        _logger.LogInformation(
+            "[CAPTION_SERVER] event=AUDIO_HANDLER_ENTER connectionId={ConnectionId} userId={UserId} callSessionId={CallSessionId} projectId={ProjectId} voiceChannelId={VoiceChannelId} language={Language} payloadBytes={PayloadBytes}",
+            Context.ConnectionId,
+            userId,
+            DescribeCaptionGuid(callSessionId),
+            roomMetadata.ProjectId,
+            roomMetadata.VoiceChannelId,
+            language ?? "",
+            audioBytes?.Length ?? 0);
+
         var normalizedRoomId = NormalizeRoomId(roomId);
-        var sessionId = ParseGuid(callSessionId, "INVALID_CALL_SESSION_ID");
-        if (audioBytes is null || audioBytes.Length == 0 || audioBytes.Length > 256 * 1024)
+        if (!Guid.TryParse(callSessionId, out var sessionId) || sessionId == Guid.Empty)
+        {
+            LogCaptionReject("invalid_call_session", audioBytes?.Length ?? 0);
+            throw new HubException("INVALID_CALL_SESSION_ID");
+        }
+        if (audioBytes is null || audioBytes.Length == 0)
+        {
+            LogCaptionReject("invalid_payload", audioBytes?.Length ?? 0);
             throw new HubException("INVALID_AUDIO_CHUNK");
+        }
+        if (audioBytes.Length > 256 * 1024)
+        {
+            LogCaptionReject("payload_too_large", audioBytes.Length);
+            throw new HubException("INVALID_AUDIO_CHUNK");
+        }
         if (string.IsNullOrWhiteSpace(mimeType) || !mimeType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase))
+        {
+            LogCaptionReject("invalid_format", audioBytes.Length);
             throw new HubException("INVALID_AUDIO_MIME_TYPE");
+        }
         if (endedAt < startedAt || endedAt - startedAt > TimeSpan.FromSeconds(15))
+        {
+            LogCaptionReject("invalid_payload", audioBytes.Length);
             throw new HubException("INVALID_AUDIO_TIMESTAMP");
+        }
         var normalizedLanguage = string.IsNullOrWhiteSpace(language)
             ? _transcriptionProvider.DefaultLanguage
             : language.Trim().ToLowerInvariant();
         if (!_transcriptionProvider.SupportedLanguages.Contains(normalizedLanguage, StringComparer.OrdinalIgnoreCase))
+        {
+            LogCaptionReject("invalid_language", audioBytes.Length);
             throw new HubException("UNSUPPORTED_TRANSCRIPTION_LANGUAGE");
+        }
         if (!_rooms.TryAuthorizeTranscription(normalizedRoomId, Context.ConnectionId, sessionId, consentGeneration, out var participant))
+        {
+            LogCaptionReject("not_joined", audioBytes.Length);
             throw new HubException("AI_TRANSCRIPTION_NOT_ACTIVE");
+        }
         if (_transcriptionProvider is null || _transcripts is null)
+        {
+            LogCaptionReject("provider_unavailable", audioBytes.Length);
             throw new HubException("CALL_TRANSCRIPTION_NOT_CONFIGURED");
+        }
 
         var source = new CallAudioChunk(
             participant.CallSessionId,
@@ -293,8 +332,21 @@ public sealed class CallHub : Hub
             participant.ConsentGeneration,
             Context.ConnectionId,
             normalizedLanguage);
+        _logger.LogInformation(
+            "[CAPTION_SERVER] event=AUDIO_HANDLER_ACCEPT connectionId={ConnectionId} callSessionId={CallSessionId} projectId={ProjectId} voiceChannelId={VoiceChannelId} language={Language} payloadBytes={PayloadBytes}",
+            Context.ConnectionId,
+            participant.CallSessionId,
+            roomMetadata.ProjectId,
+            roomMetadata.VoiceChannelId,
+            normalizedLanguage,
+            audioBytes.Length);
         try
         {
+            _logger.LogInformation(
+                "[CAPTION_SERVER] event=DEEPGRAM_SEND_BEGIN connectionId={ConnectionId} callSessionId={CallSessionId} payloadBytes={PayloadBytes}",
+                Context.ConnectionId,
+                participant.CallSessionId,
+                audioBytes.Length);
             if (_transcriptionProvider is ICallStreamingTranscriptionProvider streamingProvider)
             {
                 await streamingProvider.SubmitAsync(
@@ -309,13 +361,32 @@ public sealed class CallHub : Hub
                 if (result is not null)
                     await HandleTranscriptionResultAsync(source, result);
             }
+            _logger.LogInformation(
+                "[CAPTION_SERVER] event=DEEPGRAM_SEND_OK connectionId={ConnectionId} callSessionId={CallSessionId} payloadBytes={PayloadBytes}",
+                Context.ConnectionId,
+                participant.CallSessionId,
+                audioBytes.Length);
         }
         catch (CallTranscriptionProviderUnavailableException)
         {
+            LogCaptionReject("provider_unavailable", audioBytes.Length);
+            _logger.LogWarning(
+                "[CAPTION_SERVER] event=DEEPGRAM_SEND_FAIL connectionId={ConnectionId} callSessionId={CallSessionId} exceptionType={ExceptionType} safeMessage={SafeMessage}",
+                Context.ConnectionId,
+                participant.CallSessionId,
+                nameof(CallTranscriptionProviderUnavailableException),
+                "transcription provider unavailable");
             await NotifyTranscriptionFailureAsync(normalizedRoomId, "BLOCKED_CONFIG", "Live call transcription is not configured.");
         }
-        catch (Exception) when (!Context.ConnectionAborted.IsCancellationRequested)
+        catch (Exception exception) when (!Context.ConnectionAborted.IsCancellationRequested)
         {
+            _logger.LogError(
+                exception,
+                "[CAPTION_SERVER] event=DEEPGRAM_SEND_FAIL connectionId={ConnectionId} callSessionId={CallSessionId} exceptionType={ExceptionType} safeMessage={SafeMessage}",
+                Context.ConnectionId,
+                participant.CallSessionId,
+                exception.GetType().FullName,
+                SafeCaptionExceptionMessage(exception));
             await StopRoomTranscriptionAsync(normalizedRoomId, Context.ConnectionAborted);
             await NotifyTranscriptionFailureAsync(normalizedRoomId, "PROVIDER_ERROR", "Không thể ghi biên bản cuộc gọi lúc này.");
         }
@@ -323,6 +394,37 @@ public sealed class CallHub : Hub
         {
             Array.Clear(source.AudioBytes, 0, source.AudioBytes.Length);
         }
+    }
+
+    private void LogCaptionReject(string reason, int payloadBytes) =>
+        _logger.LogWarning(
+            "[CAPTION_SERVER] event=AUDIO_HANDLER_REJECT reason={Reason} connectionId={ConnectionId} payloadBytes={PayloadBytes}",
+            reason,
+            Context.ConnectionId,
+            payloadBytes);
+
+    private static (string ProjectId, string VoiceChannelId) DescribeCaptionRoom(string? roomId)
+    {
+        if (string.IsNullOrWhiteSpace(roomId)) return ("unknown", "unknown");
+        var parts = roomId.Split(':', 4, StringSplitOptions.None);
+        if (parts.Length == 4 && string.Equals(parts[0], "project", StringComparison.Ordinal) && string.Equals(parts[2], "voice", StringComparison.Ordinal))
+            return (parts[1], parts[3].Length <= 200 ? parts[3] : "too_long");
+        return ("unknown", "unknown");
+    }
+
+    private static string DescribeCaptionGuid(string? value) =>
+        Guid.TryParse(value, out var parsed) && parsed != Guid.Empty ? parsed.ToString("D") : "invalid";
+
+    private static string SafeCaptionExceptionMessage(Exception exception)
+    {
+        var message = exception.Message.Replace("\r", " ").Replace("\n", " ");
+        var accessTokenIndex = message.IndexOf("access_token=", StringComparison.OrdinalIgnoreCase);
+        if (accessTokenIndex >= 0)
+        {
+            var end = message.IndexOfAny(new[] { '&', ' ', '"' }, accessTokenIndex);
+            message = message[..accessTokenIndex] + "access_token=[redacted]" + (end >= 0 ? message[end..] : string.Empty);
+        }
+        return message.Length <= 256 ? message : message[..256];
     }
 
     public async Task StopCallAudioStream(string? roomId, string? callSessionId, long consentGeneration)
