@@ -6854,7 +6854,7 @@ const fetchProjectMembers = async () => {
   grid-template-columns: 68px 248px minmax(0, 1fr) !important;
   width: min(1440px, calc(100% - 32px)) !important;
   height: min(820px, calc(100dvh - 112px));
-  min-height: 620px;
+  min-height: min(620px, calc(100dvh - 112px));
   margin: 20px auto 28px !important;
   overflow: hidden;
   border: 1px solid var(--chat-line);
@@ -6924,7 +6924,7 @@ const fetchProjectMembers = async () => {
 .chat-workspace .call-control-circle-btn { transition: background-color 160ms ease-out, color 160ms ease-out, transform 120ms ease-out; }
 .chat-workspace .call-control-circle-btn.hang-up { background: #bd4d5c; }
 .chat-workspace .call-control-circle-btn.hang-up:hover { background: #d35d6c; }
-.call-transcript-panel { display: flex; width: 310px; min-width: 0; max-height: 190px; min-height: 0; flex-direction: column; gap: 10px; overflow: hidden; padding: 14px; border-left: 1px solid rgba(148, 163, 184, .13); background: #091725; color: #e7f2fb; }
+.call-transcript-panel { display: flex; width: 310px; min-width: 0; max-height: 190px; min-height: 0; flex-direction: column; gap: 10px; overflow-x: hidden; overflow-y: auto; padding: 14px; border-left: 1px solid rgba(148, 163, 184, .13); background: #091725; color: #e7f2fb; }
 .call-transcript-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 2px; }
 .call-transcript-title { display: grid; min-width: 0; gap: 3px; }
 .call-transcript-header strong { display: block; font-size: 14px; letter-spacing: -.01em; }
