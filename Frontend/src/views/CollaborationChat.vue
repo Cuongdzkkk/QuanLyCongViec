@@ -577,7 +577,16 @@
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'reactions'"><span>Phản ứng</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="openCallDevicesMenu"><span>Thiết bị</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'effects'"><span>Hiệu ứng hình ảnh</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
-                    <button type="button" class="call-more-menu-item" role="menuitem" @click="toggleCallPictureInPicture">Picture-in-picture</button>
+                    <button
+                      type="button"
+                      class="call-more-menu-item"
+                      :class="{ 'is-unavailable': !hasEligiblePictureInPictureVideo }"
+                      role="menuitem"
+                      :aria-disabled="!hasEligiblePictureInPictureVideo"
+                      :aria-label="pictureInPictureActionLabel"
+                      :title="pictureInPictureActionLabel"
+                      @click="toggleCallPictureInPicture"
+                    >Picture-in-picture</button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="togglePresentationFullscreen">{{ presentationIsFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình' }}</button>
                     <button type="button" class="call-more-menu-item" :class="{ 'is-unavailable': !callTranscriptionCapabilities.configured }" role="menuitem" :disabled="!callTranscriptionCapabilities.configured" @click="moreMenuSection = 'captions'"><span>Phụ đề</span><small>{{ callTranscriptionCapabilities.configured ? callCaptionLanguageLabel : 'Chưa cấu hình' }}</small></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'shortcuts'"><span>Phím tắt</span><small>Ctrl/Cmd+D · E</small></button>
@@ -1690,6 +1699,21 @@ const hasLiveVideoTrack = stream => stream?.getVideoTracks?.().some(track => tra
 const isParticipantVideoVisible = user => user.connectionId === callConnectionId.value
   ? isCallCameraOn.value && hasLiveVideoTrack(localCallStream.value)
   : user.cameraEnabled && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId)?.cameraStream)
+const pictureInPictureUnsupportedMessage = 'Trình duyệt của bạn không hỗ trợ Picture-in-Picture.'
+const pictureInPictureNoVideoMessage = 'Hãy bật camera hoặc chia sẻ màn hình để sử dụng Picture-in-Picture.'
+const standardPictureInPictureSupported = () => typeof document !== 'undefined' &&
+  document.pictureInPictureEnabled === true &&
+  typeof HTMLVideoElement !== 'undefined' &&
+  typeof HTMLVideoElement.prototype.requestPictureInPicture === 'function'
+const hasEligiblePictureInPictureVideo = computed(() => {
+  const hasRenderedPresentation = activePresenter.value && callViewMode.value !== 'tiled' && hasLiveVideoTrack(activePresenterStream())
+  if (hasRenderedPresentation) return true
+  return callParticipants.value.some(isParticipantVideoVisible)
+})
+const pictureInPictureActionLabel = computed(() => {
+  if (!standardPictureInPictureSupported()) return pictureInPictureUnsupportedMessage
+  return hasEligiblePictureInPictureVideo.value ? 'Picture-in-picture' : pictureInPictureNoVideoMessage
+})
 const isParticipantSpeaking = user => user.isSpeaking === true || user.speaking === true || user.activeSpeaker === true
 const participantsInCall = computed(() => dedupeParticipantsByUser(callParticipants.value, callConnectionId.value))
 const focusedCallParticipant = computed(() => participantsInCall.value.find(user =>
@@ -2309,9 +2333,40 @@ const cancelPreJoin = () => {
   preJoinVoiceChannel.value = null
 }
 const toggleCallPictureInPicture = async () => {
-  const element = presentationVideoElement.value || [...localVideoElements.values()][0] || [...remoteVideoElements.values()][0]?.element
-  if (!element?.requestPictureInPicture) { callLiveNotice.value = 'Picture-in-picture chưa được trình duyệt hỗ trợ.'; return }
-  try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else await element.requestPictureInPicture(); showMoreMenu.value = false } catch (error) { handleCallError(error) }
+  const closeMoreMenu = () => {
+    showMoreMenu.value = false
+    moreMenuSection.value = ''
+  }
+  const showPictureInPictureMessage = message => {
+    callLiveNotice.value = message
+    ElMessage.warning(message)
+    closeMoreMenu()
+  }
+  if (!standardPictureInPictureSupported()) {
+    showPictureInPictureMessage(pictureInPictureUnsupportedMessage)
+    return
+  }
+  await nextTick()
+  syncCallVideoElements()
+  const candidates = [
+    presentationVideoElement.value,
+    ...localVideoElements.values(),
+    ...[...remoteVideoElements.values()].map(({ element }) => element)
+  ]
+  const element = candidates.find(candidate =>
+    candidate?.requestPictureInPicture && hasLiveVideoTrack(candidate.srcObject))
+  if (!element) {
+    showPictureInPictureMessage(pictureInPictureNoVideoMessage)
+    return
+  }
+  try {
+    if (document.pictureInPictureElement) await document.exitPictureInPicture()
+    else await element.requestPictureInPicture()
+  } catch (error) {
+    handleCallError(error)
+  } finally {
+    closeMoreMenu()
+  }
 }
 const handleCallShortcut = event => {
   if (event.key === 'Escape' && workspaceState.value === 'VOICE_PRE_JOIN') {
