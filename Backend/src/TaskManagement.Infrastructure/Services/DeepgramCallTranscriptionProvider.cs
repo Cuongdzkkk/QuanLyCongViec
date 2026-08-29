@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using TaskManagement.Application.DTOs.Collaboration;
 using TaskManagement.Application.Interfaces;
 
@@ -12,12 +13,17 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
 {
     private readonly CallTranscriptionOptions _options;
     private readonly ICallTranscriptionUsageSink _usageSink;
+    private readonly ILogger<DeepgramCallTranscriptionProvider> _logger;
     private readonly ConcurrentDictionary<SessionKey, DeepgramSession> _sessions = new();
 
-    public DeepgramCallTranscriptionProvider(CallTranscriptionOptions options, ICallTranscriptionUsageSink usageSink)
+    public DeepgramCallTranscriptionProvider(
+        CallTranscriptionOptions options,
+        ICallTranscriptionUsageSink usageSink,
+        ILogger<DeepgramCallTranscriptionProvider> logger)
     {
         _options = options;
         _usageSink = usageSink;
+        _logger = logger;
     }
 
     public bool IsConfigured => _options.IsConfigured;
@@ -97,7 +103,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
             return existing;
         }
 
-        var created = await DeepgramSession.ConnectAsync(_options, _usageSink, chunk, onResult, canContinue, cancellationToken);
+        var created = await DeepgramSession.ConnectAsync(_options, _usageSink, _logger, chunk, onResult, canContinue, cancellationToken);
         var winner = _sessions.GetOrAdd(key, created);
         if (!ReferenceEquals(winner, created)) await created.DisposeAsync();
         return winner;
@@ -116,6 +122,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
         private readonly ClientWebSocket _socket;
         private readonly CallTranscriptionOptions _options;
         private readonly ICallTranscriptionUsageSink _usageSink;
+        private readonly ILogger<DeepgramCallTranscriptionProvider> _logger;
         private readonly Func<bool> _canContinue;
         private readonly CancellationTokenSource _lifetime = new();
         private readonly SemaphoreSlim _sendGate = new(1, 1);
@@ -134,6 +141,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
             ClientWebSocket socket,
             CallTranscriptionOptions options,
             ICallTranscriptionUsageSink usageSink,
+            ILogger<DeepgramCallTranscriptionProvider> logger,
             CallAudioChunk firstChunk,
             Func<CallAudioChunk, CallTranscriptionResult, Task> onResult,
             Func<bool> canContinue)
@@ -141,6 +149,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
             _socket = socket;
             _options = options;
             _usageSink = usageSink;
+            _logger = logger;
             _canContinue = canContinue;
             _onResult = onResult;
             _streamStartedAt = firstChunk.StartedAt;
@@ -155,6 +164,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
         public static async Task<DeepgramSession> ConnectAsync(
             CallTranscriptionOptions options,
             ICallTranscriptionUsageSink usageSink,
+            ILogger<DeepgramCallTranscriptionProvider> logger,
             CallAudioChunk firstChunk,
             Func<CallAudioChunk, CallTranscriptionResult, Task> onResult,
             Func<bool> canContinue,
@@ -167,8 +177,14 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
                 : options.Language;
             var query = $"?model={Uri.EscapeDataString(options.Model)}&language={Uri.EscapeDataString(language)}&encoding=linear16&sample_rate={options.SampleRate}&channels=1&interim_results=true&punctuate=true&endpointing={options.EndpointingMilliseconds}";
             await socket.ConnectAsync(new Uri(options.Deepgram.Endpoint + query), cancellationToken);
-            var session = new DeepgramSession(socket, options, usageSink, firstChunk, onResult, canContinue);
+            var session = new DeepgramSession(socket, options, usageSink, logger, firstChunk, onResult, canContinue);
             session._receiveTask = session.ReceiveLoopAsync(session._lifetime.Token);
+            logger.LogInformation(
+                "[CAPTION_PROVIDER] event=WS_OPEN roomId={RoomId} callSessionId={CallSessionId} speakerUserId={SpeakerUserId} consentGeneration={ConsentGeneration} receiveLoopStarted=YES",
+                firstChunk.RoomId,
+                firstChunk.CallSessionId,
+                firstChunk.SpeakerUserId,
+                firstChunk.ConsentGeneration);
             return session;
         }
 
@@ -191,46 +207,137 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
         private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
         {
             var buffer = new byte[32 * 1024];
-            while (!cancellationToken.IsCancellationRequested && _socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+            var closeLogged = false;
+            try
             {
-                using var message = new MemoryStream();
-                WebSocketReceiveResult result;
-                do
+                while (!cancellationToken.IsCancellationRequested && _socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
                 {
-                    result = await _socket.ReceiveAsync(buffer, cancellationToken);
-                    if (result.MessageType == WebSocketMessageType.Close) return;
-                    message.Write(buffer, 0, result.Count);
-                } while (!result.EndOfMessage);
+                    using var message = new MemoryStream();
+                    WebSocketReceiveResult result;
+                    do
+                    {
+                        result = await _socket.ReceiveAsync(buffer, cancellationToken);
+                        if (result.MessageType == WebSocketMessageType.Close)
+                        {
+                            LogClosed(result.CloseStatus, result.CloseStatusDescription);
+                            closeLogged = true;
+                            return;
+                        }
+                        message.Write(buffer, 0, result.Count);
+                    } while (!result.EndOfMessage);
 
-                var parsed = ParseTranscript(Encoding.UTF8.GetString(message.GetBuffer(), 0, checked((int)message.Length)));
-                if (parsed is null || parsed.Channel?.Alternatives is not { Count: > 0 }) continue;
-                var text = parsed.Channel.Alternatives[0].Transcript?.Trim();
-                if (string.IsNullOrWhiteSpace(text)) continue;
-                var isFinal = parsed.IsFinal;
-                var isUtteranceFinal = parsed.SpeechFinal || parsed.FromFinalize;
-                if (isFinal) _finalSegments.Add(text);
+                    _logger.LogInformation(
+                        "[CAPTION_PROVIDER] event=RECEIVE callSessionId={CallSessionId} messageType={MessageType} payloadLength={PayloadLength}",
+                        _sessionId,
+                        result.MessageType,
+                        message.Length);
+                    var parsed = ParseTranscript(Encoding.UTF8.GetString(message.GetBuffer(), 0, checked((int)message.Length)));
 
-                var displayText = isUtteranceFinal || isFinal
-                    ? string.Join(" ", _finalSegments).Trim()
-                    : string.Join(" ", _finalSegments.Append(text)).Trim();
-                if (isUtteranceFinal) _finalSegments.Clear();
-                var resultValue = new CallTranscriptionResult(
-                    displayText,
-                    _streamStartedAt,
-                    _lastAudioEndedAt < _streamStartedAt ? _streamStartedAt : _lastAudioEndedAt,
-                    parsed.Channel.Alternatives[0].Confidence,
-                    isUtteranceFinal,
-                    isUtteranceFinal,
-                    "Deepgram",
-                    parsed.Duration);
-                await _onResult(_latestSource, resultValue);
-                if (isUtteranceFinal && parsed.Duration is > 0)
-                {
-                    await _usageSink.RecordAsync(
-                        new CallTranscriptionUsage("Deepgram", _sessionId, _speakerId, parsed.Duration.Value, _options.Model),
-                        cancellationToken);
+                    if (parsed is null || parsed.Channel?.Alternatives is not { Count: > 0 })
+                    {
+                        _logger.LogInformation(
+                            "[CAPTION_PROVIDER] event=EMPTY_RESULT callSessionId={CallSessionId} messageType={MessageType} payloadLength={PayloadLength}",
+                            _sessionId,
+                            result.MessageType,
+                            message.Length);
+                        continue;
+                    }
+                    var text = parsed.Channel.Alternatives[0].Transcript?.Trim();
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        _logger.LogInformation(
+                            "[CAPTION_PROVIDER] event=EMPTY_RESULT callSessionId={CallSessionId} messageType={MessageType} payloadLength={PayloadLength}",
+                            _sessionId,
+                            result.MessageType,
+                            message.Length);
+                        continue;
+                    }
+                    var isFinal = parsed.IsFinal;
+                    var isUtteranceFinal = parsed.SpeechFinal || parsed.FromFinalize;
+                    if (isFinal) _finalSegments.Add(text);
+
+                    var displayText = isUtteranceFinal || isFinal
+                        ? string.Join(" ", _finalSegments).Trim()
+                        : string.Join(" ", _finalSegments.Append(text)).Trim();
+                    if (isUtteranceFinal) _finalSegments.Clear();
+                    _logger.LogInformation(
+                        "[CAPTION_PROVIDER] event=RESULT callSessionId={CallSessionId} isFinal={IsFinal} speechFinal={SpeechFinal} textLength={TextLength} confidence={Confidence} language={Language}",
+                        _sessionId,
+                        isFinal,
+                        isUtteranceFinal,
+                        text.Length,
+                        parsed.Channel.Alternatives[0].Confidence,
+                        _latestSource.Language);
+                    var resultValue = new CallTranscriptionResult(
+                        displayText,
+                        _streamStartedAt,
+                        _lastAudioEndedAt < _streamStartedAt ? _streamStartedAt : _lastAudioEndedAt,
+                        parsed.Channel.Alternatives[0].Confidence,
+                        isUtteranceFinal,
+                        isUtteranceFinal,
+                        "Deepgram",
+                        parsed.Duration);
+                    await _onResult(_latestSource, resultValue);
+                    if (isUtteranceFinal && parsed.Duration is > 0)
+                    {
+                        await _usageSink.RecordAsync(
+                            new CallTranscriptionUsage("Deepgram", _sessionId, _speakerId, parsed.Duration.Value, _options.Model),
+                            cancellationToken);
+                    }
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                LogClosed(_socket.CloseStatus, "receive loop canceled");
+                closeLogged = true;
+            }
+            catch (Exception exception)
+            {
+                LogError(exception);
+                throw;
+            }
+            finally
+            {
+                if (!closeLogged)
+                {
+                    LogClosed(_socket.CloseStatus, _socket.CloseStatusDescription);
+                }
+            }
+        }
+
+        private void LogClosed(WebSocketCloseStatus? closeStatus, string? closeDescription)
+        {
+            _logger.LogInformation(
+                "[CAPTION_PROVIDER] event=CLOSED callSessionId={CallSessionId} closeStatus={CloseStatus} safeCloseDescription={SafeCloseDescription}",
+                _sessionId,
+                closeStatus?.ToString() ?? "none",
+                SafeCloseDescription(closeDescription));
+        }
+
+        private void LogError(Exception exception)
+        {
+            _logger.LogError(
+                "[CAPTION_PROVIDER] event=ERROR callSessionId={CallSessionId} exceptionType={ExceptionType} safeMessage={SafeMessage}",
+                _sessionId,
+                exception.GetType().FullName,
+                SafeMessage(exception));
+        }
+
+        private static string SafeCloseDescription(string? value) =>
+            SafeMessage(value ?? "");
+
+        private static string SafeMessage(Exception exception) => SafeMessage(exception.Message);
+
+        private static string SafeMessage(string value)
+        {
+            var message = value.Replace("\r", " ").Replace("\n", " ");
+            var accessTokenIndex = message.IndexOf("access_token=", StringComparison.OrdinalIgnoreCase);
+            if (accessTokenIndex >= 0)
+            {
+                var end = message.IndexOfAny(['&', ' ', '"'], accessTokenIndex);
+                message = message[..accessTokenIndex] + "access_token=[redacted]" + (end >= 0 ? message[end..] : string.Empty);
+            }
+            return message.Length <= 256 ? message : message[..256];
         }
 
         public async ValueTask DisposeAsync()
