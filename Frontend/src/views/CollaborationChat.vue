@@ -6575,6 +6575,52 @@ const fetchProjectMembers = async () => {
   overflow: hidden !important;
 }
 
+/* Keep visual regions and the bottom interaction row in separate hit-test areas. */
+.chat-workspace .call-header + .call-workspace-body:not(.is-presentation-mode) {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) auto auto auto !important;
+}
+
+.chat-workspace .call-header + .call-workspace-body:not(.is-presentation-mode) .call-presentation-stage {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.chat-workspace .call-header + .call-workspace-body:not(.is-presentation-mode) .call-participant-rail {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.chat-workspace .call-header + .call-workspace-body:not(.is-presentation-mode) .call-transcript-panel {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.chat-workspace .call-header + .call-workspace-body:not(.is-presentation-mode) .call-controls-row {
+  grid-column: 1;
+  grid-row: 4;
+}
+
+.chat-workspace .call-header + .call-workspace-body.is-presentation-mode {
+  grid-template-rows: minmax(220px, 1fr) auto auto !important;
+}
+
+.chat-workspace .call-controls-row {
+  position: relative;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+.chat-workspace .call-transcript-panel {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.chat-workspace .call-live-caption-dock {
+  pointer-events: none;
+}
+
 .chat-workspace .call-presentation-stage,
 .chat-workspace .call-camera-stage,
 .chat-workspace .call-camera-stage-tile video,
