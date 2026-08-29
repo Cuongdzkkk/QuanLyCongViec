@@ -66,6 +66,10 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<PerformanceReview> PerformanceReviews { get; set; }
         public DbSet<UserWallet> UserWallets { get; set; }
         public DbSet<PointTransaction> PointTransactions { get; set; }
+        public DbSet<RewardSeason> RewardSeasons { get; set; }
+        public DbSet<RewardPointEvent> RewardPointEvents { get; set; }
+        public DbSet<RewardDefinition> RewardDefinitions { get; set; }
+        public DbSet<RewardGrant> RewardGrants { get; set; }
         public DbSet<Kudo> Kudos { get; set; }
         public DbSet<KudoReaction> KudoReactions { get; set; }
 
@@ -711,6 +715,58 @@ namespace TaskManagement.Infrastructure.Data
                 .WithMany()
                 .HasForeignKey(pt => pt.ReversalOfTransactionId)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<RewardSeason>(entity =>
+            {
+                entity.Property(item => item.Name).HasMaxLength(160).IsRequired();
+                entity.Property(item => item.Type).HasMaxLength(32).IsRequired();
+                entity.Property(item => item.TimeZone).HasMaxLength(80).IsRequired();
+                entity.Property(item => item.Status).HasMaxLength(32).IsRequired();
+                entity.HasIndex(item => new { item.ProjectId, item.StartAt });
+                entity.HasIndex(item => new { item.ProjectId, item.Status });
+                entity.HasOne(item => item.Project).WithMany().HasForeignKey(item => item.ProjectId).OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(item => item.Sprint).WithMany().HasForeignKey(item => item.SprintId).OnDelete(DeleteBehavior.NoAction);
+            });
+
+            modelBuilder.Entity<RewardPointEvent>(entity =>
+            {
+                entity.Property(item => item.Status).HasMaxLength(32).IsRequired();
+                entity.Property(item => item.EventType).HasMaxLength(40).IsRequired();
+                entity.Property(item => item.ScoreSource).HasMaxLength(40).IsRequired();
+                entity.Property(item => item.DifficultySnapshot).HasMaxLength(8).IsRequired();
+                entity.Property(item => item.IdempotencyKey).HasMaxLength(180).IsRequired();
+                entity.Property(item => item.CancellationReason).HasMaxLength(500);
+                entity.HasIndex(item => item.IdempotencyKey).IsUnique();
+                entity.HasIndex(item => new { item.SeasonId, item.UserId, item.Status });
+                entity.HasIndex(item => new { item.WorkTaskId, item.UserId }).IsUnique();
+                entity.HasOne(item => item.Season).WithMany(season => season.PointEvents).HasForeignKey(item => item.SeasonId).OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(item => item.WorkTask).WithMany().HasForeignKey(item => item.WorkTaskId).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<RewardDefinition>(entity =>
+            {
+                entity.Property(item => item.Name).HasMaxLength(160).IsRequired();
+                entity.Property(item => item.Description).HasMaxLength(2000);
+                entity.Property(item => item.RewardType).HasMaxLength(32).IsRequired();
+                entity.Property(item => item.Currency).HasMaxLength(8);
+                entity.Property(item => item.ConditionType).HasMaxLength(32).IsRequired();
+                entity.Property(item => item.ConditionMetric).HasMaxLength(40).IsRequired();
+                entity.Property(item => item.DisplayValue).HasPrecision(18, 2);
+                entity.HasIndex(item => new { item.SeasonId, item.IsEnabled });
+                entity.HasOne(item => item.Season).WithMany(season => season.RewardDefinitions).HasForeignKey(item => item.SeasonId).OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<RewardGrant>(entity =>
+            {
+                entity.Property(item => item.Status).HasMaxLength(32).IsRequired();
+                entity.Property(item => item.ManagerNote).HasMaxLength(1000);
+                entity.HasIndex(item => new { item.RewardDefinitionId, item.SeasonId, item.RecipientUserId }).IsUnique();
+                entity.HasIndex(item => new { item.RecipientUserId, item.Status });
+                entity.HasOne(item => item.Season).WithMany(season => season.RewardGrants).HasForeignKey(item => item.SeasonId).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(item => item.RewardDefinition).WithMany().HasForeignKey(item => item.RewardDefinitionId).OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(item => item.RecipientUser).WithMany().HasForeignKey(item => item.RecipientUserId).OnDelete(DeleteBehavior.Restrict);
+            });
 
             modelBuilder.Entity<CommentMention>()
                 .HasOne(cm => cm.Comment)

@@ -13,6 +13,128 @@
       </button>
     </header>
 
+    <section v-if="seasonDashboard.currentSeason" class="season-v1-panel panel">
+      <div class="season-v1-heading">
+        <div>
+          <span class="season-v1-eyebrow">SprintA Reward System V1</span>
+          <h2>{{ seasonDashboard.currentSeason.name }}</h2>
+          <p>{{ seasonDashboard.currentSeason.status }} · {{ formatDate(seasonDashboard.currentSeason.startAt) }} — {{ formatDate(seasonDashboard.currentSeason.endAt) }} · {{ seasonTimeRemaining }}</p>
+        </div>
+        <div class="season-v1-xp"><strong>{{ seasonDashboard.careerXp }}</strong><span>career XP</span></div>
+      </div>
+      <div class="season-v1-grid">
+        <div>
+          <h3>Season leaderboard</h3>
+          <div v-if="seasonDashboard.leaderboard.length === 0" class="empty-list-small">No finalized events yet.</div>
+          <div v-for="entry in seasonDashboard.leaderboard.slice(0, 5)" :key="entry.userId" class="season-v1-row">
+            <span>#{{ entry.rank }} {{ entry.userName }}</span><strong>{{ entry.seasonPoints }} pts</strong>
+          </div>
+        </div>
+        <div class="season-v1-stats">
+          <h3>My progress</h3>
+          <div class="season-v1-stat-grid">
+            <span>Rank <strong>#{{ seasonDashboard.myRank || '—' }}</strong></span>
+            <span>Season points <strong>{{ seasonDashboard.mySeasonPoints }}</strong></span>
+            <span>XP / level <strong>{{ seasonDashboard.careerXp }} / {{ seasonDashboard.careerLevel }}</strong></span>
+            <span>On-time rate <strong>{{ Math.round(Number(seasonDashboard.myOnTimeRate || 0)) }}%</strong></span>
+          </div>
+        </div>
+        <div>
+          <h3>{{ seasonDashboard.canManage ? 'Pending manager review' : 'Open rewards' }}</h3>
+          <div v-if="seasonDashboard.canManage && seasonDashboard.pendingEvents.length" class="season-v1-review-list">
+            <div v-for="event in seasonDashboard.pendingEvents" :key="event.id" class="season-v1-row">
+              <span>{{ event.userName }} · {{ event.points }} pts</span>
+              <span class="season-v1-actions">
+                <button type="button" @click="reviewSeasonEvent(event, true)">Approve</button>
+                <button type="button" class="reject" @click="reviewSeasonEvent(event, false)">Reject</button>
+              </span>
+            </div>
+          </div>
+          <div v-else-if="seasonDashboard.openRewards.length" class="season-v1-review-list">
+            <div v-for="grant in seasonDashboard.openRewards" :key="grant.id" class="season-v1-row"><span>{{ grant.rewardName }}</span><strong>{{ grant.status }}</strong></div>
+          </div>
+          <div v-else class="empty-list-small">Nothing pending.</div>
+        </div>
+      </div>
+      <div v-if="seasonDashboard.rewardProgress.length" class="season-v1-progress">
+        <h3>Reward conditions</h3>
+        <div v-for="reward in seasonDashboard.rewardProgress" :key="reward.rewardDefinitionId" class="season-v1-progress-row">
+          <span>{{ reward.name }} · {{ reward.conditionLabel }}</span>
+          <span>{{ reward.currentValue }} / {{ reward.goalValue }}</span>
+          <div class="season-v1-progress-track"><div class="season-v1-progress-fill" :style="{ width: `${reward.progressPercent}%` }"></div></div>
+        </div>
+      </div>
+      <div v-if="!seasonDashboard.canManage && seasonDashboard.rewardHistory.length" class="season-v1-history">
+        <h3>My rewards</h3>
+        <div v-for="grant in seasonDashboard.rewardHistory" :key="grant.id" class="season-v1-row">
+          <span>{{ grant.rewardName }} · {{ grant.rewardType }}</span><strong>{{ grant.status }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="seasonDashboard.canManage" class="reward-manager-panel panel">
+      <div class="manager-panel-heading">
+        <div><span class="season-v1-eyebrow">Manager controls</span><h2>Reward operations</h2></div>
+        <span class="manager-note">Cash rewards are descriptive only. No wallet or payout is connected.</span>
+      </div>
+      <div class="manager-columns">
+        <div>
+          <h3>Seasons</h3>
+          <div v-if="managerSeasons.length" class="manager-season-list">
+            <div v-for="season in managerSeasons" :key="season.id" class="manager-season-row">
+              <div><strong>{{ season.name }}</strong><small>{{ season.type }} · {{ formatDate(season.startAt) }} — {{ formatDate(season.endAt) }}</small></div>
+              <div class="manager-row-actions">
+                <span class="status-pill">{{ season.status }}</span>
+                <button v-if="season.status === 'Draft'" type="button" @click="activateSeason(season)">Activate</button>
+                <button v-if="season.status === 'Active'" type="button" class="danger" @click="closeSeason(season)">Close</button>
+              </div>
+            </div>
+          </div>
+          <div v-else class="empty-list-small">No seasons yet.</div>
+          <form class="manager-form" @submit.prevent="createSeason">
+            <h4>Create season</h4>
+            <input v-model="seasonForm.name" placeholder="Season name" aria-label="Season name" />
+            <select v-model="seasonForm.type" aria-label="Season type">
+              <option value="Sprint">Sprint</option><option value="Month">Month</option><option value="EntireProject">Entire Project</option><option value="Custom">Custom</option>
+            </select>
+            <input v-model="seasonForm.startAt" type="date" aria-label="Season start" />
+            <input v-if="seasonForm.type === 'Custom'" v-model="seasonForm.endAt" type="date" aria-label="Season end" />
+            <input v-model="seasonForm.timeZone" placeholder="Workspace timezone (optional)" aria-label="Timezone" />
+            <button type="submit" :disabled="managerBusy">Create season</button>
+          </form>
+        </div>
+        <div>
+          <h3>Rewards</h3>
+          <form class="manager-form" @submit.prevent="createReward">
+            <h4>Create reward</h4>
+            <select v-model="rewardForm.seasonId" aria-label="Reward season"><option value="">Choose season</option><option v-for="season in managerSeasons" :key="season.id" :value="season.id">{{ season.name }}</option></select>
+            <input v-model="rewardForm.name" placeholder="Reward name" aria-label="Reward name" />
+            <textarea v-model="rewardForm.description" placeholder="Description" aria-label="Reward description" rows="2"></textarea>
+            <select v-model="rewardForm.rewardType" aria-label="Reward type"><option v-for="type in rewardTypes" :key="type" :value="type">{{ type }}</option></select>
+            <select v-model="rewardForm.condition" aria-label="Reward condition"><option v-for="condition in rewardConditions" :key="condition.key" :value="condition.key">{{ condition.label }}</option></select>
+            <input v-if="rewardForm.condition === 'TopN'" v-model.number="rewardForm.rankTo" type="number" min="1" step="1" placeholder="Top N" aria-label="Top N" />
+            <input v-else v-model.number="rewardForm.threshold" type="number" min="0" step="0.01" placeholder="Threshold" aria-label="Reward threshold" />
+            <label class="manager-checkbox"><input v-model="rewardForm.requireActiveMember" type="checkbox" /> Require active member at settlement</label>
+            <button type="submit" :disabled="managerBusy">Create reward</button>
+          </form>
+          <div class="manager-grants">
+            <h4>Qualifying recipients</h4>
+            <template v-if="managedGrants.length">
+              <div v-for="grant in managedGrants" :key="grant.id" class="manager-grant-row">
+                <span><strong>{{ grant.rewardName }}</strong> · {{ grant.recipientName }}<small>{{ grant.status }}</small></span>
+                <span class="manager-row-actions">
+                  <button v-if="grant.requiresManagerResolution" type="button" @click="resolveGrant(grant, true)">Award tie</button>
+                  <button v-if="grant.requiresManagerResolution" type="button" class="danger" @click="resolveGrant(grant, false)">Decline</button>
+                  <button v-else-if="grant.status === 'PendingFulfillment' || grant.status === 'Earned'" type="button" @click="fulfillGrant(grant)">Mark fulfilled</button>
+                </span>
+              </div>
+            </template>
+            <div v-else class="empty-list-small">Settle a closed season to see recipients.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <div class="rewards-dashboard-container">
       <!-- Left Column: Leaderboard Card -->
       <div class="leaderboard-main-area">
@@ -433,6 +555,8 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { usePeopleStore } from '@/store/usePeopleStore'
 import axiosClient from '@/api/axiosClient'
 import UserAvatar from '@/components/common/UserAvatar.vue'
+import { getScopedCurrentProjectId } from '@/utils/projectContext'
+import { validateRewardForm, validateRewardSeasonForm } from '@/utils/rewardUi'
 
 const { t } = useI18nStore()
 const authStore = useAuthStore()
@@ -460,6 +584,19 @@ const spotlightTasks = ref([])
 const recentAchievements = ref([])
 const transactions = ref([])
 const leaderboard = ref([])
+const seasonDashboard = ref({ currentSeason: null, careerXp: 0, careerLevel: 1, mySeasonPoints: 0, myRank: 0, myOnTimeRate: 0, leaderboard: [], pendingEvents: [], openRewards: [], rewardHistory: [], availableRewards: [], rewardProgress: [], canManage: false })
+const managerSeasons = ref([])
+const managerBusy = ref(false)
+const seasonForm = ref({ name: '', type: 'Sprint', startAt: '', endAt: '', timeZone: '' })
+const rewardForm = ref({ seasonId: '', name: '', description: '', rewardType: 'Gift', condition: 'TopN', threshold: 100, rankTo: 1, requireActiveMember: true })
+const rewardTypes = ['Cash', 'Voucher', 'Gift', 'Privilege', 'Custom']
+const rewardConditions = [
+  { key: 'TopN', label: 'Top N' },
+  { key: 'SeasonPoints', label: 'Season Points ≥ X' },
+  { key: 'OnTimeRate', label: 'On-time rate ≥ X%' },
+  { key: 'ApprovedTasks', label: 'Approved tasks ≥ X' },
+  { key: 'TeamOnTimeRate', label: 'Team on-time rate ≥ X%' }
+]
 
 // New interactive state variables
 const activeTab = ref('tasks')
@@ -472,12 +609,17 @@ const selectedUser = ref({
 })
 
 const formatDate = (value) => (value ? new Date(value).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '')
+const seasonTimeRemaining = computed(() => {
+  const end = seasonDashboard.value.currentSeason?.endAt
+  if (!end) return 'No end date'
+  const remaining = new Date(end).getTime() - Date.now()
+  if (remaining <= 0) return 'Expired — close when ready'
+  const days = Math.floor(remaining / 86400000)
+  const hours = Math.floor((remaining % 86400000) / 3600000)
+  return `${days}d ${hours}h remaining`
+})
+const managedGrants = computed(() => seasonDashboard.value.openRewards || [])
 const pointsToNext = computed(() => Math.max(0, Number(career.value?.nextThreshold || 0) - Number(wallet.value?.totalPoints || 0)))
-
-const getInitials = (name = '') => {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  return (parts.length > 1 ? `${parts[0][0]}${parts.at(-1)[0]}` : name.slice(0, 2)).toUpperCase() || 'U'
-}
 
 const top1 = computed(() => leaderboard.value[0] || null)
 const top2 = computed(() => leaderboard.value[1] || null)
@@ -493,10 +635,6 @@ const myRankDisplay = computed(() => {
   const rank = myRankIndex.value + 1
   return rank < 10 ? `#0${rank}` : `#${rank}`
 })
-const totalMembersDisplay = computed(() => {
-  return leaderboard.value.length || 0
-})
-
 const calculateClientCareer = (points) => {
   let level = 1
   let currentThreshold = 0
@@ -580,6 +718,9 @@ const loadRewards = async () => {
       promises.push(peopleStore.fetchPeople('', 1, 100))
     }
 
+    const projectId = getScopedCurrentProjectId()
+    if (projectId) promises.push(axiosClient.get(`/projects/${projectId}/rewards/dashboard`).catch(() => null))
+
     const results = await Promise.all(promises)
     const mine = results[0]
     const leaders = results[1]
@@ -626,6 +767,14 @@ const loadRewards = async () => {
     recentAchievements.value = data.recentAchievements || []
     transactions.value = data.transactions || []
     leaderboard.value = leaders.data?.data || []
+    const seasonResponse = projectId ? results[results.length - 1] : null
+    if (seasonResponse?.data) seasonDashboard.value = { ...seasonDashboard.value, ...(seasonResponse.data?.data || seasonResponse.data) }
+    if (projectId && seasonDashboard.value.canManage) {
+      const seasonsResponse = await axiosClient.get(`/projects/${projectId}/rewards/seasons`)
+      managerSeasons.value = seasonsResponse.data?.data || seasonsResponse.data || []
+    } else if (seasonDashboard.value.currentSeason) {
+      managerSeasons.value = [seasonDashboard.value.currentSeason]
+    }
 
     // Initialize selectedUser
     if (selectedUser.value) {
@@ -646,6 +795,91 @@ const loadRewards = async () => {
     ElMessage.error(error.response?.data?.message || 'Unable to load rewards.')
   } finally {
     loading.value = false
+  }
+}
+
+const showValidationErrors = (errors) => {
+  if (errors.length) ElMessage.warning(errors[0])
+  return errors.length === 0
+}
+
+const createSeason = async () => {
+  if (!showValidationErrors(validateRewardSeasonForm(seasonForm.value))) return
+  const projectId = getScopedCurrentProjectId()
+  if (!projectId) return
+  managerBusy.value = true
+  try {
+    await axiosClient.post(`/projects/${projectId}/rewards/seasons`, {
+      name: seasonForm.value.name.trim(), type: seasonForm.value.type, startAt: `${seasonForm.value.startAt}T00:00:00+00:00`,
+      endAt: seasonForm.value.type === 'Custom' && seasonForm.value.endAt ? `${seasonForm.value.endAt}T23:59:59.9999999+00:00` : null,
+      timeZone: seasonForm.value.timeZone.trim() || null
+    })
+    seasonForm.value = { name: '', type: 'Sprint', startAt: '', endAt: '', timeZone: '' }
+    await loadRewards()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Unable to create season.')
+  } finally {
+    managerBusy.value = false
+  }
+}
+
+const createReward = async () => {
+  if (!showValidationErrors(validateRewardForm(rewardForm.value))) return
+  const projectId = getScopedCurrentProjectId()
+  if (!projectId) return
+  const topN = rewardForm.value.condition === 'TopN'
+  managerBusy.value = true
+  try {
+    await axiosClient.post(`/projects/${projectId}/rewards/seasons/${rewardForm.value.seasonId}/definitions`, {
+      name: rewardForm.value.name.trim(), description: rewardForm.value.description.trim() || null, rewardType: rewardForm.value.rewardType,
+      displayValue: null, currency: null, conditionType: topN ? 'Ranking' : rewardForm.value.condition === 'TeamOnTimeRate' ? 'TeamGoal' : 'PersonalMilestone',
+      conditionMetric: topN ? 'SeasonPoints' : rewardForm.value.condition === 'ApprovedTasks' ? 'FinalizedTaskCount' : rewardForm.value.condition.includes('OnTimeRate') ? 'OnTimeRate' : 'SeasonPoints',
+      threshold: topN ? 0 : Number(rewardForm.value.threshold), rankFrom: topN ? 1 : null, rankTo: topN ? Number(rewardForm.value.rankTo) : null,
+      requireActiveMemberAtSettlement: rewardForm.value.requireActiveMember
+    })
+    rewardForm.value = { seasonId: rewardForm.value.seasonId, name: '', description: '', rewardType: 'Gift', condition: 'TopN', threshold: 100, rankTo: 1, requireActiveMember: true }
+    await loadRewards()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Unable to create reward.')
+  } finally {
+    managerBusy.value = false
+  }
+}
+
+const activateSeason = async (season) => {
+  const projectId = getScopedCurrentProjectId()
+  if (!projectId || !season?.id) return
+  managerBusy.value = true
+  try { await axiosClient.post(`/projects/${projectId}/rewards/seasons/${season.id}/activate`); await loadRewards() } catch (error) { ElMessage.error(error.response?.data?.message || 'Unable to activate season.') } finally { managerBusy.value = false }
+}
+
+const closeSeason = async (season) => {
+  const projectId = getScopedCurrentProjectId()
+  if (!projectId || !season?.id) return
+  managerBusy.value = true
+  try { await axiosClient.post(`/projects/${projectId}/rewards/seasons/${season.id}/close`); await loadRewards() } catch (error) { ElMessage.error(error.response?.data?.message || 'Unable to close season.') } finally { managerBusy.value = false }
+}
+
+const resolveGrant = async (grant, award) => {
+  const projectId = getScopedCurrentProjectId()
+  if (!projectId || !grant?.id) return
+  try { await axiosClient.post(`/projects/${projectId}/rewards/grants/${grant.id}/resolve`, { award, note: 'Resolved by manager.' }); await loadRewards() } catch (error) { ElMessage.error(error.response?.data?.message || 'Unable to resolve reward tie.') }
+}
+
+const fulfillGrant = async (grant) => {
+  const projectId = getScopedCurrentProjectId()
+  if (!projectId || !grant?.id) return
+  try { await axiosClient.post(`/projects/${projectId}/rewards/grants/${grant.id}/fulfill`); await loadRewards() } catch (error) { ElMessage.error(error.response?.data?.message || 'Unable to fulfill reward.') }
+}
+
+const reviewSeasonEvent = async (event, approve) => {
+  const projectId = getScopedCurrentProjectId()
+  if (!projectId || !event?.id) return
+  try {
+    await axiosClient.post(`/projects/${projectId}/rewards/events/${event.id}/review`, { approve })
+    await loadRewards()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Unable to review reward event.')
   }
 }
 
@@ -677,6 +911,54 @@ onMounted(loadRewards)
   --reward-silver: #8A99AD; /* Muted cool silver gray */
   --reward-bronze: #B87333; /* Muted warm bronze */
 }
+
+.season-v1-panel {
+  margin: 0 var(--sa-page-x, 24px) 4px;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--reward-accent, #6366f1) 24%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--reward-accent, #6366f1) 8%, var(--reward-surface, #fff)), var(--reward-surface, #fff));
+}
+.season-v1-heading, .season-v1-row, .season-v1-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.season-v1-heading h2 { margin: 3px 0; color: var(--reward-text, #111827); }
+.season-v1-heading p, .season-v1-eyebrow { margin: 0; color: var(--reward-muted, #64748b); font-size: 12px; }
+.season-v1-eyebrow { color: var(--reward-accent, #6366f1); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.season-v1-xp { display: grid; justify-items: end; color: var(--reward-muted, #64748b); }
+.season-v1-xp strong { color: var(--reward-accent, #6366f1); font-size: 26px; }
+.season-v1-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 16px; }
+.season-v1-grid h3 { margin: 0 0 8px; font-size: 13px; color: var(--reward-text, #111827); }
+.season-v1-row { min-height: 34px; border-top: 1px solid color-mix(in srgb, var(--reward-muted, #64748b) 14%, transparent); color: var(--reward-text, #111827); font-size: 13px; }
+.season-v1-progress { margin-top: 16px; }
+.season-v1-progress h3 { margin: 0 0 8px; font-size: 13px; color: var(--reward-text, #111827); }
+.season-v1-progress-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(90px, 18%); align-items: center; gap: 12px; min-height: 30px; color: var(--reward-text, #111827); font-size: 12px; }
+.season-v1-progress-track { height: 6px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--reward-muted, #64748b) 18%, transparent); }
+.season-v1-progress-fill { height: 100%; border-radius: inherit; background: var(--reward-accent, #6366f1); }
+.season-v1-stats { grid-column: 1 / -1; }
+.season-v1-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.season-v1-stat-grid span { display: grid; gap: 3px; padding: 10px; border: 1px solid var(--reward-border); border-radius: 7px; color: var(--reward-muted); font-size: 11px; }
+.season-v1-stat-grid strong { color: var(--reward-text); font-size: 14px; }
+.season-v1-history { margin-top: 16px; }
+.season-v1-history h3 { margin: 0 0 8px; font-size: 13px; }
+.season-v1-actions button { border: 0; border-radius: 6px; padding: 4px 8px; color: #fff; background: var(--reward-accent, #6366f1); cursor: pointer; font-size: 11px; }
+.season-v1-actions button.reject { background: #b91c1c; }
+.reward-manager-panel { margin: 18px var(--sa-page-x, 24px) 20px; padding: 18px 20px; }
+.manager-panel-heading, .manager-season-row, .manager-grant-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.manager-panel-heading h2 { margin: 3px 0 0; }
+.manager-note, .manager-season-row small, .manager-grant-row small { display: block; color: var(--reward-muted); font-size: 11px; }
+.manager-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; margin-top: 18px; }
+.manager-columns h3 { margin: 0 0 8px; font-size: 13px; }
+.manager-season-list, .manager-grants { display: grid; gap: 8px; }
+.manager-season-row, .manager-grant-row { padding: 10px 0; border-top: 1px solid var(--reward-border); font-size: 12px; }
+.manager-row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.status-pill { padding: 3px 7px; border-radius: 999px; background: var(--reward-bg); color: var(--reward-muted); }
+.manager-row-actions button, .manager-form button { border: 0; border-radius: 6px; padding: 6px 9px; color: #fff; background: var(--reward-accent); cursor: pointer; font-size: 11px; }
+.manager-row-actions button.danger { background: #b91c1c; }
+.manager-form { display: grid; gap: 8px; margin-top: 16px; padding: 14px; border: 1px solid var(--reward-border); border-radius: 8px; }
+.manager-form h4, .manager-grants h4 { margin: 0 0 2px; font-size: 12px; }
+.manager-form input, .manager-form select, .manager-form textarea { box-sizing: border-box; width: 100%; border: 1px solid var(--reward-border); border-radius: 6px; padding: 8px; background: var(--reward-surface); color: var(--reward-text); font: inherit; font-size: 12px; }
+.manager-checkbox { display: flex; align-items: center; gap: 7px; color: var(--reward-muted); font-size: 11px; }
+.manager-checkbox input { width: auto; }
+@media (max-width: 760px) { .season-v1-grid, .season-v1-progress-row { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .season-v1-stat-grid, .manager-columns { grid-template-columns: 1fr 1fr; } .manager-panel-heading { align-items: flex-start; flex-direction: column; } }
 
 :global(.dark) .rewards-page,
 :global([data-theme="dark"]) .rewards-page {
