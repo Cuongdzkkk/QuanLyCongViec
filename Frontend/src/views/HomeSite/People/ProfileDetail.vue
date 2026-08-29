@@ -1,12 +1,14 @@
 <template>
-  <template v-if="user">
-    <DetailLayout>
+  <div class="profile-detail-page-root" style="height: 100%; display: flex; flex-direction: column;">
+    <template v-if="user">
+      <DetailLayout>
     <template #hero>
       <DetailHero
         cover-color="#091E42"
         cover-pattern="dynamic"
         back-text="Quay lại"
-        :title="user.fullName"
+        :show-back="true"
+        :title="user?.fullName || 'User Profile'"
         avatar-type="circle"
         @back="handleBack"
       >
@@ -388,6 +390,7 @@
     <div class="loader-spinner"></div>
     <p>Loading profile...</p>
   </div>
+  </div>
 </template>
 
 <script setup>
@@ -429,6 +432,15 @@ const peopleStore = usePeopleStore()
 const goalStore = useGoalStore()
 const projectStore = useProjectStore()
 const profileUserId = computed(() => String(route.params.profileId || route.params.id || '').trim())
+
+const backUrl = computed(() => {
+  if (route.path.startsWith('/space/')) {
+    const spaceSlug = route.params.spaceSlug || 'project'
+    const projectId = route.params.id || route.params.projectId
+    return `/space/${spaceSlug}/${projectId}/members`
+  }
+  return '/home/people'
+})
 
 
 const editingBio = ref(false)
@@ -475,14 +487,19 @@ const editForm = ref({
   bio: ''
 })
 
+const cachedUser = ref(null)
 const user = computed(() => {
-  const u = peopleStore.currentUser || getStoredUser() || {}
-  return {
+  const u = peopleStore.currentUser
+  if (!u || (profileUserId.value && String(u.id) !== profileUserId.value)) return cachedUser.value
+  
+  const result = {
     ...u,
     teamsList: u.departments || [],
     hobbies: u.hobbies || '',
     avatarColor: u.avatarColor
   }
+  cachedUser.value = result
+  return result
 })
 
 const assignedTasks = ref([])
@@ -513,15 +530,13 @@ const closeMenuOnOutsideClick = (e) => {
 }
 
 const handleBack = () => {
-  if (route.path.startsWith('/space/')) {
-    const spaceSlug = route.params.spaceSlug || 'project'
-    const projectId = route.params.id || route.params.projectId
-    router.push(`/space/${spaceSlug}/${projectId}/members`)
-  } else if (route.path.startsWith('/home/')) {
-    router.push('/home/people')
+  if (window.history.length > 1) {
+    router.back()
   } else {
-    if (window.history.length > 1) {
-      router.back()
+    if (route.path.startsWith('/space/')) {
+      const spaceSlug = route.params.spaceSlug || 'project'
+      const projectId = route.params.id || route.params.projectId
+      router.push(`/space/${spaceSlug}/${projectId}/members`)
     } else {
       router.push('/home/people')
     }

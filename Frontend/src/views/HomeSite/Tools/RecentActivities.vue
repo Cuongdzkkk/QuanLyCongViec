@@ -30,11 +30,11 @@
     </header>
 
     <section class="page-content">
-      <label class="search-field">
+      <div class="filter-search-field">
         <span class="sr-only">{{ labels.search }}</span>
-        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-        <input v-model="searchQuery" type="search" :placeholder="labels.search" />
-      </label>
+        <i class="fa-solid fa-magnifying-glass filter-search-icon" aria-hidden="true"></i>
+        <input v-model="searchQuery" type="text" :placeholder="labels.search" class="filter-search-input" />
+      </div>
 
       <div v-if="isLoading" class="page-state" role="status" aria-live="polite">
         <span class="state-spinner" aria-hidden="true"></span>
@@ -222,10 +222,52 @@ onMounted(() => {
 .tab-button.active { border-bottom-color: var(--home-accent, #0c66e4); color: var(--home-accent, #0c66e4); }
 
 .page-content { max-width: 1040px; padding: 24px 40px 44px; }
-.search-field { position: relative; width: min(100%, 360px); margin-bottom: 20px; display: block; }
-.search-field i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--home-muted, #5e6c84); font-size: 13px; pointer-events: none; }
-.search-field input { appearance: none; -webkit-appearance: none; width: 100%; height: 42px; box-sizing: border-box; padding: 9px 12px 9px 40px; border: 1px solid var(--home-border, #dfe1e6); border-radius: 10px; outline: 0; background: var(--home-panel, #fff); color: var(--home-text, #172b4d); font: inherit; font-size: 14px; }
-.search-field input:focus-visible { border-color: var(--home-accent, #0c66e4); box-shadow: 0 0 0 3px color-mix(in srgb, var(--home-accent, #0c66e4) 18%, transparent); }
+.filter-search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: min(100%, 360px);
+  height: 40px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border, #dfe1e6);
+  border-radius: 6px;
+  background-color: var(--color-surface, #fff);
+  margin-bottom: 20px;
+  transition: all 0.2s ease;
+}
+
+.filter-search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--color-text-muted, #6b778c);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.filter-search-input {
+  width: 100% !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 0 12px 0 32px !important;
+  font-size: 14px !important;
+  color: var(--color-text-primary, #172b4d) !important;
+  outline: none !important;
+  box-shadow: none !important;
+  line-height: normal !important;
+}
+
+.filter-search-input::placeholder {
+  color: var(--color-text-muted, #6b778c);
+}
+
+.filter-search-field:focus-within {
+  border-color: var(--color-primary, #0c66e4);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #0c66e4) 20%, transparent);
+}
 
 .activity-list { width: min(100%, 960px); display: flex; flex-direction: column; gap: 25px; }
 .time-group h2 { margin: 0 0 9px; color: var(--home-muted, #5e6c84); font-size: 11px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }

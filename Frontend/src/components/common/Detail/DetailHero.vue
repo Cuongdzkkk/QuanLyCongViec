@@ -13,7 +13,7 @@
       </div>
 
       <!-- Back Button -->
-      <button v-if="backUrl" class="sprinta-back-btn" @click="handleBack">
+      <button v-if="backUrl || showBack" class="sprinta-back-btn" @click="onBackClick">
         <i class="fa-solid fa-arrow-left"></i>
         <span>{{ backText || 'Quay lại' }}</span>
       </button>
@@ -96,16 +96,28 @@ const props = defineProps({
   title: {
     type: String,
     required: true
+  },
+  showBack: {
+    type: Boolean,
+    default: false
   }
 })
+
+const emit = defineEmits(['back'])
 
 const router = useRouter()
 const isMenuOpen = ref(false)
 
+const onBackClick = () => {
+  if (props.showBack) {
+    emit('back')
+  } else {
+    handleBack()
+  }
+}
+
 const handleBack = () => {
-  if (typeof props.backUrl === 'string') {
-    router.push(props.backUrl)
-  } else if (props.backUrl) {
+  if (typeof props.backUrl === 'string' && props.backUrl) {
     router.push(props.backUrl)
   } else {
     router.back()

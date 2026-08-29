@@ -184,6 +184,8 @@ export const useHomeProjectStore = defineStore('homeProject', {
         startDate: data.startDate,
         createdAt: data.createdAt,
         updatedAt: data.updatedAt,
+        activeMemberCount: data.activeMemberCount || data.ActiveMemberCount || 0,
+        memberCount: data.memberCount || data.MemberCount || 0,
         isStarred: data.isStarred ?? data.isFavorite ?? false,
         isFollowing: data.isFollowing ?? false,
         isArchived: data.isArchived ?? data.status === false

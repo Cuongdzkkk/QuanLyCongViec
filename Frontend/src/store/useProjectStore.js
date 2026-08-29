@@ -146,6 +146,8 @@ const mapProjectRow = (project) => {
     myRole: project.myRole || project.MyRole || null,
     createdAt: project.createdAt || project.CreatedAt || null,
     updatedAt: project.updatedAt || project.UpdatedAt || null,
+    activeMemberCount: project.activeMemberCount || project.ActiveMemberCount || 0,
+    memberCount: project.memberCount || project.MemberCount || 0,
     WorkspaceId: workspaceId,
     children: defaultProjectNodes(projectId, project.name || project.Name || ''),
     originalRow: project

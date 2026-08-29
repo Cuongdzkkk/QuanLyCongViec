@@ -62,28 +62,6 @@
         </template>
   
         <template #left>
-          <el-select
-            ref="projectSelectRef"
-            v-model="activeProjectId"
-            placeholder="Filter dự án"
-            @change="selectProject"
-            class="custom-project-select"
-            popper-class="custom-project-dropdown"
-          >
-            <template #prefix>
-              <i class="fa-solid fa-folder-open"></i>
-            </template>
-            <el-option
-              v-for="p in projectsList"
-              :key="p.id"
-              :label="`[${p.key}] ${p.name}`"
-              :value="p.id"
-            />
-          </el-select>
-  
-          <span class="checkin-filter-count text-xs text-muted ml-2">
-            {{ filteredTeamCheckins.length }}/{{ teamCheckins.length }}
-          </span>
         </template>
   
         <template #toggles>
@@ -197,7 +175,7 @@
       </div>
       <template v-else>
         <div v-if="currentView === 'grid'" class="team-checkins-grid">
-        <div v-for="team in filteredTeamCheckins" :key="team.id" class="checkin-card card" :class="{ 'not-checked': !team.checkedIn }">
+        <div v-for="team in filteredTeamCheckins" :key="team.id" class="checkin-card card" :class="{ 'not-checked': !team.checkedIn }" @click="openCheckinDetail(team)" style="cursor: pointer;">
           <div class="card-header flex items-center justify-between">
             <div class="flex items-center" style="gap: 8px;">
               <el-avatar :size="32" :src="team.userAvatar" style="flex-shrink: 0;">{{ team.userName.charAt(0) }}</el-avatar>
@@ -251,7 +229,7 @@
 
       <!-- Checkin List View -->
       <div v-else class="team-checkins-list">
-        <div v-for="team in filteredTeamCheckins" :key="team.id" class="checkin-list-row card" :class="{ 'not-checked': !team.checkedIn }">
+        <div v-for="team in filteredTeamCheckins" :key="team.id" class="checkin-list-row card" :class="{ 'not-checked': !team.checkedIn }" @click="openCheckinDetail(team)" style="cursor: pointer;">
           <div class="clr-left">
             <el-avatar :size="32" :src="team.userAvatar" style="flex-shrink: 0;">{{ team.userName.charAt(0) }}</el-avatar>
             <div class="user-meta" style="line-height: 1.3;">
@@ -320,7 +298,6 @@
             v-model="form.projectId" 
             placeholder="Chọn dự án liên quan..."
             class="w-full"
-            disabled
           >
             <el-option
               v-for="p in projectsList"
@@ -369,6 +346,58 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- Detail View Modal -->
+    <el-dialog
+      v-model="detailModalOpen"
+      width="540px"
+      append-to-body
+      class="sa-data-dialog sa-modal--form"
+      :show-close="false"
+    >
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-file-earmark-text"
+          title="Chi tiết Báo cáo Check-in"
+          :description="selectedCheckin ? `Báo cáo của ${selectedCheckin.userName}` : ''"
+          @close="detailModalOpen = false"
+        />
+      </template>
+      <div v-if="selectedCheckin" class="checkin-form-body flex flex-col gap-4">
+        <div class="flex items-center" style="gap: 12px; margin-bottom: 8px;">
+          <el-avatar :size="48" :src="selectedCheckin.userAvatar">{{ selectedCheckin.userName.charAt(0) }}</el-avatar>
+          <div>
+            <div class="font-bold text-base">{{ selectedCheckin.userName }}</div>
+            <div class="text-sm text-muted">{{ selectedCheckin.role }}</div>
+          </div>
+        </div>
+        
+        <div v-if="selectedCheckin.projectName" style="padding: 12px; background: rgba(230,162,60,0.1); border-radius: 8px;">
+          <span class="font-bold text-xs" style="color:#e6a23c; text-transform:uppercase;">Dự án báo cáo</span>
+          <div class="mt-1 font-medium">{{ selectedCheckin.projectKey ? `[${selectedCheckin.projectKey}] ` : '' }}{{ selectedCheckin.projectName }}</div>
+        </div>
+
+        <div v-if="selectedCheckin.checkedIn" class="mt-2">
+          <div class="mb-4">
+            <span class="font-bold text-sm block mb-1">✅ Đã làm hôm qua:</span>
+            <div class="p-3 bg-surface-hover rounded whitespace-pre-wrap text-sm" style="background: var(--color-surface-hover);">{{ selectedCheckin.yesterday }}</div>
+          </div>
+          <div class="mb-4">
+            <span class="font-bold text-sm block mb-1">📌 Mục tiêu hôm nay:</span>
+            <div class="p-3 bg-surface-hover rounded whitespace-pre-wrap text-sm" style="background: var(--color-surface-hover);">{{ selectedCheckin.today }}</div>
+          </div>
+          <div class="mb-2">
+            <span class="font-bold text-sm block mb-1">⚠️ Khó khăn:</span>
+            <div class="p-3 rounded whitespace-pre-wrap text-sm font-medium" :style="{ background: selectedCheckin.blocker ? 'rgba(239, 68, 68, 0.1)' : 'var(--color-surface-hover)', color: selectedCheckin.blocker ? 'var(--color-danger)' : 'inherit' }">
+              {{ selectedCheckin.blocker || 'Không có khó khăn gì' }}
+            </div>
+          </div>
+        </div>
+        <div v-else class="text-center py-6 text-muted italic">
+          Thành viên này chưa gửi báo cáo check-in hôm nay.
+        </div>
+      </div>
+    </el-dialog>
   </section>
 </template>
 
@@ -401,6 +430,14 @@ watch(currentView, (val) => {
 })
 
 const checkinSearch = ref('')
+const detailModalOpen = ref(false)
+const selectedCheckin = ref(null)
+
+const openCheckinDetail = (team) => {
+  selectedCheckin.value = team
+  detailModalOpen.value = true
+}
+
 const tr = (key, fallback) => {
   const translated = t(key)
   return translated === key ? fallback : translated
@@ -582,20 +619,43 @@ const fetchCurrentUser = async () => {
 }
 
 const fetchProjectMembersAndCheckins = async () => {
-  if (!activeProjectId.value) return
-
   try {
-    const res = await axiosClient.get('/checkins', {
-      params: { projectId: activeProjectId.value }
-    })
-    const payload = res.data?.data || {}
-    teamCheckins.value = Array.isArray(payload.members) ? payload.members : []
+    const allCheckins = []
+    let hasCheckedInAny = false
 
-    const meCard = teamCheckins.value.find(t => t.isCurrentUser)
-    userCheckedIn.value = meCard ? meCard.checkedIn : false
+    const projectFetchPromises = projectsList.value.map(async (project) => {
+      try {
+        const res = await axiosClient.get('/checkins', {
+          params: { projectId: project.id }
+        })
+        const payload = res.data?.data || {}
+        const members = Array.isArray(payload.members) ? payload.members : []
+        
+        const mappedMembers = members.map(m => ({
+          ...m,
+          projectId: project.id,
+          projectName: project.name,
+          projectKey: project.key
+        }))
+        
+        return mappedMembers
+      } catch (err) {
+        return []
+      }
+    })
+
+    const results = await Promise.all(projectFetchPromises)
+    results.forEach(members => {
+      allCheckins.push(...members)
+    })
+
+    // Deduplicate or just show all. Since a user can check-in per project, we might want to group or show all.
+    teamCheckins.value = allCheckins
+
+    const meCards = allCheckins.filter(t => t.isCurrentUser)
+    userCheckedIn.value = meCards.some(m => m.checkedIn)
   } catch (error) {
     console.error('Cannot load project members/checkins:', error)
-    ElMessage.error(error.response?.data?.message || 'Không thể tải danh sách check-in.')
     teamCheckins.value = []
     userCheckedIn.value = false
   }
@@ -617,12 +677,6 @@ onMounted(async () => {
       }))
 
     if (projectsList.value.length > 0) {
-      const savedProjId = localStorage.getItem('active_checkin_project_id')
-      if (savedProjId && projectsList.value.some(p => p.id === savedProjId)) {
-        activeProjectId.value = savedProjId
-      } else {
-        activeProjectId.value = projectsList.value[0].id
-      }
       await fetchProjectMembersAndCheckins()
     }
   } catch (error) {

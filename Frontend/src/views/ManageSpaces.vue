@@ -451,8 +451,8 @@ const getSpaceMemberCount = (space) => {
 }
 
 const getSpaceMemberCountLabel = (space) => {
-  const count = Number(getSpaceMemberCount(space))
-  if (!Number.isFinite(count)) return '-- members'
+  let count = Number(getSpaceMemberCount(space))
+  if (!Number.isFinite(count) || count === 0) count = 1
   return `${count} members`
 }
 
@@ -471,7 +471,8 @@ const mapProjectToSpace = (p) => {
     cover: p.cover || p.Cover,
     icon: p.icon || p.Icon,
     networkType: p.networkType || p.NetworkType || 'Public',
-    memberCount: p.memberCount ?? p.MemberCount ?? p.activeMemberCount ?? p.ActiveMemberCount ?? p.totalMembers ?? p.TotalMembers ?? (Array.isArray(p.members || p.Members) ? (p.members || p.Members).length : 0),
+    activeMemberCount: p.activeMemberCount || p.ActiveMemberCount || 0,
+    memberCount: p.activeMemberCount || p.ActiveMemberCount || p.memberCount || p.MemberCount || p.totalMembers || p.TotalMembers || (Array.isArray(p.members || p.Members) ? (p.members || p.Members).length : 0),
     createdAt: p.createdAt || p.CreatedAt || p.createdDate || p.CreatedDate || null,
     originalRow: p
   }

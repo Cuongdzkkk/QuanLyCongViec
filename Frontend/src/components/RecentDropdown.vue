@@ -2,11 +2,13 @@
   <div class="quick-panel">
     <header class="panel-header"><h3>Recent work</h3></header>
 
-    <label class="panel-search">
-      <span class="sr-only">Search recent items</span>
-      <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-      <input v-model="searchQuery" type="search" placeholder="Search recent items" />
-    </label>
+    <div style="padding: 6px 12px 12px;">
+      <div class="filter-search-field">
+        <span class="sr-only">Search recent items</span>
+        <i class="fa-solid fa-magnifying-glass filter-search-icon" aria-hidden="true"></i>
+        <input v-model="searchQuery" type="text" placeholder="Search recent items" class="filter-search-input" />
+      </div>
+    </div>
 
     <div class="panel-body">
       <div v-if="starredStore.recentLoading" class="panel-state" role="status" aria-live="polite">
@@ -135,24 +137,56 @@ const viewAllRecent = () => {
 .group-label { margin: 0; color: var(--color-text-muted, #6b778c); font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
 .group-label { padding: 9px 12px 5px; font-size: 10px; }
 
-.panel-search { position: relative; padding: 6px 12px 12px; display: block; }
-.panel-search i { position: absolute; left: 25px; top: 25px; transform: translateY(-50%); color: var(--color-text-muted, #6b778c); font-size: 12px; pointer-events: none; }
-.panel-search input {
-  appearance: none;
-  -webkit-appearance: none;
+.filter-search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   height: 38px;
   box-sizing: border-box;
-  padding: 7px 10px 7px 34px;
   border: 1px solid var(--color-border, #dfe1e6);
   border-radius: 11px;
-  outline: 0;
   background: var(--color-surface-hover, #f4f5f7);
-  color: var(--color-text-primary, #172b4d);
-  font: inherit;
-  font-size: 13px;
+  padding: 0 12px;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-.panel-search input:focus-visible { border-color: var(--color-accent, #0c66e4); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, #0c66e4) 18%, transparent); }
+.filter-search-icon {
+  position: static;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  font-size: 14px;
+  pointer-events: none;
+  color: var(--color-text-muted, #6b778c);
+}
+.filter-search-input {
+  width: 100% !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--color-text-primary, #172b4d) !important;
+  padding: 0 !important;
+  outline: none !important;
+  font-size: 13.5px !important;
+  line-height: 38px !important;
+  text-indent: 0 !important;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.filter-search-input::placeholder {
+  color: var(--color-text-muted, #6b778c);
+}
+.filter-search-field:focus-within {
+  border-color: var(--color-accent, #0c66e4);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, #0c66e4) 18%, transparent);
+}
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 .panel-body { min-height: 260px; max-height: min(560px, calc(100dvh - 150px)); flex: 1; overflow-y: auto; padding: 0 8px 8px; }
