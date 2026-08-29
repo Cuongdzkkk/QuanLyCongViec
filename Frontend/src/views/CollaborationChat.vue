@@ -582,7 +582,6 @@
                       class="call-more-menu-item"
                       :class="{ 'is-unavailable': !hasEligiblePictureInPictureVideo }"
                       role="menuitem"
-                      :aria-disabled="!hasEligiblePictureInPictureVideo"
                       :aria-label="pictureInPictureActionLabel"
                       :title="pictureInPictureActionLabel"
                       @click="toggleCallPictureInPicture"
