@@ -60,7 +60,7 @@
     <!-- Main Content Grid -->
     <div class="project-content-grid">
       <!-- Left Column: Main Information -->
-      <div class="main-column">
+      <div class="main-column tab-pane">
         
         <!-- Tab: Giới thiệu -->
         <template v-if="currentTab === 'overview'">
@@ -190,14 +190,16 @@
             </div>
           </div>
 
-          <div v-if="projectUpdates.length === 0" class="empty-state-large-tab">
-            <div class="empty-illustration">
-              <i class="fa-regular fa-message" style="color: #0052CC; font-size: 56px;"></i>
-            </div>
-            <div class="empty-content">
-              <h3>Chưa có bản cập nhật nào.</h3>
-              <p>Cac ban cap nhat du an se xuat hien o day sau khi duoc dang.</p>
-            </div>
+          <div v-if="projectUpdates.length === 0" class="jira-empty-box" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #EBECF0; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-regular fa-message" style="font-size: 32px; color: #172B4D;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Chưa có bản cập nhật nào.</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 0; line-height: 1.5;">Các bản cập nhật dự án sẽ xuất hiện ở đây sau khi được đăng.</p>
+             </div>
           </div>
 
           <div v-else class="timeline-posts">
@@ -234,17 +236,25 @@
 
         <!-- Tab: Bài học rút ra -->
         <template v-if="currentTab === 'learnings'">
-          <div v-if="!editing.learnings && !projectLessons.length" class="empty-state-large-tab">
-            <div class="empty-illustration">
-              <i class="fa-solid fa-lightbulb" style="color: #0052CC; font-size: 64px;"></i>
-            </div>
-            <div class="empty-text-content">
-              <h4>Những bộ óc vĩ đại có tư duy giống nhau sẽ chia sẻ kiến thức của họ</h4>
-              <p>Chia sẻ những gì bạn đã học được với công ty của bạn để giúp những người khác có một khởi đầu thuận lợi khi làm việc trên các dự án tương tự.</p>
-              <div class="empty-actions">
-                <button class="secondary-btn" @click="editing.learnings = true">Thêm bài học rút ra mới</button>
-              </div>
-            </div>
+          <div class="section-header-row">
+            <h3>Bài học rút ra</h3>
+          </div>
+          <div v-if="!editing.learnings && !projectLessons.length" class="jira-empty-box" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #FFF0B3; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-regular fa-lightbulb" style="font-size: 32px; color: #FF991F;"></i>
+                </div>
+                <div style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" @click="editing.learnings = true">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Những bộ óc vĩ đại có tư duy giống nhau sẽ chia sẻ kiến thức của họ</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Chia sẻ những gì bạn đã học được với công ty của bạn để giúp những người khác có một khởi đầu thuận lợi khi làm việc trên các dự án tương tự.</p>
+                <div style="position: relative; display: inline-block;">
+                  <button class="secondary-btn" type="button" @click="editing.learnings = true">Thêm bài học rút ra mới</button>
+                </div>
+             </div>
           </div>
           <div v-else>
             <div v-if="editing.learnings" class="tab-item-editor" style="margin-bottom: 24px; padding-top: 16px;">
@@ -281,17 +291,25 @@
 
         <!-- Tab: Rủi ro -->
         <template v-if="currentTab === 'risks'">
-          <div v-if="!editing.risks && !projectRisks.length" class="empty-state-large-tab">
-            <div class="empty-illustration">
-              <i class="fa-solid fa-triangle-exclamation" style="color: #FF5630; font-size: 64px;"></i>
-            </div>
-            <div class="empty-text-content">
-              <h4>Nắm bắt các rủi ro đã biết</h4>
-              <p>Theo dõi mọi rủi ro liên quan đến dự án này để tránh những bất ngờ sau này.</p>
-              <div class="empty-actions">
-                <button class="secondary-btn" @click="editing.risks = true">Thêm rủi ro mới</button>
-              </div>
-            </div>
+          <div class="section-header-row">
+            <h3>Rủi ro</h3>
+          </div>
+          <div v-if="!editing.risks && !projectRisks.length" class="jira-empty-box" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #FFEBE6; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-solid fa-triangle-exclamation" style="font-size: 32px; color: #FF5630;"></i>
+                </div>
+                <div style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" @click="editing.risks = true">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Nắm bắt các rủi ro đã biết</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Theo dõi mọi rủi ro liên quan đến dự án này để tránh những bất ngờ sau này.</p>
+                <div style="position: relative; display: inline-block;">
+                  <button class="secondary-btn" type="button" @click="editing.risks = true">Thêm rủi ro mới</button>
+                </div>
+             </div>
           </div>
           <div v-else>
             <div v-if="editing.risks" class="tab-item-editor" style="margin-bottom: 24px; padding-top: 16px;">
@@ -328,17 +346,25 @@
 
         <!-- Tab: Quyết định -->
         <template v-if="currentTab === 'decisions'">
-          <div v-if="!editing.decisions && !projectDecisions.length" class="empty-state-large-tab">
-            <div class="empty-illustration">
-              <i class="fa-solid fa-check-circle" style="color: #36B37E; font-size: 64px;"></i>
-            </div>
-            <div class="empty-text-content">
-              <h4>Truyền đạt các quyết định lớn</h4>
-              <p>Ghi lại các quyết định lớn cho dự án này tại đây để chia sẻ trong bản cập nhật mới nhất của bạn.</p>
-              <div class="empty-actions">
-                <button class="secondary-btn" @click="editing.decisions = true">Thêm quyết định mới</button>
-              </div>
-            </div>
+          <div class="section-header-row">
+            <h3>Quyết định</h3>
+          </div>
+          <div v-if="!editing.decisions && !projectDecisions.length" class="jira-empty-box" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #E3FCEF; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-solid fa-check-circle" style="font-size: 32px; color: #36B37E;"></i>
+                </div>
+                <div style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" @click="editing.decisions = true">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Truyền đạt các quyết định lớn</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Ghi lại các quyết định lớn cho dự án này tại đây để chia sẻ trong bản cập nhật mới nhất của bạn.</p>
+                <div style="position: relative; display: inline-block;">
+                  <button class="secondary-btn" type="button" @click="editing.decisions = true">Thêm quyết định mới</button>
+                </div>
+             </div>
           </div>
           <div v-else>
             <div v-if="editing.decisions" class="tab-item-editor" style="margin-bottom: 24px; padding-top: 16px;">
@@ -1444,46 +1470,74 @@ onUnmounted(() => {
 
 /* Empty Tab States */
 .empty-state-large-tab {
+  min-height: 204px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 40px;
-  background-color: #FFFFFF;
-  border: 1px solid #DFE1E6;
-  border-radius: 3px;
-  gap: 40px;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-align: center;
   margin-top: 16px;
 }
 
-.empty-illustration {
-  flex-shrink: 0;
-  width: 120px;
-  height: 120px;
-  display: flex;
+.empty-spaces-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-accent, #0ea5e9) 18%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent, #0ea5e9) 10%, var(--color-surface, #ffffff));
+  color: var(--color-accent, #0ea5e9);
+  font-size: 23px;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12);
 }
 
-.empty-text-content {
-  flex: 1;
+.empty-spaces-copy {
+  max-width: 380px;
+  text-align: center;
 }
 
-.empty-text-content h4 {
-  margin: 0 0 12px 0;
-  font-size: 16px;
-  color: #172B4D;
+.empty-spaces-copy h3 {
+  margin: 0;
+  color: var(--color-text-primary, #172B4D);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
-.empty-text-content p {
-  margin: 0 0 24px 0;
-  color: #5E6C84;
-  font-size: 14px;
-  line-height: 1.5;
+.empty-spaces-copy p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted, #5E6C84);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
-.empty-actions {
-  display: flex;
-  gap: 16px;
-  align-items: center;
+.empty-spaces-btn {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 9px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  margin-top: 12px;
+}
+
+.empty-spaces-btn:hover {
+  border-color: color-mix(in srgb, var(--color-accent, #0ea5e9) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent, #0ea5e9) 10%, var(--color-surface));
+  color: var(--color-accent, #0ea5e9);
 }
 
 .link-btn {
@@ -1781,6 +1835,20 @@ onUnmounted(() => {
 
 .mx-1 { margin: 0 4px; }
 .mt-16 { margin-top: 16px; }
+
+.section-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.section-header-row h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #172B4D;
+}
 
 .post-actions {
   display: flex;

@@ -11,21 +11,28 @@
       search-placeholder="Tìm kiếm các đội ngũ"
     >
       <template #filters>
-        <ToolbarFilterMenu
-          label="Filters"
-          clear-label="Xóa lọc"
-          clear-all-label="Xóa tất cả"
-          empty-label="Chưa áp dụng filter"
-          :count="activeFilterCount"
-          :active-items="activeFilterItems"
-          @clear="clearFilters"
-          @remove="removeFilter"
-        >
-          <template #default="{ search }">
-            <DropdownFilter v-if="matchesFilterSearch('Loại đội ngũ', search)" label="Loại đội ngũ" :options="teamTypeOptions" v-model="filters.type" :searchable="false" />
-            <DropdownFilter v-if="matchesFilterSearch('Người quản lý', search)" label="Người quản lý" :options="managerOptions" v-model="filters.manager" :searchable="false" />
-          </template>
-        </ToolbarFilterMenu>
+        <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
+          <button
+            class="timeline-filter-trigger icon-only-trigger"
+            type="button"
+            aria-label="Filters"
+            title="Bộ lọc"
+            @click="toggleFilterDropdown"
+            :class="{ active: showFilterDropdown || activeFilters.length }"
+          >
+            <i class="fa-solid fa-filter"></i>
+            <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
+          </button>
+          <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
+            <FilterBar
+              v-model:filters="activeFilters"
+              :fields="teamFilterFields"
+              :operators="teamOperators"
+              :custom-value-meta="customTeamValueMeta"
+              :active="showFilterDropdown"
+            />
+          </div>
+        </div>
       </template>
       <template #toggles>
         <div class="view-toggles">
@@ -36,6 +43,9 @@
             <i class="fa-solid fa-list"></i>
           </button>
         </div>
+      </template>
+      <template #sort>
+        <ToolbarSortMenu v-model="teamSortBy" v-model:direction="teamSortDirection" label="Sắp xếp đội ngũ" :options="teamSortOptions" />
       </template>
     </ProjectPageToolbar>
 
@@ -51,16 +61,16 @@
       </div>
     </div>
 
-    <!-- Table View -->
-    <table v-else-if="viewMode === 'table' && filteredTeams.length > 0" class="jira-table">
+    <div v-else-if="viewMode === 'table' && filteredTeams.length > 0" class="table-container">
+    <table v-resizable class="jira-table teams-table">
       <thead>
         <tr>
-          <th style="width: 25%">Đội ngũ</th>
-          <th style="width: 20%">Loại đội ngũ</th>
-          <th style="width: 20%">Người quản lý</th>
-          <th style="width: 10%">Thành viên</th>
-          <th style="width: 10%">Đội ngũ gốc</th>
-          <th style="width: 15%">Đội ngũ con <i class="fa-solid fa-arrow-down" style="font-size: 10px; margin-left: 4px;"></i></th>
+          <th style="width: 25%"><i class="fa-solid fa-people-group"></i> Đội ngũ</th>
+          <th style="width: 20%"><i class="fa-solid fa-shapes"></i> Loại đội ngũ</th>
+          <th style="width: 20%"><i class="fa-solid fa-user-tie"></i> Người quản lý</th>
+          <th style="width: 10%"><i class="fa-solid fa-user-group"></i> Thành viên</th>
+          <th style="width: 10%"><i class="fa-solid fa-sitemap"></i> Đội ngũ gốc</th>
+          <th style="width: 15%"><i class="fa-solid fa-network-wired"></i> Đội ngũ con</th>
         </tr>
       </thead>
       <tbody>
@@ -87,6 +97,7 @@
         </tr>
       </tbody>
     </table>
+    </div>
 
     <!-- Empty State -->
     <div v-else-if="filteredTeams.length === 0" class="goals-empty-state">
@@ -103,18 +114,31 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTeamStore } from '@/store/useTeamStore'
 import { AppEmptyState, AppUserChip } from '@/components/common/Foundation'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
-import ToolbarFilterMenu from '@/components/common/ToolbarFilterMenu.vue'
-import DropdownFilter from '@/components/common/DropdownFilter.vue'
+import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
+import FilterBar from '@/components/FilterBar.vue'
 
-const filters = ref({
-  type: '',
-  manager: ''
-})
+const activeFilters = ref([])
+
+const teamFilterFields = computed(() => [
+  { key: 'type', label: 'Loại đội ngũ', icon: 'fa-solid fa-layer-group', values: teamTypeOptions.value },
+  { key: 'manager', label: 'Người quản lý', icon: 'fa-regular fa-user', values: managerOptions.value }
+])
+
+const teamOperators = {
+  type: ['is', 'is not'],
+  manager: ['is', 'is not']
+}
+
+const customTeamValueMeta = (fieldKey, value) => {
+  if (fieldKey === 'manager') return { icon: 'fa-regular fa-user', color: '#3b82f6' }
+  if (fieldKey === 'type') return { icon: 'fa-solid fa-layer-group', color: '#10b981' }
+  return null
+}
 
 const allMappedTeams = computed(() => {
   let list = teamStore.allTeams || []
@@ -132,27 +156,6 @@ const managerOptions = computed(() => Array.from(new Set(
     .filter(name => name && name !== 'Chưa có')
 )).sort())
 
-const activeFilterCount = computed(() => Object.values(filters.value).filter(Boolean).length)
-const activeFilterItems = computed(() => [
-  filters.value.type ? { key: 'type', label: 'Loại đội ngũ', icon: 'fa-solid fa-layer-group', value: filters.value.type } : null,
-  filters.value.manager ? { key: 'manager', label: 'Người quản lý', icon: 'fa-regular fa-user', value: filters.value.manager } : null
-].filter(Boolean))
-
-const matchesFilterSearch = (label, search) => !search || String(label || '').toLowerCase().includes(search)
-
-const clearFilters = () => {
-  filters.value = {
-    type: '',
-    manager: ''
-  }
-}
-
-const removeFilter = (key) => {
-  if (Object.prototype.hasOwnProperty.call(filters.value, key)) {
-    filters.value[key] = ''
-  }
-}
-
 const router = useRouter()
 const route = useRoute()
 const teamsBasePath = computed(() => route.path.startsWith('/teams') ? '/teams' : '/home/teams')
@@ -160,10 +163,35 @@ const teamStore = useTeamStore()
 
 const searchQuery = ref('')
 const viewMode = ref('grid')
+const teamSortDirection = ref('asc')
+const teamSortBy = ref('name')
+const teamSortOptions = [
+  { value: 'name', label: 'Tên đội ngũ', icon: 'fa-solid fa-font' },
+  { value: 'members', label: 'Số thành viên', icon: 'fa-solid fa-users' },
+  { value: 'children', label: 'Đội ngũ con', icon: 'fa-solid fa-sitemap' }
+]
+
+const showFilterDropdown = ref(false)
+
+const toggleFilterDropdown = (e) => {
+  e.stopPropagation()
+  showFilterDropdown.value = !showFilterDropdown.value
+}
+
+const handleOutsideClick = (e) => {
+  if (showFilterDropdown.value && !e.target.closest('.js-toolbar-popup-scope')) {
+    showFilterDropdown.value = false
+  }
+}
 
 onMounted(() => {
   teamStore.initializeRealtime()
   teamStore.fetchAllTeams()
+  document.addEventListener('click', handleOutsideClick)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleOutsideClick)
 })
 
 const filteredTeams = computed(() => {
@@ -187,15 +215,25 @@ const filteredTeams = computed(() => {
     mapped = mapped.filter(t => t.name.toLowerCase().includes(q))
   }
 
-  if (filters.value.type) {
-    mapped = mapped.filter(t => t.type === filters.value.type)
+  if (activeFilters.value.length > 0) {
+    mapped = mapped.filter(t => {
+      return activeFilters.value.every(f => {
+        let val = ''
+        if (f.field === 'type') val = t.type
+        else if (f.field === 'manager') val = t.managerName
+
+        const isMatch = val === f.value
+        return f.operator === 'is' ? isMatch : !isMatch
+      })
+    })
   }
 
-  if (filters.value.manager) {
-    mapped = mapped.filter(t => t.managerName === filters.value.manager)
-  }
-
-  return mapped
+  return mapped.sort((left, right) => {
+    const result = teamSortBy.value === 'name'
+      ? `${left.name || ''}`.localeCompare(`${right.name || ''}`)
+      : (Number(left[teamSortBy.value === 'members' ? 'memberCount' : 'childrenCount']) - Number(right[teamSortBy.value === 'members' ? 'memberCount' : 'childrenCount']))
+    return teamSortDirection.value === 'asc' ? result : -result
+  })
 })
 
 const goToTeam = (id) => {
@@ -306,7 +344,7 @@ const goToTeam = (id) => {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 24px;
-  margin-top: 30px;
+  margin-top: 14px;
 }
 
 .team-card {
@@ -393,31 +431,48 @@ const goToTeam = (id) => {
   color: #5E6C84;
 }
 
+/* Table Container - matches IntakeInbox */
+.table-container {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  margin-top: 12px;
+}
+
 /* Jira Table Styles */
 .jira-table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  margin-top: 30px;
 }
 
 .jira-table th {
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #5E6C84;
-  border-bottom: 2px solid #DFE1E6;
+  background: var(--color-surface);
+  border-bottom: 2px solid var(--color-border) !important;
+  padding: 12px 16px !important;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
 }
 
-.jira-table th:hover {
-  background-color: #FAFBFC;
+.jira-table th i {
+  color: inherit;
+  margin-right: 6px;
+  opacity: 0.88;
+}
+
+.jira-table th {
   cursor: pointer;
 }
 
 .sort-icon {
   margin-left: 4px;
   font-size: 12px;
-  color: #5E6C84;
+  color: var(--color-text-muted);
 }
 
 .col-team {
@@ -433,15 +488,27 @@ const goToTeam = (id) => {
 }
 
 .jira-table td {
-  padding: 12px;
-  font-size: 14px;
-  color: #172B4D;
-  border-bottom: 1px solid #DFE1E6;
+  height: 50px;
+  padding: 10px 14px !important;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border) !important;
   cursor: pointer;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.jira-table tbody tr {
+  box-shadow: inset 3px 0 0 transparent;
+  transition: all 0.2s ease;
+}
+
+.jira-table tbody tr:hover {
+  box-shadow: inset 3px 0 0 var(--sa-primary, var(--color-accent)) !important;
 }
 
 .jira-table tbody tr:hover td {
-  background-color: #FAFBFC;
+  background: color-mix(in srgb, var(--sa-primary, var(--color-accent)) 8%, var(--color-surface)) !important;
 }
 
 .team-cell {
@@ -464,17 +531,59 @@ const goToTeam = (id) => {
 }
 
 .team-name {
-  font-weight: 500;
-  color: #0052CC;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-size: 13px;
 }
 
-.team-name:hover {
-  text-decoration: underline;
+.team-name-text {
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-size: 13px;
+}
+
+.team-name:hover,
+.team-name-text:hover {
+  color: var(--color-accent);
 }
 
 .empty-table-state {
   text-align: center;
   padding: 40px !important;
   color: #5E6C84 !important;
+}
+
+.filter-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.plane-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1050;
+  width: 290px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  padding: 12px;
+}
+.filter-dropdown-menu {
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: none;
+  padding: 8px !important;
+  left: 0;
+  right: auto;
+  overflow: visible;
+}
+.filter-dropdown-menu :deep(.filter-bar-container) {
+  min-height: auto;
+  box-shadow: none;
+  background: transparent;
+  border: none;
+  padding: 0 !important;
+  overflow: visible;
 }
 </style>

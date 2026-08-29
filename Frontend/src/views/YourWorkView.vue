@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, onBeforeUnmount, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
 import { ElNotification, ElMessage } from 'element-plus'
 import { useI18nStore } from '@/store/useI18nStore'
@@ -20,6 +20,7 @@ import { DEFAULT_PROJECT_BACKGROUND, DEFAULT_PROJECT_ICON } from '@/config/proje
 import { buildSpacePath } from '@/utils/spaceRoute'
 
 const router = useRouter()
+const route = useRoute()
 const i18nStore = useI18nStore()
 const authStore = useAuthStore()
 const siteStore = useSiteStore()
@@ -31,6 +32,30 @@ const demoText = (value) => translateDemoText(value, i18nStore.language || 'vi')
 
 const activeTab = ref('Summary')
 const tabs = ['Summary', 'Assigned', 'Worked', 'Starred', 'Created', 'Activity']
+
+watch(
+  () => route.query.tab,
+  (newTab) => {
+    if (newTab) {
+      const matched = tabs.find(t => t.toLowerCase() === String(newTab).toLowerCase())
+      if (matched) {
+        activeTab.value = matched
+      }
+    }
+  },
+  { immediate: true }
+)
+
+watch(activeTab, (newTab) => {
+  if (route.query.tab !== newTab) {
+    router.replace({
+      query: {
+        ...route.query,
+        tab: newTab
+      }
+    })
+  }
+})
 const tabLabel = (tab) => {
   const map = {
     Summary: t('yourWork.tabs.summary') || 'Summary',
@@ -66,7 +91,8 @@ const fetchSpaces = async () => {
       cover: p.cover || DEFAULT_PROJECT_BACKGROUND,
       icon: p.icon || DEFAULT_PROJECT_ICON,
       taskCount: p.taskCount ?? p.TotalTasks ?? p.totalTasks ?? p.activeMemberCount ?? p.ActiveMemberCount ?? 0,
-      memberCount: p.memberCount ?? p.MemberCount ?? p.activeMemberCount ?? p.ActiveMemberCount ?? null,
+      activeMemberCount: p.activeMemberCount || p.ActiveMemberCount || 0,
+      memberCount: p.activeMemberCount || p.ActiveMemberCount || p.memberCount || p.MemberCount || 0,
       networkType: p.networkType || p.NetworkType || p.visibility || p.Visibility || 'Public',
       createdAt: p.createdAt || null,
       leader: {
@@ -134,8 +160,9 @@ const getSpaceVisibilityLabel = (space) => {
 }
 
 const getSpaceMemberCountLabel = (space) => {
-  const count = Number(space?.memberCount)
-  if (!Number.isFinite(count)) return '-- members'
+  let count = Number(space?.activeMemberCount ?? space?.memberCount)
+  if (!count) count = space?.originalRow?.members?.length || space?.originalRow?.projectMembers?.length || space?.originalRow?.users?.length || 0
+  if (!Number.isFinite(count) || count === 0) count = 1
   return `${count} members`
 }
 
@@ -694,7 +721,8 @@ const getInitials = (name) => {
             </button>
           </div>
 
-        <div class="yw-scrollable" v-if="activeTab === 'Summary'">
+          <div class="yw-tabs-content-wrapper" style="min-height: 450px;">
+              <div class="yw-scrollable" v-if="activeTab === 'Summary'">
           <div v-if="summaryLoading" class="personal-state mt-4">
             <i class="fa-solid fa-spinner fa-spin"></i>
             <span>{{ t('yourWork.loading') }}</span>
@@ -786,7 +814,7 @@ const getInitials = (name) => {
           </template>
         </div>
 
-        <div class="yw-scrollable" v-else-if="['Assigned', 'Worked', 'Starred', 'Created'].includes(activeTab)">
+              <div class="yw-scrollable" v-else-if="['Assigned', 'Worked', 'Starred', 'Created'].includes(activeTab)">
           <div class="list-header mt-4 flex-between items-center">
             <div>
               <i class="fa-solid fa-circle-dashed f-icon"></i>
@@ -796,18 +824,20 @@ const getInitials = (name) => {
           </div>
 
           <div class="list-body mt-4">
-            <div v-if="taskListLoading" class="personal-state">
-              <i class="fa-solid fa-spinner fa-spin"></i>
-              <span>{{ t('yourWork.loading') }}</span>
-            </div>
-            <div v-else-if="taskListError" class="personal-state personal-state-error">
-              <span>{{ t('yourWork.loadFailed') }}</span>
-              <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
-            </div>
-            <div v-else-if="listData.length === 0" class="personal-state">
-              {{ t(`yourWork.empty.${activeTab.toLowerCase()}`) || t('common.noData') }}
-            </div>
-            <div class="list-row cursor-pointer" v-for="item in listData" :key="item.id" @click="openTaskDetail(item)">
+            <Transition name="fade-fast" mode="out-in">
+              <div v-if="taskListLoading" key="state-loading" class="personal-state">
+                <i class="fa-solid fa-spinner fa-spin"></i>
+                <span>{{ t('yourWork.loading') }}</span>
+              </div>
+              <div v-else-if="taskListError" key="state-error" class="personal-state personal-state-error">
+                <span>{{ t('yourWork.loadFailed') }}</span>
+                <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
+              </div>
+              <div v-else-if="listData.length === 0" key="state-empty" class="personal-state">
+                {{ t(`yourWork.empty.${activeTab.toLowerCase()}`) || t('common.noData') }}
+              </div>
+              <div v-else key="state-list" class="list-row-container">
+                <div class="list-row cursor-pointer" v-for="item in listData" :key="item.id" @click="openTaskDetail(item)">
               <div class="lr-left">
                 <button 
                   class="star-btn mr-2" 
@@ -867,6 +897,8 @@ const getInitials = (name) => {
                 <div class="lr-badge cursor-not-allowed"><i class="fa-solid fa-arrows-spin"></i> {{ item.cycle }}</div>
               </div>
             </div>
+            </div>
+            </Transition>
           </div>
           <div class="personal-pagination" v-if="!taskListLoading && !taskListError && effectiveTotalPages > 1">
             <button class="jira-btn-subtle" :disabled="currentPage === 1" @click="currentPage -= 1">
@@ -879,7 +911,7 @@ const getInitials = (name) => {
           </div>
         </div>
 
-        <div class="yw-scrollable" v-else-if="activeTab === 'Activity'">
+              <div class="yw-scrollable" v-else-if="activeTab === 'Activity'">
           <section class="yw-section">
             <div class="activity-page-header flex-between mb-4">
             <h3 class="yw-section-title" style="margin: 0;">
@@ -890,21 +922,23 @@ const getInitials = (name) => {
           </div>
 
           <div class="list-body mt-4 recent-list-body">
-            <div v-if="activityLoading" class="personal-state">
-              <i class="fa-solid fa-spinner fa-spin"></i>
-              <span>{{ t('yourWork.loadingActivity') }}</span>
-            </div>
-            <div v-else-if="activityError" class="personal-state personal-state-error">
-              <span>{{ t('yourWork.activityFailed') }}</span>
-              <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
-            </div>
-            <div v-else-if="pageActivities.length === 0" class="personal-state recent-empty-state">
-              <div class="recent-empty-icon" aria-hidden="true">
-                <i class="fa-solid fa-clock-rotate-left"></i>
+            <Transition name="fade-fast" mode="out-in">
+              <div v-if="activityLoading" key="state-loading" class="personal-state">
+                <i class="fa-solid fa-spinner fa-spin"></i>
+                <span>{{ t('yourWork.loadingActivity') }}</span>
               </div>
-              <span>{{ t('yourWork.noActivity') }}</span>
-            </div>
-            <div class="list-row" style="cursor: default;" v-for="activity in pageActivities" :key="activity.id">
+              <div v-else-if="activityError" key="state-error" class="personal-state personal-state-error">
+                <span>{{ t('yourWork.activityFailed') }}</span>
+                <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
+              </div>
+              <div v-else-if="pageActivities.length === 0" key="state-empty" class="personal-state recent-empty-state">
+                <div class="recent-empty-icon" aria-hidden="true">
+                  <i class="fa-solid fa-clock-rotate-left"></i>
+                </div>
+                <span>{{ t('yourWork.noActivity') }}</span>
+              </div>
+              <div v-else key="state-list" class="list-row-container">
+                <div class="list-row" style="cursor: default;" v-for="activity in pageActivities" :key="activity.id">
               <div class="lr-left">
                 <span class="lr-id" style="min-width: 30px;"><i :class="activity.icon || 'fa-solid fa-bell'"></i></span>
                 <span class="lr-title">{{ activity.text }} <span class="p-ac-bold text-white">{{ activity.bold }}</span></span>
@@ -914,10 +948,13 @@ const getInitials = (name) => {
                   <i class="fa-regular fa-clock"></i> {{ activity.time }}
                 </div>
               </div>
-            </div>
+                </div>
+              </div>
+            </Transition>
           </div>
           </section>
-        </div>
+              </div>
+          </div>
         </section>
       </div>
 

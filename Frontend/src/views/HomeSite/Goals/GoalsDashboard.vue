@@ -43,47 +43,58 @@
           <h2>{{ currentTabHeader }}</h2>
         </div>
 
-        <ProjectPageToolbar
-          v-model:searchQuery="searchQuery"
-          show-search
-          :search-placeholder="labels.search"
-        >
-          <template #filters>
-            <ToolbarFilterMenu
-              label="Filters"
-              :clear-label="labels.clearFilters"
-              :clear-all-label="labels.clearFilters"
-              :empty-label="isVi ? 'Chưa áp dụng filter' : 'No filters applied'"
-              :count="activeFilterCount"
-              :active-items="activeFilterItems"
-              @clear="clearFilters"
-              @remove="removeFilter"
-            >
-              <template #default="{ search }">
-                <button class="active-filter-pill" v-if="currentTab === 'following' && matchesFilterSearch(labels.following, search)">{{ labels.following }} <i class="fa-solid fa-xmark"></i></button>
-                <DropdownFilter v-if="matchesFilterSearch(labels.status, search)" :label="labels.status" :options="statusOptions" v-model="filters.status" :searchable="false" />
-                <DropdownFilter v-if="matchesFilterSearch(labels.owner, search)" :label="labels.owner" :options="ownerOptions" v-model="filters.owner" :searchable="false" />
-                <DropdownFilter v-if="matchesFilterSearch(labels.progress, search)" :label="labels.progress" :options="progressOptions" v-model="filters.progress" :searchable="false" />
-                <DropdownFilter v-if="matchesFilterSearch(labels.favorite, search)" :label="labels.favorite" :options="booleanOptions" v-model="filters.favorite" :searchable="false" />
-                <DropdownFilter v-if="matchesFilterSearch(labels.follow, search)" :label="labels.follow" :options="booleanOptions" v-model="filters.following" :searchable="false" />
-              </template>
-            </ToolbarFilterMenu>
-          </template>
-        </ProjectPageToolbar>
+        <div class="sprinta-layout-toolbar">
+          <ProjectPageToolbar
+            v-model:searchQuery="searchQuery"
+            show-search
+            :search-placeholder="labels.search"
+          >
+            <template #filters>
+              <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
+                <button
+                  class="timeline-filter-trigger icon-only-trigger"
+                  type="button"
+                  aria-label="Filters"
+                  title="Bộ lọc"
+                  @click="toggleFilterDropdown"
+                  :class="{ active: showFilterDropdown || activeFilters.length }"
+                >
+                  <i class="fa-solid fa-filter"></i>
+                  <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
+                </button>
+                <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
+                  <FilterBar
+                    v-model:filters="activeFilters"
+                    :fields="goalFilterFields"
+                    :operators="goalOperators"
+                    :custom-value-meta="customGoalValueMeta"
+                    :active="showFilterDropdown"
+                  />
+                </div>
+              </div>
+            </template>
+            <template #sort>
+              <ToolbarSortMenu v-model="goalSortMode" v-model:direction="goalSortDirection" label="Sắp xếp mục tiêu" :options="goalSortOptions" />
+              <button v-if="false" class="timeline-filter-trigger icon-only-trigger" type="button" title="Sắp xếp mục tiêu" aria-label="Sắp xếp mục tiêu" @click="goalSortMode = goalSortMode === 'progress-desc' ? 'updated-desc' : 'progress-desc'">
+                <i :class="goalSortMode === 'progress-desc' ? 'fa-solid fa-chart-line' : 'fa-regular fa-clock'"></i>
+              </button>
+            </template>
+          </ProjectPageToolbar>
+        </div>
 
         <div class="goals-list-container">
-          <AppCard v-if="!isLoading && filteredGoals.length > 0" :padding="false">
-            <table class="jira-table">
+          <div v-if="!isLoading && filteredGoals.length > 0" class="table-container">
+            <table v-resizable class="jira-table goals-table">
               <thead>
                 <tr>
-                  <th class="col-title">{{ labels.goal }}</th>
-                  <th class="col-status">{{ labels.status }}</th>
-                  <th class="col-progress">{{ labels.progress }}</th>
-                  <th class="col-created">{{ labels.createdDate }}</th>
-                  <th class="col-updated">{{ labels.updatedDate }}</th>
-                  <th class="col-star">{{ labels.favorite }}</th>
-                  <th class="col-watch">{{ labels.follow }}</th>
-                  <th class="col-owner">{{ labels.owner }}</th>
+                  <th class="col-title"><i class="fa-solid fa-bullseye"></i> {{ labels.goal }}</th>
+                  <th class="col-status"><i class="fa-regular fa-circle-dot"></i> {{ labels.status }}</th>
+                  <th class="col-progress"><i class="fa-solid fa-chart-line"></i> {{ labels.progress }}</th>
+                  <th class="col-created"><i class="fa-regular fa-calendar"></i> {{ labels.createdDate }}</th>
+                  <th class="col-updated"><i class="fa-regular fa-clock"></i> {{ labels.updatedDate }}</th>
+                  <th class="col-star"><i class="fa-regular fa-star"></i> {{ labels.favorite }}</th>
+                  <th class="col-watch"><i class="fa-regular fa-eye"></i> {{ labels.follow }}</th>
+                  <th class="col-owner"><i class="fa-solid fa-user-tie"></i> {{ labels.owner }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -132,7 +143,7 @@
                 </tr>
               </tbody>
             </table>
-          </AppCard>
+          </div>
 
           <div v-else-if="!isLoading" class="goals-empty-state">
             <div class="empty-spaces-icon" aria-hidden="true">
@@ -141,6 +152,9 @@
             <div class="empty-spaces-copy">
               <h3>{{ labels.noGoals }}</h3>
               <p>{{ labels.noGoalsDesc }}</p>
+              <button class="empty-spaces-btn mt-3" type="button" @click="openCreateModal">
+                {{ labels.createGoal }}
+              </button>
             </div>
           </div>
           
@@ -199,13 +213,15 @@
            <span style="font-size: 14px; color: #172B4D;">{{ newGoal.ownerName }}</span>
         </div>
         
-        <div v-if="isOwnerDropdownOpen" class="dropdown-menu" style="position: absolute; margin-top: 4px; background: white; border: 1px solid #DFE1E6; border-radius: 3px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); width: 100%; z-index: var(--sp-z-dropdown, 1000); max-height: 200px; overflow-y: auto;">
+        <div v-if="isOwnerDropdownOpen" class="dropdown-menu" style="position: absolute; margin-top: 14px; background: white; border: 1px solid #DFE1E6; border-radius: 3px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); width: 100%; z-index: var(--sp-z-dropdown, 1000); max-height: 200px; overflow-y: auto;">
            <div v-for="user in siteUsers" :key="user.id" @click="selectOwner(user)" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; transition: background 0.1s;" onmouseover="this.style.background='#FAFBFC'" onmouseout="this.style.background='transparent'">
               <AppAvatar :user="user" :size="24" />
               <span style="font-size: 14px; color: #172B4D;">{{ user.name }}</span>
            </div>
         </div>
       </AppFormField>
+      
+      <div v-if="createError" style="color: #DE350B; font-size: 13px; margin-top: 12px;">{{ createError }}</div>
     </AppModal>
   </AppPageLayout>
 </template>
@@ -225,6 +241,7 @@ import { signalRService } from '@/api/signalrService'
 import AppPageLayout from '@/components/common/Foundation/AppPageLayout.vue'
 import AppPageHeader from '@/components/common/Foundation/AppPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import AppCard from '@/components/common/Foundation/AppCard.vue'
 import AppEmptyState from '@/components/common/Foundation/AppEmptyState.vue'
 import AppStatusBadge from '@/components/common/Foundation/AppStatusBadge.vue'
@@ -232,8 +249,7 @@ import AppAvatar from '@/components/common/Foundation/AppAvatar.vue'
 import AppModal from '@/components/common/Foundation/AppModal.vue'
 import AppFormField from '@/components/common/Foundation/AppFormField.vue'
 
-import DropdownFilter from '@/components/common/DropdownFilter.vue'
-import ToolbarFilterMenu from '@/components/common/ToolbarFilterMenu.vue'
+import FilterBar from '@/components/FilterBar.vue'
 import { getStoredUser } from '@/utils/permissions'
 import { getInitials, getAvatarColor } from '@/utils/avatarHelper'
 
@@ -333,13 +349,52 @@ const labels = computed(() => isVi.value
       cancel: 'Cancel',
       create: 'Create'
     })
-const filters = ref({
-  status: '',
-  progress: '',
-  favorite: '',
-  following: '',
-  owner: ''
-})
+const activeFilters = ref([])
+
+const goalFilterFields = computed(() => [
+  { key: 'status', label: labels.value.status, icon: 'fa-regular fa-circle-dot', values: statusOptions.value },
+  { key: 'owner', label: labels.value.owner, icon: 'fa-regular fa-user', values: ownerOptions.value },
+  { key: 'progress', label: labels.value.progress, icon: 'fa-solid fa-chart-line', values: [labels.value.notStarted, labels.value.inProgress, labels.value.completeProgress] },
+  { key: 'favorite', label: labels.value.favorite, icon: 'fa-regular fa-star', values: [isVi.value ? 'Có' : 'Yes', isVi.value ? 'Không' : 'No'] },
+  { key: 'following', label: labels.value.follow, icon: 'fa-regular fa-eye', values: [isVi.value ? 'Có' : 'Yes', isVi.value ? 'Không' : 'No'] }
+])
+
+const goalOperators = {
+  status: ['is', 'is not'],
+  owner: ['is', 'is not'],
+  progress: ['is', 'is not'],
+  favorite: ['is', 'is not'],
+  following: ['is', 'is not']
+}
+
+const customGoalValueMeta = (fieldKey, value) => {
+  if (fieldKey === 'status') {
+    return { icon: 'fa-regular fa-circle-dot', color: '#10b981' }
+  }
+  if (fieldKey === 'owner') {
+    return { icon: 'fa-regular fa-user', color: '#3b82f6' }
+  }
+  if (fieldKey === 'progress') {
+    return { icon: 'fa-solid fa-chart-line', color: '#8b5cf6' }
+  }
+  if (fieldKey === 'favorite') {
+    return { icon: 'fa-solid fa-star', color: '#eab308' }
+  }
+  if (fieldKey === 'following') {
+    return { icon: 'fa-regular fa-eye', color: '#6366f1' }
+  }
+  return null
+}
+
+const showFilterDropdown = ref(false)
+const toggleFilterDropdown = () => {
+  showFilterDropdown.value = !showFilterDropdown.value
+}
+const handleOutsideClick = (e) => {
+  if (!e.target.closest('.js-toolbar-popup-scope')) {
+    showFilterDropdown.value = false
+  }
+}
 
 const uniqueValues = (selector) => Array.from(new Set(
   (goalStore.goals || [])
@@ -364,47 +419,15 @@ const booleanOptions = computed(() => [
 ])
 
 const clearFilters = () => {
-  filters.value = {
-    status: '',
-    progress: '',
-    favorite: '',
-    following: '',
-    owner: ''
-  }
+  activeFilters.value = []
 }
-const hasActiveFilters = computed(() => Object.values(filters.value).some(val => val !== ''))
-const activeFilterCount = computed(() => Object.values(filters.value).filter(val => val !== '').length)
-
-const getOptionLabel = (options, value) => {
-  const selected = (options || []).find((option) => {
-    const optionValue = typeof option === 'object' ? (option.value ?? option.id ?? option) : option
-    return optionValue === value
-  })
-  if (!selected) return value
-  return typeof selected === 'object'
-    ? String(selected.label || selected.name || selected.title || selected.value || selected.id || value)
-    : String(selected)
-}
-
-const activeFilterItems = computed(() => [
-  filters.value.status ? { key: 'status', label: labels.value.status, icon: 'fa-regular fa-circle-dot', value: filters.value.status } : null,
-  filters.value.owner ? { key: 'owner', label: labels.value.owner, icon: 'fa-regular fa-user', value: filters.value.owner } : null,
-  filters.value.progress ? { key: 'progress', label: labels.value.progress, icon: 'fa-solid fa-chart-line', value: getOptionLabel(progressOptions.value, filters.value.progress) } : null,
-  filters.value.favorite ? { key: 'favorite', label: labels.value.favorite, icon: 'fa-regular fa-star', value: getOptionLabel(booleanOptions.value, filters.value.favorite) } : null,
-  filters.value.following ? { key: 'following', label: labels.value.follow, icon: 'fa-regular fa-eye', value: getOptionLabel(booleanOptions.value, filters.value.following) } : null
-].filter(Boolean))
-
-const matchesFilterSearch = (label, search) => !search || String(label || '').toLowerCase().includes(search)
-
-const removeFilter = (key) => {
-  if (Object.prototype.hasOwnProperty.call(filters.value, key)) {
-    filters.value[key] = ''
-  }
-}
+const hasActiveFilters = computed(() => activeFilters.value.length > 0)
+const activeFilterCount = computed(() => activeFilters.value.length)
 
 const isCreateModalOpen = ref(false)
 const isTitleTouched = ref(false)
 const isOwnerDropdownOpen = ref(false)
+const createError = ref('')
 
 const siteUsers = computed(() => {
   return peopleStore.users.map(u => ({
@@ -439,14 +462,23 @@ onMounted(async () => {
   await followerStore.fetchFollowedItems()
   await peopleStore.fetchPeople()
   window.addEventListener('global-create-click', openCreateModal)
+  document.addEventListener('click', handleOutsideClick)
 })
 
 onUnmounted(() => {
   signalRService.off('EntityChanged', handleRealtimeGoalChange)
   window.removeEventListener('global-create-click', openCreateModal)
+  document.removeEventListener('click', handleOutsideClick)
 })
 
 const isLoading = computed(() => goalStore.isLoading)
+const goalSortMode = ref('progress-desc')
+const goalSortDirection = ref('desc')
+const goalSortOptions = [
+  { value: 'progress-desc', label: 'Tiến độ', icon: 'fa-solid fa-chart-line' },
+  { value: 'updated-desc', label: 'Cập nhật gần nhất', icon: 'fa-regular fa-clock' },
+  { value: 'name', label: 'Tên mục tiêu', icon: 'fa-solid fa-font' }
+]
 
 const filteredGoals = computed(() => {
   let list = goalStore.goals || []
@@ -471,30 +503,44 @@ const filteredGoals = computed(() => {
     )
   }
 
-  if (filters.value.status) {
-    list = list.filter(g => translateStatus(g.status) === filters.value.status)
-  }
-  if (filters.value.owner) {
-    list = list.filter(g => g.owner === filters.value.owner)
-  }
-  if (filters.value.progress) {
+  if (activeFilters.value.length > 0) {
     list = list.filter(g => {
-      if (filters.value.progress === '0') return g.progress === 0
-      if (filters.value.progress === '100') return g.progress === 100
-      if (filters.value.progress === 'in_progress') return g.progress > 0 && g.progress < 100
-      return true
+      return activeFilters.value.every(f => {
+        let val = ''
+        let isMatch = false
+        if (f.field === 'status') {
+          val = translateStatus(g.status)
+          isMatch = val === f.value
+        } else if (f.field === 'owner') {
+          val = g.owner
+          isMatch = val === f.value
+        } else if (f.field === 'progress') {
+          if (f.value === labels.value.notStarted) isMatch = g.progress === 0
+          else if (f.value === labels.value.completeProgress) isMatch = g.progress === 100
+          else if (f.value === labels.value.inProgress) isMatch = g.progress > 0 && g.progress < 100
+        } else if (f.field === 'favorite') {
+          const isFav = f.value === (isVi.value ? 'Có' : 'Yes')
+          isMatch = starredStore.isStarred('Goal', g.id) === isFav
+        } else if (f.field === 'following') {
+          const isFol = f.value === (isVi.value ? 'Có' : 'Yes')
+          isMatch = !!g.isFollowing === isFol
+        }
+        return f.operator === 'is' ? isMatch : !isMatch
+      })
     })
   }
-  if (filters.value.favorite) {
-    const isFav = filters.value.favorite === 'true'
-    list = list.filter(g => !!g.isFavorite === isFav)
-  }
-  if (filters.value.following) {
-    const isFol = filters.value.following === 'true'
-    list = list.filter(g => !!g.isFollowing === isFol)
-  }
 
-  return list
+  return [...list].sort((left, right) => {
+    let result
+    if (goalSortMode.value === 'updated-desc') {
+      result = new Date(right.updatedAt || 0).getTime() - new Date(left.updatedAt || 0).getTime()
+    } else if (goalSortMode.value === 'name') {
+      result = `${left.title || ''}`.localeCompare(`${right.title || ''}`)
+    } else {
+      result = (Number(right.progress) || 0) - (Number(left.progress) || 0)
+    }
+    return goalSortDirection.value === 'asc' ? result * -1 : result
+  })
 })
 
 const getStatusClass = (status) => {
@@ -577,6 +623,7 @@ const submitCreateGoal = async () => {
   isTitleTouched.value = true
   if (!newGoal.value.title) return
   
+  createError.value = ''
   try {
     await goalStore.createGoal({ 
       title: newGoal.value.title, 
@@ -585,12 +632,14 @@ const submitCreateGoal = async () => {
       owner: newGoal.value.ownerName,
       ownerColor: newGoal.value.ownerAvatarColor,
       type: newGoal.value.type,
-      date: newGoal.value.date
+      endDate: newGoal.value.date
     })
     isCreateModalOpen.value = false
+    ElMessage.success(isVi.value ? 'Tạo mục tiêu thành công!' : 'Goal created successfully!')
+    await goalStore.fetchGoals()
   } catch (error) {
     console.error('Lỗi khi tạo mục tiêu:', error)
-    // Here we can add a toast notification in the future
+    createError.value = error.response?.data?.message || (isVi.value ? 'Lỗi khi tạo mục tiêu' : 'Failed to create goal')
   }
 }
 
@@ -630,7 +679,7 @@ const toggleWatch = async (goal) => {
 }
 
 .goals-list-container {
-  margin-top: 30px;
+  margin-top: 0;
 }
 
 
@@ -923,6 +972,16 @@ const toggleWatch = async (goal) => {
   font-size: 10px;
 }
 
+/* Table Container - matches IntakeInbox */
+.table-container {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  margin-top: 12px;
+}
+
 /* Table */
 .jira-table {
   width: 100%;
@@ -931,11 +990,21 @@ const toggleWatch = async (goal) => {
 }
 
 .jira-table th {
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #5E6C84;
-  border-bottom: 2px solid #DFE1E6;
+  background: var(--color-surface);
+  border-bottom: 2px solid var(--color-border) !important;
+  padding: 12px 16px !important;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
+.jira-table th i {
+  color: inherit;
+  margin-right: 6px;
+  opacity: 0.88;
 }
 
 .col-title { width: 30%; }
@@ -946,16 +1015,27 @@ const toggleWatch = async (goal) => {
 .col-owner { width: 10%; }
 
 .jira-table td {
-  padding: 12px;
-  font-size: 14px;
-  color: #172B4D;
-  border-bottom: 1px solid #DFE1E6;
+  height: 50px;
+  padding: 10px 14px !important;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border) !important;
   cursor: pointer;
   vertical-align: middle;
+  white-space: nowrap;
+}
+
+.jira-table tbody tr {
+  box-shadow: inset 3px 0 0 transparent;
+  transition: all 0.2s ease;
+}
+
+.jira-table tbody tr:hover {
+  box-shadow: inset 3px 0 0 var(--sa-primary, var(--color-accent)) !important;
 }
 
 .jira-table tbody tr:hover td {
-  background-color: #FAFBFC;
+  background: color-mix(in srgb, var(--sa-primary, var(--color-accent)) 8%, var(--color-surface)) !important;
 }
 
 .goal-title-cell {
@@ -965,17 +1045,17 @@ const toggleWatch = async (goal) => {
 }
 
 .goal-icon {
-  color: #0052CC;
+  color: var(--sa-primary, var(--color-accent));
   font-size: 16px;
 }
 
 .goal-title {
-  font-weight: 500;
-  color: #172B4D;
+  font-weight: 700;
+  color: var(--color-text-primary);
 }
 
 .goal-title:hover {
-  color: #0052CC;
+  color: var(--color-accent);
 }
 
 /* Status Badge matching Jira exactly */
@@ -1257,5 +1337,60 @@ const toggleWatch = async (goal) => {
   border: none !important;
   padding: 0 !important;
   height: auto !important;
+}
+
+.filter-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.plane-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1050;
+  width: 290px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  padding: 12px;
+}
+.filter-dropdown-menu {
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: none;
+  padding: 8px !important;
+  left: 0;
+  right: auto;
+  overflow: visible;
+}
+.filter-dropdown-menu :deep(.filter-bar-container) {
+  min-height: auto;
+  box-shadow: none;
+  background: transparent;
+  border: none;
+  padding: 0 !important;
+  overflow: visible;
+}
+
+.empty-spaces-btn {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 9px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  margin-top: 12px;
+}
+
+.empty-spaces-btn:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  color: var(--color-accent);
 }
 </style>

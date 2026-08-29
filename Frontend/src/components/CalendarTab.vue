@@ -208,6 +208,18 @@ function formatDateOnly(value) {
   const day = `${date.getDate()}`.padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+
+defineExpose({
+  currentDate,
+  monthLabel,
+  goToday,
+  prevMonth,
+  nextMonth,
+  showOptions,
+  showOnlyDated,
+  showDoneTasks,
+  highlightOverdue
+})
 </script>
 
 <template>
@@ -805,6 +817,9 @@ function formatDateOnly(value) {
   .day-add-btn {
     display: none;
   }
+}
+.cal-header {
+  display: none !important;
 }
 </style>
 

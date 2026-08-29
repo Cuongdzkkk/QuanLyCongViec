@@ -245,7 +245,7 @@ p {
 }
 
 /* Form Elements Standardized - Sharp & Compact */
-input:not(.el-range-input), select, textarea, 
+input:not(.el-range-input):not(.filter-search-input), select, textarea, 
 .el-input__inner, 
 .el-textarea__inner,
 .el-input__wrapper:not(.el-range-editor) {
@@ -374,7 +374,7 @@ label, .el-form-item__label, .field-label {
 .sidebar-quick-popover.el-popover.el-popper {
   border: 1px solid color-mix(in srgb, var(--color-accent) 18%, var(--color-border)) !important;
   border-radius: 16px !important;
-  overflow: hidden !important;
+  overflow: visible !important;
   background: var(--color-surface) !important;
   box-shadow: 0 22px 58px rgba(15, 23, 42, 0.18) !important;
 }
@@ -587,7 +587,7 @@ label, .el-form-item__label, .field-label {
 }
 
 /* Inputs & Form Fields */
-input:not(.el-range-input), select, textarea, 
+input:not(.el-range-input):not(.filter-search-input), select, textarea, 
 .el-input__inner, .el-textarea__inner, .el-input__wrapper:not(.el-range-editor),
 .search-shell, .ai-input-wrapper, .task-form input, 
 .task-form select, .task-form textarea {
@@ -664,11 +664,11 @@ input:not(.el-range-input), select, textarea,
 }
 
 /* 3. Popup Form Elements */
-.el-dialog input:not(.el-range-input), 
+.el-dialog input:not(.el-range-input):not(.filter-search-input), 
 .el-dialog select, 
 .el-dialog textarea,
 .el-dialog .el-input__wrapper:not(.el-range-editor),
-.el-popover input:not(.el-range-input) {
+.el-popover input:not(.el-range-input):not(.filter-search-input) {
   border-radius: 12px !important;
   height: 44px !important;
   background-color: var(--bg-tertiary) !important;
@@ -1351,7 +1351,7 @@ body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
 }
 
 body :is(.el-dialog.sa-data-dialog, .sa-data-modal-overlay)
-  :is(input:not([type='checkbox']):not([type='radio']):not(.el-input__inner):not(.el-select__input), select) {
+  :is(input:not([type='checkbox']):not([type='radio']):not(.el-input__inner):not(.el-select__input):not(.filter-search-input), select) {
   box-sizing: border-box !important;
   width: 100%;
   min-height: var(--sa-modal-control-height) !important;

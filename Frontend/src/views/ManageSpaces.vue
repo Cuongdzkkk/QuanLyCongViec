@@ -21,40 +21,63 @@
       </button>
     </header>
 
-    <div class="toolbar">
-      <label class="search-field">
-        <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="search" :placeholder="t('Search spaces...')" v-model="searchQuery" />
-      </label>
+    <div class="sprinta-layout-toolbar">
+      <ProjectPageToolbar
+        v-model:searchQuery="searchQuery"
+        show-search
+        :search-placeholder="t('Search spaces...')"
+      >
+        <template #filters>
+          <div class="filter-dropdown-wrapper js-toolbar-popup-scope" style="position: relative;">
+            <button
+              class="timeline-filter-trigger icon-only-trigger"
+              type="button"
+              :aria-label="t('Filters')"
+              :title="t('Filters')"
+              @click="toggleFilterDropdown"
+              :class="{ active: showFilterDropdown || activeFilters.length }"
+            >
+              <i class="fa-solid fa-filter"></i>
+              <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
+            </button>
+            <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
+              <FilterBar
+                v-model:filters="activeFilters"
+                :fields="projectFilterFields"
+                :operators="projectOperators"
+                :custom-value-meta="customProjectValueMeta"
+                :active="showFilterDropdown"
+              />
+            </div>
+          </div>
+        </template>
 
-      <div class="view-toggles">
-        <button type="button" :class="{ active: viewMode === 'table' }" @click="setViewMode('table')" title="List view">
-          <i class="fa-solid fa-list"></i>
-        </button>
-        <button type="button" :class="{ active: viewMode === 'grid' }" @click="setViewMode('grid')" title="Grid view">
-          <i class="fa-solid fa-grip"></i>
-        </button>
-      </div>
+        <template #toggles>
+          <div class="view-toggles">
+            <button type="button" :class="{ active: viewMode === 'table' }" @click="setViewMode('table')" :title="t('Danh sách', 'List view')">
+              <i class="fa-solid fa-list"></i>
+            </button>
+            <button type="button" :class="{ active: viewMode === 'grid' }" @click="setViewMode('grid')" :title="t('Lưới', 'Grid view')">
+              <i class="fa-solid fa-grip"></i>
+            </button>
+          </div>
+        </template>
 
-      <button type="button" @click="toggleSort">
-        <i class="fa-solid fa-arrow-down-short-wide"></i> Created date {{ sortDirection === 'desc' ? '↓' : '↑' }}
-      </button>
+        <template #sort>
+          <ToolbarSortMenu
+            v-model="projectSortBy"
+            v-model:direction="projectSortDirection"
+            :label="t('Sắp xếp theo', 'Sort by')"
+            :options="projectSortOptions"
+          />
+        </template>
 
-      <div class="project-filter-wrapper">
-        <button type="button" @click="showProjectFilters = !showProjectFilters" :class="{ active: showProjectFilters || visibilityFilter !== 'all' }">
-          <i class="fa-solid fa-filter"></i> {{ filterLabel }}
-        </button>
-        <div class="project-filter-menu" v-if="showProjectFilters" @click.stop>
-          <div class="filter-title">Visibility</div>
-          <label class="filter-option"><input type="radio" value="all" v-model="visibilityFilter" /> All projects</label>
-          <label class="filter-option"><input type="radio" value="Public" v-model="visibilityFilter" /> Public</label>
-          <label class="filter-option"><input type="radio" value="Private" v-model="visibilityFilter" /> Private</label>
-          <label class="filter-option"><input type="radio" value="starred" v-model="visibilityFilter" /> Starred</label>
-          <button class="clear-filter-btn" type="button" @click="visibilityFilter = 'all'">Clear filters</button>
-        </div>
-      </div>
-
-      <span>{{ filteredSpaces.length }} {{ t('dự án', 'projects') }}</span>
+        <template #right>
+          <span style="color: var(--color-text-muted); font-size: 11px; margin-left: 8px;">
+            {{ filteredSpaces.length }} {{ t('dự án', 'projects') }}
+          </span>
+        </template>
+      </ProjectPageToolbar>
     </div>
 
     <main class="projects-scroll-panel page-content">
@@ -75,14 +98,7 @@
             <!-- Cover Image Mock -->
             <div class="card-cover" :style="{ background: projectCover(space) }">
                <div class="card-actions-top" @click.stop>
-                 <button
-                   v-if="showProjectSettingsButton(space)"
-                   class="card-icon-btn appearance-edit-btn"
-                   type="button"
-                   title="Customize project"
-                   aria-label="Customize project"
-                   @click="openAppearanceEditor(space)"
-                 ><i class="bi bi-pencil"></i></button>
+                 
                  <button class="card-icon-btn" type="button" @click="copySpaceLink(space)"><i class="fa-solid fa-link"></i></button>
                  <button
                    class="card-icon-btn"
@@ -133,7 +149,8 @@
                    <button class="card-icon-btn" type="button"><i class="fa-solid fa-ellipsis"></i></button>
                    <template #dropdown>
                      <el-dropdown-menu class="plane-dropdown">
-                       <el-dropdown-item @click="goToAdmin(space)"><i class="fa-solid fa-gear" style="margin-right: 8px;"></i> Settings</el-dropdown-item>
+                       <el-dropdown-item @click="openAppearanceEditor(space)"><i class="bi bi-pencil" style="margin-right: 8px;"></i> Cập nhật giao diện</el-dropdown-item>
+                        <el-dropdown-item @click="goToAdmin(space)"><i class="fa-solid fa-gear" style="margin-right: 8px;"></i> Settings</el-dropdown-item>
                        <el-dropdown-item @click="archiveProject(space)"><i class="fa-solid fa-box-archive" style="margin-right: 8px;"></i> Archive project</el-dropdown-item>
                      </el-dropdown-menu>
                    </template>
@@ -144,39 +161,39 @@
         </div>
 
         <div v-else class="spaces-table-container">
-          <table class="jira-table spaces-table" style="width: 100%; border-collapse: collapse; text-align: left;">
+          <table v-resizable class="jira-table spaces-table">
             <thead>
-              <tr style="border-bottom: 2px solid var(--color-border); color: var(--color-text-muted); font-size: 12px;">
-                <th style="padding: 12px 16px; width: 40px;"></th>
-                <th style="padding: 12px 16px;">Name</th>
-                <th style="padding: 12px 16px;">Key</th>
-                <th style="padding: 12px 16px;">Type</th>
-                <th style="padding: 12px 16px;">Lead</th>
-                <th style="padding: 12px 16px;">Created</th>
-                <th style="padding: 12px 16px; width: 50px;"></th>
+              <tr>
+                <th style="width: 40px;"></th>
+                <th><i class="fa-solid fa-folder"></i> Name</th>
+                <th><i class="fa-solid fa-key"></i> Key</th>
+                <th><i class="fa-solid fa-shapes"></i> Type</th>
+                <th><i class="fa-solid fa-user-tie"></i> Lead</th>
+                <th><i class="fa-regular fa-calendar"></i> Created</th>
+                <th style="width: 50px;"></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(space, index) in filteredSpaces" :key="'table-' + space.id" @click="goToSpace(space)" style="border-bottom: 1px solid var(--color-border); cursor: pointer; transition: background 0.2s;" class="table-row-hover">
-                <td style="padding: 12px 16px;" @click.stop>
+              <tr v-for="(space, index) in filteredSpaces" :key="'table-' + space.id" @click="goToSpace(space)">
+                <td @click.stop>
                   <button class="card-icon-btn transparent-btn" type="button" :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, space.id)" :class="{ starred: space.starred }" :aria-pressed="space.starred" :aria-label="space.starred ? 'Bỏ gắn sao không gian' : 'Gắn sao không gian'" @click="toggleStar(space)">
                     <i :class="space.starred ? 'fa-solid fa-star' : 'fa-regular fa-star'" :style="{ color: space.starred ? '#EAB308' : '' }"></i>
                   </button>
                 </td>
-                <td style="padding: 12px 16px;">
+                <td>
                   <div style="display: flex; align-items: center; gap: 12px;">
                     <ProjectAvatar :icon="space.icon" :background="space.cover" size="xs" />
                     <div class="legacy-project-icon" style="width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px;" :style="{ background: space.cover || coverGradients[index % coverGradients.length] }">
                       {{ space.icon || emojiList[index % emojiList.length] || '📦' }}
                     </div>
-                    <span style="font-weight: 500; color: #3b82f6;">{{ demoText(space.name) }}</span>
+                    <span class="project-name-title">{{ demoText(space.name) }}</span>
                   </div>
                 </td>
-                <td style="padding: 12px 16px; font-size: 13px;">{{ space.key }}</td>
-                <td style="padding: 12px 16px; font-size: 13px; color: var(--color-text-muted);">
+                <td style="font-size: 13px;">{{ space.key }}</td>
+                <td style="font-size: 13px; color: var(--color-text-muted);">
                   {{ space.networkType === 'Private' ? 'Team-managed software (Private)' : 'Team-managed software' }}
                 </td>
-                <td style="padding: 12px 16px;">
+                <td>
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <div style="width: 24px; height: 24px; border-radius: 50%; background: #10B981; color: white; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;">
                       {{ space.leadName?.charAt(0).toUpperCase() || 'T' }}
@@ -184,22 +201,16 @@
                     <span style="font-size: 13px;">{{ space.leadName }}</span>
                   </div>
                 </td>
-                <td style="padding: 12px 16px; font-size: 13px; color: var(--color-text-muted);">
+                <td style="font-size: 13px; color: var(--color-text-muted);">
                   {{ new Date(space.originalRow?.createdAt || space.originalRow?.createdDate || Date.now()).toLocaleDateString() }}
                 </td>
-                <td style="padding: 12px 16px;" @click.stop>
-                  <button
-                    v-if="showProjectSettingsButton(space)"
-                    class="card-icon-btn transparent-btn table-appearance-btn"
-                    type="button"
-                    title="Customize project"
-                    aria-label="Customize project"
-                    @click="openAppearanceEditor(space)"
-                  ><i class="bi bi-pencil"></i></button>
+                <td @click.stop>
+
                   <el-dropdown trigger="click" v-if="showProjectSettingsButton(space)">
                     <button class="card-icon-btn transparent-btn" style="background: transparent; border: none; font-size: 16px; color: var(--color-text-muted);"><i class="fa-solid fa-ellipsis"></i></button>
                     <template #dropdown>
                       <el-dropdown-menu class="plane-dropdown">
+                        <el-dropdown-item @click="openAppearanceEditor(space)"><i class="bi bi-pencil" style="margin-right: 8px;"></i> Cập nhật giao diện</el-dropdown-item>
                         <el-dropdown-item @click="goToAdmin(space)"><i class="fa-solid fa-gear" style="margin-right: 8px;"></i> Settings</el-dropdown-item>
                         <el-dropdown-item @click="archiveProject(space)"><i class="fa-solid fa-box-archive" style="margin-right: 8px;"></i> Archive project</el-dropdown-item>
                       </el-dropdown-menu>
@@ -240,6 +251,9 @@ import { useI18n } from '@/composables/useI18n'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import { buildSpacePath } from '@/utils/spaceRoute'
 import { getProjectBackgroundStyle } from '@/config/projectAppearance'
+import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
+import FilterBar from '@/components/FilterBar.vue'
 
 const router = useRouter()
 const handleSwitchSettings = (path) => {
@@ -252,9 +266,61 @@ const { language, t } = useI18n()
 const loading = ref(false)
 const spaces = ref([])
 const searchQuery = ref('')
-const sortDirection = ref('desc')
-const showProjectFilters = ref(false)
-const visibilityFilter = ref('all')
+const activeFilters = ref([])
+const projectSortBy = ref('createdAt')
+const projectSortDirection = ref('desc')
+const showFilterDropdown = ref(false)
+
+const toggleFilterDropdown = () => {
+  showFilterDropdown.value = !showFilterDropdown.value
+}
+
+const projectSortOptions = computed(() => [
+  { value: 'createdAt', label: t('Ngày tạo', 'Created date') },
+  { value: 'name', label: t('Tên dự án', 'Project name') },
+  { value: 'key', label: t('Mã dự án', 'Project key') },
+  { value: 'memberCount', label: t('Số thành viên', 'Members count') }
+])
+
+const leadOptions = computed(() => {
+  const leads = new Set()
+  spaces.value.forEach(s => {
+    if (s.leadName) leads.add(s.leadName)
+  })
+  return Array.from(leads)
+})
+
+const projectFilterFields = computed(() => [
+  { key: 'networkType', label: t('Quyền riêng tư', 'Visibility'), icon: 'fa-solid fa-lock', values: ['Public', 'Private'] },
+  { key: 'starred', label: t('Gắn sao', 'Starred'), icon: 'fa-regular fa-star', values: [t('Có', 'Yes'), t('Không', 'No')] },
+  { key: 'leadName', label: t('Người dẫn dắt', 'Lead'), icon: 'fa-regular fa-user', values: leadOptions.value }
+])
+
+const projectOperators = {
+  networkType: ['is', 'is not'],
+  starred: ['is', 'is not'],
+  leadName: ['is', 'is not']
+}
+
+const customProjectValueMeta = (fieldKey, value) => {
+  if (fieldKey === 'networkType') {
+    return { icon: value === 'Private' ? 'fa-solid fa-lock' : 'fa-solid fa-globe', color: '#3b82f6' }
+  }
+  if (fieldKey === 'starred') {
+    return { icon: 'fa-solid fa-star', color: '#eab308' }
+  }
+  if (fieldKey === 'leadName') {
+    return { icon: 'fa-regular fa-user', color: '#10b981' }
+  }
+  return null
+}
+
+const handleDocumentClick = (e) => {
+  const container = document.querySelector('.js-toolbar-popup-scope')
+  if (container && !container.contains(e.target)) {
+    showFilterDropdown.value = false
+  }
+}
 const isCreateModalVisible = ref(false)
 const isAppearanceModalVisible = ref(false)
 const selectedAppearanceProject = ref(null)
@@ -305,9 +371,7 @@ const archiveProject = async (space) => {
   }
 }
 
-const toggleSort = () => {
-  sortDirection.value = sortDirection.value === 'desc' ? 'asc' : 'desc'
-}
+
 
 const copySpaceLink = async (space) => {
   const url = `${window.location.origin}${buildSpacePath(space, 'work-items')}`
@@ -387,8 +451,8 @@ const getSpaceMemberCount = (space) => {
 }
 
 const getSpaceMemberCountLabel = (space) => {
-  const count = Number(getSpaceMemberCount(space))
-  if (!Number.isFinite(count)) return '-- members'
+  let count = Number(getSpaceMemberCount(space))
+  if (!Number.isFinite(count) || count === 0) count = 1
   return `${count} members`
 }
 
@@ -407,7 +471,8 @@ const mapProjectToSpace = (p) => {
     cover: p.cover || p.Cover,
     icon: p.icon || p.Icon,
     networkType: p.networkType || p.NetworkType || 'Public',
-    memberCount: p.memberCount ?? p.MemberCount ?? p.activeMemberCount ?? p.ActiveMemberCount ?? p.totalMembers ?? p.TotalMembers ?? (Array.isArray(p.members || p.Members) ? (p.members || p.Members).length : 0),
+    activeMemberCount: p.activeMemberCount || p.ActiveMemberCount || 0,
+    memberCount: p.activeMemberCount || p.ActiveMemberCount || p.memberCount || p.MemberCount || p.totalMembers || p.TotalMembers || (Array.isArray(p.members || p.Members) ? (p.members || p.Members).length : 0),
     createdAt: p.createdAt || p.CreatedAt || p.createdDate || p.CreatedDate || null,
     originalRow: p
   }
@@ -462,6 +527,7 @@ const fetchSpaces = async (options = {}) => {
 
 onMounted(() => {
   fetchSpaces()
+  document.addEventListener('click', handleDocumentClick)
 })
 
 let unsubscribeAdminRealtime = null
@@ -485,36 +551,63 @@ onMounted(() => {
 
 onUnmounted(() => {
   unsubscribeAdminRealtime?.()
+  document.removeEventListener('click', handleDocumentClick)
 })
 
 const filteredSpaces = computed(() => {
-  return spaces.value
-    .filter(s => {
-      const query = searchQuery.value.toLowerCase()
-      const matchesSearch = !query || demoText(s.name).toLowerCase().includes(query) || s.key.toLowerCase().includes(query)
-      const matchesVisibility =
-        visibilityFilter.value === 'all' ||
-        (visibilityFilter.value === 'starred' && s.starred) ||
-        s.networkType === visibilityFilter.value
-      return matchesSearch && matchesVisibility
-    })
-    .sort((a, b) => {
-      const left = new Date(a.originalRow?.createdAt || a.originalRow?.createdDate || 0).getTime()
-      const right = new Date(b.originalRow?.createdAt || b.originalRow?.createdDate || 0).getTime()
-      return sortDirection.value === 'desc' ? right - left : left - right
-    })
+  let result = spaces.value.filter(s => {
+    // 1. Search Query
+    const query = searchQuery.value.toLowerCase()
+    if (query && !demoText(s.name).toLowerCase().includes(query) && !s.key.toLowerCase().includes(query)) {
+      return false
+    }
+
+    // 2. Active Filters
+    for (const filter of activeFilters.value) {
+      const field = filter.field
+      const op = filter.operator
+      const val = filter.value
+
+      let itemValue = s[field]
+      if (field === 'starred') {
+        const isStarred = starredStore.isStarred(STARRED_ENTITY_TYPES.PROJECT, s.id)
+        itemValue = isStarred ? t('Có', 'Yes') : t('Không', 'No')
+      }
+
+      const isMatch = String(itemValue || '').toLowerCase() === String(val || '').toLowerCase()
+
+      if (op === 'is' && !isMatch) return false
+      if (op === 'is not' && isMatch) return false
+    }
+
+    return true
+  })
+
+  // 3. Sorting
+  result.sort((a, b) => {
+    let left, right
+    if (projectSortBy.value === 'createdAt') {
+      left = new Date(getSpaceCreatedValue(a) || 0).getTime()
+      right = new Date(getSpaceCreatedValue(b) || 0).getTime()
+    } else if (projectSortBy.value === 'memberCount') {
+      left = getSpaceMemberCount(a)
+      right = getSpaceMemberCount(b)
+    } else {
+      left = String(a[projectSortBy.value] || '').toLowerCase()
+      right = String(b[projectSortBy.value] || '').toLowerCase()
+    }
+
+    if (left < right) return projectSortDirection.value === 'asc' ? -1 : 1
+    if (left > right) return projectSortDirection.value === 'asc' ? 1 : -1
+    return 0
+  })
+
+  return result
 })
 
 const goToSpace = (space) => {
   router.push(buildSpacePath(space, 'work-items'))
 }
-
-const filterLabel = computed(() => ({
-  all: 'Filters',
-  Public: 'Public',
-  Private: 'Private',
-  starred: 'Starred'
-}[visibilityFilter.value] || 'Filters'))
 </script>
 
 <style scoped>
@@ -733,23 +826,24 @@ const filterLabel = computed(() => ({
 }
 
 .search-field input {
+  box-sizing: border-box !important;
   width: 100%;
-  height: 34px;
-  border: 0;
-  outline: 0;
-  padding-left: 36px;
-  padding-right: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 9px;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font-size: 13.5px;
+  height: 34px !important;
+  min-height: 34px !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 9px !important;
+  background: var(--color-surface) !important;
+  color: var(--color-text-primary) !important;
+  font-size: 13.5px !important;
+  outline: none !important;
+  padding-left: 36px !important;
+  padding-right: 12px !important;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .search-field input:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important;
 }
 
 .view-toggles {
@@ -897,14 +991,14 @@ const filterLabel = computed(() => ({
   width: 100% !important;
   max-width: none !important;
   margin: 0 !important;
-  padding: 18px !important;
+  padding: 0 18px !important;
   box-sizing: border-box !important;
 }
 
 .projects-scroll-panel {
   min-height: 0;
   overflow-y: auto;
-  padding: 18px !important;
+  padding: 0 18px 18px 18px !important;
   scrollbar-width: thin;
   scrollbar-color: #3f3f46 transparent;
 }
@@ -1236,16 +1330,70 @@ const filterLabel = computed(() => ({
   }
 }
 
-.table-row-hover:hover {
-  background: var(--color-surface-hover) !important;
+.spaces-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.spaces-table th {
+  background: var(--color-surface);
+  border-bottom: 2px solid var(--color-border) !important;
+  padding: 12px 16px !important;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.spaces-table th i {
+  color: inherit;
+  margin-right: 6px;
+  opacity: 0.88;
+}
+
+.spaces-table td {
+  height: 50px;
+  padding: 10px 14px !important;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border) !important;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.spaces-table tbody tr {
+  box-shadow: inset 3px 0 0 transparent;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.spaces-table tbody tr:hover {
+  box-shadow: inset 3px 0 0 var(--sa-primary, var(--color-accent)) !important;
+}
+
+.spaces-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--sa-primary, var(--color-accent)) 8%, var(--color-surface)) !important;
+}
+
+.project-name-title {
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-size: 13px;
+}
+
+.project-name-title:hover {
+  color: var(--color-accent);
 }
 
 .spaces-table-container {
-  overflow-x: auto;
-  border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  margin-top: 14px;
 }
 
 [data-theme='dark'] .manage-spaces-page {
@@ -1256,9 +1404,9 @@ const filterLabel = computed(() => ({
 [data-theme='dark'] .spaces-header,
 [data-theme='dark'] .project-card,
 [data-theme='dark'] .spaces-table-container {
-  border-color: rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.78);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
 }
 
 [data-theme='dark'] .sh-left h1,
@@ -1422,6 +1570,33 @@ const filterLabel = computed(() => ({
   .projects-grid {
     grid-template-columns: 1fr !important;
   }
+}
+
+.filter-dropdown-wrapper {
+  position: relative !important;
+  display: inline-block !important;
+}
+
+.filter-dropdown-menu {
+  position: absolute !important;
+  top: calc(100% + 8px) !important;
+  left: 0 !important;
+  right: auto !important;
+  z-index: 1050 !important;
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  padding: 8px !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 12px !important;
+  background: var(--color-surface-elevated) !important;
+  box-shadow: var(--shadow-popover) !important;
+  overflow: hidden;
+}
+:deep(.filter-bar-container) {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
 }
 </style>
 

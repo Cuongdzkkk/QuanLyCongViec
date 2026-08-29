@@ -24,19 +24,31 @@
           searchPlaceholder="Tìm kiếm thành viên theo tên/email..."
         >
           <template #filters>
-            <el-select v-model="teamFilter" placeholder="Tất cả thành viên" clearable class="filter-select" style="width: 160px">
-              <el-option label="Tất cả thành viên" value="all" />
-              <el-option label="Có team" value="hasTeam" />
-              <el-option label="Chưa có team" value="noTeam" />
-            </el-select>
-            <el-select v-model="roleFilter" placeholder="Vai trò" clearable class="filter-select" style="width: 140px">
-              <el-option
-                v-for="role in roleOptions"
-                :key="role.value"
-                :label="role.label"
-                :value="role.value"
-              />
-            </el-select>
+            <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
+              <button
+                class="timeline-filter-trigger icon-only-trigger"
+                type="button"
+                aria-label="Filters"
+                title="Bộ lọc"
+                @click="toggleFilterDropdown"
+                :class="{ active: showFilterDropdown || activeFilters.length }"
+              >
+                <i class="fa-solid fa-filter"></i>
+                <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
+              </button>
+              <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
+                <FilterBar
+                  v-model:filters="activeFilters"
+                  :fields="memberFilterFields"
+                  :operators="memberOperators"
+                  :custom-value-meta="customMemberValueMeta"
+                  :active="showFilterDropdown"
+                />
+              </div>
+            </div>
+          </template>
+          <template #sort>
+            <ToolbarSortMenu v-model="memberSortBy" v-model:direction="memberSortDirection" label="Sort members" :options="memberSortOptions" />
           </template>
         </ProjectPageToolbar>
 
@@ -47,20 +59,27 @@
           <i class="fa-solid fa-users-slash empty-icon"></i>
           <p>Không tìm thấy thành viên nào phù hợp.</p>
         </div>
-        <el-table v-else :data="filteredMembers" style="width: 100%" class="nexus-table">
-          <el-table-column label="Thành viên" min-width="200">
+        <div v-else class="table-container">
+        <el-table border v-resizable :data="filteredMembers" style="width: 100%" class="nexus-table">
+          <el-table-column min-width="200">
+            <template #header>
+              <i class="fa-solid fa-user-group"></i> Thành viên
+            </template>
             <template #default="{ row }">
               <div class="member-info cursor-pointer flex items-center gap-3" @click="goToMemberProfile(row.userId)">
-                <UserAvatar :user="row" :size="32" :fontSize="13" :clickable="false" />
+                <UserAvatar :user="row" :size="28" :fontSize="12" :clickable="false" />
                 <div class="member-details">
-                  <span class="member-name hover:text-blue-600 hover:underline" style="font-weight: 600; font-size: 13.5px; color: #172B4D;">{{ row.fullName || row.email }}</span>
+                  <span class="member-name hover:text-blue-600 hover:underline" style="font-weight: 700; font-size: 13px; color: var(--color-text-primary);">{{ row.fullName || row.email }}</span>
                   <span class="member-email" style="font-size: 12px; color: #5E6C84;">{{ row.email }}</span>
                 </div>
               </div>
             </template>
           </el-table-column>
 
-          <el-table-column label="Team hiện tại" min-width="200">
+          <el-table-column min-width="200">
+            <template #header>
+              <i class="fa-solid fa-people-group"></i> Team hiện tại
+            </template>
             <template #default="{ row }">
               <div v-if="row.teams && row.teams.length > 0" class="flex flex-wrap gap-1">
                 <el-tag v-for="team in row.teams" :key="team.id" size="small" type="info" class="mb-1">
@@ -71,7 +90,10 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="Vai trò" width="180">
+          <el-table-column width="180">
+            <template #header>
+              <i class="fa-solid fa-user-lock"></i> Vai trò
+            </template>
             <template #default="{ row }">
               <el-select
                 v-model="row.projectRole"
@@ -90,7 +112,10 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="Ngày tham gia" width="150">
+          <el-table-column width="150">
+            <template #header>
+              <i class="fa-regular fa-calendar"></i> Ngày tham gia
+            </template>
             <template #default="{ row }">
               <span class="text-sm text-gray-600">{{ formatDate(row.joinedAt) }}</span>
             </template>
@@ -113,6 +138,7 @@
             </template>
           </el-table-column>
         </el-table>
+        </div>
       </el-tab-pane>
 
       <!-- TAB 2: TEAMS -->
@@ -121,7 +147,11 @@
           :showSearch="true"
           v-model:searchQuery="teamSearchQuery"
           searchPlaceholder="Tìm kiếm team..."
-        />
+        >
+          <template #sort>
+            <ToolbarSortMenu v-model="teamSortBy" v-model:direction="teamSortDirection" label="Sort teams" :options="teamSortOptions" />
+          </template>
+        </ProjectPageToolbar>
         <div v-if="loadingTeams" class="loading-state">
           <el-icon class="is-loading"><Loading /></el-icon> Đang phân tích dữ liệu phòng ban...
         </div>
@@ -130,22 +160,29 @@
           <p>Chưa có team nào được liên kết với dự án này.</p>
           <el-button type="primary" plain class="mt-4" @click="openLinkTeamModal">Liên kết Team ngay</el-button>
         </div>
-        <el-table v-else :data="linkedTeams" style="width: 100%" class="nexus-table">
-          <el-table-column label="Tên Đội ngũ / Team" min-width="220">
+        <div v-else class="table-container">
+        <el-table :data="linkedTeams" style="width: 100%" class="nexus-table">
+          <el-table-column min-width="220">
+            <template #header>
+              <i class="fa-solid fa-people-group"></i> Tên Đội ngũ / Team
+            </template>
             <template #default="{ row }">
               <div class="flex items-center">
-                <el-avatar :size="32" shape="square" :src="row.coverImage" class="bg-blue-100 text-blue-600 font-bold">
+                <el-avatar :size="28" shape="square" :src="row.coverImage" class="bg-blue-100 text-blue-600 font-bold">
                   {{ row.name ? row.name.substring(0,2).toUpperCase() : 'T' }}
                 </el-avatar>
                 <div class="flex flex-col ml-5">
-                  <span class="font-medium text-gray-900">{{ row.name }}</span>
+                  <span class="font-bold text-gray-900" style="font-size: 13px; color: var(--color-text-primary);">{{ row.name }}</span>
                   <span class="text-xs text-gray-500">{{ row.description || 'Không có mô tả' }}</span>
                 </div>
               </div>
             </template>
           </el-table-column>
 
-          <el-table-column label="Vai trò / Quyền" width="160">
+          <el-table-column width="160">
+            <template #header>
+              <i class="fa-solid fa-user-lock"></i> Vai trò / Quyền
+            </template>
             <template #default="{ row }">
               <el-tag size="small" :type="row.isDirectlyLinked ? 'primary' : 'info'" effect="plain">
                 {{ row.linkedRole || (row.isDirectlyLinked ? 'Team' : 'Thành viên độc lập') }}
@@ -153,7 +190,10 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="Thành viên" width="150">
+          <el-table-column width="150">
+            <template #header>
+              <i class="fa-solid fa-user-group"></i> Thành viên
+            </template>
             <template #default="{ row }">
               <div class="flex items-center gap-2">
                 <el-tag size="small" type="info"><i class="fa-solid fa-user mr-1"></i> {{ row.projectMemberCount }}/{{ row.totalMemberCount }}</el-tag>
@@ -167,7 +207,10 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="Quản lý" width="200">
+          <el-table-column width="200">
+            <template #header>
+              <i class="fa-solid fa-user-tie"></i> Quản lý
+            </template>
             <template #default="{ row }">
               <div class="flex items-center gap-2 cursor-pointer" v-if="row.manager" @click="goToMemberProfile(row.manager.id || row.manager.userId)">
                 <UserAvatar :user="row.manager" :size="24" :fontSize="10" :clickable="false" />
@@ -197,6 +240,7 @@
             </template>
           </el-table-column>
         </el-table>
+        </div>
       </el-tab-pane>
     </el-tabs>
 
@@ -339,6 +383,8 @@ import { useProjectStore } from '@/store/useProjectStore'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ToolbarValueFilter from '@/components/common/ToolbarValueFilter.vue'
+import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import { useI18n } from '@/composables/useI18n'
 import { signalRService } from '@/api/signalrService'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
@@ -362,9 +408,56 @@ const activeTab = ref('members')
 const members = ref([])
 const loadingMembers = ref(false)
 const searchQuery = ref('')
-const roleFilter = ref('')
-const teamFilter = ref('all')
+
+const activeFilters = ref([])
+
+const memberFilterFields = computed(() => [
+  { key: 'team', label: 'Team membership', icon: 'fa-solid fa-users', values: ['All members', 'Has team', 'No team'] },
+  { key: 'role', label: 'Role', icon: 'fa-solid fa-user-tag', values: roleOptions.value.map(role => role.label) }
+])
+
+const memberOperators = {
+  team: ['is', 'is not'],
+  role: ['is', 'is not']
+}
+
+const customMemberValueMeta = (fieldKey, value) => {
+  if (fieldKey === 'team') {
+    return { icon: 'fa-solid fa-users', color: '#3b82f6' }
+  }
+  if (fieldKey === 'role') {
+    return { icon: 'fa-solid fa-user-tag', color: '#10b981' }
+  }
+  return null
+}
+
+const showFilterDropdown = ref(false)
+const toggleFilterDropdown = () => {
+  showFilterDropdown.value = !showFilterDropdown.value
+}
+const handleOutsideClick = (e) => {
+  if (!e.target.closest('.js-toolbar-popup-scope')) {
+    showFilterDropdown.value = false
+  }
+}
+
 const teamSearchQuery = ref('')
+const memberSortBy = ref('name')
+const teamSortBy = ref('name')
+const memberSortDirection = ref('asc')
+const teamSortDirection = ref('asc')
+const memberSortOptions = [
+  { value: 'name', label: 'Member name', icon: 'fa-solid fa-user' },
+  { value: 'role', label: 'Role', icon: 'fa-solid fa-user-tag' },
+  { value: 'teamCount', label: 'Team count', icon: 'fa-solid fa-users' },
+  { value: 'joinedAt', label: 'Joined date', icon: 'fa-solid fa-calendar-days' }
+]
+const teamSortOptions = [
+  { value: 'name', label: 'Team name', icon: 'fa-solid fa-users' },
+  { value: 'projectMemberCount', label: 'Project members', icon: 'fa-solid fa-user-group' },
+  { value: 'totalMemberCount', label: 'Total members', icon: 'fa-solid fa-people-group' },
+  { value: 'linkedRole', label: 'Project role', icon: 'fa-solid fa-user-tag' }
+]
 
 const allTeamsFull = ref([]) // Stores detailed info of all teams
 const linkedTeams = computed(() => {
@@ -395,6 +488,14 @@ const linkedTeams = computed(() => {
         return false;
     }
     return true;
+  }).sort((left, right) => {
+    let result
+    if (teamSortBy.value === 'projectMemberCount' || teamSortBy.value === 'totalMemberCount') {
+      result = (Number(left[teamSortBy.value]) || 0) - (Number(right[teamSortBy.value]) || 0)
+    } else {
+      result = `${left[teamSortBy.value] || ''}`.localeCompare(`${right[teamSortBy.value] || ''}`)
+    }
+    return teamSortDirection.value === 'asc' ? result : -result
   });
 })
 const loadingTeams = ref(false)
@@ -595,13 +696,38 @@ const filteredMembers = computed(() => {
   }).filter(m => {
     const matchSearch = (m.fullName || '').toLowerCase().includes(searchQuery.value.toLowerCase()) ||
                         (m.email || '').toLowerCase().includes(searchQuery.value.toLowerCase())
-    const matchRole = roleFilter.value ? m.projectRole === roleFilter.value : true
+    if (!matchSearch) return false
 
-    let matchTeam = true;
-    if (teamFilter.value === 'hasTeam') matchTeam = m.teams && m.teams.length > 0;
-    if (teamFilter.value === 'noTeam') matchTeam = !m.teams || m.teams.length === 0;
+    if (activeFilters.value.length > 0) {
+      return activeFilters.value.every(f => {
+        let isMatch = false
+        if (f.field === 'team') {
+          const hasTeam = m.teams && m.teams.length > 0
+          if (f.value === 'All members') isMatch = true
+          else if (f.value === 'Has team') isMatch = hasTeam
+          else if (f.value === 'No team') isMatch = !hasTeam
+        } else if (f.field === 'role') {
+          const option = roleOptions.value.find(ro => ro.label === f.value)
+          const roleValue = option ? option.value : f.value
+          isMatch = m.projectRole === roleValue
+        }
+        return f.operator === 'is' ? isMatch : !isMatch
+      })
+    }
 
-    return matchSearch && matchRole && matchTeam
+    return true
+  }).sort((left, right) => {
+    let result
+    if (memberSortBy.value === 'teamCount') {
+      result = (left.teams?.length || 0) - (right.teams?.length || 0)
+    } else if (memberSortBy.value === 'joinedAt') {
+      result = new Date(left.joinedAt || 0).getTime() - new Date(right.joinedAt || 0).getTime()
+    } else {
+      const leftValue = memberSortBy.value === 'role' ? left.projectRole : (left.fullName || left.email)
+      const rightValue = memberSortBy.value === 'role' ? right.projectRole : (right.fullName || right.email)
+      result = `${leftValue || ''}`.localeCompare(`${rightValue || ''}`)
+    }
+    return memberSortDirection.value === 'asc' ? result : -result
   })
 })
 
@@ -713,10 +839,12 @@ onMounted(async () => {
     fetchMembers()
     fetchLinkedTeams()
   }
+  document.addEventListener('click', handleOutsideClick)
 })
 
 onUnmounted(() => {
   signalRService.off('EntityChanged', handleMemberRealtime)
+  document.removeEventListener('click', handleOutsideClick)
 })
 </script>
 
@@ -823,21 +951,99 @@ onUnmounted(() => {
 :deep(.el-tabs__active-bar) {
   background-color: var(--color-accent, #0c66e4);
 }
-:deep(.nexus-table),
-:deep(.nexus-table .el-table__inner-wrapper),
-:deep(.nexus-table tr),
-:deep(.nexus-table th.el-table__cell),
-:deep(.nexus-table td.el-table__cell) {
-  background: var(--color-surface) !important;
-  color: var(--color-text-primary) !important;
-  border-color: var(--color-border) !important;
+/* Table Container - matches IntakeInbox */
+.table-container {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  margin-top: 14px;
 }
-:deep(.nexus-table th.el-table__cell) { background: var(--color-table-header) !important; }
-:deep(.nexus-table .el-table__body tr:hover > td.el-table__cell) { background: var(--color-table-row-hover) !important; }
-:deep(.nexus-table .el-table__cell) { padding: 9px 0 !important; font-size: 13px; }
-:deep(.nexus-table th.el-table__cell) { padding: 10px 0 !important; font-weight: 800; }
-:deep(.nexus-table .el-select__wrapper) { min-height: 34px; border-radius: 9px; background: var(--color-input-bg) !important; box-shadow: 0 0 0 1px var(--color-input-border) inset !important; }
-:deep(.nexus-table .el-select__wrapper:hover) { box-shadow: 0 0 0 1px var(--sp-sky-400) inset !important; }
+
+
+:deep(.table-container .nexus-table) {
+  border-radius: 12px !important;
+}
+
+:deep(.nexus-table .el-table__inner-wrapper) {
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+:deep(.nexus-table::before),
+:deep(.nexus-table .el-table__border-left-patch),
+:deep(.nexus-table .el-table__border-bottom-patch) {
+  display: none !important;
+}
+
+:deep(.nexus-table .el-table__header-wrapper) {
+  border-radius: 12px 12px 0 0 !important;
+  overflow: hidden !important;
+}
+
+:deep(.nexus-table) {
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+
+:deep(.nexus-table .el-table__inner-wrapper::before) {
+  display: none !important;
+}
+
+:deep(.nexus-table th.el-table__cell) {
+  background: var(--color-surface) !important;
+  border-bottom: 2px solid var(--color-border) !important;
+  padding: 12px 16px !important;
+  font-size: 11px !important;
+  letter-spacing: 0.05em !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  white-space: nowrap !important;
+  color: var(--color-text-secondary) !important;
+  font-family: var(--sp-font-ui) !important;
+}
+
+:deep(.nexus-table th.el-table__cell i) {
+  color: inherit !important;
+  margin-right: 6px !important;
+  opacity: 0.88 !important;
+}
+
+:deep(.nexus-table td.el-table__cell) {
+  height: 50px !important;
+  max-height: 50px !important;
+  padding: 4px 14px !important;
+  box-sizing: border-box !important;
+  font-size: 13px !important;
+  color: var(--color-text-primary) !important;
+  border-bottom: 1px solid var(--color-border) !important;
+}
+
+:deep(.nexus-table .el-table__body tr) {
+  box-shadow: inset 3px 0 0 transparent !important;
+  transition: all 0.2s ease !important;
+}
+
+:deep(.nexus-table .el-table__body tr:hover > td.el-table__cell) {
+  background: color-mix(in srgb, var(--sa-primary, var(--color-accent)) 8%, var(--color-surface)) !important;
+}
+
+:deep(.nexus-table .el-table__body tr:hover > td.el-table__cell:first-child) {
+  box-shadow: inset 3px 0 0 var(--sa-primary, var(--color-accent)) !important;
+}
+
+:deep(.nexus-table .el-select__wrapper) {
+  min-height: 30px !important;
+  height: 30px !important;
+  border-radius: 6px !important;
+  background: var(--color-input-bg) !important;
+  box-shadow: 0 0 0 1px var(--color-input-border) inset !important;
+}
+
+:deep(.nexus-table .el-select__wrapper:hover) {
+  box-shadow: 0 0 0 1px var(--color-accent) inset !important;
+}
 :deep(.el-avatar) { font-family: var(--sp-font-ui); font-weight: 800; }
 :deep(.el-tag) { border-radius: 999px; font-family: var(--sp-font-ui); }
 .member-email { color: var(--color-text-muted) !important; }
@@ -846,4 +1052,38 @@ onUnmounted(() => {
 :global(.members-role-popper .el-select-dropdown__item) { color: var(--color-text-primary) !important; }
 :global(.members-role-popper .el-select-dropdown__item.is-hovering),
 :global(.members-role-popper .el-select-dropdown__item:hover) { background: var(--color-surface-hover) !important; color: var(--color-text-primary) !important; }
+
+.filter-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.plane-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1050;
+  width: 290px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  padding: 12px;
+}
+.filter-dropdown-menu {
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: none;
+  padding: 8px !important;
+  left: 0;
+  right: auto;
+  overflow: visible;
+}
+.filter-dropdown-menu :deep(.filter-bar-container) {
+  min-height: auto;
+  box-shadow: none;
+  background: transparent;
+  border: none;
+  padding: 0 !important;
+  overflow: visible;
+}
 </style>

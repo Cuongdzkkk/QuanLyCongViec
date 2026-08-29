@@ -81,6 +81,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useEditor, EditorContent, VueRenderer } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
+import axiosClient from '@/api/axiosClient'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Underline } from '@tiptap/extension-underline'
 import { TextStyle } from '@tiptap/extension-text-style'
@@ -266,10 +267,16 @@ const handleFileUpload = async (event) => {
   if (!file) return
 
   try {
-    // Attempt actual API call if you have one, else create object URL
-    // const response = await uploadApi.uploadImage(file)
-    // const imageUrl = response.data.url
-    const imageUrl = URL.createObjectURL(file) // Fallback for mockup
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    const response = await axiosClient.post('/uploads/image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+    
+    const imageUrl = response.data.url
     
     editor.value.chain().focus().setImage({ src: imageUrl }).run()
     event.target.value = ''
@@ -388,6 +395,11 @@ const handleCancel = () => {
   color: #8993A4;
   pointer-events: none;
   height: 0;
+}
+
+.rte-tiptap .ProseMirror.is-focused p.is-editor-empty:first-child::before,
+.rte-tiptap .ProseMirror-focused p.is-editor-empty:first-child::before {
+  display: none;
 }
 
 .rte-tiptap .ProseMirror img {

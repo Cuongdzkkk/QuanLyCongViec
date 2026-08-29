@@ -14,6 +14,7 @@ import FilterBar from '@/components/FilterBar.vue'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
@@ -30,6 +31,7 @@ const loading = ref(false)
 const showCreateModal = ref(false)
 const modalTab = ref('list')
 const viewType = ref('list') 
+const viewListMode = ref('list')
 
 // Selected Filters State
 const activeFilters = ref([])
@@ -225,8 +227,88 @@ const applyTaskFilters = (items, filters) => {
 
 // Sorting and Filtering
 const sortBy = ref('Updated at')
-const sortDir = ref('Descending')
+const sortDir = ref('desc')
+const viewSortOptions = [
+  { value: 'Name', label: 'Name', icon: 'fa-solid fa-font' },
+  { value: 'Created at', label: 'Created at', icon: 'fa-regular fa-calendar-plus' },
+  { value: 'Updated at', label: 'Updated at', icon: 'fa-regular fa-clock' }
+]
 const filterSearch = ref('')
+
+const activeListViewFilters = ref([])
+const viewFilterFields = computed(() => [
+  { key: 'favorites', label: 'Favorites', icon: 'fa-regular fa-star', values: ['Starred'] },
+  { key: 'scope', label: 'Scope', icon: 'fa-solid fa-earth-americas', values: ['Global views'] }
+])
+const viewOperators = {
+  favorites: ['is', 'is not'],
+  scope: ['is', 'is not']
+}
+const customViewValueMeta = (fieldKey, value) => {
+  if (fieldKey === 'favorites') return { icon: 'fa-solid fa-star', color: '#fbbf24' }
+  if (fieldKey === 'scope') return { icon: 'fa-solid fa-earth-americas', color: '#3b82f6' }
+  return null
+}
+
+const showViewsFilterDropdown = ref(false)
+const showActiveViewFilterDropdown = ref(false)
+
+const toggleViewsFilterDropdown = () => {
+  showViewsFilterDropdown.value = !showViewsFilterDropdown.value
+}
+const toggleActiveViewFilterDropdown = () => {
+  showActiveViewFilterDropdown.value = !showActiveViewFilterDropdown.value
+}
+
+const handleOutsideClick = (e) => {
+  if (!e.target.closest('.js-toolbar-popup-scope-views')) {
+    showViewsFilterDropdown.value = false
+  }
+  if (!e.target.closest('.js-toolbar-popup-scope-active-view')) {
+    showActiveViewFilterDropdown.value = false
+  }
+}
+
+const filterFields = computed(() => {
+  const uniqStatuses = [...new Set(originalTasks.value.map(t => getTaskFieldValue(t, 'status')).filter(Boolean))]
+  const uniqAssignees = [...new Set(originalTasks.value.map(t => getTaskFieldValue(t, 'assignee')).filter(Boolean))]
+  const uniqPriorities = [...new Set(originalTasks.value.map(t => getTaskFieldValue(t, 'priority')).filter(Boolean))]
+  const uniqLabels = [...new Set(originalTasks.value.flatMap(t => {
+    const val = getTaskFieldValue(t, 'label')
+    return val ? val.split(',').map(s => s.trim()) : []
+  }).filter(Boolean))]
+  const uniqCycles = [...new Set(originalTasks.value.map(t => getTaskFieldValue(t, 'cycle')).filter(Boolean))]
+  const uniqModules = [...new Set(originalTasks.value.map(t => getTaskFieldValue(t, 'module')).filter(Boolean))]
+
+  return [
+    { key: 'status', label: 'State', icon: 'fa-regular fa-circle-dot', values: uniqStatuses },
+    { key: 'assignee', label: 'Assignees', icon: 'fa-regular fa-user', values: uniqAssignees },
+    { key: 'priority', label: 'Priority', icon: 'fa-solid fa-signal', values: uniqPriorities },
+    { key: 'label', label: 'Label', icon: 'fa-solid fa-tag', values: uniqLabels },
+    { key: 'cycle', label: 'Cycles', icon: 'fa-regular fa-circle-pause', values: uniqCycles },
+    { key: 'module', label: 'Modules', icon: 'fa-solid fa-table-cells-large', values: uniqModules }
+  ]
+})
+
+const filterOperators = {
+  status: ['is', 'is not'],
+  assignee: ['is', 'is not', 'empty', 'not empty'],
+  priority: ['is', 'is not'],
+  label: ['is', 'is not', 'empty', 'not empty'],
+  cycle: ['is', 'is not', 'empty', 'not empty'],
+  module: ['is', 'is not', 'empty', 'not empty']
+}
+
+const customValueMeta = (fieldKey, value) => {
+  if (fieldKey === 'priority') {
+    const p = String(value).toLowerCase()
+    if (p === 'urgent') return { icon: 'fa-solid fa-circle-exclamation', color: '#ef4444' }
+    if (p === 'high') return { icon: 'fa-solid fa-circle-chevron-up', color: '#f97316' }
+    if (p === 'medium') return { icon: 'fa-solid fa-circle-dot', color: '#eab308' }
+    if (p === 'low') return { icon: 'fa-solid fa-circle-chevron-down', color: '#3b82f6' }
+  }
+  return null
+}
 
 // Creation form
 const newView = ref({
@@ -249,12 +331,20 @@ const filteredViews = computed(() => {
     `${view.name || ''} ${view.description || ''}`.toLowerCase().includes(q)
   )
 
-  if (listFavoritesOnly.value) {
-    nextViews = nextViews.filter(view => view.isFavorite)
-  }
-
-  if (listGlobalOnly.value) {
-    nextViews = nextViews.filter(view => view.isGlobal)
+  if (activeListViewFilters.value.length > 0) {
+    nextViews = nextViews.filter(view => {
+      return activeListViewFilters.value.every(f => {
+        if (f.field === 'favorites') {
+          const isMatch = Boolean(view.isFavorite)
+          return f.operator === 'is' ? isMatch : !isMatch
+        }
+        if (f.field === 'scope') {
+          const isMatch = Boolean(view.isGlobal)
+          return f.operator === 'is' ? isMatch : !isMatch
+        }
+        return true
+      })
+    })
   }
 
   const sortValue = (view) => {
@@ -268,7 +358,7 @@ const filteredViews = computed(() => {
     const right = sortValue(b)
     if (left === right) return 0
     const result = left > right ? 1 : -1
-    return sortDir.value === 'Descending' ? result * -1 : result
+    return sortDir.value === 'desc' ? result * -1 : result
   })
 
   return nextViews
@@ -526,12 +616,16 @@ const handleViewRealtime = event => {
 
 onMounted(async () => {
   signalRService.on('EntityChanged', handleViewRealtime)
+  document.addEventListener('click', handleOutsideClick)
   await signalRService.startConnection(projectId.value)
   fetchViews()
   fetchProjectMembers()
 })
 
-onUnmounted(() => signalRService.off('EntityChanged', handleViewRealtime))
+onUnmounted(() => {
+  signalRService.off('EntityChanged', handleViewRealtime)
+  document.removeEventListener('click', handleOutsideClick)
+})
 
 watch(projectId, async () => {
     await signalRService.startConnection(projectId.value)
@@ -645,50 +739,67 @@ const getInitials = (name) => {
       >
         <template #filters>
           <template v-if="!activeView">
-            <el-dropdown trigger="click">
-                <button class="nexus-btn-outlined" type="button">
-                    <i class="fa-solid fa-arrow-down-short-wide"></i> {{ t(sortBy) }}
-                </button>
-                <template #dropdown>
-                    <el-dropdown-menu class="dark-popover">
-                        <el-dropdown-item @click="sortBy = 'Name'">{{ t('Name') }}</el-dropdown-item>
-                        <el-dropdown-item @click="sortBy = 'Created at'">{{ t('Created at') }}</el-dropdown-item>
-                        <el-dropdown-item @click="sortBy = 'Updated at'">{{ t('Updated at') }}</el-dropdown-item>
-                    </el-dropdown-menu>
-                </template>
-            </el-dropdown>
-            
-            <el-dropdown trigger="click" :hide-on-click="false" popper-class="views-popper-clean">
-                <button class="nexus-btn-outlined" type="button" :class="{ active: showListFilters || activeListFilterCount }" @click="showListFilters = !showListFilters">
-                    <i class="fa-solid fa-bars-staggered"></i> {{ t('Filters') }}
-                    <span v-if="activeListFilterCount" class="toolbar-count">{{ activeListFilterCount }}</span>
-                </button>
-                <template #dropdown>
-                    <div class="views-filter-menu" @click.stop>
-                        <label class="menu-check">
-                            <input type="checkbox" v-model="listFavoritesOnly" />
-                            <span>{{ t('Favorites') }}</span>
-                        </label>
-                        <label class="menu-check">
-                            <input type="checkbox" v-model="listGlobalOnly" />
-                            <span>{{ t('Global views') }}</span>
-                        </label>
-                        <button class="menu-clear" type="button" :disabled="!activeListFilterCount" @click="clearListFilters">{{ t('Clear filters') }}</button>
-                    </div>
-                </template>
-            </el-dropdown>
+            <div class="filter-dropdown-wrapper js-toolbar-popup-scope-views">
+              <button
+                class="timeline-filter-trigger icon-only-trigger"
+                type="button"
+                aria-label="Filters"
+                title="Bộ lọc"
+                @click="toggleViewsFilterDropdown"
+                :class="{ active: showViewsFilterDropdown || activeListViewFilters.length }"
+              >
+                <i class="fa-solid fa-filter"></i>
+                <span v-if="activeListViewFilters.length" class="filter-count">{{ activeListViewFilters.length }}</span>
+              </button>
+              <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showViewsFilterDropdown" @click.stop>
+                <FilterBar
+                  v-model:filters="activeListViewFilters"
+                  :fields="viewFilterFields"
+                  :operators="viewOperators"
+                  :custom-value-meta="customViewValueMeta"
+                  :active="showViewsFilterDropdown"
+                />
+              </div>
+            </div>
           </template>
           <template v-else>
-            <button class="nexus-btn-outlined" type="button" :class="{ active: showActiveFilters || activeFilterCount }" @click="showActiveFilters = !showActiveFilters">
-              <i class="fa-solid fa-filter"></i> {{ t('Filters') }}
-              <span v-if="activeFilterCount" class="toolbar-count">{{ activeFilterCount }}</span>
-            </button>
+            <div class="filter-dropdown-wrapper js-toolbar-popup-scope-active-view">
+              <button
+                class="timeline-filter-trigger icon-only-trigger"
+                type="button"
+                aria-label="Filters"
+                title="Bộ lọc"
+                @click="toggleActiveViewFilterDropdown"
+                :class="{ active: showActiveViewFilterDropdown || activeFilters.length }"
+              >
+                <i class="fa-solid fa-filter"></i>
+                <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
+              </button>
+              <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showActiveViewFilterDropdown" @click.stop>
+                <FilterBar
+                  v-model:filters="activeFilters"
+                  :fields="filterFields"
+                  :operators="filterOperators"
+                  :custom-value-meta="customValueMeta"
+                  :active="showActiveViewFilterDropdown"
+                />
+              </div>
+            </div>
           </template>
+        </template>
+        <template #toggles>
+          <div v-if="!activeView" class="view-toggles">
+            <button class="toggle-btn" :class="{ active: viewListMode === 'list' }" type="button" title="List view" @click="viewListMode = 'list'"><i class="fa-solid fa-bars"></i></button>
+            <button class="toggle-btn" :class="{ active: viewListMode === 'grid' }" type="button" title="Grid view" @click="viewListMode = 'grid'"><i class="fa-solid fa-table-cells-large"></i></button>
+          </div>
+        </template>
+        <template #sort>
+          <ToolbarSortMenu v-if="!activeView" v-model="sortBy" v-model:direction="sortDir" label="Sort views" :options="viewSortOptions" />
         </template>
       </ProjectPageToolbar>
 
     <main class="views-content">
-      <div v-if="!activeView" class="views-list">
+      <div v-if="!activeView" class="views-list" :class="{ 'views-grid': viewListMode === 'grid' }">
 
 
         <div v-if="views.length === 0" class="empty-placeholder">
@@ -1135,6 +1246,10 @@ const getInitials = (name) => {
   width: min(100%, 1280px);
   margin: 0 auto;
 }
+
+.views-list.views-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.views-list.views-grid .view-item-row { min-height: 140px; margin-bottom: 0; align-items: flex-start; flex-direction: column; }
+.views-list.views-grid .vi-right { width: 100%; justify-content: flex-end; }
 
 .views-list-head,
 .view-detail-summary {
@@ -1872,9 +1987,37 @@ const getInitials = (name) => {
   padding: 18px !important;
 }
 
+.filter-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.plane-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1050;
+  width: 290px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  padding: 12px;
+}
+.filter-dropdown-menu {
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: none;
+  padding: 8px !important;
+  left: 0;
+  right: auto;
+  overflow: visible;
+}
+.filter-dropdown-menu :deep(.filter-bar-container) {
+  min-height: auto;
+  box-shadow: none;
+  background: transparent;
+  border: none;
+  padding: 0 !important;
+  overflow: visible;
+}
 </style>
-
-
-
-
-

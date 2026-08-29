@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from '@/composables/useI18n'
 import { useRouter } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
@@ -8,8 +8,10 @@ import { subscribeAdminRealtime } from '@/utils/adminRealtime'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 import { buildSpacePath } from '@/utils/spaceRoute'
+import FilterBar from '@/components/FilterBar.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true }
@@ -32,7 +34,39 @@ const rowCalendarModId = ref(null)
 const moduleSearch = ref('')
 const sortBy = ref('updatedAt')
 const sortDirection = ref('desc')
-const statusFilter = ref('all')
+const moduleSortOptions = [
+  { value: 'updatedAt', label: 'Recently updated', icon: 'fa-regular fa-clock' },
+  { value: 'name', label: 'Module name', icon: 'fa-solid fa-font' },
+  { value: 'status', label: 'Status', icon: 'fa-solid fa-circle-dot' }
+]
+const activeFilters = ref([])
+
+const moduleFilterFields = computed(() => [
+  { key: 'status', label: 'Status', icon: 'fa-solid fa-circle-dot', values: ['Backlog', 'Planned', 'In Progress', 'Paused', 'Completed', 'Cancelled'] }
+])
+
+const moduleOperators = {
+  status: ['is', 'is not']
+}
+
+const customModuleValueMeta = (fieldKey, value) => {
+  if (fieldKey === 'status') {
+    const opt = statusOptions.find(o => o.label.toLowerCase() === value.toLowerCase())
+    if (opt) return { icon: opt.icon, color: opt.color }
+  }
+  return null
+}
+
+const showFilterDropdown = ref(false)
+const toggleFilterDropdown = () => {
+  showFilterDropdown.value = !showFilterDropdown.value
+}
+const handleOutsideClick = (e) => {
+  if (!e.target.closest('.js-toolbar-popup-scope')) {
+    showFilterDropdown.value = false
+  }
+}
+
 const viewMode = ref('list')
 const activeModule = ref(null)
 
@@ -139,11 +173,17 @@ const normalizeModule = (module) => ({
 const activeModules = computed(() => modules.value.filter(module => module.statusKey !== 'disabled'))
 
 const filteredModules = computed(() => {
-  if (statusFilter.value === 'all') {
-    return activeModules.value
+  let list = activeModules.value
+  if (activeFilters.value.length > 0) {
+    list = list.filter(module => {
+      return activeFilters.value.every(f => {
+        const val = getStatusLabel(module.statusKey)
+        const isMatch = val.toLowerCase() === f.value.toLowerCase()
+        return f.operator === 'is' ? isMatch : !isMatch
+      })
+    })
   }
-
-  return activeModules.value.filter(module => module.statusKey === statusFilter.value)
+  return list
 })
 
 const disabledModules = computed(() => modules.value.filter(module => module.statusKey === 'disabled'))
@@ -439,8 +479,13 @@ const unsubscribeAdminRealtime = subscribeAdminRealtime(async ({ type, payload }
   }
 })
 
+onMounted(() => {
+  document.addEventListener('click', handleOutsideClick)
+})
+
 onUnmounted(() => {
   unsubscribeAdminRealtime?.()
+  document.removeEventListener('click', handleOutsideClick)
 })
 
 </script>
@@ -465,35 +510,31 @@ onUnmounted(() => {
       >
 
         <template #filters>
-          <el-dropdown trigger="click" @command="(value) => statusFilter = value">
-            <button class="timeline-filter-trigger" type="button" :class="{ active: statusFilter !== 'all' }">
+          <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
+            <button
+              class="timeline-filter-trigger icon-only-trigger"
+              type="button"
+              aria-label="Filters"
+              title="Bộ lọc"
+              @click="toggleFilterDropdown"
+              :class="{ active: showFilterDropdown || activeFilters.length }"
+            >
               <i class="fa-solid fa-filter"></i>
-              <span>{{ t('Filters') }}</span>
-              <span v-if="statusFilter !== 'all'" class="filter-count">1</span>
+              <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
             </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="all">{{ t('modules.allStatuses', 'All statuses') }}</el-dropdown-item>
-                <el-dropdown-item v-for="status in statusOptions" :key="status.key" :command="status.key">
-                  {{ status.label }}
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-
-          <el-dropdown trigger="click" @command="(value) => { sortBy = value.field; sortDirection = value.direction }">
-            <button class="timeline-filter-trigger" type="button">
-              <span>{{ t('Display') }}</span>
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item :command="{ field: 'updatedAt', direction: 'desc' }">{{ t('modules.recentlyUpdated', 'Recently updated') }}</el-dropdown-item>
-                <el-dropdown-item :command="{ field: 'name', direction: 'asc' }">{{ t('modules.nameAZ', 'Name A-Z') }}</el-dropdown-item>
-                <el-dropdown-item :command="{ field: 'name', direction: 'desc' }">{{ t('modules.nameZA', 'Name Z-A') }}</el-dropdown-item>
-                <el-dropdown-item :command="{ field: 'status', direction: 'asc' }">Status</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+            <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
+              <FilterBar
+                v-model:filters="activeFilters"
+                :fields="moduleFilterFields"
+                :operators="moduleOperators"
+                :custom-value-meta="customModuleValueMeta"
+                :active="showFilterDropdown"
+              />
+            </div>
+          </div>
+        </template>
+        <template #sort>
+          <ToolbarSortMenu v-model="sortBy" v-model:direction="sortDirection" label="Sort modules" :options="moduleSortOptions" />
         </template>
 
         <template #left>
@@ -1838,9 +1879,43 @@ onUnmounted(() => {
   line-height: 1.25 !important;
 }
 
-.module-copy p,
+.modules-copy p,
 .module-meta {
   font-size: 12px !important;
   line-height: 1.35 !important;
+}
+
+.filter-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.plane-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1050;
+  width: 290px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  padding: 12px;
+}
+.filter-dropdown-menu {
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: none;
+  padding: 8px !important;
+  left: 0;
+  right: auto;
+  overflow: visible;
+}
+.filter-dropdown-menu :deep(.filter-bar-container) {
+  min-height: auto;
+  box-shadow: none;
+  background: transparent;
+  border: none;
+  padding: 0 !important;
+  overflow: visible;
 }
 </style>

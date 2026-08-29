@@ -1,319 +1,396 @@
 <template>
-  <div class="profile-detail-container" v-if="user">
-    <!-- Cover Image -->
-    <div class="profile-cover">
-      <!-- Floating Back Button -->
-      <button class="back-floating-btn" @click="handleBack">
-        <i class="fa-solid fa-arrow-left"></i>
-        <span>Quay lại</span>
-      </button>
-    </div>
+  <div class="profile-detail-page-root" style="height: 100%; display: flex; flex-direction: column;">
+    <template v-if="user">
+      <DetailLayout>
+    <template #hero>
+      <DetailHero
+        cover-color="#091E42"
+        cover-pattern="dynamic"
+        back-text="Quay lại"
+        :show-back="true"
+        :title="user?.fullName || 'User Profile'"
+        avatar-type="circle"
+        @back="handleBack"
+      >
+        <template #cover-actions>
+          <input type="file" ref="imageUploader" style="display: none" accept="image/*" @change="onImageSelected" />
+          <button class="sprinta-btn sprinta-btn-secondary" style="background: rgba(0,0,0,0.4); color: white; border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(4px);" v-if="!isInactive" @click="triggerImageUpload">
+            <i class="fa-solid fa-camera"></i> Đổi ảnh bìa
 
-    <!-- Header -->
-    <div class="profile-header-wrapper">
-      <div class="profile-identity">
-        <UserAvatar :user="{ id: user.id, avatarUrl: user.avatarUrl, avatarColor: user.avatarColor, initials: user.initials, fullName: user.fullName, email: user.email }" :size="96" :fontSize="36" class="profile-avatar" :class="{ inactive: isInactive }" />
-        <div class="profile-title-block">
-          <div class="title-row">
-            <h1 style="margin: 0; font-size: 28px;">{{ user.fullName }}</h1>
-            <span v-if="isInactive" class="badge inactive">Inactive Account</span>
-          </div>
-          <div class="profile-status-row" style="margin-top: 4px; font-size: 13px; color: #42526E; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <span><span style="color: #5e6c84;">Chức vụ:</span> <strong>{{ user.position || 'N/A' }}</strong></span>
-            <span style="color: #dfe1e6;">|</span>
-            <span><span style="color: #5e6c84;">Email:</span> <strong>{{ user.email }}</strong></span>
-          </div>
-        </div>
-      </div>
-      <div class="header-actions">
-        <button class="secondary-btn" :disabled="isInactive">Message</button>
-        <div class="dropdown-container">
-          <button class="icon-btn menu-btn" @click.stop="isMenuOpen = !isMenuOpen" title="More actions">
-            <i class="fa-solid fa-ellipsis-vertical"></i>
           </button>
-          <div class="dropdown-menu" v-if="isMenuOpen">
-            <button class="menu-item" :disabled="isInactive" @click="openEditProfile"><i class="fa-solid fa-pen"></i> Edit Profile</button>
-            <button class="menu-item" :disabled="isInactive"><i class="fa-solid fa-gear"></i> Admin Settings</button>
+        </template>
+        <template #avatar>
+          <div class="editable-avatar-wrapper" style="position: relative; width: 100%; height: 100%; cursor: pointer; border-radius: 50%; overflow: hidden;" @click="triggerImageUpload">
+            <UserAvatar :user="{ id: user.id, avatarUrl: user.avatarUrl, avatarColor: user.avatarColor, initials: user.initials, fullName: user.fullName, email: user.email }" :size="96" :fontSize="36" :class="{ inactive: isInactive }" />
+            <div class="avatar-edit-overlay" v-if="!isInactive" style="position: absolute; bottom: 0; left: 0; width: 100%; height: 32px; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; color: white; opacity: 0; transition: opacity 0.2s;">
+              <i class="fa-solid fa-camera" style="font-size: 14px;"></i>
+            </div>
           </div>
+        </template>
+        <template #badges>
+          <span v-if="isInactive" class="badge inactive">Inactive Account</span>
+        </template>
+        <template #actions>
+          <button class="sprinta-btn sprinta-btn-primary" @click="handleFriendRequest" :disabled="isInactive">
+            <i class="fa-solid fa-user-plus" style="margin-right:6px"></i> Gửi lời mời kết bạn
+          </button>
+          <button class="sprinta-icon-btn" title="Nhắn tin" @click="openChat" :disabled="isInactive">
+            <i class="fa-regular fa-message"></i>
+          </button>
+        </template>
+      </DetailHero>
+    </template>
+
+    <template #tabs>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'overview' }" @click="currentTab = 'overview'">Tổng quan</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'tasks' }" @click="currentTab = 'tasks'">SprintA</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'goals' }" @click="currentTab = 'goals'">Mục tiêu</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'projects' }" @click="currentTab = 'projects'">Dự án</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'kudos' }" @click="currentTab = 'kudos'">Khen ngợi</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'history' }" @click="currentTab = 'history'">Lịch sử</button>
+    </template>
+
+    <template #main>
+      <div :class="{ 'read-only-state': isInactive }">
+        <div v-if="isInactive" class="inactive-banner" style="margin-bottom: 24px;">
+          <i class="fa-solid fa-circle-info" style="margin-right:8px; color: #0052cc"></i>
+          This account is inactive. Some information might be hidden and actions are disabled.
         </div>
-      </div>
-    </div>
 
-    <!-- Tabs Nav -->
-    <div class="tabs-nav">
-      <button class="tab-btn" :class="{ active: currentTab === 'overview' }" @click="currentTab = 'overview'">Overview</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'tasks' }" @click="currentTab = 'tasks'">Tasks</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'goals' }" @click="currentTab = 'goals'">Goals</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'projects' }" @click="currentTab = 'projects'">Projects</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'kudos' }" @click="currentTab = 'kudos'">Kudos</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'history' }" @click="currentTab = 'history'">History</button>
-    </div>
-
-    <!-- Tab Content -->
-    <div class="tab-content" :class="{ 'read-only-state': isInactive }">
-      <div v-if="isInactive" class="inactive-banner">
-        This user account is inactive. Profile information is read-only.
-      </div>
-
-      <!-- Overview -->
-      <div v-if="currentTab === 'overview'" class="tab-pane layout-grid">
-        <div class="main-column">
-          <section class="info-section">
-            <h3>Bio</h3>
-            <div class="bio-content-wrapper" :class="{ 'is-editing': editingBio }">
-              <RichTextEditor 
-                v-if="editingBio"
-                v-model="tempBio"
-                @save="saveBio"
-                @cancel="editingBio = false"
-                placeholder="Thêm giới thiệu về bạn..."
-              />
-              <div 
-                v-else 
-                class="bio-display tiptap-content" 
-                @click="startEditingBio"
-                style="min-height: 40px; padding: 8px; border: 1px solid transparent; border-radius: 4px; cursor: pointer;"
-                onmouseover="this.style.backgroundColor='#FAFBFC'"
-                onmouseout="this.style.backgroundColor='transparent'"
-              >
-                <div v-if="user.bio && user.bio !== '<p></p>'" v-html="user.bio"></div>
-                <div v-else style="color: #5E6C84;">Thêm giới thiệu về bạn...</div>
+        <!-- Overview -->
+        <div v-if="currentTab === 'overview'" class="tab-pane" style="display: flex; flex-direction: column; gap: 18px;">
+          <!-- Bio -->
+          <section class="info-section" style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #172B4D;">Bio</h3>
+            </div>
+            <div class="section-body">
+              <RichTextEditor v-if="editingBio && !isInactive" v-model="tempBio" @save="saveBio" @cancel="editingBio = false" placeholder="Thêm giới thiệu về bạn..." />
+              <div v-else @click="!isInactive && startEditingBio()" :style="{ cursor: !isInactive ? 'pointer' : 'default', color: '#5E6C84', fontSize: '14px', padding: '8px', borderRadius: '3px', minHeight: '40px' }" :onmouseover="!isInactive ? 'this.style.backgroundColor=\'#FAFBFC\'' : ''" :onmouseout="!isInactive ? 'this.style.backgroundColor=\'transparent\'' : ''">
+                <div v-if="user.bio && user.bio !== '<p></p>' && user.bio !== '<p class=\'empty-state-micro\'>Thêm giới thiệu về bạn...</p>'" v-html="user.bio" class="tiptap-content" style="color: #172B4D;"></div>
+                <div v-else>Thêm giới thiệu về bạn...</div>
               </div>
             </div>
           </section>
-          <section class="info-section">
-            <h3>Hobbies & Interests</h3>
-            <div class="bio-content-wrapper" :class="{ 'is-editing': editingHobbies }">
-              <RichTextEditor 
-                v-if="editingHobbies"
-                v-model="tempHobbies"
-                @save="saveHobbies"
-                @cancel="editingHobbies = false"
-                placeholder="Chia sẻ sở thích của bạn..."
-              />
-              <div 
-                v-else 
-                class="bio-display tiptap-content" 
-                @click="startEditingHobbies"
-                style="min-height: 40px; padding: 8px; border: 1px solid transparent; border-radius: 4px; cursor: pointer;"
-                onmouseover="this.style.backgroundColor='#FAFBFC'"
-                onmouseout="this.style.backgroundColor='transparent'"
-              >
-                <div v-if="user.hobbies && user.hobbies !== '<p></p>'" v-html="user.hobbies"></div>
-                <div v-else style="color: #5E6C84;">Has not shared any hobbies yet.</div>
+
+          <!-- Hobbies -->
+          <section class="info-section" style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #172B4D;">Hobbies & Interests</h3>
+            </div>
+            <div class="section-body">
+              <RichTextEditor v-if="editingHobbies && !isInactive" v-model="tempHobbies" @save="saveHobbies" @cancel="editingHobbies = false" placeholder="Sở thích của bạn là gì?" />
+              <div v-else @click="!isInactive && startEditingHobbies()" :style="{ cursor: !isInactive ? 'pointer' : 'default', color: '#5E6C84', fontSize: '14px', padding: '8px', borderRadius: '3px', minHeight: '40px' }" :onmouseover="!isInactive ? 'this.style.backgroundColor=\'#FAFBFC\'' : ''" :onmouseout="!isInactive ? 'this.style.backgroundColor=\'transparent\'' : ''">
+                <div v-if="user.hobbies && user.hobbies !== '<p></p>' && user.hobbies !== '<p class=\'empty-state-micro\'>Has not shared any hobbies yet.</p>'" v-html="user.hobbies" class="tiptap-content" style="color: #172B4D;"></div>
+                <div v-else>Has not shared any hobbies yet.</div>
               </div>
             </div>
           </section>
-          <section class="info-section">
-            <h3>Teams & Departments</h3>
-            <div class="teams-list">
-              <div class="team-chip" v-for="t in user.teamsList" :key="t.id">
-                <i class="fa-solid fa-users team-icon"></i>
-                {{ t.name }}
+
+          <!-- Teams & Departments -->
+          <section class="info-section" style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #172B4D;">Teams & Departments</h3>
+            </div>
+            <div class="section-body" style="padding: 8px;">
+              <div class="teams-list" v-if="user.teamsList && user.teamsList.length">
+                <div class="team-chip" v-for="team in user.teamsList" :key="team.id">
+                  <i class="fa-solid fa-users team-icon"></i>
+                  <span>{{ team.name }}</span>
+                </div>
               </div>
-              <div class="empty-state-micro" v-if="!user.teamsList || user.teamsList.length === 0">
-                Not a member of any teams.
-              </div>
+              <div v-else style="color: #5E6C84; font-size: 14px;">Not a member of any teams.</div>
             </div>
           </section>
         </div>
-        <div class="side-column">
-          <div class="side-card">
-            <h3>About</h3>
+
+        <!-- Tasks -->
+        <div v-if="currentTab === 'tasks'" class="tab-pane">
+          <div class="section-header-row">
+            <h3>Công việc SprintA</h3>
+          </div>
+          <table class="jira-table mt-16" v-if="assignedTasks && assignedTasks.length">
+            <thead>
+              <tr><th>Mã CV</th><th>Tiêu đề</th><th>Trạng thái</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="task in assignedTasks" :key="task.id" @click="goToTask(task)">
+                <td class="key-col">{{ task.key }}</td>
+                <td class="link-text">{{ task.title }}</td>
+                <td><AppStatusBadge :status="task.status" :statusText="task.status" /></td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px; background: white;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #EBECF0; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-brands fa-jira" style="font-size: 32px; color: #0052CC;"></i>
+                </div>
+                <div v-if="!isInactive" style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Công việc SprintA</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Người dùng này hiện không có công việc nào đang được giao.</p>
+                <div style="position: relative; display: inline-block;">
+                  <button v-if="!isInactive" class="secondary-btn">Thêm hạng mục công việc SprintA</button>
+                </div>
+             </div>
+          </div>
+        </div>
+
+        <!-- Goals -->
+        <div v-if="currentTab === 'goals'" class="tab-pane">
+          <div class="section-header-row">
+            <h3>Mục tiêu sở hữu</h3>
+          </div>
+          <table class="jira-table mt-16" v-if="linkedGoals && linkedGoals.length">
+            <thead>
+              <tr><th>Tiêu đề mục tiêu</th><th>Trạng thái</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="goal in linkedGoals" :key="goal.id" @click="goToGoal(goal.id)">
+                <td class="link-text"><i class="fa-solid fa-bullseye"></i> {{ goal.title }}</td>
+                <td><AppStatusBadge :status="goal.status" :statusText="goal.status" /></td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="jira-empty-box" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #EBECF0; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-solid fa-bullseye" style="font-size: 32px; color: #172B4D;"></i>
+                </div>
+                <div style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Không có mục tiêu nào</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Chưa có mục tiêu nào được liên kết với người dùng này.</p>
+                <div style="position: relative; display: inline-block;">
+                  <button class="secondary-btn">Thêm mục tiêu</button>
+                </div>
+             </div>
+          </div>
+        </div>
+
+        <!-- Projects -->
+        <div v-if="currentTab === 'projects'" class="tab-pane">
+          <div class="section-header-row">
+            <h3>Dự án tham gia</h3>
+          </div>
+          <table class="jira-table mt-16" v-if="linkedProjects && linkedProjects.length">
+            <thead>
+              <tr><th>Tên dự án</th><th>Trạng thái</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="proj in linkedProjects" :key="proj.id" @click="goToProject(proj.id)">
+                <td class="link-text"><i class="fa-solid fa-chart-simple"></i> {{ proj.title }}</td>
+                <td><span class="badge status-light">{{ proj.status }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="jira-empty-box" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #EBECF0; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-solid fa-folder" style="font-size: 32px; color: #172B4D;"></i>
+                </div>
+                <div style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Không có dự án nào</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Chưa có dự án nào được liên kết với người dùng này.</p>
+                <div style="position: relative; display: inline-block;">
+                  <button class="secondary-btn">Thêm dự án</button>
+                </div>
+             </div>
+          </div>
+        </div>
+
+        <!-- Kudos -->
+        <div v-if="currentTab === 'kudos'" class="tab-pane">
+          <div class="section-header-row" style="position: relative;">
+            <h3>Lời khen đã nhận</h3>
+            <button class="secondary-btn" :disabled="isInactive" @click="handleGiveKudos" style="position: absolute; right: 0; top: -6px;">Tặng lời khen</button>
+          </div>
+          <div class="kudos-grid mt-16" v-if="kudos && kudos.length">
+            <div class="kudos-card" v-for="k in kudos" :key="k.id">
+              <div class="kudos-icon">{{ k.icon || 'Star' }}</div>
+              <div class="kudos-content">
+                <p class="kudos-msg">"{{ k.message }}"</p>
+                <div class="kudos-meta">
+                  <span class="kudos-sender">Từ {{ k.sender }}</span> &bull; <span class="kudos-date">{{ k.date }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="jira-empty-box" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #FFFAE6; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-solid fa-medal" style="font-size: 32px; color: #FFAB00;"></i>
+                </div>
+                <div style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #FFAB00; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" @click="handleGiveKudos">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Chưa có lời khen nào</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Người dùng này chưa nhận được lời khen ngợi nào.</p>
+                <div style="position: relative; display: inline-block;">
+                  <button class="secondary-btn" @click="handleGiveKudos">Thêm khen ngợi</button>
+                </div>
+             </div>
+          </div>
+        </div>
+
+        <!-- History -->
+        <div v-if="currentTab === 'history'" class="tab-pane">
+          <div class="section-header-row">
+            <h3>Lịch sử hoạt động</h3>
+          </div>
+          <table class="jira-table mt-16" v-if="history && history.length">
+            <thead>
+              <tr><th>Thời gian</th><th>Hành động</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="log in history" :key="log.id">
+                <td class="time-col">{{ log.time }}</td>
+                <td>{{ log.action }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="jira-empty-box" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #EBECF0; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-solid fa-clock-rotate-left" style="font-size: 32px; color: #172B4D;"></i>
+                </div>
+                <div style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Chưa có lịch sử hoạt động</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Hoạt động của người dùng sẽ được ghi nhận và hiển thị tại đây.</p>
+                <div style="position: relative; display: inline-block;">
+                  <button class="secondary-btn">Thêm hoạt động</button>
+                </div>
+             </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template #sidebar>
+      <div class="side-column">
+        <div class="sidebar-card">
+          <div class="sidebar-card-header">
+            <h3>Chi tiết</h3>
+          </div>
+          <div class="details-body">
             <div class="detail-row">
-              <span class="label">Full Name</span>
-              <span class="value">{{ user.fullName }}</span>
+              <div class="detail-label">Họ và tên</div>
+              <div class="detail-value">
+                <span>{{ user.fullName }}</span>
+              </div>
             </div>
             <div class="detail-row">
-              <span class="label">Email</span>
-              <span class="value">{{ user.email }}</span>
+              <div class="detail-label">Email</div>
+              <div class="detail-value">
+                <span>{{ user.email }}</span>
+              </div>
             </div>
             <div class="detail-row">
-              <span class="label">Department</span>
-              <span class="value">{{ user.department }}</span>
+              <div class="detail-label">Phòng ban</div>
+              <div class="detail-value">
+                <span>{{ user.department || 'N/A' }}</span>
+              </div>
             </div>
             <div class="detail-row">
-              <span class="label">Position</span>
-              <span class="value">{{ user.position }}</span>
+              <div class="detail-label">Chức vụ</div>
+              <div class="detail-value">
+                <span>{{ user.position || 'N/A' }}</span>
+              </div>
             </div>
             <div class="detail-row">
-              <span class="label">Team</span>
-              <span class="value">{{ user.team }}</span>
+              <div class="detail-label">Đội ngũ</div>
+              <div class="detail-value">
+                <span>{{ user.team || 'N/A' }}</span>
+              </div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-label">Vị trí làm việc</div>
+              <div class="detail-value">
+                <span>{{ user.location || 'N/A' }}</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
+    </template>
+  </DetailLayout>
 
-      <!-- Tasks -->
-      <div v-if="currentTab === 'tasks'" class="tab-pane">
-        <div class="section-header-row">
-          <h3>Assigned Tasks</h3>
-        </div>
-        <p class="helper-text">Tasks assigned across all Space Projects.</p>
-        <table class="jira-table mt-16" v-if="assignedTasks?.length">
-          <thead>
-            <tr><th>Key</th><th>Summary</th><th>Project</th><th>Status</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="task in assignedTasks" :key="task.id" @click="goToTask(task)">
-              <td class="key-col">{{ task.key }}</td>
-              <td class="link-text">{{ task.summary }}</td>
-              <td>{{ task.projectName }}</td>
-              <td><span class="badge status-light">{{ task.status }}</span></td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="empty-state-card" v-else>
-          <i class="fa-solid fa-file-signature"></i>
-          <span>No tasks assigned.</span>
-        </div>
-      </div>
-
-      <!-- Goals -->
-      <div v-if="currentTab === 'goals'" class="tab-pane">
-        <div class="section-header-row">
-          <h3>Linked Goals</h3>
-        </div>
-        <table class="jira-table mt-16" v-if="linkedGoals && linkedGoals.length">
-          <thead>
-            <tr><th>Goal Title</th><th>Status</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="goal in linkedGoals" :key="goal.id" @click="goToGoal(goal.id)">
-              <td class="link-text"><i class="fa-solid fa-bullseye"></i> {{ goal.title }}</td>
-              <td><span class="status-badge" :class="statusClass(goal.status)">{{ goal.status }}</span></td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="empty-state-card" v-else>
-          <i class="fa-solid fa-bullseye"></i>
-          <span>No goals linked.</span>
-        </div>
-      </div>
-
-      <!-- Projects -->
-      <div v-if="currentTab === 'projects'" class="tab-pane">
-        <div class="section-header-row">
-          <h3>Linked Projects</h3>
-        </div>
-        <table class="jira-table mt-16" v-if="linkedProjects && linkedProjects.length">
-          <thead>
-            <tr><th>Project Name</th><th>Status</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="proj in linkedProjects" :key="proj.id" @click="goToProject(proj.id)">
-              <td class="link-text"><i class="fa-solid fa-chart-simple"></i> {{ proj.title }}</td>
-              <td><span class="badge status-light">{{ proj.status }}</span></td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="empty-state-card" v-else>
-          <i class="fa-solid fa-chart-simple"></i>
-          <span>No projects linked.</span>
-        </div>
-      </div>
-
-      <!-- Kudos -->
-      <div v-if="currentTab === 'kudos'" class="tab-pane">
-        <div class="section-header-row">
-          <h3>Kudos Received</h3>
-          <button class="secondary-btn" :disabled="isInactive" @click="handleGiveKudos">Give Kudos</button>
-        </div>
-        <div class="kudos-grid mt-16" v-if="kudos && kudos.length">
-          <div class="kudos-card" v-for="k in kudos" :key="k.id">
-            <div class="kudos-icon">{{ k.icon || 'Star' }}</div>
-            <div class="kudos-content">
-              <p class="kudos-msg">"{{ k.message }}"</p>
-              <div class="kudos-meta">
-                <span class="kudos-sender">From {{ k.sender }}</span> &bull; <span class="kudos-date">{{ k.date }}</span>
+    <!-- Edit Profile Modal -->
+    <Teleport to="body">
+      <div class="modal-overlay sa-data-modal-overlay" v-if="isEditModalOpen" @click.self="closeEditProfile">
+        <div class="modal-content">
+          <DataModalHeader
+            icon="bi bi-person-gear"
+            title="Edit Profile"
+            description="Update public profile information shown across the workspace"
+            @close="closeEditProfile"
+          />
+          <div class="modal-body">
+            <DataModalSection
+              icon="bi bi-person-lines-fill"
+              title="Basic information"
+              description="Keep name, role, and location consistent for teammates"
+            >
+              <div class="sa-modal-form-grid">
+                <DataModalField label="Full Name">
+                  <input type="text" v-model="editForm.fullName" class="form-input" />
+                </DataModalField>
+                <DataModalField label="Job Title">
+                  <input type="text" v-model="editForm.jobTitle" class="form-input" />
+                </DataModalField>
               </div>
-            </div>
+              <DataModalField label="Location">
+                <input type="text" v-model="editForm.location" class="form-input" />
+              </DataModalField>
+            </DataModalSection>
+            <DataModalSection
+              icon="bi bi-card-text"
+              title="Profile bio"
+              description="Describe responsibilities, focus, or useful context"
+            >
+              <DataModalField label="Bio">
+                <textarea v-model="editForm.bio" class="form-input" rows="4"></textarea>
+              </DataModalField>
+            </DataModalSection>
+            <div class="error-message" v-if="editError">{{ editError }}</div>
+          </div>
+          <div class="modal-footer">
+            <button class="cancel-btn" @click="closeEditProfile" :disabled="isSaving">
+              <i class="bi bi-x-lg"></i>
+              Cancel
+            </button>
+            <button class="primary-btn" @click="saveProfile" :disabled="isSaving">
+              <i class="bi bi-check-lg"></i>
+              {{ isSaving ? 'Saving...' : 'Save Changes' }}
+            </button>
           </div>
         </div>
-        <div class="empty-state-card" v-else>
-          <i class="fa-solid fa-star"></i>
-          <span>No kudos received yet.</span>
-        </div>
       </div>
+    </Teleport>
+  </template>
 
-      <!-- History -->
-      <div v-if="currentTab === 'history'" class="tab-pane">
-        <h3>Activity Timeline</h3>
-        <table class="jira-table mt-16" v-if="history && history.length">
-          <thead>
-            <tr><th>Time</th><th>Action</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="log in history" :key="log.id">
-              <td class="time-col">{{ log.time }}</td>
-              <td>{{ log.action }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="empty-state-card" v-else>
-          <i class="fa-solid fa-clock-rotate-left"></i>
-          <span>No activity history yet.</span>
-        </div>
-      </div>
-    </div>
-  </div>
   <div v-else class="loading-state">
     <div class="loader-spinner"></div>
     <p>Loading profile...</p>
   </div>
-
-  <!-- Edit Profile Modal -->
-  <Teleport to="body">
-  <div class="modal-overlay sa-data-modal-overlay" v-if="isEditModalOpen" @click.self="closeEditProfile">
-    <div class="modal-content">
-      <DataModalHeader
-        icon="bi bi-person-gear"
-        title="Edit Profile"
-        description="Update public profile information shown across the workspace"
-        @close="closeEditProfile"
-      />
-      <div class="modal-body">
-        <DataModalSection
-          icon="bi bi-person-lines-fill"
-          title="Basic information"
-          description="Keep name, role, and location consistent for teammates"
-        >
-          <div class="sa-modal-form-grid">
-            <DataModalField label="Full Name">
-              <input type="text" v-model="editForm.fullName" class="form-input" />
-            </DataModalField>
-            <DataModalField label="Job Title">
-              <input type="text" v-model="editForm.jobTitle" class="form-input" />
-            </DataModalField>
-          </div>
-          <DataModalField label="Location">
-            <input type="text" v-model="editForm.location" class="form-input" />
-          </DataModalField>
-        </DataModalSection>
-        <DataModalSection
-          icon="bi bi-card-text"
-          title="Profile bio"
-          description="Describe responsibilities, focus, or useful context"
-        >
-          <DataModalField label="Bio">
-            <textarea v-model="editForm.bio" class="form-input" rows="4"></textarea>
-          </DataModalField>
-        </DataModalSection>
-        <div class="error-message" v-if="editError">{{ editError }}</div>
-      </div>
-      <div class="modal-footer">
-        <button class="cancel-btn" @click="closeEditProfile" :disabled="isSaving">
-          <i class="bi bi-x-lg"></i>
-          Cancel
-        </button>
-        <button class="primary-btn" @click="saveProfile" :disabled="isSaving">
-          <i class="bi bi-check-lg"></i>
-          {{ isSaving ? 'Saving...' : 'Save Changes' }}
-        </button>
-      </div>
-    </div>
   </div>
-  </Teleport>
 </template>
 
 <script setup>
@@ -323,11 +400,31 @@ import { useRoute, useRouter } from 'vue-router'
 import { usePeopleStore } from '@/store/usePeopleStore'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import RichTextEditor from '@/components/common/RichTextEditor.vue'
+import AppEmptyState from '@/components/common/Foundation/AppEmptyState.vue'
+import AppStatusBadge from '@/components/common/Foundation/AppStatusBadge.vue'
 import { useGoalStore } from '@/store/useGoalStore'
 import { useHomeProjectStore as useProjectStore } from '@/store/useHomeProjectStore'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
+import DetailLayout from '@/components/common/Detail/DetailLayout.vue'
+import DetailHero from '@/components/common/Detail/DetailHero.vue'
+
+const imageUploader = ref(null)
+
+const triggerImageUpload = () => {
+  if (imageUploader.value) {
+    imageUploader.value.click()
+  }
+}
+
+const onImageSelected = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    console.log('User selected file for upload:', file.name)
+    // Handle image upload logic here when backend is ready
+  }
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -336,11 +433,22 @@ const goalStore = useGoalStore()
 const projectStore = useProjectStore()
 const profileUserId = computed(() => String(route.params.profileId || route.params.id || '').trim())
 
+const backUrl = computed(() => {
+  if (route.path.startsWith('/space/')) {
+    const spaceSlug = route.params.spaceSlug || 'project'
+    const projectId = route.params.id || route.params.projectId
+    return `/space/${spaceSlug}/${projectId}/members`
+  }
+  return '/home/people'
+})
+
 
 const editingBio = ref(false)
 const tempBio = ref('')
 const startEditingBio = () => {
-  tempBio.value = user.value.bio || ''
+  let b = user.value.bio || ''
+  if (b.includes('Thêm giới thiệu về bạn...')) b = ''
+  tempBio.value = b
   editingBio.value = true
 }
 const saveBio = async () => {
@@ -354,7 +462,9 @@ const saveBio = async () => {
 const editingHobbies = ref(false)
 const tempHobbies = ref('')
 const startEditingHobbies = () => {
-  tempHobbies.value = user.value.hobbies || ''
+  let h = user.value.hobbies || ''
+  if (h.includes('Has not shared any hobbies yet')) h = ''
+  tempHobbies.value = h
   editingHobbies.value = true
 }
 const saveHobbies = async () => {
@@ -377,14 +487,19 @@ const editForm = ref({
   bio: ''
 })
 
+const cachedUser = ref(null)
 const user = computed(() => {
-  const u = peopleStore.currentUser || getStoredUser() || {}
-  return {
+  const u = peopleStore.currentUser
+  if (!u || (profileUserId.value && String(u.id) !== profileUserId.value)) return cachedUser.value
+  
+  const result = {
     ...u,
     teamsList: u.departments || [],
     hobbies: u.hobbies || '',
     avatarColor: u.avatarColor
   }
+  cachedUser.value = result
+  return result
 })
 
 const assignedTasks = ref([])
@@ -415,14 +530,16 @@ const closeMenuOnOutsideClick = (e) => {
 }
 
 const handleBack = () => {
-  if (route.path.startsWith('/space/')) {
-    const spaceSlug = route.params.spaceSlug || 'project'
-    const projectId = route.params.id || route.params.projectId
-    router.push(`/space/${spaceSlug}/${projectId}/members`)
-  } else if (route.path.startsWith('/home/')) {
-    router.push('/home/people')
+  if (window.history.length > 1) {
+    router.back()
   } else {
-    router.push('/teams/people')
+    if (route.path.startsWith('/space/')) {
+      const spaceSlug = route.params.spaceSlug || 'project'
+      const projectId = route.params.id || route.params.projectId
+      router.push(`/space/${spaceSlug}/${projectId}/members`)
+    } else {
+      router.push('/home/people')
+    }
   }
 }
 
@@ -497,6 +614,9 @@ const goToTask = (task) => {
 </script>
 
 <style scoped>
+.editable-avatar-wrapper:hover .avatar-edit-overlay {
+  opacity: 1 !important;
+}
 .profile-detail-container {
   display: flex;
   flex-direction: column;
@@ -753,62 +873,89 @@ const goToTask = (task) => {
   gap: 20px;
 }
 
-.side-card {
-  border: 1px solid #dfe1e6;
+/* Sidebar Card styling */
+.sidebar-card {
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.15);
   border-radius: 12px;
   padding: 20px;
-  background-color: #ffffff;
-  box-shadow: var(--sp-shadow-xs);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.side-card h3 {
-  margin: 0 0 16px 0;
-  font-size: 14px;
-  color: #5e6c84;
+.sidebar-card h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .detail-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 16px;
+  gap: 6px;
 }
 
-.detail-row:last-child {
-  margin-bottom: 0;
-}
-
-.detail-row .label {
+.detail-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-size: 12px;
-  color: #5e6c84;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.detail-row .value {
-  font-size: 14px;
-  color: #172b4d;
-  font-weight: 500;
+.detail-value {
+  font-size: 13.5px;
+  color: #334155;
+}
+
+.empty-value {
+  color: #94a3b8;
+  font-style: italic;
+  font-size: 13px;
 }
 
 /* Section headers */
 .section-header-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 16px;
-  max-width: 800px;
 }
 
 .section-header-row h3 {
   margin: 0;
-  font-size: 18px;
-  color: #172b4d;
+  font-size: 16px;
+  font-weight: 600;
+  color: #172B4D;
 }
 
 /* Tables */
 .jira-table {
   width: 100%;
-  max-width: 800px;
   border-collapse: collapse;
   text-align: left;
 }
@@ -864,7 +1011,6 @@ const goToTask = (task) => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
-  max-width: 800px;
 }
 
 .kudos-card {

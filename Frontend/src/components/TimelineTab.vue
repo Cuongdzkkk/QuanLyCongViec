@@ -616,6 +616,17 @@ function isWeekend(date) {
   const day = date.getDay()
   return day === 0 || day === 6
 }
+
+defineExpose({
+  viewMode,
+  shiftTimeline,
+  expanded,
+  createMode,
+  toggleCreateMode,
+  goToToday,
+  requestQuickAdd,
+  viewModes
+})
 </script>
 
 <template>
@@ -1211,6 +1222,8 @@ function isWeekend(date) {
   overflow-x: auto;
   overflow-y: auto;
   background: var(--color-bg);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
 }
 
 .tl-gantt {
@@ -1368,16 +1381,21 @@ function isWeekend(date) {
 
 /* SCROLLBAR */
 .tl-right-panel::-webkit-scrollbar {
-  height: 2px;
-  width: 2px;
+  height: 8px;
+  width: 8px;
 }
 
 .tl-right-panel::-webkit-scrollbar-track {
-  background: var(--color-surface);
+  background: transparent;
 }
 
 .tl-right-panel::-webkit-scrollbar-thumb {
   background: var(--color-border);
+  border-radius: 4px;
+}
+
+.tl-right-panel::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-accent) 50%, var(--color-border));
 }
 
 /* UTILS */
@@ -1491,6 +1509,9 @@ function isWeekend(date) {
 .canvas-add-label {
   color: var(--color-text-muted) !important;
   font-style: normal !important;
+}
+.tl-header {
+  display: none !important;
 }
 </style>
 

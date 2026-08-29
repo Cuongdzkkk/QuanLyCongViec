@@ -577,7 +577,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, defineProps, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DOMPurify from 'dompurify'
 import { useRoute, useRouter } from 'vue-router'

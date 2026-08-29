@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <section class="checkin-page">
     <header class="page-header app-shell-page-header">
       <div class="app-shell-title-wrap">
@@ -23,129 +23,255 @@
       </div>
       <div v-else>
         <el-tag type="success" size="large" class="flex items-center gap-2 font-semibold">
-          <i class="fa-solid fa-circle-check" style="margin-right: 5px;"></i>ÄĂ£ Check-in hĂ´m nay
+          <i class="fa-solid fa-circle-check" style="margin-right: 5px;"></i>Đã Check-in hôm nay
         </el-tag>
       </div>
     </header>
 
-    <div class="page-content">
-      <!-- Check-in filters -->
-    <div class="project-selector-wrapper">
-      <el-select
-        ref="projectSelectRef"
-        v-model="activeProjectId"
-        placeholder="Filter dự án"
-        @change="selectProject"
-        class="custom-project-select"
-        popper-class="custom-project-dropdown"
+    <!-- Standardized Toolbar using ProjectPageToolbar -->
+    <div class="sprinta-layout-toolbar">
+      <ProjectPageToolbar
+        :showSearch="true"
+        :searchQuery="checkinSearch"
+        @update:searchQuery="checkinSearch = $event"
+        searchPlaceholder="Tìm thành viên, vai trò, nội dung..."
       >
-        <template #prefix>
-          <i class="fa-solid fa-filter"></i>
+        <template #filters>
+          <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
+            <button
+              class="timeline-filter-trigger icon-only-trigger"
+              type="button"
+              aria-label="Filters"
+              title="Bộ lọc"
+              @click="toggleFilterDropdown"
+              :class="{ active: showFilterDropdown || activeCheckinFilters.length }"
+            >
+              <i class="fa-solid fa-filter"></i>
+              <span v-if="activeCheckinFilters.length" class="filter-count">{{ activeCheckinFilters.length }}</span>
+            </button>
+            <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
+              <FilterBar
+                v-model:filters="activeCheckinFilters"
+                :fields="checkinFilterFields"
+                :operators="checkinOperators"
+                :custom-value-meta="customCheckinValueMeta"
+                :active="showFilterDropdown"
+              />
+            </div>
+          </div>
         </template>
-        <el-option
-          v-for="p in projectsList"
-          :key="p.id"
-          :label="`[${p.key}] ${p.name}`"
-          :value="p.id"
-        />
-      </el-select>
-
-      <label class="checkin-search-field">
-        <i class="fa-solid fa-magnifying-glass"></i>
-        <input v-model="checkinSearch" type="search" placeholder="Tìm thành viên, vai trò, nội dung..." />
-      </label>
-
-      <div class="checkin-filter-group" aria-label="Check-in filters">
-        <button type="button" :class="{ active: checkinStatusFilter === 'all' }" @click="checkinStatusFilter = 'all'">All</button>
-        <button type="button" :class="{ active: checkinStatusFilter === 'checked' }" @click="checkinStatusFilter = 'checked'">&#272;&#227; l&#224;m</button>
-        <button type="button" :class="{ active: checkinStatusFilter === 'missing' }" @click="checkinStatusFilter = 'missing'">Ch&#432;a l&#224;m</button>
-        <button type="button" :class="{ active: checkinStatusFilter === 'blocker' }" @click="checkinStatusFilter = 'blocker'">Blocker</button>
-      </div>
-
-      <span class="checkin-filter-count">{{ filteredTeamCheckins.length }}/{{ teamCheckins.length }}</span>
+  
+        <template #left>
+        </template>
+  
+        <template #toggles>
+          <div class="view-toggles">
+            <button 
+              class="toggle-btn" 
+              :class="{ active: currentView === 'list' }" 
+              @click="currentView = 'list'" 
+              title="List view"
+            >
+              <i class="fa-solid fa-bars"></i>
+            </button>
+            <button 
+              class="toggle-btn" 
+              :class="{ active: currentView === 'grid' }" 
+              @click="currentView = 'grid'" 
+              title="Card view"
+            >
+              <i class="fa-solid fa-table-columns"></i>
+            </button>
+          </div>
+        </template>
+        
+        <template #sort>
+          <div class="display-dropdown-wrapper js-toolbar-popup-scope" style="position: relative; display: inline-block;">
+            <button
+              class="timeline-filter-trigger icon-only-trigger"
+              type="button"
+              aria-label="Sort"
+              title="Sắp xếp"
+              @click.stop="toggleSortDropdown"
+              :class="{ 'active': showSortDropdown }"
+            >
+              <i class="fa-solid fa-arrow-down-wide-short"></i>
+            </button>
+            <div class="plane-dropdown-menu" v-show="showSortDropdown" @click.stop style="width: 320px; left: 0; right: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px; max-height: none; overflow: visible;">
+              <!-- Sort Search Input -->
+              <div class="filter-search-field">
+                <i class="fa-solid fa-magnifying-glass filter-search-icon"></i>
+                <input
+                  v-model="checkinSortSearchQuery"
+                  type="text"
+                  class="filter-search-input"
+                  placeholder="Tìm kiếm trường sắp xếp..."
+                  @click.stop
+                />
+              </div>
+  
+              <!-- Sort By Combobox -->
+              <div class="filter-combobox" style="position: relative;">
+                <span class="filter-label">Sắp xếp theo</span>
+                <div class="filter-select-trigger sort-combobox-trigger">
+                  <div style="display: flex; align-items: center; gap: 10px; flex: 1; cursor: pointer; min-width: 0;" @click="openSortSelect = (openSortSelect === 'sort' ? null : 'sort')">
+                    <i :class="checkinSortOptions.find(o => o.value === checkinSortMode)?.icon || 'fa-solid fa-arrow-down-wide-short'" style="font-size: 13px; color: var(--color-text-secondary); width: 15px; text-align: center;"></i>
+                    <span style="font-size: 13px; color: var(--color-text-primary); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ checkinSortOptions.find(o => o.value === checkinSortMode)?.label }}</span>
+                  </div>
+                  <!-- Asc/Desc buttons inside the trigger -->
+                  <div style="display: flex; align-items: center; gap: 4px; margin-right: 8px;">
+                    <button
+                      type="button"
+                      class="dir-mini-btn"
+                      :class="{ active: checkinSortDirection === 'asc' }"
+                      @click="checkinSortDirection = 'asc'"
+                      title="Tăng dần"
+                    >
+                      <i class="fa-solid fa-arrow-up-wide-short" style="font-size: 11px;"></i>
+                    </button>
+                    <button
+                      type="button"
+                      class="dir-mini-btn"
+                      :class="{ active: checkinSortDirection === 'desc' }"
+                      @click="checkinSortDirection = 'desc'"
+                      title="Giảm dần"
+                    >
+                      <i class="fa-solid fa-arrow-down-short-wide" style="font-size: 11px;"></i>
+                    </button>
+                  </div>
+                  <i class="fa-solid fa-chevron-down" style="font-size: 10px; transition: transform 0.2s; cursor: pointer;" :style="openSortSelect === 'sort' ? { transform: 'rotate(180deg)', color: 'var(--color-accent)' } : {}" @click="openSortSelect = (openSortSelect === 'sort' ? null : 'sort')"></i>
+                </div>
+                <div v-show="openSortSelect === 'sort'" class="filter-select-menu" style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 200px; z-index: 110;">
+                  <button
+                    v-for="opt in filteredCheckinSortOptions"
+                    :key="opt.value"
+                    class="filter-select-option"
+                    :class="{ selected: checkinSortMode === opt.value }"
+                    type="button"
+                    @click="checkinSortMode = opt.value; openSortSelect = null"
+                  >
+                    <i :class="opt.icon"></i>
+                    <span>{{ opt.label }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </ProjectPageToolbar>
     </div>
 
-    <!-- AI Meeting Summary Widget (TĂ³m táº¯t cuá»™c há»p AI) -->
-    <div class="ai-summary-widget card mb-6 p-5">
-      <div class="flex justify-between items-center mb-3 border-bottom pb-2">
-        <div style="display:flex; align-items:center; gap: 10px;">
-          <i class="fa-solid fa-brain text-accent" style="font-size: 20px; flex-shrink: 0;"></i>
-          <h2 class="font-bold" style="font-size: 16px; margin: 0;">{{ t('checkin.aiTitle') }}</h2>
+    <div class="page-content">
+
+      <!-- Checkin Cards List (Both checked-in and not checked-in members) -->
+      <div v-if="filteredTeamCheckins.length === 0" class="empty-spaces-flat" style="padding: 80px 0;">
+        <div class="empty-spaces-icon" aria-hidden="true">
+          <i class="fa-regular fa-calendar-check"></i>
         </div>
-        <el-button size="small" class="btn-secondary" :loading="aiLoading" @click="generateAiSummary">
-          <i class="fa-solid fa-wand-magic-sparkles" style="margin-right: 6px;"></i>{{ t('checkin.aiAction') }}
-        </el-button>
+        <div class="empty-spaces-copy">
+          <h3>Chưa có báo cáo check-in</h3>
+          <p>Danh sách check-in hàng ngày của các thành viên sẽ xuất hiện ở đây.</p>
+        </div>
       </div>
-      <div class="summary-body">
-        <p v-if="!aiSummaryText" class="text-sm text-muted italic">{{ t('checkin.aiHint') }}</p>
-        <div v-else class="ai-response-box">
-          <div class="text-sm leading-relaxed text-secondary mb-2" v-html="renderMarkdown(aiSummaryText)"></div>
-          <div class="flex gap-2 mt-3">
+      <template v-else>
+        <div v-if="currentView === 'grid'" class="team-checkins-grid">
+        <div v-for="team in filteredTeamCheckins" :key="team.id" class="checkin-card card" :class="{ 'not-checked': !team.checkedIn }" @click="openCheckinDetail(team)" style="cursor: pointer;">
+          <div class="card-header flex items-center justify-between">
+            <div class="flex items-center" style="gap: 8px;">
+              <el-avatar :size="32" :src="team.userAvatar" style="flex-shrink: 0;">{{ team.userName.charAt(0) }}</el-avatar>
+              <div style="line-height: 1.3;">
+                <span class="font-bold block text-sm">{{ team.userName }}</span>
+                <span class="text-xxs text-muted">{{ team.role }}</span>
+              </div>
+            </div>
+            <el-tag size="small" :type="team.checkedIn ? 'success' : 'info'">
+              {{ team.checkedIn ? 'Đã Check-in' : 'Chưa Check-in' }}
+            </el-tag>
+          </div>
 
-            <el-tag size="small" type="success">{{ checkedInCount }}/{{ teamCheckins.length }} ThĂ nh viĂªn Ä‘Ă£ lĂ m</el-tag>
-            <el-tag size="small" type="danger" v-if="blockerCount > 0">CĂ³ {{ blockerCount }} Blocker</el-tag>
+          <div class="card-body">
+            <div v-if="team.checkedIn" class="checkin-details">
+              <!-- Project Badge -->
+              <div v-if="team.projectName" class="mb-3">
+                <el-tag size="small" type="warning" class="flex items-center gap-1 w-fit font-medium" style="background-color: rgba(230, 162, 60, 0.1); border-color: rgba(230, 162, 60, 0.2); color: #e6a23c;">
+                  <i class="fa-solid fa-folder-open" style="margin-right: 4px;"></i>
+                  <span>{{ team.projectKey ? `[${team.projectKey}] ` : '' }}{{ team.projectName }}</span>
+                </el-tag>
+              </div>
 
-          <el-tag size="small" type="success">{{ t('checkin.doneCount') }}</el-tag>
-            <el-tag size="small" type="danger">{{ t('checkin.blockerCount') }}</el-tag>
+              <!-- Done yesterday -->
+              <div class="detail-section">
+                <span class="section-label">✅ Ngày hôm qua:</span>
+                <p class="section-desc">{{ team.yesterday }}</p>
+              </div>
+              
+              <!-- Focus today -->
+              <div class="detail-section mt-3">
+                <span class="section-label">📌 Mục tiêu hôm nay:</span>
+                <p class="section-desc">{{ team.today }}</p>
+              </div>
 
+              <!-- Blockers -->
+              <div class="detail-section mt-3">
+                <span class="section-label">⚠️ Khó khăn (Blocker):</span>
+                <p class="section-desc" :class="{ 'has-blocker': team.blocker }">
+                  {{ team.blocker || 'Không có khó khăn gì' }}
+                </p>
+              </div>
+            </div>
+            
+            <div v-else class="empty-checkin flex flex-col items-center justify-center py-6 text-center">
+              <i class="fa-regular fa-bell text-2xl text-muted mb-2"></i>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Checkin Cards List (Both checked-in and not checked-in members) -->
-    <div class="team-checkins-grid">
-      <div v-for="team in filteredTeamCheckins" :key="team.id" class="checkin-card card" :class="{ 'not-checked': !team.checkedIn }">
-        <div class="card-header flex items-center justify-between">
-          <div class="flex items-center" style="gap: 8px;">
+      <!-- Checkin List View -->
+      <div v-else class="team-checkins-list">
+        <div v-for="team in filteredTeamCheckins" :key="team.id" class="checkin-list-row card" :class="{ 'not-checked': !team.checkedIn }" @click="openCheckinDetail(team)" style="cursor: pointer;">
+          <div class="clr-left">
             <el-avatar :size="32" :src="team.userAvatar" style="flex-shrink: 0;">{{ team.userName.charAt(0) }}</el-avatar>
-            <div style="line-height: 1.3;">
+            <div class="user-meta" style="line-height: 1.3;">
               <span class="font-bold block text-sm">{{ team.userName }}</span>
               <span class="text-xxs text-muted">{{ team.role }}</span>
             </div>
           </div>
-          <el-tag size="small" :type="team.checkedIn ? 'success' : 'info'">
-            {{ team.checkedIn ? 'ÄĂ£ Check-in' : 'ChÆ°a Check-in' }}
-          </el-tag>
-        </div>
+          
+          <div class="clr-middle">
+            <div v-if="team.checkedIn" class="clr-details">
+              <div class="clr-detail-item">
+                <span class="font-semibold text-xs text-muted mr-2">Hôm qua:</span>
+                <span class="text-sm text-primary">{{ team.yesterday }}</span>
+              </div>
+              <div class="clr-detail-item mt-1">
+                <span class="font-semibold text-xs text-muted mr-2">Hôm nay:</span>
+                <span class="text-sm text-primary">{{ team.today }}</span>
+              </div>
+              <div class="clr-detail-item mt-1" v-if="team.blocker">
+                <span class="font-semibold text-xs text-danger mr-2">Blocker:</span>
+                <span class="text-sm text-danger font-medium">{{ team.blocker }}</span>
+              </div>
+            </div>
+            <div v-else class="clr-empty-text text-sm italic text-muted">
+              Chưa báo cáo check-in hôm nay
+            </div>
+          </div>
 
-        <div class="card-body">
-          <div v-if="team.checkedIn" class="checkin-details">
-            <!-- Project Badge -->
-            <div v-if="team.projectName" class="mb-3">
-              <el-tag size="small" type="warning" class="flex items-center gap-1 w-fit font-medium" style="background-color: rgba(230, 162, 60, 0.1); border-color: rgba(230, 162, 60, 0.2); color: #e6a23c;">
+          <div class="clr-right">
+            <div v-if="team.checkedIn && team.projectName" class="mr-3">
+              <el-tag size="small" type="warning" class="flex items-center gap-1 font-medium" style="background-color: rgba(230, 162, 60, 0.1); border-color: rgba(230, 162, 60, 0.2); color: #e6a23c;">
                 <i class="fa-solid fa-folder-open" style="margin-right: 4px;"></i>
                 <span>{{ team.projectKey ? `[${team.projectKey}] ` : '' }}{{ team.projectName }}</span>
               </el-tag>
             </div>
-
-            <!-- Done yesterday -->
-            <div class="detail-section">
-              <span class="section-label">âœ… NgĂ y hĂ´m qua:</span>
-              <p class="section-desc">{{ team.yesterday }}</p>
-            </div>
-            
-            <!-- Focus today -->
-            <div class="detail-section mt-3">
-              <span class="section-label">đŸ“Œ Má»¥c tiĂªu hĂ´m nay:</span>
-              <p class="section-desc">{{ team.today }}</p>
-            </div>
-
-            <!-- Blockers -->
-            <div class="detail-section mt-3">
-              <span class="section-label">â ï¸ KhĂ³ khÄƒn (Blocker):</span>
-              <p class="section-desc" :class="{ 'has-blocker': team.blocker }">
-                {{ team.blocker || 'KhĂ´ng cĂ³ khĂ³ khÄƒn gĂ¬' }}
-              </p>
-            </div>
-          </div>
-          
-          <div v-else class="empty-checkin flex flex-col items-center justify-center py-6 text-center">
-            <i class="fa-regular fa-bell text-2xl text-muted mb-2"></i>
+            <el-tag size="small" :type="team.checkedIn ? 'success' : 'info'">
+              {{ team.checkedIn ? 'Đã Check-in' : 'Chưa Check-in' }}
+            </el-tag>
           </div>
         </div>
       </div>
-    </div>
+      </template>
     </div>
 
     <!-- Virtual Check-in Modal Dialog -->
@@ -159,20 +285,19 @@
       <template #header>
         <DataModalHeader
           icon="bi bi-calendar-check"
-          title="BĂ¡o cĂ¡o tiáº¿n Ä‘á»™ hĂ ng ngĂ y"
-          description="Chia sáº» káº¿t quáº£ hĂ´m qua, má»¥c tiĂªu hĂ´m nay vĂ  khĂ³ khÄƒn Ä‘ang gáº·p"
+          title="Báo cáo tiến độ hàng ngày"
+          description="Chia sẻ kết quả hôm qua, mục tiêu hôm nay và khó khăn đang gặp"
           @close="checkinModalOpen = false"
         />
       </template>
       <div class="checkin-form-body flex flex-col gap-4">
         <!-- Project Select field -->
         <div>
-          <span class="field-label mb-1 block">Dá»± Ă¡n bĂ¡o cĂ¡o *</span>
+          <span class="field-label mb-1 block">Dự án báo cáo *</span>
           <el-select 
             v-model="form.projectId" 
-            placeholder="Chá»n dá»± Ă¡n liĂªn quan..."
+            placeholder="Chọn dự án liên quan..."
             class="w-full"
-            disabled
           >
             <el-option
               v-for="p in projectsList"
@@ -185,47 +310,99 @@
 
         <!-- Yesterday input -->
         <div>
-          <span class="field-label mb-1 block">HĂ´m qua báº¡n Ä‘Ă£ lĂ m Ä‘Æ°á»£c gĂ¬? *</span>
+          <span class="field-label mb-1 block">Hôm qua bạn đã làm được gì? *</span>
           <textarea 
             v-model="form.yesterday" 
-            placeholder="VĂ­ dá»¥: HoĂ n táº¥t cáº­p nháº­t connection string cho SQL Server, thiáº¿t káº¿ cĂ¡c layout..."
+            placeholder="Ví dụ: Hoàn tất cập nhật connection string cho SQL Server, thiết kế các layout..."
             class="w-full h-20 p-2"
           ></textarea>
         </div>
 
         <!-- Today input -->
         <div>
-          <span class="field-label mb-1 block">Má»¥c tiĂªu chĂ­nh hĂ´m nay cá»§a báº¡n? *</span>
+          <span class="field-label mb-1 block">Mục tiêu chính hôm nay của bạn? *</span>
           <textarea 
             v-model="form.today" 
-            placeholder="VĂ­ dá»¥: Thiáº¿t káº¿ giao diá»‡n Chat nhĂ³m vĂ  Daily Checkin..."
+            placeholder="Ví dụ: Thiết kế giao diện Chat nhóm và Daily Checkin..."
             class="w-full h-20 p-2"
           ></textarea>
         </div>
 
         <!-- Blocker input -->
         <div>
-          <span class="field-label mb-1 block">KhĂ³ khÄƒn Ä‘ang gáº·p pháº£i (náº¿u cĂ³)?</span>
+          <span class="field-label mb-1 block">Khó khăn đang gặp phải (nếu có)?</span>
           <input 
             v-model="form.blocker" 
             type="text" 
-            placeholder="Äá»ƒ trá»‘ng náº¿u khĂ´ng cĂ³ khĂ³ khÄƒn nĂ o"
+            placeholder="Để trống nếu không có khó khăn nào"
             class="w-full"
           />
         </div>
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <el-button class="cancel-btn" @click="checkinModalOpen = false"><i class="bi bi-x-lg"></i> Há»§y</el-button>
-          <el-button class="btn-primary" type="primary" @click="submitCheckin"><i class="fa-solid fa-paper-plane"></i> Gá»­i bĂ¡o cĂ¡o</el-button>
+          <el-button class="checkin-modal-footer-btn cancel" @click="checkinModalOpen = false">Hủy</el-button>
+          <el-button class="checkin-modal-footer-btn submit" @click="submitCheckin">Gửi báo cáo</el-button>
         </div>
       </template>
+    </el-dialog>
+
+    <!-- Detail View Modal -->
+    <el-dialog
+      v-model="detailModalOpen"
+      width="540px"
+      append-to-body
+      class="sa-data-dialog sa-modal--form"
+      :show-close="false"
+    >
+      <template #header>
+        <DataModalHeader
+          icon="bi bi-file-earmark-text"
+          title="Chi tiết Báo cáo Check-in"
+          :description="selectedCheckin ? `Báo cáo của ${selectedCheckin.userName}` : ''"
+          @close="detailModalOpen = false"
+        />
+      </template>
+      <div v-if="selectedCheckin" class="checkin-form-body flex flex-col gap-4">
+        <div class="flex items-center" style="gap: 12px; margin-bottom: 8px;">
+          <el-avatar :size="48" :src="selectedCheckin.userAvatar">{{ selectedCheckin.userName.charAt(0) }}</el-avatar>
+          <div>
+            <div class="font-bold text-base">{{ selectedCheckin.userName }}</div>
+            <div class="text-sm text-muted">{{ selectedCheckin.role }}</div>
+          </div>
+        </div>
+        
+        <div v-if="selectedCheckin.projectName" style="padding: 12px; background: rgba(230,162,60,0.1); border-radius: 8px;">
+          <span class="font-bold text-xs" style="color:#e6a23c; text-transform:uppercase;">Dự án báo cáo</span>
+          <div class="mt-1 font-medium">{{ selectedCheckin.projectKey ? `[${selectedCheckin.projectKey}] ` : '' }}{{ selectedCheckin.projectName }}</div>
+        </div>
+
+        <div v-if="selectedCheckin.checkedIn" class="mt-2">
+          <div class="mb-4">
+            <span class="font-bold text-sm block mb-1">✅ Đã làm hôm qua:</span>
+            <div class="p-3 bg-surface-hover rounded whitespace-pre-wrap text-sm" style="background: var(--color-surface-hover);">{{ selectedCheckin.yesterday }}</div>
+          </div>
+          <div class="mb-4">
+            <span class="font-bold text-sm block mb-1">📌 Mục tiêu hôm nay:</span>
+            <div class="p-3 bg-surface-hover rounded whitespace-pre-wrap text-sm" style="background: var(--color-surface-hover);">{{ selectedCheckin.today }}</div>
+          </div>
+          <div class="mb-2">
+            <span class="font-bold text-sm block mb-1">⚠️ Khó khăn:</span>
+            <div class="p-3 rounded whitespace-pre-wrap text-sm font-medium" :style="{ background: selectedCheckin.blocker ? 'rgba(239, 68, 68, 0.1)' : 'var(--color-surface-hover)', color: selectedCheckin.blocker ? 'var(--color-danger)' : 'inherit' }">
+              {{ selectedCheckin.blocker || 'Không có khó khăn gì' }}
+            </div>
+          </div>
+        </div>
+        <div v-else class="text-center py-6 text-muted italic">
+          Thành viên này chưa gửi báo cáo check-in hôm nay.
+        </div>
+      </div>
     </el-dialog>
   </section>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 
 import axiosClient from '@/api/axiosClient'
@@ -233,10 +410,11 @@ import axiosClient from '@/api/axiosClient'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import FilterBar from '@/components/FilterBar.vue'
 
 const { t } = useI18nStore()
 const projectStore = useProjectStore()
-
 
 const checkinModalOpen = ref(false)
 const aiLoading = ref(false)
@@ -246,8 +424,24 @@ const activeProjectId = ref('')
 const teamCheckins = ref([])
 const userCheckedIn = ref(false)
 const projectSelectRef = ref(null)
+const currentView = ref(localStorage.getItem('checkin_view_mode') || 'grid')
+watch(currentView, (val) => {
+  localStorage.setItem('checkin_view_mode', val)
+})
+
 const checkinSearch = ref('')
-const checkinStatusFilter = ref('all')
+const detailModalOpen = ref(false)
+const selectedCheckin = ref(null)
+
+const openCheckinDetail = (team) => {
+  selectedCheckin.value = team
+  detailModalOpen.value = true
+}
+
+const tr = (key, fallback) => {
+  const translated = t(key)
+  return translated === key ? fallback : translated
+}
 
 const currentUser = ref({
   id: '',
@@ -271,27 +465,145 @@ const blockerCount = computed(() => {
   return teamCheckins.value.filter(t => t.checkedIn && t.blocker).length
 })
 
+// Dropdowns State
+const showFilterDropdown = ref(false)
+const showSortDropdown = ref(false)
+const openSortSelect = ref(null)
+
+const toggleFilterDropdown = () => {
+  showFilterDropdown.value = !showFilterDropdown.value
+  showSortDropdown.value = false
+}
+
+const toggleSortDropdown = () => {
+  showSortDropdown.value = !showSortDropdown.value
+  showFilterDropdown.value = false
+  openSortSelect.value = null
+}
+
+const handleOutsideClick = (e) => {
+  if (!e.target.closest('.js-toolbar-popup-scope')) {
+    showFilterDropdown.value = false
+    showSortDropdown.value = false
+    openSortSelect.value = null
+  }
+}
+
+// Filter Configuration
+const activeCheckinFilters = ref([])
+
+const checkinFilterFields = computed(() => {
+  const roles = Array.from(new Set(teamCheckins.value.map(item => item.role).filter(Boolean))).sort()
+  const accounts = Array.from(new Map(teamCheckins.value.filter(item => item.userId || item.userName).map(item => [item.userId || item.userName, item])).values())
+    .sort((a, b) => `${a.userName || ''}`.localeCompare(`${b.userName || ''}`))
+    .map(item => item.userName || item.email || 'Unknown account')
+    
+  return [
+    { key: 'status', label: 'Trạng thái', icon: 'fa-solid fa-calendar-check', values: ['Checked', 'Missing', 'Blocker'] },
+    { key: 'role', label: 'Chức vụ / Role', icon: 'fa-solid fa-user-tag', values: roles },
+    { key: 'account', label: 'Thành viên', icon: 'fa-solid fa-user', values: accounts }
+  ]
+})
+
+const checkinOperators = {
+  status: ['is', 'is not'],
+  role: ['is', 'is not'],
+  account: ['is', 'is not']
+}
+
+const customCheckinValueMeta = (fieldKey, value) => {
+  if (fieldKey === 'status') {
+    if (value === 'Checked') return { icon: 'fa-solid fa-circle-check', color: '#22c55e' }
+    if (value === 'Missing') return { icon: 'fa-regular fa-circle', color: '#94a3b8' }
+    if (value === 'Blocker') return { icon: 'fa-solid fa-triangle-exclamation', color: '#ef4444' }
+  }
+  if (fieldKey === 'role') {
+    return { icon: 'fa-solid fa-user-tag', color: 'var(--color-text-secondary)' }
+  }
+  if (fieldKey === 'account') {
+    return { icon: 'fa-solid fa-user', color: 'var(--color-text-secondary)' }
+  }
+  return null
+}
+
+// Sorting config
+const checkinSortMode = ref('status')
+const checkinSortDirection = ref('desc')
+const checkinSortSearchQuery = ref('')
+
+const checkinSortOptions = [
+  { value: 'status', label: 'Trạng thái check-in', icon: 'fa-solid fa-circle-check' },
+  { value: 'name', label: 'Tên thành viên', icon: 'fa-regular fa-user' },
+  { value: 'role', label: 'Chức vụ / Role', icon: 'fa-solid fa-user-tag' },
+  { value: 'account', label: 'Tài khoản', icon: 'fa-solid fa-at' },
+  { value: 'project', label: 'Dự án', icon: 'fa-solid fa-folder' },
+  { value: 'blocker', label: 'Khó khăn (Blocker)', icon: 'fa-solid fa-triangle-exclamation' },
+  { value: 'checkinDate', label: 'Ngày check-in', icon: 'fa-regular fa-calendar' }
+]
+
+const filteredCheckinSortOptions = computed(() => {
+  const q = checkinSortSearchQuery.value.trim().toLowerCase()
+  if (!q) return checkinSortOptions
+  return checkinSortOptions.filter(o => o.label.toLowerCase().includes(q))
+})
+
 const filteredTeamCheckins = computed(() => {
   const query = checkinSearch.value.trim().toLowerCase()
 
-  return teamCheckins.value.filter(team => {
-    if (checkinStatusFilter.value === 'checked' && !team.checkedIn) return false
-    if (checkinStatusFilter.value === 'missing' && team.checkedIn) return false
-    if (checkinStatusFilter.value === 'blocker' && !team.blocker) return false
+  let list = teamCheckins.value.filter(team => {
+    // 1. Text Search Filter:
+    if (query) {
+      const matchText = [
+        team.userName,
+        team.role,
+        team.projectName,
+        team.projectKey,
+        team.yesterday,
+        team.today,
+        team.blocker
+      ]
+        .filter(Boolean)
+        .some(value => `${value}`.toLowerCase().includes(query))
+      if (!matchText) return false
+    }
 
-    if (!query) return true
+    // 2. FilterBar active filters (AND match):
+    if (activeCheckinFilters.value.length > 0) {
+      return activeCheckinFilters.value.every(f => {
+        let val = ''
+        if (f.field === 'status') {
+          if (f.value === 'Checked') val = team.checkedIn ? 'Checked' : ''
+          else if (f.value === 'Missing') val = !team.checkedIn ? 'Missing' : ''
+          else if (f.value === 'Blocker') val = team.blocker ? 'Blocker' : ''
+        } else if (f.field === 'role') {
+          val = team.role
+        } else if (f.field === 'account') {
+          val = team.userName || team.email || 'Unknown account'
+        }
+        
+        const isMatch = `${val || ''}`.toLowerCase() === `${f.value || ''}`.toLowerCase()
+        return f.operator === 'is' ? isMatch : !isMatch
+      })
+    }
+    
+    return true
+  })
 
-    return [
-      team.userName,
-      team.role,
-      team.projectName,
-      team.projectKey,
-      team.yesterday,
-      team.today,
-      team.blocker
-    ]
-      .filter(Boolean)
-      .some(value => `${value}`.toLowerCase().includes(query))
+  // 3. Sorting
+  return [...list].sort((left, right) => {
+    let result
+    if (checkinSortMode.value === 'name') result = `${left.userName || ''}`.localeCompare(`${right.userName || ''}`)
+    else if (checkinSortMode.value === 'role') result = `${left.role || ''}`.localeCompare(`${right.role || ''}`)
+    else if (checkinSortMode.value === 'account') result = `${left.email || left.userName || ''}`.localeCompare(`${right.email || right.userName || ''}`)
+    else if (checkinSortMode.value === 'project') result = `${left.projectName || ''}`.localeCompare(`${right.projectName || ''}`)
+    else if (checkinSortMode.value === 'blocker') result = Number(!!right.blocker) - Number(!!left.blocker)
+    else if (checkinSortMode.value === 'checkinDate') result = new Date(left.checkinDate || left.checkedInAt || left.createdAt || 0).getTime() - new Date(right.checkinDate || right.checkedInAt || right.createdAt || 0).getTime()
+    else result = Number(left.checkedIn) - Number(right.checkedIn) // Sort status: checked-in members first
+    
+    const statusSort = ['status', 'blocker'].includes(checkinSortMode.value)
+    return statusSort
+      ? (checkinSortDirection.value === 'asc' ? result * -1 : result)
+      : (checkinSortDirection.value === 'asc' ? result : -result)
   })
 })
 
@@ -307,26 +619,50 @@ const fetchCurrentUser = async () => {
 }
 
 const fetchProjectMembersAndCheckins = async () => {
-  if (!activeProjectId.value) return
-
   try {
-    const res = await axiosClient.get('/checkins', {
-      params: { projectId: activeProjectId.value }
-    })
-    const payload = res.data?.data || {}
-    teamCheckins.value = Array.isArray(payload.members) ? payload.members : []
+    const allCheckins = []
+    let hasCheckedInAny = false
 
-    const meCard = teamCheckins.value.find(t => t.isCurrentUser)
-    userCheckedIn.value = meCard ? meCard.checkedIn : false
+    const projectFetchPromises = projectsList.value.map(async (project) => {
+      try {
+        const res = await axiosClient.get('/checkins', {
+          params: { projectId: project.id }
+        })
+        const payload = res.data?.data || {}
+        const members = Array.isArray(payload.members) ? payload.members : []
+        
+        const mappedMembers = members.map(m => ({
+          ...m,
+          projectId: project.id,
+          projectName: project.name,
+          projectKey: project.key
+        }))
+        
+        return mappedMembers
+      } catch (err) {
+        return []
+      }
+    })
+
+    const results = await Promise.all(projectFetchPromises)
+    results.forEach(members => {
+      allCheckins.push(...members)
+    })
+
+    // Deduplicate or just show all. Since a user can check-in per project, we might want to group or show all.
+    teamCheckins.value = allCheckins
+
+    const meCards = allCheckins.filter(t => t.isCurrentUser)
+    userCheckedIn.value = meCards.some(m => m.checkedIn)
   } catch (error) {
     console.error('Cannot load project members/checkins:', error)
-    ElMessage.error(error.response?.data?.message || 'Khong the tai danh sach check-in.')
     teamCheckins.value = []
     userCheckedIn.value = false
   }
 }
 
 onMounted(async () => {
+  document.addEventListener('click', handleOutsideClick)
   await fetchCurrentUser()
   try {
     const projects = await projectStore.fetchAllProjects(true)
@@ -341,18 +677,16 @@ onMounted(async () => {
       }))
 
     if (projectsList.value.length > 0) {
-      const savedProjId = localStorage.getItem('active_checkin_project_id')
-      if (savedProjId && projectsList.value.some(p => p.id === savedProjId)) {
-        activeProjectId.value = savedProjId
-      } else {
-        activeProjectId.value = projectsList.value[0].id
-      }
       await fetchProjectMembersAndCheckins()
     }
   } catch (error) {
     console.error('Cannot load projects:', error)
-    ElMessage.error(error.response?.data?.message || 'Khong the tai danh sach du an.')
+    ElMessage.error(error.response?.data?.message || 'Không thể tải danh sách dự án.')
   }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleOutsideClick)
 })
 
 const selectProject = async (id) => {
@@ -374,11 +708,11 @@ const openCheckinModal = () => {
 
 const submitCheckin = async () => {
   if (!form.value.projectId) {
-    ElMessage.warning('Vui long chon du an bao cao!')
+    ElMessage.warning('Vui lòng chọn dự án báo cáo!')
     return
   }
   if (!form.value.yesterday.trim() || !form.value.today.trim()) {
-    ElMessage.warning('Vui long dien day du thong tin ngay hom qua va hom nay!')
+    ElMessage.warning('Vui lòng điền đầy đủ thông tin ngày hôm qua và hôm nay!')
     return
   }
 
@@ -394,16 +728,16 @@ const submitCheckin = async () => {
     localStorage.setItem('active_checkin_project_id', form.value.projectId)
     await fetchProjectMembersAndCheckins()
     checkinModalOpen.value = false
-    ElMessage.success('Gui bao cao Check-in ngay thanh cong!')
+    ElMessage.success('Gửi báo cáo Check-in ngày thành công!')
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || 'Khong the gui bao cao check-in.')
+    ElMessage.error(error.response?.data?.message || 'Không thể gửi báo cáo check-in.')
   }
 }
 
 const generateAiSummary = async () => {
   if (checkedInCount.value === 0) {
-    ElMessage.warning('Khong co bao cao check-in hom nay de tom tat!')
-    aiSummaryText.value = 'Khong co bao cao check-in nao duoc nop hom nay.'
+    ElMessage.warning('Không có báo cáo check-in hôm nay để tóm tắt!')
+    aiSummaryText.value = 'Không có báo cáo check-in nào được nộp hôm nay.'
     return
   }
   aiLoading.value = true
@@ -413,10 +747,10 @@ const generateAiSummary = async () => {
     })
     if (res.data?.data?.summaryText) {
       aiSummaryText.value = res.data.data.summaryText
-      ElMessage.success('Da tao tom tat check-in thanh cong!')
+      ElMessage.success('Đã tạo tóm tắt check-in thành công!')
     }
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || 'Khong the tao tom tat check-in.')
+    ElMessage.error(error.response?.data?.message || 'Không thể tạo tóm tắt check-in.')
   } finally {
     aiLoading.value = false
   }
@@ -502,50 +836,101 @@ const renderMarkdown = (text) => {
 }
 
 .page-content {
-  padding: 18px var(--sa-page-x, 24px) 32px;
+  padding: 0 var(--sa-page-x, 24px) 32px !important;
   max-width: none;
   margin: 0;
 }
 
-/* Project Selector wrapper */
-.project-selector-wrapper {
-  position: relative;
-  z-index: 5;
-  width: 100%;
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px !important;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 86%, transparent), color-mix(in srgb, var(--color-surface-hover) 46%, transparent));
-  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
-  border-radius: 12px !important;
-  margin-bottom: 18px;
-  box-shadow: 0 10px 24px color-mix(in srgb, #020617 6%, transparent);
-  box-sizing: border-box;
-  overflow: hidden;
-  transition: all 0.25s ease;
+.checkin-page :deep(.project-page-toolbar) {
+  margin: 0 0 18px !important;
+  width: auto !important;
 }
 
-.project-selector-wrapper:hover {
-  border-color: color-mix(in srgb, var(--color-border) 72%, transparent);
-  box-shadow: 0 10px 24px color-mix(in srgb, #020617 6%, transparent);
+.ai-extract-header-btn {
+  margin-left: 12px !important;
+  height: 28px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  padding: 0 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  background-color: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-secondary) !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
 }
 
-.project-selector-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
+.ai-extract-header-btn:hover {
+  background-color: var(--color-surface-hover) !important;
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border-hover) !important;
 }
 
-.project-selector-label i {
-  font-size: 15px;
-  color: var(--color-primary);
+/* Modal form input, textarea, label and modern footer button styles */
+.sa-modal--form .field-label {
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  color: var(--color-text-secondary) !important;
+  margin-bottom: 6px !important;
+}
+
+.sa-modal--form input,
+.sa-modal--form textarea {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 8px !important;
+  background-color: var(--color-surface) !important;
+  color: var(--color-text-primary) !important;
+  font-size: 13.5px !important;
+  font-family: inherit !important;
+  padding: 10px 12px !important;
+  outline: none !important;
+  transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+
+.sa-modal--form input:focus,
+.sa-modal--form textarea:focus {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important;
+}
+
+.checkin-modal-footer-btn {
+  height: 36px !important;
+  border-radius: 8px !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  padding: 0 16px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.checkin-modal-footer-btn.cancel {
+  background-color: transparent !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-secondary) !important;
+}
+
+.checkin-modal-footer-btn.cancel:hover {
+  background-color: var(--color-surface-hover) !important;
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border-hover) !important;
+}
+
+.checkin-modal-footer-btn.submit {
+  background-color: var(--color-accent) !important;
+  border: 1px solid var(--color-accent) !important;
+  color: #ffffff !important;
+}
+
+.checkin-modal-footer-btn.submit:hover {
+  opacity: 0.9 !important;
 }
 
 /* Custom project select container */
@@ -626,52 +1011,48 @@ const renderMarkdown = (text) => {
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
 }
 
-.checkin-filter-group {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: 32px;
-  padding: 2px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px !important;
-  background: var(--color-surface-hover);
-  overflow: hidden;
+/* Timeline Filter Trigger to match Work Items Filter Button */
+:deep(.timeline-filter-trigger) {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  height: 34px !important;
+  padding: 0 14px !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 9px !important;
+  background: var(--color-surface) !important;
+  color: var(--color-text-secondary) !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
 }
 
-.checkin-filter-group button {
-  height: 28px;
-  min-height: 28px;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: 6px !important;
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: 12.5px;
-  font-weight: 650;
-  cursor: pointer;
-  transition: all 0.2s ease;
+:deep(.timeline-filter-trigger:hover) {
+  background-color: var(--color-surface-hover) !important;
+  border-color: var(--color-border-hover) !important;
+  color: var(--color-text-primary) !important;
 }
 
-.checkin-filter-group button:hover,
-.checkin-filter-group button.active {
-  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
-  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
-  color: var(--color-accent);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+:deep(.timeline-filter-trigger.active) {
+  background-color: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
+  border-color: var(--color-accent) !important;
+  color: var(--color-accent) !important;
 }
 
 .checkin-filter-count {
-  margin-left: auto;
   color: var(--color-text-muted);
   font-size: 11px;
   white-space: nowrap;
 }
 
 .ai-summary-widget {
-  margin-bottom: 14px !important;
-  padding: 16px 18px !important;
-  border-left: 4px solid var(--color-accent);
+  margin-bottom: 20px !important;
+  padding: 18px 22px !important;
   border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border)) !important;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-surface) 96%, var(--color-accent)), var(--color-surface)) !important;
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--color-accent) 5%, transparent) !important;
 }
 
 .ai-response-box {
@@ -691,11 +1072,22 @@ const renderMarkdown = (text) => {
   display: flex;
   flex-direction: column;
   height: 100%;
+  border-radius: 10px !important;
+  border: 1px solid var(--color-border) !important;
+  background-color: var(--color-surface) !important;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s !important;
+}
+
+.checkin-card:hover {
+  border-color: var(--color-border-hover) !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04) !important;
+  transform: translateY(-2px);
 }
 
 .checkin-card.not-checked {
-  opacity: 0.7;
-  border-style: dashed;
+  background-color: color-mix(in srgb, var(--color-surface) 95%, transparent) !important;
+  border-style: dashed !important;
+  opacity: 0.75;
 }
 
 .card-header {
@@ -743,6 +1135,355 @@ const renderMarkdown = (text) => {
     align-items: flex-start !important;
     flex-direction: column !important;
   }
+}
+
+.team-checkins-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.checkin-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 18px !important;
+  border-radius: var(--radius-card, 10px);
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.checkin-list-row:hover {
+  border-color: var(--color-border-hover);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.checkin-list-row.not-checked {
+  opacity: 0.65;
+  border-style: dashed;
+}
+
+.clr-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 180px;
+  min-width: 180px;
+}
+
+.clr-middle {
+  flex: 1;
+  min-width: 0;
+}
+
+.clr-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.clr-detail-item {
+  display: flex;
+  align-items: baseline;
+  line-height: 1.4;
+}
+
+.clr-detail-item span {
+  word-break: break-word;
+}
+
+/* View toggles */
+.view-toggles {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.toggle-btn {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.toggle-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+.toggle-btn.active {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  color: var(--color-accent) !important;
+}
+
+/* Popover/dropdown menu custom styling */
+.filter-dropdown-wrapper,
+.display-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.plane-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  width: 260px;
+  max-height: min(450px, calc(100vh - 180px));
+  overflow-y: auto;
+  box-shadow: var(--shadow-popover);
+  z-index: 120;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  padding: 8px;
+}
+
+.filter-dropdown-menu {
+  left: 0;
+  right: auto;
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: none;
+  overflow: visible;
+  padding: 8px !important;
+}
+
+:deep(.filter-dropdown-menu .filter-bar-container) {
+  border: none;
+  background: transparent;
+  padding: 0 !important;
+  min-height: auto;
+  box-shadow: none;
+  overflow: visible;
+}
+
+/* Sort / Combobox inside popup */
+.filter-combobox {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+.filter-label {
+  display: flex;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.filter-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  padding: 0 12px;
+  outline: none;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.filter-select-trigger:hover,
+.filter-select-trigger.active {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
+  box-shadow: none !important;
+}
+.sort-combobox-trigger:hover,
+.sort-combobox-trigger.active {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
+  box-shadow: none !important;
+}
+.filter-select-trigger:hover > i,
+.filter-select-trigger.active > i,
+.sort-combobox-trigger:hover i,
+.sort-combobox-trigger.active i {
+  color: var(--color-accent) !important;
+}
+.filter-select-trigger:hover > span,
+.filter-select-trigger.active > span,
+.sort-combobox-trigger:hover span,
+.sort-combobox-trigger.active span {
+  color: var(--color-accent) !important;
+}
+.filter-select-trigger span {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-select-trigger i {
+  color: var(--color-text-secondary);
+}
+.filter-select-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 120;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px !important;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow-popover);
+  display: flex;
+  flex-direction: column;
+  gap: 0 !important;
+}
+.filter-select-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px !important;
+  padding: 5px 9px !important;
+  margin: 0 !important;
+  border: 0;
+  border-left: 4px solid transparent !important;
+  border-radius: 8px !important;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.filter-select-option:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+.filter-select-option.selected {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)) !important;
+  border-left-color: var(--color-accent) !important;
+  border-radius: 8px !important;
+  color: var(--color-accent);
+  font-weight: 650;
+}
+.filter-select-option.selected:hover {
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface)) !important;
+  color: var(--color-accent);
+}
+.filter-select-option > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.filter-select-option > i:first-child {
+  width: 15px;
+  color: currentColor;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Sort Search field styling matching FilterBar */
+.filter-search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  height: 34px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  padding: 0 12px;
+  color: var(--color-text-muted);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.filter-search-icon {
+  position: static;
+  transform: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  font-size: 14px;
+  pointer-events: none;
+  color: var(--color-text-muted);
+}
+.filter-search-input {
+  width: 100% !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--color-text-primary) !important;
+  padding: 0 !important;
+  outline: none !important;
+  font-size: 13.5px !important;
+  line-height: 34px !important;
+  text-indent: 0 !important;
+  appearance: none;
+}
+.filter-search-input::placeholder {
+  color: var(--color-text-muted);
+}
+.filter-search-field:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.14);
+}
+
+/* Mini direction buttons next to selected sort item */
+.dir-mini-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.dir-mini-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+.dir-mini-btn.active {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  color: var(--color-accent) !important;
+  font-weight: 600 !important;
 }
 </style>
 
@@ -824,5 +1565,54 @@ body .custom-project-dropdown .el-select-dropdown__item.selected.is-hovering {
 .custom-project-dropdown .el-popper__arrow::before {
   background-color: var(--color-surface) !important;
   border: 1px solid var(--color-border) !important;
+}
+
+/* Empty State Styles */
+.empty-spaces-flat {
+  min-height: 204px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 26px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-align: center;
+}
+
+.empty-spaces-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  color: var(--color-accent);
+  font-size: 23px;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12);
+}
+
+.empty-spaces-copy {
+  max-width: 380px;
+}
+
+.empty-spaces-copy h3 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.empty-spaces-copy p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
 }
 </style>

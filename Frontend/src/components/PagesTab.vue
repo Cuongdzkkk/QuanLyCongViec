@@ -27,7 +27,9 @@ import { TableHeader } from '@tiptap/extension-table-header'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
+import { getStoredUserSession } from '@/utils/authSession'
 
 const props = defineProps({
   projectId: { type: String, required: true }
@@ -85,8 +87,16 @@ let saveTimeout = null
 
 const sortBy = ref('date_modified')
 const sortOrder = ref('desc')
+const pageSortOptions = [
+  { value: 'name', label: 'Name', icon: 'fa-solid fa-font' },
+  { value: 'date_created', label: 'Date created', icon: 'fa-regular fa-calendar-plus' },
+  { value: 'date_modified', label: 'Date modified', icon: 'fa-regular fa-clock' }
+]
 const filterSearch = ref('')
+const pageViewMode = ref('list')
 const filterFavorites = ref(false)
+const createdDateWindow = ref('')
+const createdByMe = ref(false)
 const filterDateExpanded = ref(true)
 const filterByExpanded = ref(true)
 
@@ -107,6 +117,17 @@ const filteredPages = computed(() => {
       (p.title || '').toLowerCase().includes(q) ||
       searchablePageContent(p.content).toLowerCase().includes(q)
     )
+  }
+
+  if (filterFavorites.value) result = result.filter(page => Boolean(page.isFavorite || page.starred))
+  if (createdDateWindow.value) {
+    const cutoff = Date.now() - Number(createdDateWindow.value) * 24 * 60 * 60 * 1000
+    result = result.filter(page => new Date(page.createdAt || 0).getTime() >= cutoff)
+  }
+  if (createdByMe.value) {
+    const user = getStoredUserSession() || {}
+    const userId = user.id || user.userId
+    result = result.filter(page => `${page.createdById || page.createdByUserId || ''}` === `${userId || ''}`)
   }
 
   const sorted = [...result]
@@ -511,11 +532,10 @@ function pageMenuItems(page) {
           :searchPlaceholder="t('Search pages...')"
         >
           <template #filters>
-            <el-popover placement="bottom-end" trigger="click" :width="220" popper-class="custom-dark-popover sort-popover" :offset="8" :show-arrow="false">
+            <el-popover v-if="false" placement="bottom-end" trigger="click" :width="220" popper-class="custom-dark-popover sort-popover" :offset="8" :show-arrow="false" class="toolbar-sort-control">
               <template #reference>
-                <button class="nexus-btn-outlined">
+                <button class="nexus-btn-outlined icon-only-trigger" :title="t('Sort')" :aria-label="t('Sort')">
                   <i class="fa-solid fa-arrow-down-short-wide"></i>
-                  {{ sortBy === 'name' ? t('Name') : (sortBy === 'date_created' ? t('Date created') : t('Date modified')) }}
                 </button>
               </template>
               <div class="popover-menu-list">
@@ -543,9 +563,9 @@ function pageMenuItems(page) {
               </div>
             </el-popover>
 
-            <el-popover placement="bottom-end" trigger="click" :width="280" popper-class="custom-dark-popover filter-popover" :offset="8" :show-arrow="false">
+            <el-popover placement="bottom-end" trigger="click" :width="280" popper-class="custom-dark-popover filter-popover" :offset="8" :show-arrow="false" class="toolbar-filter-control">
               <template #reference>
-                <button class="nexus-btn-outlined"><i class="fa-solid fa-bars-staggered"></i> {{ t('Filters') }}</button>
+                <button class="nexus-btn-outlined icon-only-trigger" :title="t('Filters')" :aria-label="t('Filters')"><i class="fa-solid fa-bars-staggered"></i></button>
               </template>
               <div class="filter-menu-container">
                 <div class="fm-search">
@@ -569,19 +589,19 @@ function pageMenuItems(page) {
                   </div>
                   <div class="fm-col-content" v-show="filterDateExpanded">
                     <label class="fm-checkbox-row">
-                      <input type="checkbox" class="fm-checkbox" />
+                      <input type="radio" name="page-created-date" value="7" v-model="createdDateWindow" class="fm-checkbox" />
                       <span class="fm-checkbox-label">{{ t('1 week ago') }}</span>
                     </label>
                     <label class="fm-checkbox-row">
-                      <input type="checkbox" class="fm-checkbox" />
+                      <input type="radio" name="page-created-date" value="14" v-model="createdDateWindow" class="fm-checkbox" />
                       <span class="fm-checkbox-label">{{ t('2 weeks ago') }}</span>
                     </label>
                     <label class="fm-checkbox-row">
-                      <input type="checkbox" class="fm-checkbox" />
+                      <input type="radio" name="page-created-date" value="30" v-model="createdDateWindow" class="fm-checkbox" />
                       <span class="fm-checkbox-label">{{ t('1 month ago') }}</span>
                     </label>
                     <label class="fm-checkbox-row">
-                      <input type="checkbox" class="fm-checkbox" />
+                      <input type="radio" name="page-created-date" value="" v-model="createdDateWindow" class="fm-checkbox" />
                       <span class="fm-checkbox-label">{{ t('Custom') }}</span>
                     </label>
                   </div>
@@ -596,7 +616,7 @@ function pageMenuItems(page) {
                   </div>
                   <div class="fm-col-content" v-show="filterByExpanded">
                     <label class="fm-checkbox-row">
-                      <input type="checkbox" class="fm-checkbox" />
+                      <input type="checkbox" v-model="createdByMe" class="fm-checkbox" />
                       <div class="fm-user">
                         <div class="fm-avatar">D</div>
                         <span>{{ t('You') }}</span>
@@ -607,6 +627,15 @@ function pageMenuItems(page) {
               </div>
             </el-popover>
           </template>
+          <template #sort>
+            <ToolbarSortMenu v-model="sortBy" v-model:direction="sortOrder" label="Sort pages" :options="pageSortOptions" />
+          </template>
+          <template #toggles>
+            <div class="view-toggles">
+              <button class="toggle-btn" :class="{ active: pageViewMode === 'list' }" type="button" title="List view" @click="pageViewMode = 'list'"><i class="fa-solid fa-bars"></i></button>
+              <button class="toggle-btn" :class="{ active: pageViewMode === 'grid' }" type="button" title="Grid view" @click="pageViewMode = 'grid'"><i class="fa-solid fa-table-cells-large"></i></button>
+            </div>
+          </template>
         </ProjectPageToolbar>
 
       <div class="pages-nav">
@@ -615,7 +644,7 @@ function pageMenuItems(page) {
         <div class="nav-tab" :class="{ 'active': activeTab === 'Archived' }" @click="activeTab = 'Archived'">{{ t('Archived') }}</div>
       </div>
 
-      <div class="pages-list" v-loading="loading">
+      <div class="pages-list" :class="{ 'pages-grid': pageViewMode === 'grid' }" v-loading="loading">
         <ProjectEmptyState
            v-if="filteredPages.length === 0"
            icon="fa-regular fa-file-lines"
@@ -840,6 +869,10 @@ function pageMenuItems(page) {
 
 /* List */
 .pages-list { padding: 0 24px 24px; }
+.pages-list.pages-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.pages-list.pages-grid .page-row { min-height: 132px; flex-direction: column; align-items: flex-start; justify-content: space-between; border: 1px solid var(--color-border); background: var(--color-surface); }
+.pages-list.pages-grid .pr-left { width: 100%; align-items: flex-start; }
+.pages-list.pages-grid .pr-right { width: 100%; justify-content: flex-end; }
 .page-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-radius: 8px; cursor: pointer; transition: background 0.2s; border-bottom: 1px solid var(--color-surface); }
 .page-row:hover { background: var(--color-surface); }
 .pr-left { display: flex; align-items: center; gap: 12px; }
@@ -1063,7 +1096,3 @@ function pageMenuItems(page) {
   padding-bottom: 8px !important;
 }
 </style>
-
-
-
-

@@ -27,138 +27,156 @@
     </header>
 
     <div class="module-content">
-      <div class="list-controls-section">
-        <div class="search-box-full">
-          <i class="fa-solid fa-magnifying-glass search-icon"></i>
-          <input type="text" v-model="searchQuery" :placeholder="labels.searchProjects" class="search-input" />
-        </div>
-        
-                <div class="filter-chips" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; width: 100%;">
-          <DropdownFilter :label="labels.status" :options="statusOptions" v-model="filters.status" />
-          <DropdownFilter :label="labels.owner" :options="ownerOptions" v-model="filters.owner" />
-          <DropdownFilter :label="labels.follow" :options="booleanOptions" v-model="filters.following" />
-          <DropdownFilter :label="labels.favorite" :options="booleanOptions" v-model="filters.starred" />
-          <button v-if="hasActiveFilters" class="clear-filters-btn" @click="clearFilters" style="padding: 6px 12px; border-radius: 16px; border: 1px solid #DFE1E6; background: #fff; cursor: pointer; color: #5E6C84; font-size: 14px;">{{ labels.clearFilters }}</button>
-        </div>
-      </div>
-
-      <div class="table-toolbar mt-24">
-        <div class="results-count">{{ labels.showing }} {{ filteredProjects.length }} {{ labels.projectsLower }}</div>
-        <div class="toolbar-actions">
+      <ProjectPageToolbar
+        v-model:searchQuery="searchQuery"
+        show-search
+        :search-placeholder="labels.searchProjects"
+      >
+        <template #filters>
+          <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
+            <button
+              class="timeline-filter-trigger icon-only-trigger"
+              type="button"
+              :aria-label="labels.filters"
+              :title="labels.filters"
+              @click="toggleFilterDropdown"
+              :class="{ active: showFilterDropdown || activeFilters.length }"
+            >
+              <i class="fa-solid fa-filter"></i>
+              <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
+            </button>
+            <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
+              <FilterBar
+                v-model:filters="activeFilters"
+                :fields="projectFilterFields"
+                :operators="projectOperators"
+                :custom-value-meta="customProjectValueMeta"
+                :active="showFilterDropdown"
+              />
+            </div>
+          </div>
+        </template>
+        <template #toggles>
           <div class="view-toggles">
             <button class="icon-btn" :class="{ active: viewMode === 'table' }" :title="labels.listView" @click="viewMode = 'table'"><i class="fa-solid fa-list-ul"></i></button>
             <button class="icon-btn" :class="{ active: viewMode === 'cards' }" :title="labels.horizontalView" @click="viewMode = 'cards'"><i class="fa-solid fa-bars-staggered"></i></button>
           </div>
-          <button class="secondary-btn small-btn">{{ labels.sortByFollowing }} <i class="fa-solid fa-chevron-down"></i></button>
-          <button class="secondary-btn small-btn"><i class="fa-solid fa-table-columns"></i> {{ labels.columns }}</button>
-          <button class="icon-btn"><i class="fa-solid fa-ellipsis"></i></button>
-        </div>
-      </div>
+        </template>
+        <template #sort>
+          <ToolbarSortMenu v-model="projectSortBy" v-model:direction="projectSortDirection" :label="labels.sortByFollowing" :options="projectSortOptions" />
+        </template>
+      </ProjectPageToolbar>
 
-      <div class="table-container mt-16" v-if="!isLoading">
-        <table class="jira-table" v-if="filteredProjects.length > 0 && viewMode === 'table'">
-          <thead>
-            <tr>
-              <th class="col-name">{{ labels.name }}</th>
-              <th class="col-status">{{ labels.status }}</th>
-              <th class="col-date">{{ labels.targetDate }}</th>
-              <th class="col-owner">{{ labels.owner }}</th>
-              <th class="col-following">{{ labels.following }}</th>
-                <th class="col-star" style="width: 100px;">{{ labels.starred }}</th>
-              <th class="col-updated">{{ labels.lastUpdated }}</th>
-              <th class="actions-col"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="proj in filteredProjects" :key="proj.id" @click="goToProject(proj.id)">
-              <td>
-                <div class="project-title-cell">
-                  <ProjectAvatar :icon="proj.icon" :background="proj.cover" size="sm" />
-                  <span class="project-title">{{ proj.title }}</span>
+      <div v-if="isLoading" class="loading-state">
+        <div class="loader-spinner"></div>
+      </div>
+      <template v-else>
+        <div class="table-container mt-16" v-if="filteredProjects.length > 0">
+          <table class="jira-table" v-if="viewMode === 'table'">
+            <thead>
+              <tr>
+                <th class="col-name">{{ labels.name }}</th>
+                <th class="col-status">{{ labels.status }}</th>
+                <th class="col-date">{{ labels.targetDate }}</th>
+                <th class="col-owner">{{ labels.owner }}</th>
+                <th class="col-following">{{ labels.following }}</th>
+                  <th class="col-star" style="width: 100px;">{{ labels.starred }}</th>
+                <th class="col-updated">{{ labels.lastUpdated }}</th>
+                <th class="actions-col"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="proj in filteredProjects" :key="proj.id" @click="goToProject(proj.id)">
+                <td>
+                  <div class="project-title-cell">
+                    <ProjectAvatar :icon="proj.icon" :background="proj.cover" size="sm" />
+                    <span class="project-title">{{ proj.title }}</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="status-badge" :class="getStatusClass(proj.status || labels.pending)">
+                    {{ translateStatus(proj.status || labels.pending) }} <i class="fa-solid fa-chevron-down ms-1" v-if="!isCompletedStatus(proj.status)"></i>
+                  </span>
+                </td>
+                <td>
+                  <div class="target-date-badge" :class="{ 'overdue': false }">
+                    <i class="fa-regular fa-calendar"></i> {{ formatDate(proj.startDate || proj.createdAt) }}
+                  </div>
+                </td>
+                <td>
+                  <UserAvatar :user="{ id: proj.ownerId, fullName: proj.owner || proj.ownerName || proj.creatorName, avatarUrl: proj.ownerAvatarUrl, avatarColor: proj.ownerColor }" :size="24" :fontSize="10" class="owner-avatar-micro" />
+                </td>
+                <td @click.stop="toggleFollow(proj.id)">
+                  <span class="following-text" style="cursor: pointer;">{{ proj.isFollowing ? labels.following : labels.follow }}</span>
+                </td>
+                <td @click.stop>
+                  <button
+                    class="icon-btn"
+                    type="button"
+                    :disabled="starredStore.isPending('Project', proj.id)"
+                    :aria-label="proj.isStarred ? labels.unstar : labels.starred"
+                    @click="toggleStar(proj.id)"
+                  >
+                    <i :class="proj.isStarred ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'"></i>
+                  </button>
+                </td>
+                <td>
+                  <span class="updated-text">{{ formatDate(proj.updatedAt || proj.createdAt) }}</span>
+                </td>
+                <td class="actions-col" @click.stop>
+                  <button class="icon-btn"><i class="fa-solid fa-ellipsis"></i></button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          
+          <div class="project-card-list" v-else>
+            <article class="project-row-card" v-for="proj in filteredProjects" :key="proj.id" @click="goToProject(proj.id)">
+              <div class="project-row-main">
+                <ProjectAvatar :icon="proj.icon" :background="proj.cover" size="md" />
+                <div class="project-row-text">
+                  <h3>{{ proj.title }}</h3>
+                  <p>{{ proj.owner || proj.ownerName || labels.noOwner }}</p>
                 </div>
-              </td>
-              <td>
+              </div>
+              <div class="project-row-meta">
                 <span class="status-badge" :class="getStatusClass(proj.status || labels.pending)">
-                  {{ translateStatus(proj.status || labels.pending) }} <i class="fa-solid fa-chevron-down ms-1" v-if="!isCompletedStatus(proj.status)"></i>
+                  {{ translateStatus(proj.status || labels.pending) }}
                 </span>
-              </td>
-              <td>
-                <div class="target-date-badge" :class="{ 'overdue': false }">
+                <span class="target-date-badge">
                   <i class="fa-regular fa-calendar"></i> {{ formatDate(proj.startDate || proj.createdAt) }}
-                </div>
-              </td>
-              <td>
-                <UserAvatar :user="{ id: proj.ownerId, fullName: proj.owner || proj.ownerName || proj.creatorName, avatarUrl: proj.ownerAvatarUrl, avatarColor: proj.ownerColor }" :size="24" :fontSize="10" class="owner-avatar-micro" />
-              </td>
-              <td @click.stop="toggleFollow(proj.id)">
-                <span class="following-text" style="cursor: pointer;">{{ proj.isFollowing ? labels.following : labels.follow }}</span>
-              </td>
-              <td @click.stop>
+                </span>
+                <button class="row-action-btn" @click.stop="toggleFollow(proj.id)">
+                  <i class="fa-regular fa-eye"></i>
+                  {{ proj.isFollowing ? labels.following : labels.follow }}
+                </button>
                 <button
-                  class="icon-btn"
+                  class="row-action-btn icon-only"
                   type="button"
                   :disabled="starredStore.isPending('Project', proj.id)"
                   :aria-label="proj.isStarred ? labels.unstar : labels.starred"
-                  @click="toggleStar(proj.id)"
+                  @click.stop="toggleStar(proj.id)"
                 >
                   <i :class="proj.isStarred ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'"></i>
                 </button>
-              </td>
-              <td>
-                <span class="updated-text">{{ formatDate(proj.updatedAt || proj.createdAt) }}</span>
-              </td>
-              <td class="actions-col" @click.stop>
-                <button class="icon-btn"><i class="fa-solid fa-ellipsis"></i></button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        
-        <div class="project-card-list" v-else-if="filteredProjects.length > 0">
-          <article class="project-row-card" v-for="proj in filteredProjects" :key="proj.id" @click="goToProject(proj.id)">
-            <div class="project-row-main">
-              <ProjectAvatar :icon="proj.icon" :background="proj.cover" size="md" />
-              <div class="project-row-text">
-                <h3>{{ proj.title }}</h3>
-                <p>{{ proj.owner || proj.ownerName || labels.noOwner }}</p>
               </div>
-            </div>
-            <div class="project-row-meta">
-              <span class="status-badge" :class="getStatusClass(proj.status || labels.pending)">
-                {{ translateStatus(proj.status || labels.pending) }}
-              </span>
-              <span class="target-date-badge">
-                <i class="fa-regular fa-calendar"></i> {{ formatDate(proj.startDate || proj.createdAt) }}
-              </span>
-              <button class="row-action-btn" @click.stop="toggleFollow(proj.id)">
-                <i class="fa-regular fa-eye"></i>
-                {{ proj.isFollowing ? labels.following : labels.follow }}
-              </button>
-              <button
-                class="row-action-btn icon-only"
-                type="button"
-                :disabled="starredStore.isPending('Project', proj.id)"
-                :aria-label="proj.isStarred ? labels.unstar : labels.starred"
-                @click.stop="toggleStar(proj.id)"
-              >
-                <i :class="proj.isStarred ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400'"></i>
-              </button>
-            </div>
-          </article>
+            </article>
+          </div>
         </div>
 
-        <div class="empty-state-large" v-else>
-          <div class="empty-icon-wrapper-large">
-            <i class="fa-solid fa-magnifying-glass"></i>
+        <div class="empty-state-large mt-16" v-else>
+          <div class="empty-spaces-icon" aria-hidden="true">
+            <i class="fa-regular fa-folder-open"></i>
           </div>
-          <p class="empty-text-main">{{ labels.noProjects }}</p>
-          <p class="empty-text-sub">{{ labels.tryFilters }} <a href="#" @click.prevent="clearFilters">{{ labels.clearAllFilters }}</a>.</p>
+          <div class="empty-spaces-copy">
+            <h3>{{ labels.noProjects }}</h3>
+            <p>{{ labels.tryFilters }} <a href="#" @click.prevent="clearFilters" style="color: var(--color-accent); text-decoration: underline;">{{ labels.clearAllFilters }}</a>.</p>
+            <button class="empty-spaces-btn mt-3" type="button" @click="openCreateModal">
+              {{ labels.createProject }}
+            </button>
+          </div>
         </div>
-      </div>
-      
-      <div class="loading-state" v-else>
-        <div class="loader-spinner"></div>
-      </div>
+      </template>
     </div>
 
     <!-- Create Project Modal (Jira Style) -->
@@ -224,10 +242,11 @@ import { ElMessage } from 'element-plus'
 import { useSiteStore } from '@/store/useSiteStore'
 import { isValidEntityId } from '@/utils/contextIds'
 import UserAvatar from '@/components/common/UserAvatar.vue'
-import DropdownFilter from '@/components/common/DropdownFilter.vue'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
+import FilterBar from '@/components/FilterBar.vue'
 
 const router = useRouter()
 const projectStore = useHomeProjectStore()
@@ -238,6 +257,7 @@ const siteStore = useSiteStore()
 
 const currentTab = ref('all')
 const searchQuery = ref('')
+const showProjectFilters = ref(false)
 const viewMode = ref('table')
 const isVi = computed(() => i18nStore.locale === 'vi')
 const labels = computed(() => isVi.value
@@ -352,12 +372,59 @@ const translateStatus = (status) => {
   return map[status.toString().toLowerCase()] || status
 }
 
-const filters = ref({
-  status: '',
-  owner: '',
-  following: '',
-  starred: ''
-})
+const activeFilters = ref([])
+
+const projectFilterFields = computed(() => [
+  { key: 'status', label: labels.value.status, icon: 'fa-solid fa-circle-dot', values: statusOptions.value },
+  { key: 'owner', label: labels.value.owner, icon: 'fa-regular fa-user', values: ownerOptions.value },
+  { key: 'following', label: labels.value.follow, icon: 'fa-regular fa-eye', values: [isVi.value ? 'Có' : 'Yes', isVi.value ? 'Không' : 'No'] },
+  { key: 'starred', label: labels.value.favorite, icon: 'fa-regular fa-star', values: [isVi.value ? 'Có' : 'Yes', isVi.value ? 'Không' : 'No'] }
+])
+
+const projectOperators = {
+  status: ['is', 'is not'],
+  owner: ['is', 'is not'],
+  following: ['is', 'is not'],
+  starred: ['is', 'is not']
+}
+
+const customProjectValueMeta = (fieldKey, value) => {
+  if (fieldKey === 'status') {
+    return { icon: 'fa-solid fa-circle-dot', color: '#10b981' }
+  }
+  if (fieldKey === 'owner') {
+    return { icon: 'fa-regular fa-user', color: '#3b82f6' }
+  }
+  if (fieldKey === 'following') {
+    return { icon: 'fa-regular fa-eye', color: '#8b5cf6' }
+  }
+  if (fieldKey === 'starred') {
+    return { icon: 'fa-solid fa-star', color: '#eab308' }
+  }
+  return null
+}
+
+const showFilterDropdown = ref(false)
+const toggleFilterDropdown = () => {
+  showFilterDropdown.value = !showFilterDropdown.value
+}
+const handleOutsideClick = (e) => {
+  if (!e.target.closest('.js-toolbar-popup-scope')) {
+    showFilterDropdown.value = false
+  }
+}
+
+const projectSortDirection = ref('desc')
+const projectSortBy = ref('updatedAt')
+const projectSortOptions = [
+  { value: 'updatedAt', label: 'Cập nhật gần nhất', icon: 'fa-regular fa-clock' },
+  { value: 'createdAt', label: 'Mới tạo gần nhất', icon: 'fa-regular fa-calendar-plus' },
+  { value: 'name', label: 'Tên dự án', icon: 'fa-solid fa-font' },
+  { value: 'status', label: 'Trạng thái', icon: 'fa-solid fa-circle-dot' }
+]
+const toggleProjectSort = () => {
+  projectSortDirection.value = projectSortDirection.value === 'desc' ? 'asc' : 'desc'
+}
 
 const uniqueValues = (selector) => Array.from(new Set(
   (projectStore.projects || [])
@@ -377,14 +444,9 @@ const booleanOptions = computed(() => [
 ])
 
 const clearFilters = () => {
-  filters.value = {
-    status: '',
-    owner: '',
-    following: '',
-    starred: ''
-  }
+  activeFilters.value = []
 }
-const hasActiveFilters = computed(() => Object.values(filters.value).some(val => val !== ''))
+const hasActiveFilters = computed(() => activeFilters.value.length > 0)
 
 const isCreateModalOpen = ref(false)
 
@@ -445,6 +507,7 @@ onMounted(async () => {
   await starredStore.fetchStarredItems({ page: 1, pageSize: 100 })
   await followerStore.fetchFollowedItems()
   window.addEventListener('global-create-click', openCreateModal)
+  document.addEventListener('click', handleOutsideClick)
 })
 
 watch(
@@ -464,6 +527,7 @@ watch(
 
 onUnmounted(() => {
   window.removeEventListener('global-create-click', openCreateModal)
+  document.removeEventListener('click', handleOutsideClick)
 })
 
 const isLoading = computed(() => projectStore.isLoading)
@@ -496,28 +560,49 @@ const filteredProjects = computed(() => {
   }
 
   
-  if (filters.value.status) {
-    list = list.filter(p => translateStatus(p.status) === filters.value.status)
-  }
-  if (filters.value.owner) {
-    list = list.filter(p => p.owner === filters.value.owner)
-  }
-  if (filters.value.following) {
-    const isFol = filters.value.following === 'true'
-    list = list.filter(p => !!p.isFollowing === isFol)
-  }
-  if (filters.value.starred) {
-    const isStar = filters.value.starred === 'true'
-    list = list.filter(p => !!p.isStarred === isStar)
+  if (activeFilters.value.length > 0) {
+    list = list.filter(p => {
+      return activeFilters.value.every(f => {
+        let val = ''
+        let isMatch = false
+        if (f.field === 'status') {
+          val = translateStatus(p.status)
+          isMatch = val === f.value
+        } else if (f.field === 'owner') {
+          val = p.owner
+          isMatch = val === f.value
+        } else if (f.field === 'following') {
+          const isFol = f.value === (isVi.value ? 'Có' : 'Yes')
+          isMatch = (followerStore.followedItems?.some(i => i.entityId === p.id) || false) === isFol
+        } else if (f.field === 'starred') {
+          const isStar = f.value === (isVi.value ? 'Có' : 'Yes')
+          isMatch = starredStore.isStarred('Project', p.id) === isStar
+        }
+        return f.operator === 'is' ? isMatch : !isMatch
+      })
+    })
   }
 
-    return list.map(p => ({
+    const normalized = list.map(p => ({
     ...p,
     key: p.key || (p.title ? p.title.substring(0, 3).toUpperCase() : 'PRJ'),
     status: p.status === true ? labels.value.pending : (p.status === false ? labels.value.archived : (p.status || labels.value.pending)),
     isStarred: starredStore.isStarred('Project', p.id),
     isFollowing: followerStore.followedItems?.some(i => i.entityId === p.id) || false
   }))
+  return normalized.sort((a, b) => {
+    let left
+    let right
+    if (projectSortBy.value === 'name' || projectSortBy.value === 'status') {
+      left = `${a[projectSortBy.value] || ''}`.toLowerCase()
+      right = `${b[projectSortBy.value] || ''}`.toLowerCase()
+    } else {
+      left = new Date(a[projectSortBy.value] || 0).getTime()
+      right = new Date(b[projectSortBy.value] || 0).getTime()
+    }
+    const result = left < right ? -1 : (left > right ? 1 : 0)
+    return projectSortDirection.value === 'asc' ? result : -result
+  })
 })
 
 const goToProject = (id) => {
@@ -578,7 +663,7 @@ const isCompletedStatus = (status) => {
 }
 
 .module-header {
-  padding: var(--app-shell-header-top, 32px) var(--app-shell-page-x, 40px) 0;
+  padding: var(--app-shell-header-top, 18px) var(--app-shell-page-x, 18px) 0;
   background-color: #FFFFFF;
 }
 
@@ -668,7 +753,7 @@ const isCompletedStatus = (status) => {
 }
 
 .module-content {
-  padding: 32px 40px;
+  padding: 18px var(--app-shell-page-x, 18px) 28px;
   flex: 1;
 }
 
@@ -793,6 +878,27 @@ const isCompletedStatus = (status) => {
   margin-left: 4px;
   font-size: 12px;
   color: #5E6C84;
+}
+.project-toolbar-icon {
+  width: 42px !important;
+  min-width: 42px !important;
+  height: 34px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.project-toolbar-icon:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
+}
+.project-toolbar-icon:hover i { color: var(--color-accent) !important; }
+.project-toolbar-icon.active {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
+  color: var(--color-accent) !important;
 }
 
 .col-name { width: 40%; }
@@ -1242,25 +1348,33 @@ const isCompletedStatus = (status) => {
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: #5E6C84;
+  color: var(--color-text-muted, #5E6C84);
+  font-size: 14px;
 }
 
 .search-box-full .search-input {
   width: 100%;
-  padding: 10px 12px 10px 40px;
-  border: 2px solid #DFE1E6;
-  border-radius: 3px;
-  font-size: 14px;
+  height: 34px !important;
+  padding-left: 36px !important;
+  padding-right: 12px !important;
+  border-radius: 9px !important;
+  border: 1px solid var(--color-border, #DFE1E6) !important;
+  background-color: var(--color-surface, #FFFFFF) !important;
+  color: var(--color-text-primary, #172B4D) !important;
+  font-size: 13.5px !important;
   box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
 }
 
 .search-box-full .search-input:hover {
-  background-color: #FAFBFC;
+  background-color: var(--color-surface-hover, #FAFBFC) !important;
 }
 
 .search-box-full .search-input:focus {
-  border-color: #4C9AFF;
-  background-color: #FFFFFF;
+  border-color: var(--color-accent, #4C9AFF) !important;
+  background-color: var(--color-surface, #FFFFFF) !important;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important;
+  outline: none;
 }
 
 .mt-16 { margin-top: 16px; }
@@ -1318,6 +1432,13 @@ const isCompletedStatus = (status) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  border-radius: 12px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 86%, transparent), color-mix(in srgb, var(--color-surface-hover) 46%, transparent));
+  box-shadow: 0 10px 24px color-mix(in srgb, #020617 6%, transparent);
 }
 
 .results-count {
@@ -1330,6 +1451,13 @@ const isCompletedStatus = (status) => {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.toolbar-actions .search-box-full {
+  width: min(325px, 34vw);
+  flex: 0 1 325px;
 }
 
 .view-toggles {
@@ -1431,50 +1559,59 @@ const isCompletedStatus = (status) => {
 }
 
 .empty-state-large {
+  min-height: 204px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 80px 20px;
+  gap: 12px;
+  padding: 24px 26px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   text-align: center;
-  border: 1px solid #DFE1E6;
-  border-radius: 3px;
 }
 
-.empty-icon-wrapper-large {
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  background-color: #F4F5F7;
-  display: flex;
+.empty-spaces-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 24px;
+  border: 1px solid color-mix(in srgb, var(--color-accent, #0ea5e9) 18%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent, #0ea5e9) 10%, var(--color-surface, #ffffff));
+  color: var(--color-accent, #0ea5e9);
+  font-size: 23px;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12);
 }
 
-.empty-icon-wrapper-large i {
-  font-size: 48px;
-  color: #A5ADBA;
+.empty-spaces-copy {
+  max-width: 380px;
 }
 
-.empty-text-main {
-  font-size: 16px;
-  color: #172B4D;
-  margin: 0 0 8px 0;
-}
-
-.empty-text-sub {
-  font-size: 14px;
-  color: #5E6C84;
+.empty-spaces-copy h3 {
   margin: 0;
+  color: var(--color-text-primary, #172B4D);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
-.empty-text-sub a {
-  color: #0052CC;
+.empty-spaces-copy p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted, #5E6C84);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.empty-spaces-copy p a {
+  color: var(--color-accent, #0052CC);
   text-decoration: none;
 }
 
-.empty-text-sub a:hover {
+.empty-spaces-copy p a:hover {
   text-decoration: underline;
 }
 
@@ -1612,5 +1749,60 @@ const isCompletedStatus = (status) => {
   .project-row-meta {
     justify-content: flex-start;
   }
+}
+
+.filter-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.plane-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1050;
+  width: 290px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  padding: 12px;
+}
+.filter-dropdown-menu {
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: none;
+  padding: 8px !important;
+  left: 0;
+  right: auto;
+  overflow: visible;
+}
+.filter-dropdown-menu :deep(.filter-bar-container) {
+  min-height: auto;
+  box-shadow: none;
+  background: transparent;
+  border: none;
+  padding: 0 !important;
+  overflow: visible;
+}
+
+.empty-spaces-btn {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 9px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  margin-top: 12px;
+}
+
+.empty-spaces-btn:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  color: var(--color-accent);
 }
 </style>

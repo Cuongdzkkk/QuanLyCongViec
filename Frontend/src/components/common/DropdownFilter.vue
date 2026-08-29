@@ -217,30 +217,45 @@ onBeforeUnmount(() => {
 .options-list {
   max-height: 250px;
   overflow-y: auto;
-  padding: 4px;
+  padding: 6px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 0 !important;
 }
 
 .option-item {
   width: 100%;
-  display: block;
-  padding: 9px 10px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--home-text, #172b4d);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  min-height: 32px !important;
+  height: auto !important;
+  gap: 8px !important;
+  padding: 5px 9px !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-left: 4px solid transparent !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: var(--color-text-secondary, #475569) !important;
+  font: inherit;
+  font-size: 13px !important;
   text-align: left;
-  font-size: 14px;
   cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .option-item:hover {
-  background: var(--home-panel-strong, #fafbfc);
+  background: var(--color-surface-hover, #f1f5f9) !important;
+  color: var(--color-text-primary, #0f172a) !important;
 }
 
 .option-item.selected {
-  background: rgba(56, 189, 248, 0.16);
-  color: var(--home-accent, #0052cc);
-  font-weight: 700;
+  border-left-color: var(--color-accent, #0ea5e9) !important;
+  border-radius: 8px !important;
+  background: color-mix(in srgb, var(--color-accent, #0ea5e9) 12%, var(--color-surface, #ffffff)) !important;
+  color: var(--color-accent, #0ea5e9) !important;
+  font-weight: 650 !important;
 }
 
 .no-results {

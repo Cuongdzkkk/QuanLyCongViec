@@ -165,6 +165,21 @@ export const useGoalStore = defineStore('goal', {
         this.isLoading = false
       }
     },
+    async updateGoal(id, payload) {
+      this.isLoading = true
+      try {
+        const workspaceId = await this.ensureWorkspaceId()
+        const response = await axiosClient.put(`/workspaces/${workspaceId}/goals/${id}`, payload)
+        const updatedGoal = response.data?.data || response.data
+        this.upsertGoal(updatedGoal)
+        return updatedGoal
+      } catch (err) {
+        this.error = err.message || 'Failed to update goal'
+        throw err
+      } finally {
+        this.isLoading = false
+      }
+    },
     async fetchGoalDetail(id) {
       this.isLoading = true
       this.error = null

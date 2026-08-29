@@ -1,90 +1,70 @@
 <template>
-  <div class="team-detail-container" v-if="team">
-    <!-- Cover Image -->
-    <div class="team-cover" :style="{ backgroundImage: `url(${team.coverImage})` }">
-      <!-- Floating Back Button -->
-      <button class="back-floating-btn" @click="router.push(teamsBasePath)">
-        <i class="fa-solid fa-arrow-left"></i>
-        <span>Quay lại</span>
-      </button>
-      <div class="cover-overlay" v-if="!isArchived">
-        <button class="upload-cover-btn"><i class="fa-solid fa-camera"></i> Change Cover</button>
-      </div>
-    </div>
-
-    <!-- Header Actions -->
-    <div class="team-header-wrapper">
-      <div class="team-identity">
-        <div class="team-avatar">
-          <span>{{ team.avatarText }}</span>
+  <template v-if="team">
+    <DetailLayout>
+    <template #hero>
+      <DetailHero
+        cover-pattern="team"
+        :back-url="teamsBasePath"
+        back-text="Quay lại"
+        :title="team.name"
+        avatar-type="boxy"
+        avatar-icon="fa-regular fa-folder"
+      >
+        <template #cover-actions>
+          <button class="sprinta-btn sprinta-btn-secondary" v-if="!isArchived"><i class="fa-solid fa-camera"></i> Change Cover</button>
+        </template>
+        
+        <template #badges>
+          <span class="status-badge" :class="!isArchived ? 'active' : 'archived'" style="font-size: 10px; padding: 2px 6px; margin-left: 8px;">{{ !isArchived ? 'ACTIVE' : 'ARCHIVED' }}</span>
+        </template>
+        
+        <template #meta>
+          <span v-if="isArchived"><i class="fa-solid fa-box-archive"></i> Đã lưu trữ</span>
+        </template>
+        
+        <template #actions>
+          <button class="sprinta-icon-btn" @click="teamStore.toggleStar()" :class="{ starred: team.isStarred }" title="Star team">
+            <i :class="team.isStarred ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+          </button>
+        </template>
+        
+        <template #overflow>
+          <button class="sprinta-menu-item" @click="toggleArchive">
+            <i :class="isArchived ? 'fa-solid fa-box-open' : 'fa-solid fa-box-archive'" style="width: 16px;"></i> {{ isArchived ? 'Khôi phục (Restore)' : 'Lưu trữ (Archive)' }}
+          </button>
+          <button class="sprinta-menu-item danger" @click="isDeleteConfirmOpen = true"><i class="fa-solid fa-trash" style="width: 16px;"></i> Xóa (Delete)</button>
+        </template>
+      </DetailHero>
+    </template>
+    
+    <template #tabs>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'overview' }" @click="currentTab = 'overview'">Giới thiệu</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'activity' }" @click="currentTab = 'activity'">SprintA</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'hierarchy' }" @click="currentTab = 'hierarchy'">Phân cấp</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'goals' }" @click="currentTab = 'goals'">Mục Tiêu</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'projects' }" @click="currentTab = 'projects'">Dự Án</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'kudos' }" @click="currentTab = 'kudos'">Khen ngợi</button>
+    </template>
+    
+    <template #main>
+      <div :class="{ 'read-only-state': isArchived }">
+        <!-- Read Only Banner -->
+        <div v-if="isArchived" class="archived-banner" style="margin-bottom: 24px;">
+          This team is archived. It is read-only.
         </div>
-        <div class="team-title-block" style="padding-bottom: 0;">
-          <div class="title-row">
-            <h1 style="margin: 0; font-size: 28px;">{{ team.name }}</h1>
-          </div>
-          <div class="team-status-row" style="margin-top: 4px; font-size: 13px; color: #42526E; display: flex; align-items: center;">
-            <span v-if="!isArchived"><i class="fa-solid fa-circle-check" style="color: #0052cc;"></i> Đội ngũ chính thức</span>
-            <span v-else><i class="fa-solid fa-box-archive"></i> Đã lưu trữ</span>
-            <span class="ms-2 status-badge" :class="!isArchived ? 'active' : 'archived'" style="font-size: 10px; padding: 2px 6px;">{{ !isArchived ? 'ACTIVE' : 'ARCHIVED' }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="header-actions">
-        <!-- Add Member -->
-        <button class="primary-btn" :disabled="isArchived" @click="isAddMemberOpen = true">Add Member</button>
-        <!-- Search -->
-        <button class="icon-btn" title="Search member"><i class="fa-solid fa-magnifying-glass"></i></button>
-        <!-- Star -->
-        <button class="icon-btn" @click="teamStore.toggleStar()" :class="{ starred: team.isStarred }" title="Star team">
-          <i :class="team.isStarred ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
-        </button>
-        <!-- Menu -->
-        <div class="dropdown-container">
-          <button class="icon-btn" @click="isMenuOpen = !isMenuOpen" title="More options"><i class="fa-solid fa-ellipsis-vertical"></i></button>
-          <div class="dropdown-menu" v-if="isMenuOpen">
-            <button class="menu-item" :disabled="isArchived"><i class="fa-solid fa-gear"></i> Settings</button>
-            <button class="menu-item" @click="toggleArchive">
-              <i :class="isArchived ? 'fa-solid fa-box-open' : 'fa-solid fa-box-archive'"></i> {{ isArchived ? 'Restore Team' : 'Archive Team' }}
-            </button>
-            <div class="menu-divider"></div>
-            <button class="menu-item danger" @click="isDeleteConfirmOpen = true; isMenuOpen = false"><i class="fa-solid fa-trash"></i> Delete Team</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Tabs Nav -->
-    <div class="tabs-nav">
-      <button class="tab-btn" :class="{ active: currentTab === 'overview' }" @click="currentTab = 'overview'">Giới thiệu</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'activity' }" @click="currentTab = 'activity'">Hoạt động</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'hierarchy' }" @click="currentTab = 'hierarchy'">Phân cấp</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'goals' }" @click="currentTab = 'goals'">Mục Tiêu</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'projects' }" @click="currentTab = 'projects'">Dự Án</button>
-      <button class="tab-btn" :class="{ active: currentTab === 'kudos' }" @click="currentTab = 'kudos'">Khen ngợi</button>
-    </div>
-
-    <!-- Tab Content -->
-    <div class="tab-content" :class="{ 'read-only-state': isArchived }">
-      <!-- Read Only Banner -->
-      <div v-if="isArchived" class="archived-banner">
-        This team is archived. It is read-only.
-      </div>
-
-      <div class="team-layout">
-        <!-- Main Content (Left) -->
-        <div class="main-content">
 
       <!-- Overview -->
       <div v-if="currentTab === 'overview'" class="tab-pane">
-        <section class="info-section">
-          <h3>Việc chúng tôi đang thực hiện</h3>
-          <div class="bio-container" v-if="!isEditingBio" @click="startEditingBio" style="cursor: pointer; padding: 12px; border: 1px solid transparent; border-radius: 3px; min-height: 60px; transition: background 0.2s, border 0.2s;" onmouseover="this.style.backgroundColor='#FAFBFC'" onmouseout="this.style.backgroundColor='transparent'">
-            <div v-if="team.description && team.description !== '<p></p>'" v-html="safeTeamDescription" class="tiptap-content"></div>
-            <p class="description-text" style="color: #6b778c;" v-else>Chia sẻ những gì nhóm bạn đang thực hiện</p>
+        <section class="info-section" style="display: flex; flex-direction: column; gap: 8px;">
+          <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #172B4D;">Việc chúng tôi đang thực hiện</h3>
           </div>
-          <div class="bio-editor" v-else>
-            <RichTextEditor v-model="tempBio" @save="saveBio" @cancel="cancelBio" placeholder="Chia sẻ những gì nhóm bạn đang thực hiện" />
+          <div class="section-body">
+            <RichTextEditor v-if="isEditingBio" v-model="tempBio" @save="saveBio" @cancel="cancelBio" placeholder="Chia sẻ những gì nhóm bạn đang thực hiện" />
+            <div v-else @click="startEditingBio" :style="{ cursor: 'pointer', color: '#5E6C84', fontSize: '14px', padding: '8px', borderRadius: '3px', minHeight: '40px' }" onmouseover="this.style.backgroundColor='#FAFBFC'" onmouseout="this.style.backgroundColor='transparent'">
+              <div v-if="team.description && team.description !== '<p></p>'" v-html="safeTeamDescription" class="tiptap-content" style="color: #172B4D;"></div>
+              <div v-else>Chia sẻ những gì nhóm bạn đang thực hiện</div>
+            </div>
           </div>
         </section>
         
@@ -108,7 +88,9 @@
       <!-- Activity -->
       <div v-if="currentTab === 'activity'" class="tab-pane">
         <section class="info-section">
-          <h3 style="margin-bottom: 24px;">Công việc của {{ team.name }}</h3>
+          <div class="section-header-row">
+            <h3>Công việc SprintA của {{ team.name }}</h3>
+          </div>
           
           <div class="activity-list" style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 32px;" v-if="teamTasks && teamTasks.length > 0">
             <div class="activity-item" v-for="task in teamTasks" :key="task.id" style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 16px; border-bottom: 1px solid #DFE1E6;">
@@ -126,16 +108,22 @@
               </div>
             </div>
           </div>
-          <div v-else style="color: #6B778C; font-size: 13px; margin-bottom: 32px;">Không có công việc nào gần đây từ các dự án được liên kết.</div>
-
-          <div class="jira-empty-box" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: center; gap: 24px;">
-            <div style="width: 80px; height: 60px; background-color: #F4F5F7; display: flex; align-items: center; justify-content: center; border-radius: 4px;">
-               <i class="fa-brands fa-jira" style="font-size: 32px; color: #0052cc;"></i>
-            </div>
-            <div>
-              <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 4px; font-weight: 600;">Hạng mục công việc Jira được chỉ định cho đội ngũ</h4>
-              <p style="font-size: 13px; color: #6B778C;">Công việc được liên kết với đội ngũ của bạn trong Jira sẽ xuất hiện tại đây.</p>
-            </div>
+          <div v-else style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px; background: white;">
+             <div style="position: relative;">
+                <div style="width: 80px; height: 80px; background-color: #EBECF0; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                   <i class="fa-brands fa-jira" style="font-size: 32px; color: #0052CC;"></i>
+                </div>
+                <div v-if="!isArchived" style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                   <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+                </div>
+             </div>
+             <div style="flex: 1; position: relative;">
+                <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Công việc SprintA</h4>
+                <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Công việc được liên kết với đội ngũ của bạn trong SprintA sẽ xuất hiện tại đây.</p>
+                <div style="position: relative; display: inline-block;">
+                  <button v-if="!isArchived" class="secondary-btn">Thêm hạng mục công việc SprintA</button>
+                </div>
+             </div>
           </div>
         </section>
       </div>
@@ -239,8 +227,10 @@
       <div v-if="currentTab === 'goals'" class="tab-pane" @click="isGoalDropdownOpen = false">
         
         <!-- Empty State -->
-        <div v-if="!goals || goals.length === 0" style="padding-top: 24px;">
-           <h3 style="font-size: 16px; color: #172B4D; margin-bottom: 16px;">Đang đóng góp cho</h3>
+        <div v-if="!goals || goals.length === 0">
+           <div class="section-header-row">
+             <h3>Đang đóng góp cho</h3>
+           </div>
            <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
               <div style="position: relative;">
                  <div style="width: 80px; height: 80px; background-color: #EBECF0; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
@@ -251,8 +241,8 @@
                  </div>
               </div>
               <div style="flex: 1; position: relative;">
-                 <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Xem các mục tiêu mà đội ngũ của bạn đang hướng tới</h4>
-                 <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Mục tiêu giúp đội ngũ của bạn kết nối công việc với những kết quả mà họ đóng góp, đồng thời cung cấp một nơi duy nhất để chia sẻ tiến độ thực hiện mục tiêu. Tạo mục tiêu để mọi người hiểu rõ định hướng và ưu tiên của nhóm.</p>
+                 <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Mục tiêu của đội ngũ</h4>
+                 <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Chưa có mục tiêu nào được liên kết với đội ngũ này.</p>
                  <div style="position: relative; display: inline-block;">
                    <button class="secondary-btn" @click.stop="isGoalDropdownOpen = !isGoalDropdownOpen">Thêm mục tiêu</button>
                    <!-- Goal Dropdown Menu -->
@@ -281,7 +271,7 @@
         </div>
 
         <!-- Populated State -->
-        <div v-else style="padding-top: 24px;">
+        <div v-else>
            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
              <h3 style="font-size: 16px; color: #172B4D;">Hiện đóng góp cho</h3>
              <div style="display: flex; gap: 8px;">
@@ -324,7 +314,9 @@
              </div>
            </div>
 
-           <h3 style="font-size: 16px; color: #172B4D; margin-bottom: 16px;">Đã hoàn tất</h3>
+           <div class="section-header-row">
+             <h3>Đã hoàn tất</h3>
+           </div>
            <div style="background-color: #FAFBFC; border: 1px solid #DFE1E6; border-radius: 3px; padding: 12px; text-align: center; color: #6B778C; font-size: 13px;">
              Chưa có mục tiêu nào hoàn thành
            </div>
@@ -333,20 +325,22 @@
 
       <!-- Projects -->
       <div v-if="currentTab === 'projects'" class="tab-pane">
-        <div v-if="!projects || projects.length === 0" style="padding-top: 24px;">
-           <h3 style="font-size: 16px; color: #172B4D; margin-bottom: 16px;">Đang đóng góp cho</h3>
+        <div v-if="!projects || projects.length === 0">
+           <div class="section-header-row">
+             <h3>Đang đóng góp cho</h3>
+           </div>
            <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
               <div style="position: relative;">
                  <div style="width: 80px; height: 80px; background-color: #EBECF0; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
-                    <i class="fa-solid fa-rocket" style="font-size: 32px; color: #172B4D;"></i>
+                    <i class="fa-solid fa-folder" style="font-size: 32px; color: #172B4D;"></i>
                  </div>
                  <div style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #0052CC; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" @click="goToProjects">
                     <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
                  </div>
               </div>
               <div style="flex: 1; position: relative;">
-                 <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Chỉ định cho đội ngũ của bạn các dự án mà họ đang thực hiện</h4>
-                 <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Mục Dự án có thể giúp đội ngũ của bạn chia sẻ các bản cập nhật trạng thái hàng tuần với các bên liên quan trong tổ chức của bạn. Thêm đội ngũ của bạn vào các dự án phù hợp để xem tất cả dự án được liệt kê ở đây.</p>
+                 <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Dự án đội ngũ đang làm</h4>
+                 <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Chưa có dự án nào được liên kết với đội ngũ này.</p>
                  <div style="position: relative; display: inline-block;">
                    <button class="secondary-btn" @click.stop="isProjectDropdownOpen = !isProjectDropdownOpen">Thêm dự án</button>
                    <!-- Project Dropdown Menu -->
@@ -374,7 +368,9 @@
            </div>
         </div>
         <div v-else>
-           <h3 style="font-size: 16px; color: #172B4D; margin-bottom: 16px;">Các dự án liên quan</h3>
+           <div class="section-header-row">
+             <h3>Các dự án liên quan</h3>
+           </div>
            <div style="display: flex; gap: 16px; margin-bottom: 32px; flex-wrap: wrap;">
              <div class="goal-card" v-for="proj in projects" :key="proj.id" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 16px; width: 320px; cursor: pointer;" @click="goToProjectDetail(proj.id)">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
@@ -391,137 +387,127 @@
 
       <!-- Kudos -->
       <div v-if="currentTab === 'kudos'" class="tab-pane">
-        <h3 style="font-size: 16px; color: #172B4D; margin-bottom: 16px;">Khen ngợi</h3>
-        <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 32px; display: flex; align-items: center; justify-content: center; min-height: 200px;">
-           <div style="display: flex; align-items: flex-start; gap: 24px; max-width: 600px;">
-             <div style="font-size: 48px;">
-               <div style="width: 80px; height: 80px; background-color: #FFFAE6; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative;">
-                  <i class="fa-solid fa-medal" style="color: #FFAB00; font-size: 40px;"></i>
-               </div>
-             </div>
-             <div style="flex: 1;">
-               <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Lời khen của nhóm bạn sẽ xuất hiện tại đây</h4>
-               <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Khen ngợi là một cách bày tỏ lời cảm ơn và chúc mừng đồng nghiệp khi họ có thành tích vượt trội.</p>
-               <button class="secondary-btn" @click="isGiveKudosOpen = true" style="display: flex; align-items: center; gap: 8px;">
-                 <i class="fa-regular fa-heart"></i> Give kudos
-               </button>
-             </div>
+        <div class="section-header-row">
+          <h3>Khen ngợi</h3>
+        </div>
+        <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
+           <div style="position: relative;">
+              <div style="width: 80px; height: 80px; background-color: #FFFAE6; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
+                 <i class="fa-solid fa-medal" style="font-size: 32px; color: #FFAB00;"></i>
+              </div>
+              <div style="position: absolute; bottom: -8px; right: -8px; width: 32px; height: 32px; background-color: #FFAB00; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" @click="isGiveKudosOpen = true">
+                 <i class="fa-solid fa-plus" style="font-size: 16px;"></i>
+              </div>
+           </div>
+           <div style="flex: 1; position: relative;">
+              <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Đội ngũ này chưa nhận được lời khen ngợi nào</h4>
+              <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Khen ngợi giúp công nhận những thành quả cá nhân và đội ngũ xuất sắc. Hãy gửi lời khen để khuyến khích mọi người!</p>
+              <div style="position: relative; display: inline-block;">
+                <button class="secondary-btn" @click="isGiveKudosOpen = true" style="display: flex; align-items: center; gap: 8px;">
+                  <i class="fa-regular fa-heart"></i> Give kudos
+                </button>
+              </div>
            </div>
         </div>
+      </div>
+      </div>
+    </template>
         
-        <div class="kudos-grid" v-if="kudos.length > 0" style="margin-top: 32px;">
-          <div class="kudos-card" v-for="k in kudos" :key="k.id">
-            <div class="kudos-icon">{{ k.icon }}</div>
-            <div class="kudos-content">
-              <p class="kudos-msg" v-html="k.message"></p>
-              <span class="kudos-sender">- {{ k.sender }}</span>
+    <template #sidebar>
+      <!-- Card: Liên kết đội ngũ -->
+      <div class="sidebar-card">
+        <div class="sidebar-card-header">
+          <h3>Liên kết đội ngũ <span class="badge">0</span></h3>
+          <button class="icon-btn-micro" title="Add Link"><i class="fa-solid fa-plus"></i></button>
+        </div>
+        <div class="link-items">
+          <div class="link-item" @click="isSprintAProjectOpen = !isSprintAProjectOpen">
+            <div class="link-item-icon project"><i class="fa-solid fa-rocket"></i></div>
+            <span class="link-item-label">Thêm dự án SprintA</span>
+            <!-- SprintA Dropdown Menu -->
+            <div class="dropdown-menu search-dropdown" v-if="isSprintAProjectOpen" @click.stop style="position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: none !important; background: white; max-height: 200px; overflow-y: auto;">
+              <div style="padding: 4px 8px; font-size: 11px; font-weight: bold; color: #6B778C; text-transform: uppercase;">Dự án trong Space</div>
+              <div class="team-option" v-for="sp in siteProjects" :key="sp.id" @click="linkProject(sp)" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
+                 <i class="fa-solid fa-rocket" style="color: #6B778C; font-size: 14px;"></i>
+                 <span class="option-name" style="font-size: 13px; color: #172B4D;">{{ sp.name }}</span>
+              </div>
+              <div v-if="!siteProjects || siteProjects.length === 0" style="padding: 8px; font-size: 12px; color: #6B778C;">Không có dự án nào</div>
             </div>
-            <div class="kudos-reactions">
-              <button class="reaction-btn"><i class="fa-solid fa-heart" style="color: #ff5630;"></i> 1</button>
+          </div>
+          
+          <div class="link-item" @click="isSpaceDropdownOpen = !isSpaceDropdownOpen">
+            <div class="link-item-icon space"><i class="fa-brands fa-confluence"></i></div>
+            <span class="link-item-label">Thêm không gian</span>
+            <!-- Space Dropdown Menu -->
+            <div class="dropdown-menu search-dropdown" v-if="isSpaceDropdownOpen" @click.stop style="position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: none !important; background: white; max-height: 200px; overflow-y: auto;">
+              <div class="team-option" v-for="space in sites" :key="space.id" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
+                 <div class="space-avatar" style="width: 20px; height: 20px; background: #0052CC; color: white; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px;">{{ space.name.substring(0,1).toUpperCase() }}</div>
+                 <span class="option-name" style="font-size: 13px; color: #172B4D;">{{ space.name }}</span>
+              </div>
             </div>
+          </div>
+          
+          <div class="link-item">
+            <div class="link-item-icon link"><i class="fa-solid fa-link"></i></div>
+            <span class="link-item-label">Thêm liên kết</span>
           </div>
         </div>
       </div>
-        </div>
+
+      <!-- Card: Chi tiết -->
+      <div class="sidebar-card">
+        <h3>Chi tiết</h3>
         
-        <!-- Right Sidebar -->
-        <div class="right-sidebar">
-          <!-- Card: Liên kết đội ngũ -->
-          <div class="sidebar-card">
-            <div class="sidebar-card-header">
-              <h3>Liên kết đội ngũ <span class="badge">0</span></h3>
-              <button class="icon-btn-micro" title="Add Link"><i class="fa-solid fa-plus"></i></button>
-            </div>
-            <div class="link-items">
-              <div class="link-item" @click="isSprintAProjectOpen = !isSprintAProjectOpen">
-                <div class="link-item-icon project"><i class="fa-solid fa-rocket"></i></div>
-                <span class="link-item-label">Thêm dự án SprintA</span>
-                <!-- SprintA Dropdown Menu -->
-                <div class="dropdown-menu search-dropdown" v-if="isSprintAProjectOpen" @click.stop style="position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: none !important; background: white; max-height: 200px; overflow-y: auto;">
-                  <div style="padding: 4px 8px; font-size: 11px; font-weight: bold; color: #6B778C; text-transform: uppercase;">Dự án trong Space</div>
-                  <div class="team-option" v-for="sp in siteProjects" :key="sp.id" @click="linkProject(sp)" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
-                     <i class="fa-solid fa-rocket" style="color: #6B778C; font-size: 14px;"></i>
-                     <span class="option-name" style="font-size: 13px; color: #172B4D;">{{ sp.name }}</span>
-                  </div>
-                  <div v-if="!siteProjects || siteProjects.length === 0" style="padding: 8px; font-size: 12px; color: #6B778C;">Không có dự án nào</div>
-                </div>
-              </div>
-              
-              <div class="link-item" @click="isSpaceDropdownOpen = !isSpaceDropdownOpen">
-                <div class="link-item-icon space"><i class="fa-brands fa-confluence"></i></div>
-                <span class="link-item-label">Thêm không gian</span>
-                <!-- Space Dropdown Menu -->
-                <div class="dropdown-menu search-dropdown" v-if="isSpaceDropdownOpen" @click.stop style="position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: none !important; background: white; max-height: 200px; overflow-y: auto;">
-                  <div class="team-option" v-for="space in sites" :key="space.id" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
-                     <div class="space-avatar" style="width: 20px; height: 20px; background: #0052CC; color: white; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px;">{{ space.name.substring(0,1).toUpperCase() }}</div>
-                     <span class="option-name" style="font-size: 13px; color: #172B4D;">{{ space.name }}</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div class="link-item">
-                <div class="link-item-icon link"><i class="fa-solid fa-link"></i></div>
-                <span class="link-item-label">Thêm liên kết</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card: Chi tiết -->
-          <div class="sidebar-card">
-            <h3>Chi tiết</h3>
-            
-            <div class="meta-item-row">
-               <span class="meta-label">Đội ngũ gốc</span>
-               <div class="hierarchy-card mini" v-if="hierarchy?.parent">
-                 <div class="team-identity-small">
-                   <div class="member-avatar-micro" style="background-color: #FFAB00; color: #172B4D;">{{ hierarchy.parent.name.substring(0,2).toUpperCase() }}</div>
-                   <span class="team-name">{{ hierarchy.parent.name }}</span>
-                   <i class="fa-solid fa-circle-check"></i>
-                 </div>
-               </div>
-               <span v-else class="meta-value-empty">Không có đội ngũ gốc</span>
-            </div>
-
-            <div class="meta-item-row align-start">
-               <span class="meta-label">Đội ngũ phụ</span>
-               <div class="hierarchy-list" v-if="hierarchy?.children?.length">
-                 <div class="hierarchy-card mini" v-for="child in hierarchy.children" :key="child.id">
-                   <div class="team-identity-small">
-                     <div class="member-avatar-micro">{{ child.name.substring(0,2).toUpperCase() }}</div>
-                     <span class="team-name">{{ child.name }}</span>
-                   </div>
-                 </div>
-               </div>
-               <span v-else class="meta-value-empty">Không có đội ngũ phụ</span>
-            </div>
-
-            <div class="meta-item-row">
-               <span class="meta-label">Loại đội ngũ</span>
-               <span class="meta-value bold">Đội ngũ chính thức <i class="fa-solid fa-circle-check"></i></span>
-            </div>
-
-            <div class="meta-item-row">
-               <span class="meta-label">Người quản lý</span>
-               <div class="manager-selector-wrapper">
-                  <div class="manager-trigger-btn" @click="isManagerDropdownOpen = !isManagerDropdownOpen">
-                     <UserAvatar v-if="team.manager" :user="{ ...team.manager, fullName: team.manager.name, avatarColor: getAvatarColor(team.manager.email || team.manager.id) }" :size="18" :fontSize="8" />
-                     <i class="fa-solid fa-user-plus" v-else></i>
-                     <span>{{ team.manager ? team.manager.name : 'Chọn người quản lý' }}</span>
-                  </div>
-                  <!-- Dropdown Menu -->
-                  <div class="dropdown-menu" v-if="isManagerDropdownOpen" @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.15); background: white; max-height: 200px; overflow-y: auto;">
-                    <div class="team-option" v-for="m in members" :key="m.id" @click="selectManager(m)" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
-                      <UserAvatar :user="{ ...m, fullName: m.fullName || m.name, avatarColor: getAvatarColor(m.email || m.id) }" :size="20" :fontSize="10" />
-                      <span class="option-name">{{ m.fullName || m.name }}</span>
-                    </div>
-                  </div>
-               </div>
-            </div>
-          </div>
+        <div class="meta-item-row">
+           <span class="meta-label">Đội ngũ gốc</span>
+           <div class="hierarchy-card mini" v-if="hierarchy?.parent">
+             <div class="team-identity-small">
+               <div class="member-avatar-micro" style="background-color: #FFAB00; color: #172B4D;">{{ hierarchy.parent.name.substring(0,2).toUpperCase() }}</div>
+               <span class="team-name">{{ hierarchy.parent.name }}</span>
+               <i class="fa-solid fa-circle-check"></i>
+             </div>
+           </div>
+           <span v-else class="meta-value-empty">Không có đội ngũ gốc</span>
         </div>
-  </div>
-  <!-- End of Layout Wrapper -->
-  </div>
+
+        <div class="meta-item-row align-start">
+           <span class="meta-label">Đội ngũ phụ</span>
+           <div class="hierarchy-list" v-if="hierarchy?.children?.length">
+             <div class="hierarchy-card mini" v-for="child in hierarchy.children" :key="child.id">
+               <div class="team-identity-small">
+                 <div class="member-avatar-micro">{{ child.name.substring(0,2).toUpperCase() }}</div>
+                 <span class="team-name">{{ child.name }}</span>
+               </div>
+             </div>
+           </div>
+           <span v-else class="meta-value-empty">Không có đội ngũ phụ</span>
+        </div>
+
+        <div class="meta-item-row">
+           <span class="meta-label">Loại đội ngũ</span>
+           <span class="meta-value bold">Đội ngũ chính thức <i class="fa-solid fa-circle-check"></i></span>
+        </div>
+
+        <div class="meta-item-row">
+           <span class="meta-label">Người quản lý</span>
+           <div class="manager-selector-wrapper">
+              <div class="manager-trigger-btn" @click="isManagerDropdownOpen = !isManagerDropdownOpen">
+                 <UserAvatar v-if="team.manager" :user="{ ...team.manager, fullName: team.manager.name, avatarColor: getAvatarColor(team.manager.email || team.manager.id) }" :size="18" :fontSize="8" />
+                 <i class="fa-solid fa-user-plus" v-else></i>
+                 <span>{{ team.manager ? team.manager.name : 'Chọn người quản lý' }}</span>
+              </div>
+              <!-- Dropdown Menu -->
+              <div class="dropdown-menu" v-if="isManagerDropdownOpen" @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.15); background: white; max-height: 200px; overflow-y: auto;">
+                <div class="team-option" v-for="m in members" :key="m.id" @click="selectManager(m)" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
+                  <UserAvatar :user="{ ...m, fullName: m.fullName || m.name, avatarColor: getAvatarColor(m.email || m.id) }" :size="20" :fontSize="10" />
+                  <span class="option-name">{{ m.fullName || m.name }}</span>
+                </div>
+              </div>
+           </div>
+        </div>
+      </div>
+    </template>
+  </DetailLayout>
     <Teleport to="body">
     <!-- Modals -->
     <!-- Add Member Modal -->
@@ -807,8 +793,7 @@
        </div>
 
     </div>
-
-  </div>
+  </template>
   <div v-else class="loading-state">
     <div class="loader-spinner"></div>
     <p>Loading team details...</p>
@@ -832,6 +817,8 @@ import DOMPurify from 'dompurify'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
+import DetailLayout from '@/components/common/Detail/DetailLayout.vue'
+import DetailHero from '@/components/common/Detail/DetailHero.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -885,7 +872,11 @@ const isEditingBio = ref(false)
 const tempBio = ref('')
 
 const startEditingBio = () => {
-  tempBio.value = team.value.description || ''
+  let desc = team.value.description || ''
+  if (desc.includes('Phát triển API, database và hạ tầng backend với .NET Core')) {
+    desc = ''
+  }
+  tempBio.value = desc
   isEditingBio.value = true
 }
 
@@ -1881,7 +1872,6 @@ const submitAddMember = async () => {
 /* Tab panes content */
 .info-section {
   margin-bottom: 32px;
-  max-width: 800px;
 }
 
 .info-section h3 {
@@ -1899,13 +1889,15 @@ const submitAddMember = async () => {
 .section-header-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 12px;
-  max-width: 800px;
 }
 
 .section-header-row h3 {
   margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #172B4D;
 }
 
 .member-list {
@@ -2038,7 +2030,6 @@ const submitAddMember = async () => {
 /* Tables */
 .jira-table {
   width: 100%;
-  max-width: 800px;
   border-collapse: collapse;
   text-align: left;
 }
