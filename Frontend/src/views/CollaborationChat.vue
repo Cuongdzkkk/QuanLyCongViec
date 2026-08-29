@@ -380,9 +380,16 @@
               <i class="fa-solid fa-users-viewfinder" aria-hidden="true"></i>
               <span>Camera của người tham gia sẽ xuất hiện ở đây</span>
             </div>
-            <div v-if="captionsEnabled && latestCallCaption.text" class="call-live-caption" aria-live="polite" aria-atomic="true">
-              <strong>{{ latestCallCaption.speakerDisplayName }}</strong>
-              <span>{{ latestCallCaption.text }}</span>
+            <div v-if="captionsEnabled && liveCaptionRows.length" class="call-live-caption-dock" role="group" aria-label="Phụ đề trực tiếp">
+              <div v-for="caption in liveCaptionRows.slice().reverse()" :key="caption.id" class="call-live-caption-row" :class="{ 'is-interim': caption.isInterim }" :aria-live="caption.isInterim ? 'off' : 'polite'" aria-atomic="true">
+                <el-avatar :size="28" :src="caption.avatarUrl || ''" :alt="`${caption.speakerDisplayName} avatar`">
+                  {{ caption.speakerDisplayName?.charAt(0) || '?' }}
+                </el-avatar>
+                <div class="call-live-caption-copy">
+                  <strong>{{ caption.speakerDisplayName }}</strong>
+                  <span>{{ caption.text }}</span>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -570,7 +577,15 @@
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'reactions'"><span>Phản ứng</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="openCallDevicesMenu"><span>Thiết bị</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'effects'"><span>Hiệu ứng hình ảnh</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
-                    <button type="button" class="call-more-menu-item" role="menuitem" @click="toggleCallPictureInPicture">Picture-in-picture</button>
+                    <button
+                      type="button"
+                      class="call-more-menu-item"
+                      :class="{ 'is-unavailable': !hasEligiblePictureInPictureVideo }"
+                      role="menuitem"
+                      :aria-label="pictureInPictureActionLabel"
+                      :title="pictureInPictureActionLabel"
+                      @click="toggleCallPictureInPicture"
+                    >Picture-in-picture</button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="togglePresentationFullscreen">{{ presentationIsFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình' }}</button>
                     <button type="button" class="call-more-menu-item" :class="{ 'is-unavailable': !callTranscriptionCapabilities.configured }" role="menuitem" :disabled="!callTranscriptionCapabilities.configured" @click="moreMenuSection = 'captions'"><span>Phụ đề</span><small>{{ callTranscriptionCapabilities.configured ? callCaptionLanguageLabel : 'Chưa cấu hình' }}</small></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'shortcuts'"><span>Phím tắt</span><small>Ctrl/Cmd+D · E</small></button>
@@ -1221,6 +1236,14 @@ import {
   getMeetingRenderCollections
 } from '@/services/meetingLayoutState'
 import {
+  clearLiveCaptions,
+  isLiveCaptionForSession,
+  normalizeLiveCaptionEvent,
+  removeExpiredLiveCaptions,
+  upsertLiveCaptionFinal,
+  upsertLiveCaptionInterim
+} from '@/services/liveCaptionState'
+import {
   clearScopedCurrentProjectId,
   getScopedCurrentProjectId,
   setScopedCurrentProjectId
@@ -1596,6 +1619,8 @@ let callJoinPromise = null
 const callAiState = ref({ state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] })
 const callTranscriptChunks = ref([])
 const callTranscriptInterim = ref({ text: '', startedAt: '', speakerDisplayName: '' })
+const liveCaptionRows = ref([])
+let liveCaptionExpirySweep = null
 const callTranscriptionCapabilities = ref({ configured: false, provider: 'Unavailable', supportedLanguages: [], defaultLanguage: 'vi', aiConfigured: false, aiProvider: 'Unavailable', aiTranscriptChunkSize: 8 })
 const callMeetingAiReport = ref(null)
 let callMeetingAiRefreshTimer = null
@@ -1673,6 +1698,21 @@ const hasLiveVideoTrack = stream => stream?.getVideoTracks?.().some(track => tra
 const isParticipantVideoVisible = user => user.connectionId === callConnectionId.value
   ? isCallCameraOn.value && hasLiveVideoTrack(localCallStream.value)
   : user.cameraEnabled && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId)?.cameraStream)
+const pictureInPictureUnsupportedMessage = 'Trình duyệt của bạn không hỗ trợ Picture-in-Picture.'
+const pictureInPictureNoVideoMessage = 'Hãy bật camera hoặc chia sẻ màn hình để sử dụng Picture-in-Picture.'
+const standardPictureInPictureSupported = () => typeof document !== 'undefined' &&
+  document.pictureInPictureEnabled === true &&
+  typeof HTMLVideoElement !== 'undefined' &&
+  typeof HTMLVideoElement.prototype.requestPictureInPicture === 'function'
+const hasEligiblePictureInPictureVideo = computed(() => {
+  const hasRenderedPresentation = activePresenter.value && callViewMode.value !== 'tiled' && hasLiveVideoTrack(activePresenterStream())
+  if (hasRenderedPresentation) return true
+  return callParticipants.value.some(isParticipantVideoVisible)
+})
+const pictureInPictureActionLabel = computed(() => {
+  if (!standardPictureInPictureSupported()) return pictureInPictureUnsupportedMessage
+  return hasEligiblePictureInPictureVideo.value ? 'Picture-in-picture' : pictureInPictureNoVideoMessage
+})
 const isParticipantSpeaking = user => user.isSpeaking === true || user.speaking === true || user.activeSpeaker === true
 const participantsInCall = computed(() => dedupeParticipantsByUser(callParticipants.value, callConnectionId.value))
 const focusedCallParticipant = computed(() => participantsInCall.value.find(user =>
@@ -1830,10 +1870,6 @@ const setCallViewMode = mode => {
   showMoreMenu.value = false
   moreMenuSection.value = ''
 }
-const latestCallCaption = computed(() => {
-  if (callTranscriptInterim.value.text) return callTranscriptInterim.value
-  return callTranscriptChunks.value.at(-1) || { text: '', startedAt: '', speakerDisplayName: '' }
-})
 const currentCallConsentStatus = computed(() => {
   const currentUserId = currentUser.value?.id
   return callAiState.value.participants.find(item => `${item.userId}` === `${currentUserId}`)?.consentStatus || 'PENDING'
@@ -1856,7 +1892,11 @@ const normalizeCallAiState = value => {
 }
 
 const handleCallAiState = value => {
-  callAiState.value = normalizeCallAiState(value)
+  const nextState = normalizeCallAiState(value)
+  if (callAiState.value.callSessionId && callAiState.value.callSessionId !== nextState.callSessionId) {
+    clearLiveCaptionRows()
+  }
+  callAiState.value = nextState
 }
 
 const normalizeMeetingAiReport = value => {
@@ -1902,14 +1942,70 @@ const scheduleMeetingAiReportRefresh = () => {
   callMeetingAiRefreshTimer = window.setTimeout(() => void loadMeetingAiReport(activeVoiceChannel.value), 1200)
 }
 
-const handleTranscriptChunk = value => {
+const currentCallSessionId = () => callSession.value?.getCallSessionId?.() || callAiState.value.callSessionId || ''
+
+const clearLiveCaptionRows = () => {
+  liveCaptionRows.value = clearLiveCaptions()
+  if (liveCaptionExpirySweep) {
+    window.clearTimeout(liveCaptionExpirySweep)
+    liveCaptionExpirySweep = null
+  }
+}
+
+const scheduleLiveCaptionExpiry = () => {
+  if (liveCaptionExpirySweep) window.clearTimeout(liveCaptionExpirySweep)
+  const nextExpiry = liveCaptionRows.value
+    .filter(row => !row.isInterim && row.expiresAt)
+    .reduce((soonest, row) => Math.min(soonest, row.expiresAt), Number.POSITIVE_INFINITY)
+  if (!Number.isFinite(nextExpiry)) {
+    liveCaptionExpirySweep = null
+    return
+  }
+  liveCaptionExpirySweep = window.setTimeout(() => {
+    liveCaptionRows.value = removeExpiredLiveCaptions(liveCaptionRows.value)
+    scheduleLiveCaptionExpiry()
+  }, Math.max(0, nextExpiry - Date.now()))
+}
+
+const normalizeCaptionForDisplay = value => {
+  const caption = normalizeLiveCaptionEvent(value)
+  const speaker = participantsInCall.value.find(participant =>
+    `${participant.userId}` === `${caption.speakerUserId}`)
+  const isCurrentUser = `${currentUser.value?.id || ''}` === `${caption.speakerUserId}`
+  return {
+    ...caption,
+    speakerDisplayName: speaker?.displayName || (isCurrentUser ? currentUser.value?.name : '') || caption.speakerDisplayName,
+    avatarUrl: speaker?.avatarUrl || (isCurrentUser ? currentUser.value?.avatar : '') || ''
+  }
+}
+
+const isCurrentCaptionEvent = value => {
+  return captionsEnabled.value && isCaptionSessionCurrent(value)
+}
+
+const isCaptionSessionCurrent = value => {
+  return isLiveCaptionForSession(value, currentCallSessionId())
+}
+
+const updateLiveCaptionRows = (value, update) => {
+  if (!isCurrentCaptionEvent(value)) return
+  const caption = normalizeCaptionForDisplay(value)
+  liveCaptionRows.value = update(liveCaptionRows.value, caption)
+  scheduleLiveCaptionExpiry()
+}
+
+const handleTranscriptChunk = (value, { showLive = true } = {}) => {
   const chunk = {
     id: value?.id ?? value?.Id,
+    callSessionId: value?.callSessionId ?? value?.CallSessionId ?? '',
+    speakerUserId: value?.speakerUserId ?? value?.SpeakerUserId ?? '',
     startedAt: value?.startedAt ?? value?.StartedAt,
     speakerDisplayName: value?.speakerDisplayName ?? value?.SpeakerDisplayName ?? 'Unknown user',
     text: value?.text ?? value?.Text ?? ''
   }
   if (!chunk.id || !chunk.text) return
+  if (showLive && !isCaptionSessionCurrent(chunk)) return
+  if (showLive) updateLiveCaptionRows(chunk, upsertLiveCaptionFinal)
   callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
   callTranscriptChunks.value = [...callTranscriptChunks.value.filter(item => item.id !== chunk.id), chunk]
     .sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt))
@@ -1917,11 +2013,13 @@ const handleTranscriptChunk = value => {
 }
 
 const handleTranscriptInterim = value => {
+  if (!isCurrentCaptionEvent(value)) return
   callTranscriptInterim.value = {
     text: value?.text ?? value?.Text ?? '',
     startedAt: value?.startedAt ?? value?.StartedAt ?? '',
     speakerDisplayName: value?.speakerDisplayName ?? value?.SpeakerDisplayName ?? 'Unknown user'
   }
+  updateLiveCaptionRows(value, upsertLiveCaptionInterim)
 }
 
 const handleTranscriptionError = value => {
@@ -1940,7 +2038,7 @@ const loadCallTranscript = async voiceChannel => {
       sessionId)
     callTranscriptChunks.value = []
     const chunks = Array.isArray(items) ? items : []
-    chunks.forEach(handleTranscriptChunk)
+    chunks.forEach(chunk => handleTranscriptChunk(chunk, { showLive: false }))
     await loadMeetingAiReport(voiceChannel)
   } catch (error) {
     if (error?.response?.status !== 404 && error?.response?.status !== 403) console.warn('Unable to load call transcript', error)
@@ -2031,6 +2129,7 @@ const createCallSessionForVoiceChannel = (voiceChannel, options = {}) => createC
     } else if (error) {
       handleCallError(error, state === 'error')
     }
+    if (state === 'disconnected') clearLiveCaptionRows()
     if (state === 'connected') await syncLocalCallPreview()
     if (state === 'media' && callSession.value) {
       const mediaState = callSession.value.getMediaState()
@@ -2233,9 +2332,40 @@ const cancelPreJoin = () => {
   preJoinVoiceChannel.value = null
 }
 const toggleCallPictureInPicture = async () => {
-  const element = presentationVideoElement.value || [...localVideoElements.values()][0] || [...remoteVideoElements.values()][0]?.element
-  if (!element?.requestPictureInPicture) { callLiveNotice.value = 'Picture-in-picture chưa được trình duyệt hỗ trợ.'; return }
-  try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else await element.requestPictureInPicture(); showMoreMenu.value = false } catch (error) { handleCallError(error) }
+  const closeMoreMenu = () => {
+    showMoreMenu.value = false
+    moreMenuSection.value = ''
+  }
+  const showPictureInPictureMessage = message => {
+    callLiveNotice.value = message
+    ElMessage.warning(message)
+    closeMoreMenu()
+  }
+  if (!standardPictureInPictureSupported()) {
+    showPictureInPictureMessage(pictureInPictureUnsupportedMessage)
+    return
+  }
+  await nextTick()
+  syncCallVideoElements()
+  const candidates = [
+    presentationVideoElement.value,
+    ...localVideoElements.values(),
+    ...[...remoteVideoElements.values()].map(({ element }) => element)
+  ]
+  const element = candidates.find(candidate =>
+    candidate?.requestPictureInPicture && hasLiveVideoTrack(candidate.srcObject))
+  if (!element) {
+    showPictureInPictureMessage(pictureInPictureNoVideoMessage)
+    return
+  }
+  try {
+    if (document.pictureInPictureElement) await document.exitPictureInPicture()
+    else await element.requestPictureInPicture()
+  } catch (error) {
+    handleCallError(error)
+  } finally {
+    closeMoreMenu()
+  }
 }
 const handleCallShortcut = event => {
   if (event.key === 'Escape' && workspaceState.value === 'VOICE_PRE_JOIN') {
@@ -2271,7 +2401,12 @@ const toggleCallCaptions = async () => {
   captionsEnabled.value = !captionsEnabled.value
   showMoreMenu.value = false
   moreMenuSection.value = ''
-  if (!captionsEnabled.value || callAiState.value.state !== 'OFF') return
+  if (!captionsEnabled.value) {
+    clearLiveCaptionRows()
+    callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
+    return
+  }
+  if (callAiState.value.state !== 'OFF') return
   setCallCaptionLanguage()
   await requestCallAi()
 }
@@ -2422,6 +2557,7 @@ const leaveVoiceChannel = async (showMessage = true) => {
   callAiState.value = { state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] }
   callTranscriptChunks.value = []
   callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
+  clearLiveCaptionRows()
   callMeetingAiReport.value = null
   window.clearTimeout(callMeetingAiRefreshTimer)
   callMeetingAiRefreshTimer = null
@@ -5465,33 +5601,61 @@ const fetchProjectMembers = async () => {
   font-size: 18px;
 }
 
-.call-live-caption {
+.call-live-caption-dock {
   position: absolute;
   z-index: 3;
   left: 50%;
-  bottom: 18px;
-  display: flex;
-  max-width: min(760px, calc(100% - 32px));
-  align-items: baseline;
-  gap: 8px;
-  padding: 10px 14px;
+  bottom: clamp(44px, 8%, 68px);
+  display: grid;
+  width: min(680px, calc(100% - 24px));
+  max-height: 192px;
+  gap: 6px;
+  overflow: hidden;
   transform: translateX(-50%);
-  border-radius: 8px;
-  background: rgba(2, 6, 23, 0.88);
-  color: #f8fafc;
-  font-size: 14px;
-  line-height: 1.4;
+  pointer-events: none;
 }
 
-.call-live-caption strong {
-  flex: 0 0 auto;
-  color: #86efac;
-  font-size: 12px;
-}
-
-.call-live-caption span {
+.call-live-caption-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
   min-width: 0;
+  padding: 8px 11px;
+  border: 1px solid rgba(226, 232, 240, 0.18);
+  border-radius: 9px;
+  background: rgba(4, 10, 19, 0.94);
+  color: #f8fafc;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.call-live-caption-row.is-interim {
+  border-style: dashed;
+  opacity: .82;
+}
+
+.call-live-caption-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.call-live-caption-copy strong {
+  overflow: hidden;
+  color: #9af0c5;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.call-live-caption-copy span {
+  min-width: 0;
+  overflow: hidden;
   overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .call-camera-stage {
@@ -6465,6 +6629,52 @@ const fetchProjectMembers = async () => {
   overflow: hidden !important;
 }
 
+/* Keep visual regions and the bottom interaction row in separate hit-test areas. */
+.chat-workspace .call-header + .call-workspace-body:not(.is-presentation-mode) {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) auto auto auto !important;
+}
+
+.chat-workspace .call-header + .call-workspace-body:not(.is-presentation-mode) .call-presentation-stage {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.chat-workspace .call-header + .call-workspace-body:not(.is-presentation-mode) .call-participant-rail {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.chat-workspace .call-header + .call-workspace-body:not(.is-presentation-mode) .call-transcript-panel {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.chat-workspace .call-header + .call-workspace-body:not(.is-presentation-mode) .call-controls-row {
+  grid-column: 1;
+  grid-row: 4;
+}
+
+.chat-workspace .call-header + .call-workspace-body.is-presentation-mode {
+  grid-template-rows: minmax(220px, 1fr) auto auto !important;
+}
+
+.chat-workspace .call-controls-row {
+  position: relative;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+.chat-workspace .call-transcript-panel {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.chat-workspace .call-live-caption-dock {
+  pointer-events: none;
+}
+
 .chat-workspace .call-presentation-stage,
 .chat-workspace .call-camera-stage,
 .chat-workspace .call-camera-stage-tile video,
@@ -6494,7 +6704,8 @@ const fetchProjectMembers = async () => {
 
 .chat-workspace .call-prejoin-camera-off strong,
 .chat-workspace .call-transcript-panel strong,
-.chat-workspace .call-live-caption {
+.chat-workspace .call-live-caption-dock,
+.chat-workspace .call-live-caption-copy {
   color: var(--meeting-fg) !important;
 }
 
@@ -6556,7 +6767,8 @@ const fetchProjectMembers = async () => {
 .chat-workspace .call-camera-stage-label,
 .chat-workspace .call-camera-stage-muted,
 .chat-workspace .call-thumb-caption,
-.chat-workspace .call-live-caption {
+.chat-workspace .call-live-caption-dock,
+.chat-workspace .call-live-caption-copy {
   color: var(--meeting-fg) !important;
 }
 
@@ -6696,7 +6908,7 @@ const fetchProjectMembers = async () => {
   grid-template-columns: 68px 248px minmax(0, 1fr) !important;
   width: min(1440px, calc(100% - 32px)) !important;
   height: min(820px, calc(100dvh - 112px));
-  min-height: 620px;
+  min-height: min(620px, calc(100dvh - 112px));
   margin: 20px auto 28px !important;
   overflow: hidden;
   border: 1px solid var(--chat-line);
@@ -6766,7 +6978,7 @@ const fetchProjectMembers = async () => {
 .chat-workspace .call-control-circle-btn { transition: background-color 160ms ease-out, color 160ms ease-out, transform 120ms ease-out; }
 .chat-workspace .call-control-circle-btn.hang-up { background: #bd4d5c; }
 .chat-workspace .call-control-circle-btn.hang-up:hover { background: #d35d6c; }
-.call-transcript-panel { display: flex; width: 310px; min-width: 310px; flex-direction: column; gap: 10px; padding: 14px; border-left: 1px solid rgba(148, 163, 184, .13); background: #091725; color: #e7f2fb; }
+.call-transcript-panel { display: flex; width: 310px; min-width: 0; max-height: 190px; min-height: 0; flex-direction: column; gap: 10px; overflow-x: hidden; overflow-y: auto; padding: 14px; border-left: 1px solid rgba(148, 163, 184, .13); background: #091725; color: #e7f2fb; }
 .call-transcript-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 2px; }
 .call-transcript-title { display: grid; min-width: 0; gap: 3px; }
 .call-transcript-header strong { display: block; font-size: 14px; letter-spacing: -.01em; }
@@ -6791,7 +7003,7 @@ const fetchProjectMembers = async () => {
 .call-consent-actions { display: flex; gap: 7px; }
 .call-transcript-indicator { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; color: #8be5b8; font-size: 11px; }
 .call-transcript-indicator span { width: 7px; height: 7px; border-radius: 50%; background: #55d994; box-shadow: 0 0 0 4px rgba(85, 217, 148, .12); }
-.call-transcript-list { display: flex; min-height: 120px; max-height: 240px; flex-direction: column; gap: 12px; overflow: auto; padding-top: 3px; }
+.call-transcript-list { display: flex; min-height: 0; max-height: 240px; flex: 1 1 auto; flex-direction: column; gap: 12px; overflow: auto; padding-top: 3px; }
 .call-transcript-list:empty { min-height: 0; }
 .call-transcript-chunk { border-bottom: 1px solid rgba(148, 163, 184, .1); padding-bottom: 9px; }
 .call-transcript-chunk > div { display: flex; align-items: center; gap: 7px; color: #8be5b8; font-size: 10px; }
@@ -6874,6 +7086,9 @@ const fetchProjectMembers = async () => {
   border-top: 1px solid rgba(148, 163, 184, .13);
   border-left: 0;
 }
+.call-workspace-body:not(.is-presentation-mode) .call-transcript-panel {
+  justify-self: end;
+}
 .call-workspace-body.is-presentation-mode .call-controls-row { grid-column: 1 / -1; grid-row: 3; }
 .call-camera-stage.layout-camera_focus { grid-template-columns: minmax(0, min(760px, 100%)); justify-content: center; }
 .call-camera-stage.layout-camera_grid { grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
@@ -6908,6 +7123,9 @@ const fetchProjectMembers = async () => {
   .call-camera-stage-tile video { min-height: 210px; }
   .call-control-dock { max-width: 100%; overflow-x: auto; }
   .call-control-future-slot span { display: none; }
+  .call-live-caption-dock { bottom: 38px; width: calc(100% - 16px); max-height: 144px; }
+  .call-live-caption-row { padding: 7px 9px; }
+  .call-live-caption-row:nth-child(n + 3) { display: none; }
 }
 .chat-context-panel { position: absolute; z-index: 4; top: 0; right: 0; bottom: 0; display: flex; width: var(--chat-context-width); flex-direction: column; border-left: 1px solid var(--chat-line); background: #0c1828; }
 .context-panel-header, .ai-surface-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 18px 16px 12px; border-bottom: 1px solid var(--chat-line); }

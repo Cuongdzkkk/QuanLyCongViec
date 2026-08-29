@@ -38,12 +38,15 @@ const required = [
   'SubmitCallAudioChunk',
   'StopCallAudioStream',
   'linear16',
-  'preRoll'
+  'preRoll',
+  'encodePcmChunkBase64'
 ]
 
 for (const needle of required) assert.ok(source.includes(needle), `missing ${needle}`)
 assert.equal(source.includes('MediaRecorder'), false)
 assert.equal(source.includes('SpeechRecognition'), false)
+assert.match(source, /const payload = encodePcmChunkBase64\(bytes\)/)
+assert.equal(source.includes('const payload = Array.from(bytes)'), false)
 
 for (const needle of [
   'const updateRemoteStreams',

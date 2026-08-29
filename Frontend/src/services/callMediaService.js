@@ -9,6 +9,16 @@ const MAX_RECOVERY_ATTEMPTS = 2
 let activeCallSession = null
 let nextCallHubInstanceId = 0
 
+const BASE64_CHUNK_SIZE = 0x8000
+
+export const encodePcmChunkBase64 = bytes => {
+  let binary = ''
+  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK_SIZE) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_SIZE))
+  }
+  return btoa(binary)
+}
+
 const callHubTraceEnabled = () => {
   try {
     return Boolean(import.meta.env?.DEV || globalThis.localStorage?.getItem('debug_call_hub') === '1')
@@ -211,7 +221,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
 
   const sendTranscriptionChunk = (capture, bytes, startedAt, endedAt) => {
     if (!capture.active || !connection || connection.state !== signalR.HubConnectionState.Connected || !roomId) return
-    const payload = Array.from(bytes)
+    const payload = encodePcmChunkBase64(bytes)
     transcriptionQueue = transcriptionQueue
       .catch(() => {})
       .then(async () => {
