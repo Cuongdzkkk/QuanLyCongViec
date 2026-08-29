@@ -9,21 +9,56 @@ using TaskManagement.Application.Interfaces;
 
 namespace TaskManagement.Infrastructure.Services;
 
+internal interface IDeepgramWebSocketFactory
+{
+    Task<WebSocket> ConnectAsync(Uri endpoint, string apiKey, CancellationToken cancellationToken);
+}
+
+internal sealed class ClientDeepgramWebSocketFactory : IDeepgramWebSocketFactory
+{
+    public async Task<WebSocket> ConnectAsync(Uri endpoint, string apiKey, CancellationToken cancellationToken)
+    {
+        var socket = new ClientWebSocket();
+        try
+        {
+            socket.Options.SetRequestHeader("Authorization", $"Token {apiKey}");
+            await socket.ConnectAsync(endpoint, cancellationToken);
+            return socket;
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
+    }
+}
+
 public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscriptionProvider, IAsyncDisposable
 {
     private readonly CallTranscriptionOptions _options;
     private readonly ICallTranscriptionUsageSink _usageSink;
     private readonly ILogger<DeepgramCallTranscriptionProvider> _logger;
-    private readonly ConcurrentDictionary<SessionKey, DeepgramSession> _sessions = new();
+    private readonly IDeepgramWebSocketFactory _socketFactory;
+    private readonly ConcurrentDictionary<SessionKey, SessionEntry> _sessions = new();
 
     public DeepgramCallTranscriptionProvider(
         CallTranscriptionOptions options,
         ICallTranscriptionUsageSink usageSink,
         ILogger<DeepgramCallTranscriptionProvider> logger)
+        : this(options, usageSink, logger, new ClientDeepgramWebSocketFactory())
+    {
+    }
+
+    internal DeepgramCallTranscriptionProvider(
+        CallTranscriptionOptions options,
+        ICallTranscriptionUsageSink usageSink,
+        ILogger<DeepgramCallTranscriptionProvider> logger,
+        IDeepgramWebSocketFactory socketFactory)
     {
         _options = options;
         _usageSink = usageSink;
         _logger = logger;
+        _socketFactory = socketFactory;
     }
 
     public bool IsConfigured => _options.IsConfigured;
@@ -46,15 +81,20 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
         if (!canContinue()) return;
 
         var key = new SessionKey(chunk.RoomId, chunk.CallSessionId, chunk.SpeakerUserId, chunk.ConsentGeneration);
-        var session = await GetOrCreateSessionAsync(key, chunk, onResult, canContinue, cancellationToken);
+        var (entry, session) = await GetOrCreateSessionAsync(key, chunk, onResult, canContinue, cancellationToken);
         try
         {
             await session.SendAsync(chunk.AudioBytes, chunk, cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A submit token belongs to this send only. It must not cancel the long-lived receive loop.
+            throw;
+        }
         catch when (canContinue())
         {
-            await RemoveAndDisposeAsync(key, session);
-            session = await GetOrCreateSessionAsync(key, chunk, onResult, canContinue, cancellationToken);
+            await RemoveAndDisposeAsync(key, entry, "send failure");
+            (_, session) = await GetOrCreateSessionAsync(key, chunk, onResult, canContinue, cancellationToken);
             await session.SendAsync(chunk.AudioBytes, chunk, cancellationToken);
         }
     }
@@ -67,7 +107,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
         CancellationToken cancellationToken = default)
     {
         var key = new SessionKey(roomId, callSessionId, speakerUserId, consentGeneration);
-        if (_sessions.TryRemove(key, out var session)) await session.DisposeAsync();
+        if (_sessions.TryRemove(key, out var entry)) await DisposeEntryAsync(key, entry, "explicit stream stop");
     }
 
     public async Task StopRoomAsync(string roomId, CancellationToken cancellationToken = default)
@@ -75,7 +115,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
         var sessions = _sessions.Where(item => string.Equals(item.Key.RoomId, roomId, StringComparison.Ordinal)).ToArray();
         foreach (var item in sessions)
         {
-            if (_sessions.TryRemove(item.Key, out var session)) await session.DisposeAsync();
+            if (_sessions.TryRemove(item.Key, out var entry)) await DisposeEntryAsync(item.Key, entry, "room transcription stopped");
         }
     }
 
@@ -83,47 +123,102 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
     {
         foreach (var item in _sessions.ToArray())
         {
-            if (_sessions.TryRemove(item.Key, out var session)) await session.DisposeAsync();
+            if (_sessions.TryRemove(item.Key, out var entry)) await DisposeEntryAsync(item.Key, entry, "provider shutdown");
         }
     }
 
     public static DeepgramTranscript? ParseTranscript(string json) =>
         JsonSerializer.Deserialize<DeepgramTranscript>(json, JsonOptions.Default);
 
-    private async Task<DeepgramSession> GetOrCreateSessionAsync(
+    private async Task<(SessionEntry Entry, DeepgramSession Session)> GetOrCreateSessionAsync(
         SessionKey key,
         CallAudioChunk chunk,
         Func<CallAudioChunk, CallTranscriptionResult, Task> onResult,
         Func<bool> canContinue,
         CancellationToken cancellationToken)
     {
-        if (_sessions.TryGetValue(key, out var existing))
+        var candidate = new SessionEntry(() => DeepgramSession.ConnectAsync(
+            _socketFactory,
+            _options,
+            _usageSink,
+            _logger,
+            chunk,
+            onResult,
+            canContinue,
+            cancellationToken));
+        var entry = _sessions.GetOrAdd(key, candidate);
+        if (ReferenceEquals(entry, candidate))
         {
-            existing.SetCallback(onResult);
-            return existing;
+            _logger.LogInformation(
+                "[CAPTION_PROVIDER] event=SESSION_INSERTED roomId={RoomId} callSessionId={CallSessionId} speakerUserId={SpeakerUserId} consentGeneration={ConsentGeneration}",
+                key.RoomId,
+                key.CallSessionId,
+                key.SpeakerUserId,
+                key.ConsentGeneration);
         }
 
-        var created = await DeepgramSession.ConnectAsync(_options, _usageSink, _logger, chunk, onResult, canContinue, cancellationToken);
-        var winner = _sessions.GetOrAdd(key, created);
-        if (!ReferenceEquals(winner, created)) await created.DisposeAsync();
-        return winner;
+        try
+        {
+            var session = await entry.Session;
+            session.SetCallbacks(onResult, canContinue);
+            return (entry, session);
+        }
+        catch
+        {
+            _sessions.TryRemove(new KeyValuePair<SessionKey, SessionEntry>(key, entry));
+            throw;
+        }
     }
 
-    private async Task RemoveAndDisposeAsync(SessionKey key, DeepgramSession session)
+    private async Task RemoveAndDisposeAsync(SessionKey key, SessionEntry entry, string reason)
     {
-        _sessions.TryRemove(new KeyValuePair<SessionKey, DeepgramSession>(key, session));
-        await session.DisposeAsync();
+        if (_sessions.TryRemove(new KeyValuePair<SessionKey, SessionEntry>(key, entry)))
+            await DisposeEntryAsync(key, entry, reason);
+    }
+
+    private async Task DisposeEntryAsync(SessionKey key, SessionEntry entry, string reason)
+    {
+        _logger.LogInformation(
+            "[CAPTION_PROVIDER] event=SESSION_REMOVED roomId={RoomId} callSessionId={CallSessionId} speakerUserId={SpeakerUserId} consentGeneration={ConsentGeneration} reason={Reason}",
+            key.RoomId,
+            key.CallSessionId,
+            key.SpeakerUserId,
+            key.ConsentGeneration,
+            reason);
+        await entry.DisposeAsync(reason);
     }
 
     private readonly record struct SessionKey(string RoomId, Guid CallSessionId, Guid SpeakerUserId, long ConsentGeneration);
 
+    private sealed class SessionEntry(Func<Task<DeepgramSession>> factory)
+    {
+        private readonly Lazy<Task<DeepgramSession>> _session = new(factory, LazyThreadSafetyMode.ExecutionAndPublication);
+
+        public Task<DeepgramSession> Session => _session.Value;
+
+        public async Task DisposeAsync(string reason)
+        {
+            if (!_session.IsValueCreated) return;
+            DeepgramSession session;
+            try
+            {
+                session = await _session.Value;
+            }
+            catch
+            {
+                // A failed connection has no live session to dispose.
+                return;
+            }
+            await session.DisposeAsync(reason);
+        }
+    }
+
     private sealed class DeepgramSession : IAsyncDisposable
     {
-        private readonly ClientWebSocket _socket;
+        private readonly WebSocket _socket;
         private readonly CallTranscriptionOptions _options;
         private readonly ICallTranscriptionUsageSink _usageSink;
         private readonly ILogger<DeepgramCallTranscriptionProvider> _logger;
-        private readonly Func<bool> _canContinue;
         private readonly CancellationTokenSource _lifetime = new();
         private readonly SemaphoreSlim _sendGate = new(1, 1);
         private readonly DateTimeOffset _streamStartedAt;
@@ -131,14 +226,14 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
         private readonly Guid _speakerId;
         private readonly string _speakerName;
         private readonly string _roomId;
-        private Func<CallAudioChunk, CallTranscriptionResult, Task> _onResult;
+        private SessionCallbacks _callbacks;
         private readonly List<string> _finalSegments = [];
         private DateTimeOffset _lastAudioEndedAt;
         private CallAudioChunk _latestSource;
         private Task? _receiveTask;
 
         private DeepgramSession(
-            ClientWebSocket socket,
+            WebSocket socket,
             CallTranscriptionOptions options,
             ICallTranscriptionUsageSink usageSink,
             ILogger<DeepgramCallTranscriptionProvider> logger,
@@ -150,8 +245,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
             _options = options;
             _usageSink = usageSink;
             _logger = logger;
-            _canContinue = canContinue;
-            _onResult = onResult;
+            _callbacks = new SessionCallbacks(onResult, canContinue);
             _streamStartedAt = firstChunk.StartedAt;
             _lastAudioEndedAt = firstChunk.EndedAt;
             _sessionId = firstChunk.CallSessionId;
@@ -162,6 +256,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
         }
 
         public static async Task<DeepgramSession> ConnectAsync(
+            IDeepgramWebSocketFactory socketFactory,
             CallTranscriptionOptions options,
             ICallTranscriptionUsageSink usageSink,
             ILogger<DeepgramCallTranscriptionProvider> logger,
@@ -170,14 +265,21 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
             Func<bool> canContinue,
             CancellationToken cancellationToken)
         {
-            var socket = new ClientWebSocket();
-            socket.Options.SetRequestHeader("Authorization", $"Token {options.Deepgram.ApiKey}");
             var language = options.SupportedLanguages.Contains(firstChunk.Language, StringComparer.OrdinalIgnoreCase)
                 ? firstChunk.Language.ToLowerInvariant()
                 : options.Language;
             var query = $"?model={Uri.EscapeDataString(options.Model)}&language={Uri.EscapeDataString(language)}&encoding=linear16&sample_rate={options.SampleRate}&channels=1&interim_results=true&punctuate=true&endpointing={options.EndpointingMilliseconds}";
-            await socket.ConnectAsync(new Uri(options.Deepgram.Endpoint + query), cancellationToken);
+            var socket = await socketFactory.ConnectAsync(
+                new Uri(options.Deepgram.Endpoint + query),
+                options.Deepgram.ApiKey!,
+                cancellationToken);
             var session = new DeepgramSession(socket, options, usageSink, logger, firstChunk, onResult, canContinue);
+            logger.LogInformation(
+                "[CAPTION_PROVIDER] event=SESSION_CREATED roomId={RoomId} callSessionId={CallSessionId} speakerUserId={SpeakerUserId} consentGeneration={ConsentGeneration}",
+                firstChunk.RoomId,
+                firstChunk.CallSessionId,
+                firstChunk.SpeakerUserId,
+                firstChunk.ConsentGeneration);
             session._receiveTask = session.ReceiveLoopAsync(session._lifetime.Token);
             logger.LogInformation(
                 "[CAPTION_PROVIDER] event=WS_OPEN roomId={RoomId} callSessionId={CallSessionId} speakerUserId={SpeakerUserId} consentGeneration={ConsentGeneration} receiveLoopStarted=YES",
@@ -188,18 +290,21 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
             return session;
         }
 
-        public void SetCallback(Func<CallAudioChunk, CallTranscriptionResult, Task> onResult) => _onResult = onResult;
+        public void SetCallbacks(
+            Func<CallAudioChunk, CallTranscriptionResult, Task> onResult,
+            Func<bool> canContinue) =>
+            Volatile.Write(ref _callbacks, new SessionCallbacks(onResult, canContinue));
 
         public async Task SendAsync(byte[] audioBytes, CallAudioChunk source, CancellationToken cancellationToken)
         {
-            if (audioBytes.Length == 0 || !_canContinue()) return;
+            if (audioBytes.Length == 0 || !Volatile.Read(ref _callbacks).CanContinue()) return;
             _latestSource = source with { AudioBytes = [] };
             _lastAudioEndedAt = source.EndedAt;
             await _sendGate.WaitAsync(cancellationToken);
             try
             {
                 if (_socket.State != WebSocketState.Open) throw new WebSocketException("Deepgram stream is not open.");
-                await _socket.SendAsync(audioBytes.AsMemory(), WebSocketMessageType.Binary, true, cancellationToken);
+                await _socket.SendAsync(new ArraySegment<byte>(audioBytes), WebSocketMessageType.Binary, true, cancellationToken);
             }
             finally { _sendGate.Release(); }
         }
@@ -216,7 +321,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
                     WebSocketReceiveResult result;
                     do
                     {
-                        result = await _socket.ReceiveAsync(buffer, cancellationToken);
+                        result = await _socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
                         if (result.MessageType == WebSocketMessageType.Close)
                         {
                             LogClosed(result.CloseStatus, result.CloseStatusDescription);
@@ -277,7 +382,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
                         isUtteranceFinal,
                         "Deepgram",
                         parsed.Duration);
-                    await _onResult(_latestSource, resultValue);
+                    await Volatile.Read(ref _callbacks).OnResult(_latestSource, resultValue);
                     if (isUtteranceFinal && parsed.Duration is > 0)
                     {
                         await _usageSink.RecordAsync(
@@ -340,8 +445,14 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
             return message.Length <= 256 ? message : message[..256];
         }
 
-        public async ValueTask DisposeAsync()
+        public ValueTask DisposeAsync() => DisposeAsync("session disposed");
+
+        public async ValueTask DisposeAsync(string reason)
         {
+            _logger.LogInformation(
+                "[CAPTION_PROVIDER] event=LIFETIME_CANCEL callSessionId={CallSessionId} reason={Reason}",
+                _sessionId,
+                reason);
             _lifetime.Cancel();
             try
             {
@@ -349,7 +460,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
                 if (_socket.State == WebSocketState.Open)
                 {
                     var finalize = Encoding.UTF8.GetBytes("{\"type\":\"Finalize\"}");
-                    await _socket.SendAsync(finalize.AsMemory(), WebSocketMessageType.Text, true, CancellationToken.None);
+                    await _socket.SendAsync(new ArraySegment<byte>(finalize), WebSocketMessageType.Text, true, CancellationToken.None);
                     await _socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "call ended", CancellationToken.None);
                 }
                 _sendGate.Release();
@@ -363,6 +474,10 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
             _sendGate.Dispose();
             _lifetime.Dispose();
         }
+
+        private sealed record SessionCallbacks(
+            Func<CallAudioChunk, CallTranscriptionResult, Task> OnResult,
+            Func<bool> CanContinue);
     }
 
     private static class JsonOptions
