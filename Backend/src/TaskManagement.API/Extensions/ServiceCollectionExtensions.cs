@@ -31,6 +31,7 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IProjectMemberService, ProjectMemberService>();
             services.AddScoped<IWorkTaskService, WorkTaskService>();
+            services.AddScoped<IRewardSystemService, RewardSystemService>();
             services.AddScoped<IGamificationService, GamificationService>();
             services.AddHttpClient<ZenMuxAiClient>(client =>
             {

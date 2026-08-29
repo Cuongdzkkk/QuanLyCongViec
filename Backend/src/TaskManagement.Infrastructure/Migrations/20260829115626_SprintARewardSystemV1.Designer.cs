@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaskManagement.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using TaskManagement.Infrastructure.Data;
 namespace TaskManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260829115626_SprintARewardSystemV1")]
+    partial class SprintARewardSystemV1
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3685,9 +3688,6 @@ namespace TaskManagement.Infrastructure.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("nvarchar(8)");
 
-                    b.Property<DateTime?>("DueDateSnapshot")
-                        .HasColumnType("datetime2");
-
                     b.Property<string>("EventType")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -4964,7 +4964,7 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.HasOne("TaskManagement.Domain.Entities.Project", "Project")
                         .WithMany()
                         .HasForeignKey("ProjectId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("TaskManagement.Domain.Entities.User", "User")
                         .WithMany("AiUsageLedgerEntries")

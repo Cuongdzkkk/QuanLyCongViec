@@ -19,10 +19,12 @@ namespace TaskManagement.Infrastructure.Services
         private const string CollaborationBonusType = "CollaborationBonus";
         private const string RewardRuleVersion = "task-reward-v1";
         private readonly ApplicationDbContext _context;
+        private readonly IRewardSystemService? _rewardSystemService;
 
-        public GamificationService(ApplicationDbContext context)
+        public GamificationService(ApplicationDbContext context, IRewardSystemService? rewardSystemService = null)
         {
             _context = context;
+            _rewardSystemService = rewardSystemService;
         }
 
         public async Task ApplyStatusChangeRewardsAsync(Guid workTaskId, Guid actorUserId, string? oldStatusName, string? newStatusName)
@@ -213,6 +215,11 @@ namespace TaskManagement.Infrastructure.Services
                     throw;
                 }
             });
+
+            if (_rewardSystemService != null)
+            {
+                await _rewardSystemService.HandleTaskStatusChangeAsync(workTaskId, actorUserId, oldStatusName, newStatusName);
+            }
         }
 
         public async Task ApplyAssignmentProgressRewardsAsync(Guid workTaskId, Guid assigneeUserId, Guid actorUserId, double oldProgressPercent, double newProgressPercent)
