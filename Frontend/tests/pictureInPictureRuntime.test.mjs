@@ -16,22 +16,30 @@ assert.match(view, new RegExp(`const pictureInPictureNoVideoMessage = '${noVideo
 assert.match(view, /const standardPictureInPictureSupported = \(\) =>[\s\S]*?document\.pictureInPictureEnabled === true/)
 assert.match(view, /const hasEligiblePictureInPictureVideo = computed\(\(\) => \{[\s\S]*?activePresenter\.value[\s\S]*?callParticipants\.value\.some\(isParticipantVideoVisible\)/)
 assert.match(menuItem, /:class="\{ 'is-unavailable': !hasEligiblePictureInPictureVideo \}"/)
-assert.match(menuItem, /:aria-disabled="!hasEligiblePictureInPictureVideo"/)
+assert.doesNotMatch(menuItem, /aria-disabled|:disabled=/)
+assert.match(menuItem, /type="button"/)
+assert.match(menuItem, /:aria-label="pictureInPictureActionLabel"/)
 assert.match(menuItem, /@click="toggleCallPictureInPicture"/)
 
-// TEST 1: a browser with standard PiP but no camera/screen video never reaches the API.
+// TEST 1: pointer activation remains reachable without a blocking disabled semantic.
+assert.match(menuItem, /@click="toggleCallPictureInPicture"/)
 assert.match(handler, /if \(!element\) \{[\s\S]*?showPictureInPictureMessage\(pictureInPictureNoVideoMessage\)[\s\S]*?return/)
 assert.ok(handler.indexOf('if (!element)') < handler.indexOf('await element.requestPictureInPicture()'))
 assert.match(handler, /ElMessage\.warning\(message\)/)
 
-// TEST 2: capability failure has its own visible user-facing message.
+// TEST 2: a native button preserves Enter/Space keyboard activation.
+assert.match(menuItem, /type="button"/)
+assert.doesNotMatch(menuItem, /aria-disabled|:disabled=/)
+assert.match(handler, /showPictureInPictureMessage\(pictureInPictureNoVideoMessage\)/)
+
+// TEST 3: capability failure has its own visible user-facing message.
 assert.match(handler, /if \(!standardPictureInPictureSupported\(\)\) \{[\s\S]*?showPictureInPictureMessage\(pictureInPictureUnsupportedMessage\)[\s\S]*?return/)
 
-// TEST 3: an eligible rendered video uses the standard video PiP API exactly once.
+// TEST 4: an eligible rendered video uses the standard video PiP API exactly once.
 assert.match(handler, /const element = candidates\.find\(candidate =>[\s\S]*?candidate\?\.requestPictureInPicture && hasLiveVideoTrack\(candidate\.srcObject\)/)
 assert.equal((handler.match(/await element\.requestPictureInPicture\(\)/g) || []).length, 1)
 
-// TEST 4: the menu's unavailable state is driven by the reactive eligible-video computed value.
+// TEST 5: the menu's unavailable state is driven by the reactive eligible-video computed value.
 assert.match(menuItem, /!hasEligiblePictureInPictureVideo/)
 
 // TEST 5: both unavailable branches and the API attempt close the More menu.
