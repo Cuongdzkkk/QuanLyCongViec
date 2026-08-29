@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using TaskManagement.Application.Configuration;
 using TaskManagement.Application.Interfaces;
@@ -62,7 +63,10 @@ namespace TaskManagement.API.Extensions
                 .Get<CallTranscriptionOptions>() ?? new CallTranscriptionOptions();
             services.AddSingleton<ICallTranscriptionUsageSink, CallTranscriptionUsageSink>();
             services.AddSingleton<ICallTranscriptionProvider>(_ => callTranscriptionOptions.IsConfigured
-                ? new DeepgramCallTranscriptionProvider(callTranscriptionOptions, _.GetRequiredService<ICallTranscriptionUsageSink>())
+                ? new DeepgramCallTranscriptionProvider(
+                    callTranscriptionOptions,
+                    _.GetRequiredService<ICallTranscriptionUsageSink>(),
+                    _.GetRequiredService<ILogger<DeepgramCallTranscriptionProvider>>())
                 : new UnavailableCallTranscriptionProvider());
             services.AddSingleton<IMeetingAiAnalysisService, MeetingAiAnalysisService>();
             services.AddSingleton<ICollaborationRealtimePublisher, TaskManagement.API.Services.ChatRealtimePublisher>();
