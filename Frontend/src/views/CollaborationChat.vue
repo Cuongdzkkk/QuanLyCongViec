@@ -1270,6 +1270,22 @@ import {
   setScopedCurrentProjectId
 } from '@/utils/projectContext'
 
+let captionRenderDiagnosticCount = 0
+const traceCaptionRender = (resultType, receivedAt) => {
+  try {
+    if (globalThis.localStorage?.getItem('debug_caption_transport') !== '1') return
+    captionRenderDiagnosticCount += 1
+    if (captionRenderDiagnosticCount !== 1 && captionRenderDiagnosticCount % 20 !== 0) return
+    console.info('[CAPTION_RENDER_DIAG]', {
+      timestamp: new Date().toISOString(),
+      resultType,
+      eventToDomMs: Math.max(0, Math.round(performance.now() - receivedAt))
+    })
+  } catch {
+    // Diagnostics remain optional when browser storage is unavailable.
+  }
+}
+
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -2023,6 +2039,7 @@ const updateLiveCaptionRows = (value, update) => {
 }
 
 const handleTranscriptChunk = (value, { showLive = true } = {}) => {
+  const receivedAt = performance.now()
   const chunk = normalizeTranscriptChunkEvent(value)
   if (!chunk.id || !chunk.text) return
   if (showLive && !isCaptionSessionCurrent(chunk)) return
@@ -2030,9 +2047,11 @@ const handleTranscriptChunk = (value, { showLive = true } = {}) => {
   callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
   callTranscriptChunks.value = upsertTranscriptHistory(callTranscriptChunks.value, chunk)
   scheduleMeetingAiReportRefresh()
+  void nextTick().then(() => traceCaptionRender('final', receivedAt))
 }
 
 const handleTranscriptInterim = value => {
+  const receivedAt = performance.now()
   if (!isCurrentCaptionEvent(value)) return
   callTranscriptInterim.value = {
     text: value?.text ?? value?.Text ?? '',
@@ -2040,6 +2059,7 @@ const handleTranscriptInterim = value => {
     speakerDisplayName: value?.speakerDisplayName ?? value?.SpeakerDisplayName ?? 'Unknown user'
   }
   updateLiveCaptionRows(value, upsertLiveCaptionInterim)
+  void nextTick().then(() => traceCaptionRender('interim', receivedAt))
 }
 
 const handleTranscriptionError = value => {

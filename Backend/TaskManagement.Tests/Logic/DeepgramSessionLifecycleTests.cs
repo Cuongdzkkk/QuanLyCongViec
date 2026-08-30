@@ -152,6 +152,24 @@ public sealed class DeepgramSessionLifecycleTests
         socketFactory.Socket.ReceiveCancellationCount.Should().Be(0);
     }
 
+    [Fact]
+    public async Task FourSecondSilentPause_SendsKeepAliveWithoutRestartingTheActiveSession()
+    {
+        var socketFactory = new FakeDeepgramWebSocketFactory();
+        await using var provider = CreateProvider(socketFactory);
+        var sessionId = Guid.NewGuid();
+        var speakerId = Guid.NewGuid();
+
+        await provider.SubmitAsync(Chunk(sessionId, speakerId, 1), (_, _) => Task.CompletedTask, () => true);
+        await Task.Delay(TimeSpan.FromMilliseconds(4200));
+        await provider.SubmitAsync(Chunk(sessionId, speakerId, 2), (_, _) => Task.CompletedTask, () => true);
+
+        socketFactory.ConnectionCount.Should().Be(1);
+        socketFactory.Socket.BinaryMessages.Should().HaveCount(2);
+        socketFactory.Socket.TextMessages.Should().Contain("{\"type\":\"KeepAlive\"}");
+        socketFactory.Socket.State.Should().Be(WebSocketState.Open);
+    }
+
     private static DeepgramCallTranscriptionProvider CreateProvider(IDeepgramWebSocketFactory socketFactory) =>
         new(
             new CallTranscriptionOptions
@@ -249,6 +267,7 @@ internal sealed class FakeDeepgramWebSocket : WebSocket
     private int _receiveCancellationCount;
 
     public ConcurrentQueue<byte[]> BinaryMessages { get; } = new();
+    public ConcurrentQueue<string> TextMessages { get; } = new();
     public int ReceiveCancellationCount => Volatile.Read(ref _receiveCancellationCount);
     public override WebSocketCloseStatus? CloseStatus => _closeStatus;
     public override string? CloseStatusDescription => _closeStatusDescription;
@@ -299,6 +318,7 @@ internal sealed class FakeDeepgramWebSocket : WebSocket
         cancellationToken.ThrowIfCancellationRequested();
         if (_state != WebSocketState.Open) throw new WebSocketException("Socket is not open.");
         if (messageType == WebSocketMessageType.Binary) BinaryMessages.Enqueue(buffer.ToArray());
+        if (messageType == WebSocketMessageType.Text) TextMessages.Enqueue(Encoding.UTF8.GetString(buffer.Array!, buffer.Offset, buffer.Count));
         return Task.CompletedTask;
     }
 
