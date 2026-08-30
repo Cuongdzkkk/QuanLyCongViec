@@ -75,6 +75,7 @@ public sealed class CallHub : Hub
                 new CallParticipantJoinedDto(result.JoinedParticipant!),
                 Context.ConnectionAborted);
         }
+        TraceSignaling("JOIN_CONFIRMED", nameof(JoinVoiceRoom), roomId, Context.ConnectionId, true, true, true, true, true, result.Snapshot.Participants.Count, null);
         var nextAiState = result.Snapshot.AiState;
         if (previousAiState.State == CallAiStates.Active && nextAiState.State == CallAiStates.PausedConsent)
         {
@@ -554,14 +555,55 @@ public sealed class CallHub : Hub
             payloadSize > MaximumSdpUtf8Bytes)
             throw new HubException("SIGNAL_DESCRIPTION_TOO_LARGE");
         var normalizedRoomId = NormalizeRoomId(roomId);
-        if (string.IsNullOrWhiteSpace(targetConnectionId) ||
-            !_rooms.TryGetParticipant(normalizedRoomId, Context.ConnectionId, out var sender) ||
-            !_rooms.TryGetParticipant(normalizedRoomId, targetConnectionId, out var target))
+        var callerRegistered = _rooms.TryGetParticipant(normalizedRoomId, Context.ConnectionId, out var sender);
+        var targetConnectionPresent = !string.IsNullOrWhiteSpace(targetConnectionId);
+        CallRoomParticipant target = null!;
+        var targetRegistered = targetConnectionPresent && _rooms.TryGetParticipant(normalizedRoomId, targetConnectionId!, out target);
+        var sameRoom = callerRegistered && targetRegistered;
+        if (!sameRoom)
+        {
+            var reason = !callerRegistered ? "CALLER_NOT_REGISTERED"
+                : !targetConnectionPresent ? "TARGET_CONNECTION_MISSING"
+                : !targetRegistered ? "TARGET_NOT_REGISTERED"
+                : "NOT_SAME_ROOM";
+            TraceSignaling("SIGNALING_REJECTED", methodName, normalizedRoomId, targetConnectionId, callerRegistered, targetRegistered, sameRoom, callerRegistered, targetConnectionPresent, null, reason);
             throw new HubException("NOT_IN_CALL_ROOM");
+        }
 
-        await Clients.Client(target.ConnectionId).SendAsync(
+        await Clients.Client(target!.ConnectionId).SendAsync(
             eventName, envelope(sender, target, payload), Context.ConnectionAborted);
+        TraceSignaling("SIGNAL_DELIVERED", methodName, normalizedRoomId, target.ConnectionId, callerRegistered, targetRegistered, sameRoom, callerRegistered, true, null, null);
         Trace("SIGNAL_OK", methodName, normalizedRoomId, _rooms.GetAiState(normalizedRoomId).CallSessionId, result: "ok");
+    }
+
+    private void TraceSignaling(
+        string eventName,
+        string method,
+        string? roomId,
+        string? targetConnectionId,
+        bool callerRegistered,
+        bool targetRegistered,
+        bool sameRoom,
+        bool callerConnectionPresent,
+        bool targetConnectionPresent,
+        int? participantCount = null,
+        string? reason = null)
+    {
+        _logger.LogInformation(
+            "[CALL_SIGNALING_DIAG] timestamp={Timestamp} event={Event} method={Method} connectionId={ConnectionId} targetConnectionId={TargetConnectionId} roomId={RoomId} callerRegistered={CallerRegistered} targetRegistered={TargetRegistered} sameRoom={SameRoom} callerConnectionPresent={CallerConnectionPresent} targetConnectionPresent={TargetConnectionPresent} participantCount={ParticipantCount} reason={Reason}",
+            DateTimeOffset.UtcNow,
+            eventName,
+            method,
+            Context.ConnectionId,
+            targetConnectionId,
+            roomId,
+            callerRegistered,
+            targetRegistered,
+            sameRoom,
+            callerConnectionPresent,
+            targetConnectionPresent,
+            participantCount,
+            reason);
     }
 
     private void Trace(
