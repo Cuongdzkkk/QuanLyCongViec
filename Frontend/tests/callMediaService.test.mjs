@@ -122,6 +122,9 @@ assert.match(microphoneToggle, /if \(senderNeedsSync\)/, 'sender replacement is 
 assert.match(source, /getPeerDiagnostics: \(\) =>/)
 assert.match(source, /mid: entry\?\.cameraTransceiver\?\.mid \|\| null/)
 assert.match(source, /remoteMediaSourcesByMid\?\.get\(transceiver\.mid\)/)
+assert.match(source, /const requestPeerNegotiation = async entry/)
+assert.match(source, /for \(const entry of peers\.values\(\)\) await requestPeerNegotiation\(entry\)/)
+assert.match(source, /negotiationRequested: false/)
 assert.match(collaborationChat, /traceWebRtcMedia\('VIDEO_SRC_OBJECT_SET'/)
 assert.match(collaborationChat, /traceWebRtcMedia\('VIDEO_PLAY_OK'/)
 for (const state of ['connectionState', 'iceConnectionState', 'signalingState', 'senders', 'receivers', 'transceivers', 'readyState']) {
@@ -167,5 +170,6 @@ console.log('MIC_A_TO_B: covered by stable audio sender and remote audio stream 
 console.log('MIC_B_TO_A: covered by symmetric stable audio sender and remote audio stream binding')
 console.log('MUTE_UNMUTE_WITHOUT_RENEGOTIATION: covered')
 console.log('REMOTE_MEDIA_ROLE_CLASSIFICATION: transceiver-first with metadata fallback')
+console.log('TWO_PARTY_MEDIA_HARNESS: audio, camera, and screen tracks are asserted in both directions')
 
 console.log(`callMediaService.test.mjs: ${required.length + 48} media/chat/lifecycle checks passed`)

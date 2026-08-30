@@ -32,8 +32,8 @@ for (const [name, contract] of interactionCases) {
 
 const captionDock = captions.match(/\.call-live-caption-dock \{[\s\S]*?\n\}/)?.[0] || ''
 assert.match(captionDock, /position:\s*absolute/)
-assert.match(captionDock, /width:\s*min\(860px, calc\(100% - 28px\)\)/)
-assert.match(captionDock, /max-height:\s*168px/)
+assert.match(captionDock, /width:\s*min\(760px, 70vw, calc\(100% - 28px\)\)/)
+assert.match(captionDock, /max-height:\s*216px/)
 assert.match(captionDock, /overflow:\s*hidden/)
 assert.match(captionDock, /pointer-events:\s*none/)
 assert.doesNotMatch(captionDock, /inset:\s*0|width:\s*100%|height:\s*100%/)

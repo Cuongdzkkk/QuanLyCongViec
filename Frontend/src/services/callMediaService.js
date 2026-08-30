@@ -580,7 +580,14 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   }
 
   const negotiate = async (entry) => {
-    if (entry.makingOffer || entry.pc.signalingState !== 'stable') return
+    if (entry.makingOffer) {
+      if (entry.initialNegotiationComplete) entry.negotiationRequested = true
+      return
+    }
+    if (entry.pc.signalingState !== 'stable') {
+      if (entry.initialNegotiationComplete) entry.negotiationRequested = true
+      return
+    }
     try {
       entry.makingOffer = true
       await entry.pc.setLocalDescription()
@@ -591,6 +598,11 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     } finally {
       entry.makingOffer = false
     }
+  }
+
+  const requestPeerNegotiation = async entry => {
+    if (!entry?.initialNegotiationComplete) return
+    await negotiate(entry)
   }
 
   const getLocalMediaSources = entry => [
@@ -648,6 +660,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       connectionId,
       pc: new RTCPeerConnection({ iceServers }),
       makingOffer: false,
+      negotiationRequested: false,
       ignoreOffer: false,
       isSettingRemoteAnswerPending: false,
       initialNegotiationComplete: false,
@@ -729,6 +742,10 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       await entry.pc.setRemoteDescription(description)
       for (const candidate of entry.pendingCandidates.splice(0)) await entry.pc.addIceCandidate(candidate)
       entry.initialNegotiationComplete = true
+      if (entry.negotiationRequested) {
+        entry.negotiationRequested = false
+        await negotiate(entry)
+      }
     }
   }
 
@@ -975,6 +992,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       cameraStream = null
       cameraEnabled = false
       for (const entry of peers.values()) await syncPeerMedia(entry)
+      for (const entry of peers.values()) await requestPeerNegotiation(entry)
     } else {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -988,6 +1006,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         })
         await adoptCameraStream(stream)
         for (const entry of peers.values()) await syncPeerMedia(entry)
+        for (const entry of peers.values()) await requestPeerNegotiation(entry)
       } catch (error) {
         rawCameraTrack?.stop()
         rawCameraTrack = null
@@ -1011,6 +1030,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     microphoneEnabled = nextEnabled
     if (senderNeedsSync) {
       for (const entry of peers.values()) await syncPeerMedia(entry)
+      for (const entry of peers.values()) await requestPeerNegotiation(entry)
     }
     await sendMediaState()
     emit('media')
@@ -1025,6 +1045,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     next.getAudioTracks().forEach(track => { track.enabled = microphoneEnabled })
     const previous = setLocalMicrophoneStream(next, 'microphone-device-switch')
     for (const entry of peers.values()) await syncPeerMedia(entry)
+    for (const entry of peers.values()) await requestPeerNegotiation(entry)
     previous?.getTracks().forEach(track => track.stop())
     emit('media')
   }
@@ -1039,6 +1060,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     previousOutput?.stop()
     previousRaw?.stop()
     for (const entry of peers.values()) await syncPeerMedia(entry)
+    for (const entry of peers.values()) await requestPeerNegotiation(entry)
     emit('media')
   }
 
@@ -1065,6 +1087,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       cameraStream.addTrack(cameraTrack)
     }
     for (const entry of peers.values()) await syncPeerMedia(entry)
+    for (const entry of peers.values()) await requestPeerNegotiation(entry)
     await sendMediaState()
     emit('media')
   }
@@ -1076,6 +1099,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     screenStream = null
     screenSharing = false
     for (const entry of peers.values()) await syncPeerMedia(entry)
+    for (const entry of peers.values()) await requestPeerNegotiation(entry)
     await sendMediaState()
     emit('media')
   }
@@ -1096,6 +1120,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         streamId: screenStream.id
       })
       for (const entry of peers.values()) await syncPeerMedia(entry)
+      for (const entry of peers.values()) await requestPeerNegotiation(entry)
       screenTrack.onended = () => { void stopScreenShare() }
       await sendMediaState()
       emit('media')

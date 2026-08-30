@@ -288,6 +288,11 @@
               <span>Biên bản</span>
               <span v-if="callAiState.state === 'ACTIVE'" class="call-header-status-dot" aria-label="Đang ghi"></span>
             </button>
+            <button type="button" class="ai-entry-button meeting-ai-entry-button" :class="{ 'is-open': showTranscriptPanel && callTranscriptionCapabilities.aiConfigured }" :disabled="!callTranscriptionCapabilities.configured" :aria-label="`AI cuộc họp: ${callAiStateLabel}`" :title="`AI cuộc họp: ${callAiStateLabel}`" @click="openMeetingAi">
+              <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+              <span>AI cuộc họp</span>
+              <span class="ai-off-state">{{ callAiStateLabel }}</span>
+            </button>
             <button type="button" class="action-btn" aria-label="Mở danh sách người tham gia" title="Người tham gia" @click="openCallParticipants">
               <i class="fa-solid fa-layout-sidebar" aria-hidden="true"></i>
             </button>
@@ -478,9 +483,9 @@
                 <div><time>{{ formatTime(chunk.startedAt) }}</time><strong>{{ chunk.speakerDisplayName }}</strong></div>
                 <p>“{{ chunk.text }}”</p>
               </div>
-              <div v-if="callTranscriptInterim.text" class="call-transcript-chunk is-interim">
-                <div><time>{{ formatTime(callTranscriptInterim.startedAt) }}</time><strong>{{ callTranscriptInterim.speakerDisplayName }}</strong></div>
-                <p>“{{ callTranscriptInterim.text }}”</p>
+              <div v-for="interim in callTranscriptInterims" :key="interim.id" class="call-transcript-chunk is-interim">
+                <div><time>{{ formatTime(interim.startedAt) }}</time><strong>{{ interim.speakerDisplayName }}</strong></div>
+                <p>“{{ interim.text }}”</p>
               </div>
               <span v-if="!callTranscriptChunks.length" class="channel-utility-empty">Chưa có nội dung phiên âm.</span>
             </div>
@@ -1259,10 +1264,12 @@ import {
   isLiveCaptionForSession,
   normalizeLiveCaptionEvent,
   normalizeTranscriptChunkEvent,
+  removeTranscriptInterim,
   removeExpiredLiveCaptions,
   upsertLiveCaptionFinal,
   upsertLiveCaptionInterim,
-  upsertTranscriptHistory
+  upsertTranscriptHistory,
+  upsertTranscriptInterim
 } from '@/services/liveCaptionState'
 import {
   clearScopedCurrentProjectId,
@@ -1658,7 +1665,7 @@ const callSession = ref(null)
 let callJoinPromise = null
 const callAiState = ref({ state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] })
 const callTranscriptChunks = ref([])
-const callTranscriptInterim = ref({ text: '', startedAt: '', speakerDisplayName: '' })
+const callTranscriptInterims = ref([])
 const liveCaptionRows = ref([])
 let liveCaptionExpirySweep = null
 const callTranscriptionCapabilities = ref({ configured: false, provider: 'Unavailable', supportedLanguages: [], defaultLanguage: 'vi', aiConfigured: false, aiProvider: 'Unavailable', aiTranscriptChunkSize: 8 })
@@ -2044,7 +2051,7 @@ const handleTranscriptChunk = (value, { showLive = true } = {}) => {
   if (!chunk.id || !chunk.text) return
   if (showLive && !isCaptionSessionCurrent(chunk)) return
   if (showLive) updateLiveCaptionRows(chunk, upsertLiveCaptionFinal)
-  callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
+  callTranscriptInterims.value = removeTranscriptInterim(callTranscriptInterims.value, chunk)
   callTranscriptChunks.value = upsertTranscriptHistory(callTranscriptChunks.value, chunk)
   scheduleMeetingAiReportRefresh()
   void nextTick().then(() => traceCaptionRender('final', receivedAt))
@@ -2053,11 +2060,9 @@ const handleTranscriptChunk = (value, { showLive = true } = {}) => {
 const handleTranscriptInterim = value => {
   const receivedAt = performance.now()
   if (!isCurrentCaptionEvent(value)) return
-  callTranscriptInterim.value = {
-    text: value?.text ?? value?.Text ?? '',
-    startedAt: value?.startedAt ?? value?.StartedAt ?? '',
-    speakerDisplayName: value?.speakerDisplayName ?? value?.SpeakerDisplayName ?? 'Unknown user'
-  }
+  callTranscriptInterims.value = upsertTranscriptInterim(
+    callTranscriptInterims.value,
+    normalizeCaptionForDisplay(value))
   updateLiveCaptionRows(value, upsertLiveCaptionInterim)
   void nextTick().then(() => traceCaptionRender('interim', receivedAt))
 }
@@ -2431,6 +2436,13 @@ const requestCallAi = async () => {
   }
 }
 
+const openMeetingAi = async () => {
+  showTranscriptPanel.value = true
+  showMoreMenu.value = false
+  moreMenuSection.value = ''
+  if (callAiState.value.state === 'OFF' || callAiState.value.state === 'ERROR') await requestCallAi()
+}
+
 const toggleTranscriptPanel = () => {
   showTranscriptPanel.value = !showTranscriptPanel.value
   showMoreMenu.value = false
@@ -2452,7 +2464,7 @@ const toggleCallCaptions = async () => {
   if (captionsEnabled.value) {
     captionsEnabled.value = false
     clearLiveCaptionRows()
-    callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
+    callTranscriptInterims.value = []
     await stopCallAi()
     return
   }
@@ -2477,7 +2489,7 @@ const respondCallAiConsent = async accepted => {
     } else {
       captionsEnabled.value = false
       clearLiveCaptionRows()
-      callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
+      callTranscriptInterims.value = []
       showCaptionConsentModal.value = false
     }
   } catch (error) {
@@ -2638,7 +2650,7 @@ const leaveVoiceChannel = async (showMessage = true) => {
   showCaptionConsentModal.value = false
   captionConsentSubmitting.value = false
   callTranscriptChunks.value = []
-  callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
+  callTranscriptInterims.value = []
   clearLiveCaptionRows()
   callMeetingAiReport.value = null
   window.clearTimeout(callMeetingAiRefreshTimer)

@@ -86,3 +86,16 @@ export const upsertTranscriptHistory = (rows, value) => {
   return [...rows.filter(item => item.id !== chunk.id), chunk]
     .sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt))
 }
+
+export const upsertTranscriptInterim = (rows, value) => {
+  const chunk = normalizeTranscriptChunkEvent(value)
+  const speakerKey = getCaptionSpeakerKey(chunk)
+  const next = rows.filter(item => !(item.isInterim && item.speakerKey === speakerKey))
+  if (!chunk.text) return next
+  return [...next, { ...chunk, id: `interim:${speakerKey}`, speakerKey, isInterim: true }]
+}
+
+export const removeTranscriptInterim = (rows, value) => {
+  const speakerKey = getCaptionSpeakerKey(normalizeTranscriptChunkEvent(value))
+  return rows.filter(item => !(item.isInterim && item.speakerKey === speakerKey))
+}
