@@ -1260,6 +1260,10 @@ import {
   getMeetingRenderCollections
 } from '@/services/meetingLayoutState'
 import {
+  createMeetingPictureInPictureController,
+  isDocumentPictureInPictureSupported
+} from '@/services/meetingPictureInPicture'
+import {
   clearLiveCaptions,
   isLiveCaptionForSession,
   normalizeLiveCaptionEvent,
@@ -1747,21 +1751,50 @@ const isParticipantVideoVisible = user => user.connectionId === callConnectionId
   : user.cameraEnabled && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId)?.cameraStream)
 const pictureInPictureUnsupportedMessage = 'Trình duyệt của bạn không hỗ trợ Picture-in-Picture.'
 const pictureInPictureNoVideoMessage = 'Hãy bật camera hoặc chia sẻ màn hình để sử dụng Picture-in-Picture.'
+const documentPictureInPictureSupported = () => typeof window !== 'undefined' &&
+  isDocumentPictureInPictureSupported(window)
 const standardPictureInPictureSupported = () => typeof document !== 'undefined' &&
   document.pictureInPictureEnabled === true &&
   typeof HTMLVideoElement !== 'undefined' &&
   typeof HTMLVideoElement.prototype.requestPictureInPicture === 'function'
 const hasEligiblePictureInPictureVideo = computed(() => {
+  if (documentPictureInPictureSupported()) return callParticipants.value.length > 0
   const hasRenderedPresentation = activePresenter.value && callViewMode.value !== 'tiled' && hasLiveVideoTrack(activePresenterStream())
   if (hasRenderedPresentation) return true
   return callParticipants.value.some(isParticipantVideoVisible)
 })
 const pictureInPictureActionLabel = computed(() => {
-  if (!standardPictureInPictureSupported()) return pictureInPictureUnsupportedMessage
+  if (!documentPictureInPictureSupported() && !standardPictureInPictureSupported()) return pictureInPictureUnsupportedMessage
   return hasEligiblePictureInPictureVideo.value ? 'Picture-in-picture' : pictureInPictureNoVideoMessage
 })
 const isParticipantSpeaking = user => user.isSpeaking === true || user.speaking === true || user.activeSpeaker === true
 const participantsInCall = computed(() => dedupeParticipantsByUser(callParticipants.value, callConnectionId.value))
+const meetingPictureInPicture = createMeetingPictureInPictureController()
+const getMeetingPictureInPictureSnapshot = () => ({
+  meetingName: activeVoiceChannel.value?.name || 'Cuộc họp đang diễn ra',
+  participants: participantsInCall.value.map(user => ({
+    connectionId: user.connectionId,
+    displayName: user.connectionId === callConnectionId.value ? (currentUser.value.name || 'Bạn') : user.displayName,
+    avatarUrl: user.connectionId === callConnectionId.value ? currentUser.value.avatar : user.avatarUrl,
+    isLocal: user.connectionId === callConnectionId.value,
+    isSpeaking: isParticipantSpeaking(user),
+    cameraEnabled: user.connectionId === callConnectionId.value ? isCallCameraOn.value : user.cameraEnabled,
+    cameraStream: user.connectionId === callConnectionId.value
+      ? localCallStream.value
+      : remoteStreams.value.get(user.connectionId)?.cameraStream || null
+  })),
+  presentation: activePresenter.value && hasLiveVideoTrack(activePresenterStream())
+    ? { displayName: activePresenter.value.displayName, stream: activePresenterStream() }
+    : null
+})
+const syncMeetingPictureInPicture = () => {
+  if (!meetingPictureInPicture.isOpen()) return
+  if (!participantsInCall.value.length) {
+    meetingPictureInPicture.close()
+    return
+  }
+  meetingPictureInPicture.update(getMeetingPictureInPictureSnapshot())
+}
 const focusedCallParticipant = computed(() => participantsInCall.value.find(user =>
   user.connectionId === focusedParticipantConnectionId.value
 ))
@@ -2386,8 +2419,27 @@ const toggleCallPictureInPicture = async () => {
     ElMessage.warning(message)
     closeMoreMenu()
   }
-  if (!standardPictureInPictureSupported()) {
+  if (!documentPictureInPictureSupported() && !standardPictureInPictureSupported()) {
     showPictureInPictureMessage(pictureInPictureUnsupportedMessage)
+    return
+  }
+  if (documentPictureInPictureSupported()) {
+    if (meetingPictureInPicture.isOpen()) {
+      meetingPictureInPicture.close()
+      closeMoreMenu()
+      return
+    }
+    if (!participantsInCall.value.length) {
+      showPictureInPictureMessage(pictureInPictureNoVideoMessage)
+      return
+    }
+    try {
+      await meetingPictureInPicture.open(getMeetingPictureInPictureSnapshot())
+    } catch (error) {
+      handleCallError(error)
+    } finally {
+      closeMoreMenu()
+    }
     return
   }
   await nextTick()
@@ -2711,6 +2763,12 @@ watch(activePresenter, async presenter => {
   presentationFocused.value = false
   if (document.fullscreenElement === meetingShell.value) await document.exitFullscreen().catch(() => {})
 })
+
+watch(
+  [callParticipants, remoteStreams, localCallStream, localScreenStream, activePresenter, isCallCameraOn, isSharingScreen],
+  syncMeetingPictureInPicture,
+  { deep: true }
+)
 
 const openVoiceChannelChat = async () => {
   if (!activeVoiceChannel.value || !callSession.value) return
@@ -4183,6 +4241,7 @@ watch(projectOptions, (projects) => {
 
 onBeforeUnmount(() => {
   componentMounted = false
+  meetingPictureInPicture.close()
   traceCallHubLifecycle('COMPONENT_UNMOUNT', { reason: 'collaboration-chat-unmounted' })
   window.removeEventListener('keydown', handleCallShortcut)
   document.removeEventListener('fullscreenchange', syncPresentationFullscreen)

@@ -32,13 +32,14 @@ for (const [name, contract] of interactionCases) {
 
 const captionDock = captions.match(/\.call-live-caption-dock \{[\s\S]*?\n\}/)?.[0] || ''
 assert.match(captionDock, /position:\s*absolute/)
-assert.match(captionDock, /width:\s*min\(760px, 70vw, calc\(100% - 28px\)\)/)
+assert.match(captionDock, /width:\s*min\(760px, 65vw, calc\(100% - 28px\)\)/)
 assert.match(captionDock, /max-height:\s*216px/)
 assert.match(captionDock, /overflow:\s*hidden/)
 assert.match(captionDock, /pointer-events:\s*none/)
 assert.doesNotMatch(captionDock, /inset:\s*0|width:\s*100%|height:\s*100%/)
 assert.match(captions, /visibleCaptions = computed\(\(\) => props\.captions\.slice\(-3\)\.reverse\(\)\)/)
-assert.match(captions, /-webkit-line-clamp: 2/)
+assert.match(captions, /\.call-live-caption-copy span \{[\s\S]*?-webkit-line-clamp: 3/)
+assert.match(captions, /\.call-live-caption-row:not\(\.is-latest\) \.call-live-caption-copy span \{[\s\S]*?-webkit-line-clamp: 2/)
 
 const interactionGuard = view.match(/\/\* Keep visual regions[\s\S]*?\.chat-workspace \.call-live-caption-dock \{[\s\S]*?\n\}/)?.[0] || ''
 assert.match(interactionGuard, /grid-template-rows: minmax\(0, 1fr\) auto auto auto !important/)
