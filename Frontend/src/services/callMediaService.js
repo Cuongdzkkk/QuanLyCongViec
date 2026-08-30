@@ -14,7 +14,8 @@ let nextCallHubInstanceId = 0
 const BASE64_CHUNK_SIZE = 0x8000
 export const CAPTION_CHUNK_BYTES = 4000
 export const CAPTION_CHUNK_DURATION_MS = CAPTION_CHUNK_BYTES / 2 / 16
-export const CAPTION_MAX_PENDING_CHUNKS = 4
+export const CAPTION_MAX_PENDING_CHUNKS = 3
+export const CAPTION_MAX_QUEUE_AGE_MS = 375
 
 export const encodePcmChunkBase64 = bytes => {
   let binary = ''
@@ -200,10 +201,14 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   let transcriptionCapture = null
   const transcriptionQueue = createBoundedAsyncQueue({
     maxPending: CAPTION_MAX_PENDING_CHUNKS,
-    onDrop: ({ pendingCount, maxPending }) => traceCaptionTransport('QUEUE_DROP', {
-      pendingCount,
+    maxPendingAgeMs: CAPTION_MAX_QUEUE_AGE_MS,
+    onDrop: ({ queueDepth, oldestQueuedAgeMs, droppedChunkCount, maxPending, reason, droppedMetadata }) => traceCaptionTransport('QUEUE_DROP', {
+      chunkIndex: droppedMetadata?.chunkIndex || 0,
+      queueDepth,
+      oldestQueuedAgeMs,
+      droppedChunkCount,
       maxPending,
-      reason: 'stale-audio-backpressure'
+      reason
     })
   })
   let transcriptionLanguage = 'vi'
@@ -282,10 +287,12 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     if (!capture.active || !connection || connection.state !== signalR.HubConnectionState.Connected || !roomId) return
     const payload = encodePcmChunkBase64(bytes)
     const queuedAt = performance.now()
+    const queuedChunkIndex = capture.nextQueuedChunkIndex = (capture.nextQueuedChunkIndex || 0) + 1
     void transcriptionQueue.enqueue(async () => {
         if (!capture.active || connection?.state !== signalR.HubConnectionState.Connected || capture !== transcriptionCapture) return
         const chunkIndex = ++capture.transportChunkIndex
         const started = performance.now()
+        const queueDiagnostics = transcriptionQueue.getDiagnostics()
         traceCaptionTransport('SEND_BEGIN', {
           connectionState: connection.state,
           callSessionIdPresent: capture.callSessionId ? 'YES' : 'NO',
@@ -296,7 +303,10 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
           channelCount: 1,
           chunkBytes: bytes.byteLength,
           chunkIndex,
-          queueWaitMs: Math.max(0, Math.round(started - queuedAt))
+          queueWaitMs: Math.max(0, Math.round(started - queuedAt)),
+          queueDepth: queueDiagnostics.queueDepth,
+          oldestQueuedAgeMs: queueDiagnostics.oldestQueuedAgeMs,
+          droppedChunkCount: queueDiagnostics.droppedChunkCount
         })
         try {
           launchCaptionTransportClientDiagnostic({
@@ -317,17 +327,24 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
             startedAt.toISOString(),
             endedAt.toISOString(),
             capture.language)
-          traceCaptionTransport('SEND_OK', { elapsedMs: Math.round(performance.now() - started) })
+          traceCaptionTransport('SEND_OK', {
+            chunkIndex,
+            queueDepth: transcriptionQueue.getDiagnostics().queueDepth,
+            oldestQueuedAgeMs: transcriptionQueue.getDiagnostics().oldestQueuedAgeMs,
+            sendDurationMs: Math.round(performance.now() - started),
+            droppedChunkCount: transcriptionQueue.getDiagnostics().droppedChunkCount
+          })
         } catch (error) {
           traceCaptionTransport('SEND_FAIL', {
             errorName: error?.name || 'Error',
             errorMessage: safeCaptionErrorMessage(error),
             connectionState: connection?.state || 'unknown',
-            elapsedMs: Math.round(performance.now() - started)
+            sendDurationMs: Math.round(performance.now() - started),
+            droppedChunkCount: transcriptionQueue.getDiagnostics().droppedChunkCount
           })
           if (!['AI_TRANSCRIPTION_NOT_ACTIVE', 'CALL_TRANSCRIPTION_NOT_CONFIGURED'].includes(error?.message)) onTranscriptionError?.({ code: 'INGEST_ERROR', message: 'Không thể gửi âm thanh cho biên bản cuộc gọi.' })
         }
-      }, { capture })
+      }, { capture, chunkIndex: queuedChunkIndex })
   }
 
   const stopTranscriptionCapture = async ({ notifyServer = true } = {}) => {
@@ -385,7 +402,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       preRoll: [],
       speaking: false,
       silenceChunks: 0,
-      transportChunkIndex: 0
+      transportChunkIndex: 0,
+      nextQueuedChunkIndex: 0
     }
     transcriptionCapture = capture
     traceCaptionSource('CAPTURE_START', {

@@ -93,7 +93,9 @@ assert.match(view, /Cho phép &amp; bật phụ đề|Cho phép & bật phụ đ
 assert.match(view, /const toggleTranscriptPanel =/)
 assert.match(view, /v-if="showTranscriptPanel" class="call-transcript-panel"/)
 assert.match(service, /CAPTION_CHUNK_BYTES = 4000/)
-assert.match(service, /CAPTION_MAX_PENDING_CHUNKS = 4/)
+assert.match(service, /CAPTION_MAX_PENDING_CHUNKS = 3/)
+assert.match(service, /CAPTION_MAX_QUEUE_AGE_MS = 375/)
+assert.match(view, /CAPTION_RENDER_DIAG/)
 assert.match(service, /transcriptionQueue\.clear/)
 assert.doesNotMatch(view, /Array\.from\(new Uint8Array|MediaRecorder/)
 

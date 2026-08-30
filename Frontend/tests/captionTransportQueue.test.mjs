@@ -25,6 +25,27 @@ assert.equal(drops.length, 1)
 releaseFirst()
 await waitFor(() => !queue.isRunning && queue.pendingCount === 0)
 assert.deepEqual(ran, ['first', 'stale-2', 'latest'])
+assert.equal(drops[0].reason, 'bounded-audio-backpressure')
+assert.equal(drops[0].droppedChunkCount, 1)
+
+let now = 0
+const staleDrops = []
+const staleQueue = createBoundedAsyncQueue({
+  maxPending: 3,
+  maxPendingAgeMs: 375,
+  now: () => now,
+  onDrop: detail => staleDrops.push(detail)
+})
+let releaseStaleFirst
+const staleFirst = new Promise(resolve => { releaseStaleFirst = resolve })
+void staleQueue.enqueue(async () => { await staleFirst })
+void staleQueue.enqueue(async () => {})
+now = 400
+void staleQueue.enqueue(async () => {})
+assert.equal(staleDrops[0].reason, 'stale-audio-backpressure')
+assert.equal(staleDrops[0].droppedChunkCount, 1)
+releaseStaleFirst()
+await waitFor(() => !staleQueue.isRunning && staleQueue.pendingCount === 0)
 
 let released = false
 const clearQueue = createBoundedAsyncQueue({ maxPending: 3 })

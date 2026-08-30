@@ -10,6 +10,7 @@ public sealed class CallTranscriptionOptions
     public string[] SupportedLanguages { get; set; } = ["vi", "en"];
     public int SampleRate { get; set; } = 16000;
     public int EndpointingMilliseconds { get; set; } = 450;
+    public int KeepAliveIntervalMilliseconds { get; set; } = 4000;
     public string Model { get; set; } = "nova-3";
     public DeepgramCallTranscriptionOptions Deepgram { get; set; } = new();
 
@@ -20,6 +21,7 @@ public sealed class CallTranscriptionOptions
         SupportedLanguages.All(language => language is "vi" or "en") &&
         SupportedLanguages.Contains(Language, StringComparer.OrdinalIgnoreCase) &&
         SampleRate is >= 8000 and <= 48000 &&
+        KeepAliveIntervalMilliseconds is >= 100 and <= 5000 &&
         !string.IsNullOrWhiteSpace(Model) &&
         !string.IsNullOrWhiteSpace(Deepgram.ApiKey);
 }

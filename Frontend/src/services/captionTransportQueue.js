@@ -1,6 +1,22 @@
-export const createBoundedAsyncQueue = ({ maxPending = 4, onDrop = () => {} } = {}) => {
+export const createBoundedAsyncQueue = ({ maxPending = 4, maxPendingAgeMs = Number.POSITIVE_INFINITY, onDrop = () => {}, now = () => performance.now() } = {}) => {
   const pending = []
   let running = false
+  let droppedChunkCount = 0
+
+  const diagnostics = () => ({
+    queueDepth: pending.length,
+    oldestQueuedAgeMs: pending.length ? Math.max(0, Math.round(now() - pending[0].queuedAt)) : 0,
+    droppedChunkCount
+  })
+
+  const dropOldest = reason => {
+    const dropped = pending.shift()
+    if (!dropped) return false
+    droppedChunkCount += 1
+    dropped.resolve({ dropped: true, reason })
+    onDrop({ ...diagnostics(), maxPending, maxPendingAgeMs, reason, droppedMetadata: dropped.metadata })
+    return true
+  }
 
   const drain = async () => {
     if (running) return
@@ -22,12 +38,9 @@ export const createBoundedAsyncQueue = ({ maxPending = 4, onDrop = () => {} } = 
   }
 
   const enqueue = (task, metadata = {}) => new Promise((resolve, reject) => {
-    if (pending.length >= maxPending) {
-      const dropped = pending.shift()
-      dropped?.resolve({ dropped: true })
-      onDrop({ pendingCount: pending.length + 1, maxPending, metadata })
-    }
-    pending.push({ task, resolve, reject, metadata })
+    while (pending.length && diagnostics().oldestQueuedAgeMs > maxPendingAgeMs) dropOldest('stale-audio-backpressure')
+    if (pending.length >= maxPending) dropOldest('bounded-audio-backpressure')
+    pending.push({ task, resolve, reject, metadata, queuedAt: now() })
     void drain()
   })
 
@@ -43,6 +56,7 @@ export const createBoundedAsyncQueue = ({ maxPending = 4, onDrop = () => {} } = 
   return {
     enqueue,
     clear,
+    getDiagnostics: diagnostics,
     get pendingCount() { return pending.length },
     get isRunning() { return running }
   }
