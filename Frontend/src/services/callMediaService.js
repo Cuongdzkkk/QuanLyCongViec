@@ -4,6 +4,7 @@ import { getStoredAccessToken } from '@/utils/authSession'
 import { createBackgroundBlurProcessor } from '@/services/cameraBackgroundEffect'
 import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 import { launchCaptionTransportClientDiagnostic } from '@/services/captionTransportDiagnostics'
+import { createBoundedAsyncQueue } from '@/services/captionTransportQueue'
 
 const HUB_ROUTE = '/hubs/call'
 const MAX_RECOVERY_ATTEMPTS = 2
@@ -11,6 +12,9 @@ let activeCallSession = null
 let nextCallHubInstanceId = 0
 
 const BASE64_CHUNK_SIZE = 0x8000
+export const CAPTION_CHUNK_BYTES = 4000
+export const CAPTION_CHUNK_DURATION_MS = CAPTION_CHUNK_BYTES / 2 / 16
+export const CAPTION_MAX_PENDING_CHUNKS = 4
 
 export const encodePcmChunkBase64 = bytes => {
   let binary = ''
@@ -194,7 +198,14 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const peers = new Map()
   const remoteStreams = new Map()
   let transcriptionCapture = null
-  let transcriptionQueue = Promise.resolve()
+  const transcriptionQueue = createBoundedAsyncQueue({
+    maxPending: CAPTION_MAX_PENDING_CHUNKS,
+    onDrop: ({ pendingCount, maxPending }) => traceCaptionTransport('QUEUE_DROP', {
+      pendingCount,
+      maxPending,
+      reason: 'stale-audio-backpressure'
+    })
+  })
   let transcriptionLanguage = 'vi'
   let selectedMicrophoneDeviceId = initialMicrophoneDeviceId || ''
   let selectedCameraDeviceId = initialCameraDeviceId || ''
@@ -270,9 +281,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const sendTranscriptionChunk = (capture, bytes, startedAt, endedAt) => {
     if (!capture.active || !connection || connection.state !== signalR.HubConnectionState.Connected || !roomId) return
     const payload = encodePcmChunkBase64(bytes)
-    transcriptionQueue = transcriptionQueue
-      .catch(() => {})
-      .then(async () => {
+    const queuedAt = performance.now()
+    void transcriptionQueue.enqueue(async () => {
         if (!capture.active || connection?.state !== signalR.HubConnectionState.Connected || capture !== transcriptionCapture) return
         const chunkIndex = ++capture.transportChunkIndex
         const started = performance.now()
@@ -285,7 +295,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
           sampleRate: 16000,
           channelCount: 1,
           chunkBytes: bytes.byteLength,
-          chunkIndex
+          chunkIndex,
+          queueWaitMs: Math.max(0, Math.round(started - queuedAt))
         })
         try {
           launchCaptionTransportClientDiagnostic({
@@ -316,7 +327,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
           })
           if (!['AI_TRANSCRIPTION_NOT_ACTIVE', 'CALL_TRANSCRIPTION_NOT_CONFIGURED'].includes(error?.message)) onTranscriptionError?.({ code: 'INGEST_ERROR', message: 'Không thể gửi âm thanh cho biên bản cuộc gọi.' })
         }
-      })
+      }, { capture })
   }
 
   const stopTranscriptionCapture = async ({ notifyServer = true } = {}) => {
@@ -330,6 +341,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       captionCapturePointsToCurrentLocalMicrophoneSource: captionSourceMatchesCurrentMicrophone(capture)
     })
     capture.active = false
+    transcriptionQueue.clear(metadata => metadata.capture === capture)
     capture.processor.onaudioprocess = null
     capture.source.disconnect()
     capture.processor.disconnect()
@@ -387,8 +399,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       const pcm = downsampleToPcm16(event.inputBuffer.getChannelData(0), context.sampleRate)
       capture.pending.push(pcm)
       let pendingLength = capture.pending.reduce((total, item) => total + item.length, 0)
-      while (pendingLength >= 8000 && capture.active) {
-        const chunk = new Uint8Array(8000)
+      while (pendingLength >= CAPTION_CHUNK_BYTES && capture.active) {
+        const chunk = new Uint8Array(CAPTION_CHUNK_BYTES)
         let offset = 0
         while (offset < chunk.length && capture.pending.length) {
           const first = capture.pending[0]
@@ -398,7 +410,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
           if (copyLength === first.length) capture.pending.shift()
           else capture.pending[0] = first.subarray(copyLength)
         }
-        pendingLength -= chunk.length
+        pendingLength -= CAPTION_CHUNK_BYTES
         let energy = 0
         const view = new DataView(chunk.buffer)
         for (let index = 0; index < chunk.length; index += 2) {
@@ -407,7 +419,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         }
         const voiced = Math.sqrt(energy / (chunk.length / 2)) >= 0.012
         const endedAt = new Date()
-        const startedAt = new Date(endedAt.getTime() - 250)
+        const startedAt = new Date(endedAt.getTime() - CAPTION_CHUNK_DURATION_MS)
         capture.preRoll.push({ chunk, startedAt, endedAt })
         if (capture.preRoll.length > 2) capture.preRoll.shift()
         if (voiced) {

@@ -1,5 +1,5 @@
 export const LIVE_CAPTION_MAX_ROWS = 3
-export const LIVE_CAPTION_EXPIRY_MS = 8000
+export const LIVE_CAPTION_EXPIRY_MS = 3500
 
 const read = (value, camel, pascal) => value?.[camel] ?? value?.[pascal]
 

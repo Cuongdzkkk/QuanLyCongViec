@@ -22,7 +22,7 @@ const interactionCases = [
   ['picture-in-picture', /@click="toggleCallPictureInPicture"/],
   ['fullscreen', /@click="togglePresentationFullscreen"/],
   ['consent accept', /@click="respondCallAiConsent\(true\)"/],
-  ['consent decline', /@click="respondCallAiConsent\(false\)"/],
+  ['consent cancel', /@click="cancelCaptionConsent"/],
   ['close call side panel', /@click="closeCallSidePanel"/]
 ]
 
@@ -32,8 +32,8 @@ for (const [name, contract] of interactionCases) {
 
 const captionDock = captions.match(/\.call-live-caption-dock \{[\s\S]*?\n\}/)?.[0] || ''
 assert.match(captionDock, /position:\s*absolute/)
-assert.match(captionDock, /width:\s*min\(720px, calc\(100% - 28px\)\)/)
-assert.match(captionDock, /max-height:\s*188px/)
+assert.match(captionDock, /width:\s*min\(860px, calc\(100% - 28px\)\)/)
+assert.match(captionDock, /max-height:\s*168px/)
 assert.match(captionDock, /overflow:\s*hidden/)
 assert.match(captionDock, /pointer-events:\s*none/)
 assert.doesNotMatch(captionDock, /inset:\s*0|width:\s*100%|height:\s*100%/)
@@ -48,8 +48,10 @@ assert.match(interactionGuard, /\.call-live-caption-dock \{[\s\S]*?pointer-event
 
 const transcriptRules = view.match(/\.call-transcript-panel \{[\s\S]*?\n\}/)?.[0] || ''
 assert.doesNotMatch(transcriptRules, /position:\s*(absolute|fixed)|inset:\s*0|width:\s*100%|height:\s*100%/)
-assert.match(view, /<aside v-if="callAiState\.state !== 'OFF'[^>]*class="call-transcript-panel"/)
+assert.match(view, /<aside v-if="showTranscriptPanel"[^>]*class="call-transcript-panel"/)
 assert.doesNotMatch(view, /class="(?:call-consent|call-transcript)[^"]*overlay[^"]*"/)
+assert.match(view, /class="caption-consent-dialog"/)
+assert.equal((view.match(/@click="toggleCallCaptions"/g) || []).length, 2, 'caption enable/disable has one bottom control and one drawer stop action')
 
 const regions = [
   { id: 'stage', x: 0, y: 0, width: 1000, height: 400, zIndex: 0, pointerEvents: 'auto' },
