@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const view = fs.readFileSync(path.join(here, '..', 'src', 'views', 'CollaborationChat.vue'), 'utf8')
+const captions = fs.readFileSync(path.join(here, '..', 'src', 'components', 'collaboration', 'LiveCaptionOverlay.vue'), 'utf8')
 
 const interactionCases = [
   ['microphone', /@click="toggleCallMicrophone"/],
@@ -29,13 +30,15 @@ for (const [name, contract] of interactionCases) {
   assert.match(view, contract, `${name} interaction is missing`)
 }
 
-const captionDock = view.match(/\.call-live-caption-dock \{[\s\S]*?\n\}/)?.[0] || ''
+const captionDock = captions.match(/\.call-live-caption-dock \{[\s\S]*?\n\}/)?.[0] || ''
 assert.match(captionDock, /position:\s*absolute/)
-assert.match(captionDock, /width:\s*min\(680px, calc\(100% - 24px\)\)/)
-assert.match(captionDock, /max-height:\s*192px/)
+assert.match(captionDock, /width:\s*min\(720px, calc\(100% - 28px\)\)/)
+assert.match(captionDock, /max-height:\s*188px/)
 assert.match(captionDock, /overflow:\s*hidden/)
 assert.match(captionDock, /pointer-events:\s*none/)
 assert.doesNotMatch(captionDock, /inset:\s*0|width:\s*100%|height:\s*100%/)
+assert.match(captions, /visibleCaptions = computed\(\(\) => props\.captions\.slice\(-3\)\.reverse\(\)\)/)
+assert.match(captions, /-webkit-line-clamp: 2/)
 
 const interactionGuard = view.match(/\/\* Keep visual regions[\s\S]*?\.chat-workspace \.call-live-caption-dock \{[\s\S]*?\n\}/)?.[0] || ''
 assert.match(interactionGuard, /grid-template-rows: minmax\(0, 1fr\) auto auto auto !important/)
