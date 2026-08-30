@@ -51,7 +51,7 @@ const visibleCaptions = computed(() => props.captions.slice(-3).reverse())
   left: 50%;
   bottom: clamp(48px, 8%, 72px);
   display: grid;
-  width: min(760px, 70vw, calc(100% - 28px));
+  width: min(760px, 65vw, calc(100% - 28px));
   max-height: 216px;
   gap: 5px;
   overflow: hidden;
@@ -125,7 +125,7 @@ const visibleCaptions = computed(() => props.captions.slice(-3).reverse())
   line-height: 1.42;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
 }
 
 .call-live-caption-row:not(.is-latest) .call-live-caption-copy span {
