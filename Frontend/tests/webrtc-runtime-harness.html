@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <title>WebRTC media runtime harness</title>
 <style>body{font:14px system-ui;margin:24px;background:#0b1220;color:#e5edf5}button{padding:8px 12px}pre{white-space:pre-wrap;background:#111c2d;padding:12px;border-radius:8px}</style>
-<button id="run">Run camera, screen, and late-join checks</button>
+<button id="run">Run two-participant media checks</button>
 <pre id="result">Idle</pre>
 <script type="module">
   import { classifyRemoteMediaRole } from '/src/services/callMediaService.js'
@@ -26,13 +26,26 @@
   }
   const createPeer = () => {
     const pc = new RTCPeerConnection({ iceServers: [] })
-    return { pc, audioTransceiver: pc.addTransceiver('audio', { direction: 'recvonly' }), cameraTransceiver: pc.addTransceiver('video', { direction: 'recvonly' }), screenTransceiver: pc.addTransceiver('video', { direction: 'recvonly' }), remoteMediaSources: new Map(), remoteMediaSourcesByTrackId: new Map() }
+    return { pc, audioTransceiver: pc.addTransceiver('audio', { direction: 'recvonly' }), cameraTransceiver: pc.addTransceiver('video', { direction: 'recvonly' }), screenTransceiver: pc.addTransceiver('video', { direction: 'recvonly' }), remoteMediaSources: new Map(), remoteMediaSourcesByTrackId: new Map(), received: [] }
   }
-  const attach = (entry, camera, screen) => {
-    entry.cameraTransceiver.sender.replaceTrack(camera.getVideoTracks()[0])
+  const createAudio = () => {
+    const context = new AudioContext()
+    const oscillator = context.createOscillator()
+    const destination = context.createMediaStreamDestination()
+    oscillator.frequency.value = 440
+    oscillator.connect(destination)
+    oscillator.start()
+    void context.resume()
+    return { context, oscillator, stream: destination.stream }
+  }
+  const attach = async (entry, audio, camera, screen) => {
+    await entry.audioTransceiver.sender.replaceTrack(audio.stream.getAudioTracks()[0])
+    entry.audioTransceiver.sender.setStreams?.(audio.stream)
+    entry.audioTransceiver.direction = 'sendrecv'
+    await entry.cameraTransceiver.sender.replaceTrack(camera.getVideoTracks()[0])
     entry.cameraTransceiver.sender.setStreams?.(camera)
     entry.cameraTransceiver.direction = 'sendrecv'
-    entry.screenTransceiver.sender.replaceTrack(screen.getVideoTracks()[0])
+    await entry.screenTransceiver.sender.replaceTrack(screen.getVideoTracks()[0])
     entry.screenTransceiver.sender.setStreams?.(screen)
     entry.screenTransceiver.direction = 'sendrecv'
   }
@@ -51,28 +64,41 @@
   const receiveRoles = entry => new Promise(resolve => {
     const roles = []
     entry.pc.ontrack = event => {
-      roles.push({ role: classifyRemoteMediaRole(entry, event.transceiver, event.track, event.streams), readyState: event.track.readyState, trackId: event.track.id, eventMid: event.transceiver.mid, cameraMid: entry.cameraTransceiver.mid, screenMid: entry.screenTransceiver.mid, transceiverIndex: entry.pc.getTransceivers().indexOf(event.transceiver) })
-      if (roles.some(item => item.role === 'camera') && roles.some(item => item.role === 'screen')) resolve(roles)
+      const role = event.track.kind === 'audio' ? 'audio' : classifyRemoteMediaRole(entry, event.transceiver, event.track, event.streams)
+      roles.push({ role, readyState: event.track.readyState, trackId: event.track.id, eventMid: event.transceiver.mid, cameraMid: entry.cameraTransceiver.mid, screenMid: entry.screenTransceiver.mid, transceiverIndex: entry.pc.getTransceivers().indexOf(event.transceiver) })
+      entry.received = roles
+      if (roles.some(item => item.role === 'audio') && roles.some(item => item.role === 'camera') && roles.some(item => item.role === 'screen')) resolve(roles)
     }
     setTimeout(() => resolve(roles), 4000)
   })
-  const runPair = async () => {
-    const sender = createPeer(); const receiver = createPeer()
-    const received = receiveRoles(receiver)
-    attach(sender, canvasTrack('camera'), canvasTrack('screen'))
-    await negotiate(sender, receiver)
-    const roles = await received
-    sender.pc.close(); receiver.pc.close()
-    return roles
+  const liveRole = (roles, role) => roles.some(item => item.role === role && item.readyState === 'live')
+  const closeFixture = fixture => {
+    fixture.audio.context.close()
+    fixture.camera.getTracks().forEach(track => track.stop())
+    fixture.screen.getTracks().forEach(track => track.stop())
+  }
+  const runTwoWayPair = async () => {
+    const participantA = createPeer(); const participantB = createPeer()
+    const fixtureA = { audio: createAudio(), camera: canvasTrack('camera'), screen: canvasTrack('screen') }
+    const fixtureB = { audio: createAudio(), camera: canvasTrack('camera'), screen: canvasTrack('screen') }
+    const receivedByA = receiveRoles(participantA)
+    const receivedByB = receiveRoles(participantB)
+    await attach(participantA, fixtureA.audio, fixtureA.camera, fixtureA.screen)
+    await attach(participantB, fixtureB.audio, fixtureB.camera, fixtureB.screen)
+    await negotiate(participantA, participantB)
+    const [receivedA, receivedB] = await Promise.all([receivedByA, receivedByB])
+    const result = { receivedA, receivedB }
+    participantA.pc.close(); participantB.pc.close()
+    closeFixture(fixtureA); closeFixture(fixtureB)
+    return result
   }
   document.querySelector('#run').addEventListener('click', async () => {
     result.textContent = 'Running…'
     try {
-      const concurrent = await runPair()
-      const lateJoin = await runPair()
-      const live = values => values.some(item => item.role === 'camera' && item.readyState === 'live') && values.some(item => item.role === 'screen' && item.readyState === 'live')
-      if (!live(concurrent) || !live(lateJoin)) throw new Error(`Missing live role: ${JSON.stringify({ concurrent, lateJoin })}`)
-      result.textContent = `PASS\nCAMERA_AND_SCREEN=${JSON.stringify(concurrent)}\nLATE_JOIN_SCREEN=${JSON.stringify(lateJoin)}`
+      const twoWay = await runTwoWayPair()
+      const live = values => ['audio', 'camera', 'screen'].every(role => liveRole(values, role))
+      if (!live(twoWay.receivedA) || !live(twoWay.receivedB)) throw new Error(`Missing live role in both directions: ${JSON.stringify(twoWay)}`)
+      result.textContent = `PASS\nA_RECEIVES_B=${JSON.stringify(twoWay.receivedA)}\nB_RECEIVES_A=${JSON.stringify(twoWay.receivedB)}`
     } catch (error) { result.textContent = `FAIL\n${error.message}` }
   })
 </script>
