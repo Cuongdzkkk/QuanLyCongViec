@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -340,8 +341,8 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
         private long _silentAudioChunkCount;
         private long _submittedAudioMilliseconds;
         private long _resultCount;
-        private DateTimeOffset _lastOutboundAt;
-        private bool _hasSentAudio;
+        private long _lastOutboundTimestamp;
+        private int _hasSentAudio;
         private DateTimeOffset _lastAudioEndedAt;
         private CallAudioChunk _latestSource;
         private Task? _receiveTask;
@@ -362,7 +363,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
             _logger = logger;
             _callbacks = new SessionCallbacks(onResult, canContinue);
             _streamStartedAt = firstChunk.StartedAt;
-            _lastOutboundAt = DateTimeOffset.UtcNow;
+            _lastOutboundTimestamp = Stopwatch.GetTimestamp();
             _lastAudioEndedAt = firstChunk.EndedAt;
             _sessionId = firstChunk.CallSessionId;
             _speakerId = firstChunk.SpeakerUserId;
@@ -423,8 +424,8 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
                 if (_socket.State != WebSocketState.Open) throw new WebSocketException("Deepgram stream is not open.");
                 LogAudioDiagnostics(audioBytes, source);
                 await _socket.SendAsync(new ArraySegment<byte>(audioBytes), WebSocketMessageType.Binary, true, cancellationToken);
-                _hasSentAudio = true;
-                _lastOutboundAt = DateTimeOffset.UtcNow;
+                Volatile.Write(ref _hasSentAudio, 1);
+                Volatile.Write(ref _lastOutboundTimestamp, Stopwatch.GetTimestamp());
                 _submittedAudioMilliseconds += audioBytes.Length * 1000L / (_options.SampleRate * 2L);
             }
             finally { _sendGate.Release(); }
@@ -436,22 +437,29 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    await Task.Delay(_options.KeepAliveIntervalMilliseconds, cancellationToken);
-                    if (!_hasSentAudio || !Volatile.Read(ref _callbacks).CanContinue()) continue;
+                    var interval = TimeSpan.FromMilliseconds(_options.KeepAliveIntervalMilliseconds);
+                    var elapsed = Stopwatch.GetElapsedTime(Volatile.Read(ref _lastOutboundTimestamp));
+                    var remaining = interval - elapsed;
+                    if (remaining > TimeSpan.Zero)
+                    {
+                        await Task.Delay(remaining, cancellationToken);
+                        continue;
+                    }
+                    if (Volatile.Read(ref _hasSentAudio) == 0 || !Volatile.Read(ref _callbacks).CanContinue()) continue;
 
                     await _sendGate.WaitAsync(cancellationToken);
                     try
                     {
                         if (cancellationToken.IsCancellationRequested ||
-                            !_hasSentAudio ||
+                            Volatile.Read(ref _hasSentAudio) == 0 ||
                             !Volatile.Read(ref _callbacks).CanContinue() ||
                             _socket.State != WebSocketState.Open ||
-                            DateTimeOffset.UtcNow - _lastOutboundAt < TimeSpan.FromMilliseconds(_options.KeepAliveIntervalMilliseconds))
+                            Stopwatch.GetElapsedTime(Volatile.Read(ref _lastOutboundTimestamp)) < interval)
                             continue;
 
                         var keepAlive = Encoding.UTF8.GetBytes("{\"type\":\"KeepAlive\"}");
                         await _socket.SendAsync(new ArraySegment<byte>(keepAlive), WebSocketMessageType.Text, true, cancellationToken);
-                        _lastOutboundAt = DateTimeOffset.UtcNow;
+                        Volatile.Write(ref _lastOutboundTimestamp, Stopwatch.GetTimestamp());
                         _logger.LogInformation(
                             "[CAPTION_PROVIDER] event=KEEPALIVE_SENT callSessionId={CallSessionId} intervalMs={IntervalMs}",
                             _sessionId,

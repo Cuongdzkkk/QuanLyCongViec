@@ -21,7 +21,7 @@ public sealed class CallTranscriptionOptions
         SupportedLanguages.All(language => language is "vi" or "en") &&
         SupportedLanguages.Contains(Language, StringComparer.OrdinalIgnoreCase) &&
         SampleRate is >= 8000 and <= 48000 &&
-        KeepAliveIntervalMilliseconds is >= 3000 and <= 5000 &&
+        KeepAliveIntervalMilliseconds is >= 100 and <= 5000 &&
         !string.IsNullOrWhiteSpace(Model) &&
         !string.IsNullOrWhiteSpace(Deepgram.ApiKey);
 }
