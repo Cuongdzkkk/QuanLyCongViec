@@ -59,6 +59,7 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<ICallChatService, CallChatService>();
             services.AddSingleton<ICallRoomRegistry, TaskManagement.API.Services.CallRoomRegistry>();
             services.AddScoped<ICallTranscriptService, CallTranscriptService>();
+            services.AddSingleton<TaskManagement.API.Services.ICallCaptionResultDispatcher, TaskManagement.API.Services.CallCaptionResultDispatcher>();
             var callTranscriptionOptions = configuration
                 .GetSection(CallTranscriptionOptions.SectionName)
                 .Get<CallTranscriptionOptions>() ?? new CallTranscriptionOptions();
