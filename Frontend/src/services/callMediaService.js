@@ -3,6 +3,7 @@ import axiosClient from '@/api/axiosClient'
 import { getStoredAccessToken } from '@/utils/authSession'
 import { createBackgroundBlurProcessor } from '@/services/cameraBackgroundEffect'
 import { configureRealtimeHub } from '@/services/realtimeHubConfig'
+import { launchCaptionTransportClientDiagnostic } from '@/services/captionTransportDiagnostics'
 
 const HUB_ROUTE = '/hubs/call'
 const MAX_RECOVERY_ATTEMPTS = 2
@@ -46,6 +47,15 @@ const captionTransportTraceEnabled = () => {
 const traceCaptionTransport = (event, detail = {}) => {
   if (!captionTransportTraceEnabled()) return
   console.info('[CAPTION_TRACE]', {
+    timestamp: new Date().toISOString(),
+    event,
+    ...detail
+  })
+}
+
+const traceCaptionSource = (event, detail = {}) => {
+  if (!captionTransportTraceEnabled()) return
+  console.info('[CAPTION_SOURCE_DIAG]', {
     timestamp: new Date().toISOString(),
     event,
     ...detail
@@ -163,6 +173,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   let leavePromise = null
   let roomId = null
   let localStream = null
+  let localMicrophoneGeneration = 0
   let cameraStream = null
   let screenStream = null
   let rawCameraTrack = null
@@ -206,6 +217,43 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     onAiState?.(nested && typeof nested === 'object' ? nested : value)
   }
 
+  const getCurrentMicrophoneTrack = () => localStream?.getAudioTracks?.()[0] || null
+
+  const captionSourceMatchesCurrentMicrophone = capture => {
+    if (!capture) return null
+    return capture.localStream === localStream && capture.sourceTrack === getCurrentMicrophoneTrack()
+  }
+
+  const describeCaptionSource = capture => {
+    const track = getCurrentMicrophoneTrack()
+    return {
+      audioContextSampleRate: capture?.context?.sampleRate ?? null,
+      audioTrackReadyState: track?.readyState || 'none',
+      audioTrackEnabled: track ? track.enabled !== false : null,
+      audioTrackMuted: track?.muted === true,
+      localStreamAudioTrackCount: localStream?.getAudioTracks?.().length || 0,
+      sourceBelongsToCurrentLocalStream: captionSourceMatchesCurrentMicrophone(capture),
+      sourceGeneration: capture?.sourceGeneration ?? localMicrophoneGeneration
+    }
+  }
+
+  const setLocalMicrophoneStream = (stream, reason) => {
+    const previous = localStream
+    if (previous === stream) return previous
+    const oldCaptionSourceGeneration = transcriptionCapture?.sourceGeneration ?? null
+    localStream = stream
+    localMicrophoneGeneration += 1
+    traceCaptionSource('SOURCE_CHANGED', {
+      reason,
+      oldCaptionSourceGeneration,
+      newLocalMicrophoneGeneration: localMicrophoneGeneration,
+      activeCaptionAudioNodeRebuilt: false,
+      captionCapturePointsToCurrentLocalMicrophoneSource: captionSourceMatchesCurrentMicrophone(transcriptionCapture),
+      ...describeCaptionSource(transcriptionCapture)
+    })
+    return previous
+  }
+
   const downsampleToPcm16 = (input, inputRate, outputRate = 16000) => {
     const ratio = inputRate / outputRate
     const outputLength = Math.max(1, Math.floor(input.length / ratio))
@@ -226,6 +274,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       .catch(() => {})
       .then(async () => {
         if (!capture.active || connection?.state !== signalR.HubConnectionState.Connected || capture !== transcriptionCapture) return
+        const chunkIndex = ++capture.transportChunkIndex
         const started = performance.now()
         traceCaptionTransport('SEND_BEGIN', {
           connectionState: connection.state,
@@ -235,9 +284,18 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
           language: capture.language,
           sampleRate: 16000,
           channelCount: 1,
-          chunkBytes: bytes.byteLength
+          chunkBytes: bytes.byteLength,
+          chunkIndex
         })
         try {
+          launchCaptionTransportClientDiagnostic({
+            bytes,
+            chunkIndex,
+            callSessionId: capture.callSessionId,
+            projectId,
+            voiceChannelId,
+            enabled: captionTransportTraceEnabled()
+          })
           await connection.invoke(
             'SubmitCallAudioChunk',
             roomId,
@@ -265,6 +323,12 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     const capture = transcriptionCapture
     transcriptionCapture = null
     if (!capture) return
+    traceCaptionSource('CAPTURE_STOP', {
+      ...describeCaptionSource(capture),
+      sourceGeneration: capture.sourceGeneration,
+      activeCaptionAudioNodeRebuilt: false,
+      captionCapturePointsToCurrentLocalMicrophoneSource: captionSourceMatchesCurrentMicrophone(capture)
+    })
     capture.active = false
     capture.processor.onaudioprocess = null
     capture.source.disconnect()
@@ -289,6 +353,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     }
     const context = new AudioContextCtor()
     const source = context.createMediaStreamSource(localStream)
+    const sourceTrack = getCurrentMicrophoneTrack()
     const processor = context.createScriptProcessor(4096, 1, 1)
     const sink = context.createGain()
     sink.gain.value = 0
@@ -299,14 +364,24 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       language: transcriptionLanguage,
       context,
       source,
+      sourceTrack,
+      localStream,
+      sourceGeneration: localMicrophoneGeneration,
       processor,
       sink,
       pending: [],
       preRoll: [],
       speaking: false,
-      silenceChunks: 0
+      silenceChunks: 0,
+      transportChunkIndex: 0
     }
     transcriptionCapture = capture
+    traceCaptionSource('CAPTURE_START', {
+      ...describeCaptionSource(capture),
+      sourceGeneration: capture.sourceGeneration,
+      activeCaptionAudioNodeRebuilt: false,
+      captionCapturePointsToCurrentLocalMicrophoneSource: captionSourceMatchesCurrentMicrophone(capture)
+    })
     processor.onaudioprocess = event => {
       if (!capture.active || !microphoneEnabled) return
       const pcm = downsampleToPcm16(event.inputBuffer.getChannelData(0), context.sampleRate)
@@ -775,6 +850,13 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         trace('JOIN_BEGIN', 'reconnect-rejoin')
         const snapshot = await connection.invoke('JoinVoiceRoom', projectId, voiceChannelId)
         await refreshSnapshot(snapshot)
+        traceCaptionSource('RECONNECT_REJOIN', {
+          oldCaptionSourceGeneration: transcriptionCapture?.sourceGeneration ?? null,
+          newLocalMicrophoneGeneration: localMicrophoneGeneration,
+          activeCaptionAudioNodeRebuilt: false,
+          captionCapturePointsToCurrentLocalMicrophoneSource: captionSourceMatchesCurrentMicrophone(transcriptionCapture),
+          ...describeCaptionSource(transcriptionCapture)
+        })
         emit('connected')
       } catch (error) {
         emit('error', { error, silent: true })
@@ -786,7 +868,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     })
   }
 
-  const acquireMicrophoneWithDevice = async (deviceId, enabled = microphoneEnabled) => {
+  const acquireMicrophoneWithDevice = async (deviceId, enabled = microphoneEnabled, reason = 'microphone-acquisition') => {
     if (!navigator.mediaDevices?.getUserMedia) throw mediaError(null, 'UNSUPPORTED_BROWSER')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -798,7 +880,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         },
         video: false
       })
-      localStream = stream
+      setLocalMicrophoneStream(stream, reason)
       localStream.getAudioTracks().forEach(track => { track.enabled = Boolean(enabled) })
       for (const track of localStream.getAudioTracks()) traceWebRtcMedia('LOCAL_TRACK_READY', {
         trackKind: track.kind,
@@ -891,7 +973,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     let audioTrack = localStream?.getAudioTracks?.()[0] || null
     let senderNeedsSync = false
     if (nextEnabled && (!audioTrack || audioTrack.readyState !== 'live')) {
-      await acquireMicrophoneWithDevice(selectedMicrophoneDeviceId, true)
+      await acquireMicrophoneWithDevice(selectedMicrophoneDeviceId, true, 'track-recovery')
       audioTrack = localStream?.getAudioTracks?.()[0] || null
       senderNeedsSync = true
     }
@@ -911,8 +993,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     if (!localStream) return
     const next = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false })
     next.getAudioTracks().forEach(track => { track.enabled = microphoneEnabled })
-    const previous = localStream
-    localStream = next
+    const previous = setLocalMicrophoneStream(next, 'microphone-device-switch')
     for (const entry of peers.values()) await syncPeerMedia(entry)
     previous?.getTracks().forEach(track => track.stop())
     emit('media')
@@ -1007,14 +1088,14 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       if (typeof RTCPeerConnection === 'undefined') throw mediaError(null, 'UNSUPPORTED_BROWSER')
       microphoneEnabled = Boolean(initialMicrophoneEnabled)
       if (initialMicrophoneStream) {
-        localStream = initialMicrophoneStream
+        setLocalMicrophoneStream(initialMicrophoneStream, 'initial-microphone-stream')
         localStream.getAudioTracks().forEach(track => { track.enabled = microphoneEnabled })
       } else {
         try {
-          await acquireMicrophoneWithDevice(selectedMicrophoneDeviceId, microphoneEnabled)
+          await acquireMicrophoneWithDevice(selectedMicrophoneDeviceId, microphoneEnabled, 'initial-microphone-acquisition')
         } catch (error) {
           if (microphoneEnabled) throw error
-          localStream = null
+          setLocalMicrophoneStream(null, 'initial-microphone-unavailable')
         }
       }
       cameraEnabled = false
@@ -1079,7 +1160,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         cameraTrack?.stop()
         rawCameraTrack?.stop()
         localStream?.getTracks().forEach(track => track.stop())
-        localStream = null
+        setLocalMicrophoneStream(null, 'call-leave')
         cameraTrack = null
         rawCameraTrack = null
         cameraStream = null

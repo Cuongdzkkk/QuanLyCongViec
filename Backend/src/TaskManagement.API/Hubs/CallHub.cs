@@ -1,9 +1,11 @@
+using System.Collections.Concurrent;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaskManagement.Application.DTOs.Collaboration;
+using TaskManagement.Application.Diagnostics;
 using TaskManagement.Application.Interfaces;
 
 namespace TaskManagement.API.Hubs;
@@ -14,6 +16,7 @@ public sealed class CallHub : Hub
     public const string Route = "/hubs/call";
     public const int MaximumReceiveMessageSize = 128 * 1024;
     public const int MaximumSdpUtf8Bytes = 96 * 1024;
+    private const string CaptionTransportCountersKey = "CallHub.CaptionTransportCounters";
 
     private readonly ICallRoomRegistry _rooms;
     private readonly ICallRoomAuthorizationService _authorization;
@@ -320,6 +323,18 @@ public sealed class CallHub : Hub
             throw new HubException("CALL_TRANSCRIPTION_NOT_CONFIGURED");
         }
 
+        var chunkIndex = NextCaptionTransportChunkIndex(
+            normalizedRoomId,
+            participant.CallSessionId,
+            participant.UserId,
+            participant.ConsentGeneration);
+        LogCaptionTransportDiagnostic(
+            roomMetadata,
+            participant.CallSessionId,
+            normalizedLanguage,
+            chunkIndex,
+            audioBytes);
+
         var source = new CallAudioChunk(
             participant.CallSessionId,
             normalizedRoomId,
@@ -402,6 +417,46 @@ public sealed class CallHub : Hub
             reason,
             Context.ConnectionId,
             payloadBytes);
+
+    private void LogCaptionTransportDiagnostic(
+        (string ProjectId, string VoiceChannelId) roomMetadata,
+        Guid callSessionId,
+        string? language,
+        long chunkIndex,
+        byte[] audioBytes)
+    {
+        if (!CaptionTransportDiagnostics.IsSampledChunk(chunkIndex)) return;
+
+        var pcmSha256 = CaptionTransportDiagnostics.ComputeSha256Hex(audioBytes);
+        _logger.LogInformation(
+            "[CAPTION_TRANSPORT_SERVER_DIAG] event=CAPTION_TRANSPORT_SERVER_DIAG connectionId={ConnectionId} callSessionId={CallSessionId} projectId={ProjectId} voiceChannelId={VoiceChannelId} language={Language} chunkIndex={ChunkIndex} payloadBytes={PayloadBytes} pcmSha256={PcmSha256}",
+            Context.ConnectionId,
+            callSessionId,
+            roomMetadata.ProjectId,
+            roomMetadata.VoiceChannelId,
+            language ?? "",
+            chunkIndex,
+            audioBytes.Length,
+            pcmSha256);
+    }
+
+    private long NextCaptionTransportChunkIndex(
+        string roomId,
+        Guid callSessionId,
+        Guid speakerUserId,
+        long consentGeneration)
+    {
+        var items = Context.Items;
+        if (items is null) return 1;
+        var key = $"{roomId}\u001f{callSessionId:D}\u001f{speakerUserId:D}\u001f{consentGeneration}";
+        if (items.TryGetValue(CaptionTransportCountersKey, out var value)
+            && value is ConcurrentDictionary<string, long> counters)
+            return counters.AddOrUpdate(key, 1, (_, current) => current + 1);
+
+        var created = new ConcurrentDictionary<string, long>(StringComparer.Ordinal);
+        var existing = items[CaptionTransportCountersKey] = created;
+        return ((ConcurrentDictionary<string, long>)existing).AddOrUpdate(key, 1, (_, current) => current + 1);
+    }
 
     private static (string ProjectId, string VoiceChannelId) DescribeCaptionRoom(string? roomId)
     {
