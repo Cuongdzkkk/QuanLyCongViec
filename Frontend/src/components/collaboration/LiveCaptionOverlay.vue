@@ -51,8 +51,8 @@ const visibleCaptions = computed(() => props.captions.slice(-3).reverse())
   left: 50%;
   bottom: clamp(48px, 8%, 72px);
   display: grid;
-  width: min(860px, calc(100% - 28px));
-  max-height: 168px;
+  width: min(760px, 70vw, calc(100% - 28px));
+  max-height: 216px;
   gap: 5px;
   overflow: hidden;
   transform: translateX(-50%);
@@ -129,7 +129,7 @@ const visibleCaptions = computed(() => props.captions.slice(-3).reverse())
 }
 
 .call-live-caption-row:not(.is-latest) .call-live-caption-copy span {
-  -webkit-line-clamp: 1;
+  -webkit-line-clamp: 2;
 }
 
 .caption-dock-enter-active,
@@ -147,7 +147,7 @@ const visibleCaptions = computed(() => props.captions.slice(-3).reverse())
   .call-live-caption-dock {
     bottom: 42px;
     width: calc(100% - 16px);
-    max-height: 140px;
+    max-height: 180px;
   }
 
   .call-live-caption-row {

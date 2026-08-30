@@ -8,10 +8,12 @@ import {
   isLiveCaptionForSession,
   normalizeLiveCaptionEvent,
   normalizeTranscriptChunkEvent,
+  removeTranscriptInterim,
   removeExpiredLiveCaptions,
   upsertLiveCaptionFinal,
   upsertLiveCaptionInterim,
-  upsertTranscriptHistory
+  upsertTranscriptHistory,
+  upsertTranscriptInterim
 } from '../src/services/liveCaptionState.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -69,6 +71,14 @@ transcriptHistory = upsertTranscriptHistory(transcriptHistory, event('U1', 'Mộ
 assert.equal(transcriptHistory.length, 1)
 assert.equal(normalizeTranscriptChunkEvent(transcriptHistory[0]).text, 'Một câu hoàn chỉnh')
 
+let transcriptInterims = upsertTranscriptInterim([], event('U1', 'A đang nói'))
+transcriptInterims = upsertTranscriptInterim(transcriptInterims, event('U2', 'B đang nói'))
+transcriptInterims = upsertTranscriptInterim(transcriptInterims, event('U1', 'A tiếp tục nói'))
+assert.deepEqual(transcriptInterims.map(item => item.speakerUserId), ['U2', 'U1'])
+assert.equal(transcriptInterims.find(item => item.speakerUserId === 'U2').text, 'B đang nói')
+transcriptInterims = removeTranscriptInterim(transcriptInterims, event('U2', 'B hoàn tất'))
+assert.deepEqual(transcriptInterims.map(item => item.speakerUserId), ['U1'])
+
 assert.match(view, /<LiveCaptionOverlay :enabled="captionsEnabled" :captions="liveCaptionRows"/)
 assert.match(view, /ref="presentationStage" class="call-presentation-stage"/)
 assert.match(service, /CallTranscriptInterim/)
@@ -82,6 +92,9 @@ assert.match(view, /const isCurrentCaptionEvent = value =>/)
 assert.match(state, /eventSessionId.*currentSessionId/)
 assert.match(view, /upsertLiveCaptionInterim/)
 assert.match(view, /upsertLiveCaptionFinal/)
+assert.match(view, /callTranscriptInterims/)
+assert.match(view, /upsertTranscriptInterim/)
+assert.doesNotMatch(view, /callTranscriptInterim\.value/)
 assert.match(view, /callTranscriptChunks\.value = upsertTranscriptHistory/)
 assert.match(view, /clearLiveCaptionRows\(\)/)
 assert.match(view, /import LiveCaptionOverlay/)
@@ -99,6 +112,6 @@ assert.match(view, /CAPTION_RENDER_DIAG/)
 assert.match(service, /transcriptionQueue\.clear/)
 assert.doesNotMatch(view, /Array\.from\(new Uint8Array|MediaRecorder/)
 
-console.log('CAPTION_DOCK_RUNTIME: 22 focused live-caption behaviors covered')
+console.log('CAPTION_DOCK_RUNTIME: 26 focused live-caption behaviors covered')
 console.log('CAPTION_ROWS: per-speaker interim/final replacement, max rows, expiry, cleanup, stale-session guard')
 console.log('NO_DUPLICATE_STT_OR_PERSISTENCE: covered by existing CallHub/caption contracts')
