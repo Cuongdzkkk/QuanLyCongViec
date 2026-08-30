@@ -68,6 +68,49 @@ for (const event of [
   'TRACK_ENDED'
 ]) assert.ok(source.includes(`'${event}'`), `missing WebRTC media diagnostic ${event}`)
 
+for (const event of [
+  'JOIN_CONFIRMED',
+  'PARTICIPANT_DISCOVERED',
+  'PEER_CREATE',
+  'LOCAL_TRACK_STATE',
+  'OFFER_CREATE_BEGIN',
+  'OFFER_CREATE_OK',
+  'OFFER_RECEIVED',
+  'REMOTE_DESCRIPTION_SET_OFFER',
+  'ANSWER_CREATE_BEGIN',
+  'ANSWER_CREATE_OK',
+  'ANSWER_RECEIVED',
+  'REMOTE_DESCRIPTION_SET_ANSWER',
+  'ICE_LOCAL_GENERATED',
+  'ICE_RECEIVED',
+  'ICE_ADD_OK',
+  'ICE_ADD_FAIL',
+  'SIGNALING_STATE_CHANGED',
+  'ICE_CONNECTION_STATE_CHANGED',
+  'PEER_CONNECTION_STATE_CHANGED',
+  'REMOTE_AUDIO_STREAM_UPDATED',
+  'REMOTE_CAMERA_STREAM_UPDATED',
+  'REMOTE_SCREEN_STREAM_UPDATED',
+  'REMOTE_MEDIA_ELEMENT_BOUND',
+  'REMOTE_AUDIO_PLAY_BEGIN',
+  'REMOTE_AUDIO_PLAY_OK',
+  'REMOTE_AUDIO_PLAY_FAIL',
+  'SCREEN_SHARE_LOCAL_START',
+  'SCREEN_SHARE_TRACK_ATTACHED',
+  'SCREEN_SHARE_REMOTE_RECEIVED',
+  'SCREEN_SHARE_LOCAL_STOP',
+  'SCREEN_SHARE_REMOTE_STOP',
+  'PEER_CLOSE'
+]) assert.ok(source.includes(`'${event}'`) || collaborationChat.includes(`'${event}'`), `missing runtime diagnostic ${event}`)
+
+assert.match(source, /\$\{eventPrefix\}_SEND_BEGIN/)
+assert.match(source, /\$\{eventPrefix\}_SEND_OK/)
+assert.match(source, /\$\{eventPrefix\}_SEND_FAIL/)
+const safeDiagnostic = source.slice(source.indexOf("console.info('[WEBRTC_DIAG]'"), source.indexOf("\n  })", source.indexOf("console.info('[WEBRTC_DIAG]'")))
+assert.equal(safeDiagnostic.includes(['track', 'Id'].join('') + ':'), false, 'WebRTC diagnostic output must not expose track identifiers')
+assert.equal(safeDiagnostic.includes(['stream', 'Id'].join('') + ':'), false, 'WebRTC diagnostic output must not expose stream identifiers')
+assert.equal(source.includes("console.info('[WEBRTC_MEDIA]'"), false, 'legacy media diagnostic prefix must not remain')
+
 for (const needle of [
   'cameraTransceiver',
   'screenTransceiver',

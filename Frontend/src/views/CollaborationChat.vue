@@ -1851,6 +1851,15 @@ const bindMediaElement = (element, stream, muted = false, { peerId = '', mediaRo
   element.playsInline = true
   if (element.srcObject !== stream) {
     element.srcObject = stream || null
+    traceWebRtcMedia('REMOTE_MEDIA_ELEMENT_BOUND', {
+      peerId,
+      trackKind: track?.kind,
+      trackReadyState: track?.readyState,
+      trackEnabled: track ? track.enabled !== false : null,
+      mediaRole,
+      streamTrackCount: stream?.getTracks?.().length || 0,
+      result: stream ? 'srcObject-set' : 'srcObject-cleared'
+    })
     traceWebRtcMedia('VIDEO_SRC_OBJECT_SET', {
       peerId,
       trackKind: track?.kind,
@@ -1861,13 +1870,22 @@ const bindMediaElement = (element, stream, muted = false, { peerId = '', mediaRo
     })
   }
   if (stream) {
+    if (mediaRole === 'audio') traceWebRtcMedia('REMOTE_AUDIO_PLAY_BEGIN', {
+      peerId,
+      trackKind: track?.kind,
+      trackReadyState: track?.readyState,
+      mediaRole,
+      streamTrackCount: stream.getTracks?.().length || 0
+    })
     const playback = element.play?.()
     if (playback?.then) {
       void playback.then(() => {
         blockedMediaElements.delete(element)
+        if (mediaRole === 'audio') traceWebRtcMedia('REMOTE_AUDIO_PLAY_OK', { peerId, mediaRole, result: 'play-resolved' })
         traceWebRtcMedia('VIDEO_PLAY_OK', { peerId, trackKind: track?.kind, trackId: track?.id, trackReadyState: track?.readyState, mediaRole, streamId: stream.id })
       }).catch(error => {
         if (error?.name === 'NotAllowedError') blockedMediaElements.add(element)
+        if (mediaRole === 'audio') traceWebRtcMedia('REMOTE_AUDIO_PLAY_FAIL', { peerId, mediaRole, errorName: error?.name || 'Error' })
         traceWebRtcMedia('VIDEO_PLAY_FAILED', { peerId, trackKind: track?.kind, trackId: track?.id, trackReadyState: track?.readyState, mediaRole, streamId: stream.id })
       })
     }
