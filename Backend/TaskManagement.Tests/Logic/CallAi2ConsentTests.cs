@@ -161,8 +161,8 @@ public sealed class CallAi2ConsentTests
             registry,
             new Mock<ICallRoomAuthorizationService>().Object,
             provider,
-            new NoopTranscriptService(),
-            Mock.Of<ICallChatService>())
+            Mock.Of<ICallChatService>(),
+            Mock.Of<ICallCaptionResultDispatcher>())
         {
             Context = context.Object,
             Clients = clients.Object
@@ -183,9 +183,4 @@ public sealed class CallAi2ConsentTests
         }
     }
 
-    private sealed class NoopTranscriptService : ICallTranscriptService
-    {
-        public Task<CallTranscriptChunkDto?> AppendAsync(CallAudioChunk source, CallTranscriptionResult result, CancellationToken cancellationToken = default) => Task.FromResult<CallTranscriptChunkDto?>(null);
-        public Task<IReadOnlyList<CallTranscriptChunkDto>> GetAsync(Guid projectId, string voiceChannelId, Guid callSessionId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<CallTranscriptChunkDto>>([]);
-    }
 }

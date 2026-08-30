@@ -116,6 +116,42 @@ public sealed class DeepgramSessionLifecycleTests
         socketFactory.Socket.State.Should().Be(WebSocketState.Open);
     }
 
+    [Fact]
+    public async Task ResultDeliveryFailure_DoesNotKillTheDeepgramReceiveLoop()
+    {
+        var socketFactory = new FakeDeepgramWebSocketFactory();
+        await using var provider = CreateProvider(socketFactory);
+        var sessionId = Guid.NewGuid();
+        var speakerId = Guid.NewGuid();
+        var firstAttempt = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondResult = new TaskCompletionSource<CallTranscriptionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var deliveries = 0;
+
+        await provider.SubmitAsync(
+            Chunk(sessionId, speakerId, 1),
+            (_, result) =>
+            {
+                if (Interlocked.Increment(ref deliveries) == 1)
+                {
+                    firstAttempt.TrySetResult();
+                    throw new ObjectDisposedException("transient caption subscriber");
+                }
+                secondResult.TrySetResult(result);
+                return Task.CompletedTask;
+            },
+            () => true);
+
+        socketFactory.Socket.QueueText(Transcript("kết quả đầu tiên", isFinal: false, speechFinal: false));
+        await firstAttempt.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        socketFactory.Socket.QueueText(Transcript("kết quả tiếp theo", isFinal: false, speechFinal: false));
+
+        (await secondResult.Task.WaitAsync(TimeSpan.FromSeconds(2))).Text.Should().Be("kết quả tiếp theo");
+        deliveries.Should().Be(2);
+        socketFactory.ConnectionCount.Should().Be(1);
+        socketFactory.Socket.State.Should().Be(WebSocketState.Open);
+        socketFactory.Socket.ReceiveCancellationCount.Should().Be(0);
+    }
+
     private static DeepgramCallTranscriptionProvider CreateProvider(IDeepgramWebSocketFactory socketFactory) =>
         new(
             new CallTranscriptionOptions

@@ -1,4 +1,4 @@
-export const LIVE_CAPTION_MAX_ROWS = 4
+export const LIVE_CAPTION_MAX_ROWS = 3
 export const LIVE_CAPTION_EXPIRY_MS = 8000
 
 const read = (value, camel, pascal) => value?.[camel] ?? value?.[pascal]
@@ -70,3 +70,19 @@ export const removeExpiredLiveCaptions = (rows, now = Date.now()) =>
   rows.filter(row => row.isInterim || !row.expiresAt || row.expiresAt > now)
 
 export const clearLiveCaptions = () => []
+
+export const normalizeTranscriptChunkEvent = value => ({
+  id: read(value, 'id', 'Id') || '',
+  callSessionId: read(value, 'callSessionId', 'CallSessionId') || '',
+  speakerUserId: read(value, 'speakerUserId', 'SpeakerUserId') || '',
+  startedAt: read(value, 'startedAt', 'StartedAt') || '',
+  speakerDisplayName: read(value, 'speakerDisplayName', 'SpeakerDisplayName') || 'Unknown user',
+  text: `${read(value, 'text', 'Text') || ''}`.trim()
+})
+
+export const upsertTranscriptHistory = (rows, value) => {
+  const chunk = normalizeTranscriptChunkEvent(value)
+  if (!chunk.id || !chunk.text) return rows
+  return [...rows.filter(item => item.id !== chunk.id), chunk]
+    .sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt))
+}

@@ -143,8 +143,8 @@ public sealed class CallRoomRegistryTests
             registry,
             authorization.Object,
             Mock.Of<ICallTranscriptionProvider>(),
-            Mock.Of<ICallTranscriptService>(),
-            Mock.Of<ICallChatService>())
+            Mock.Of<ICallChatService>(),
+            Mock.Of<ICallCaptionResultDispatcher>())
         {
             Context = context.Object,
             Groups = groups.Object,
@@ -510,8 +510,8 @@ public sealed class CallRoomRegistryTests
             registry,
             authorization,
             Mock.Of<ICallTranscriptionProvider>(),
-            Mock.Of<ICallTranscriptService>(),
-            callChat ?? Mock.Of<ICallChatService>())
+            callChat ?? Mock.Of<ICallChatService>(),
+            Mock.Of<ICallCaptionResultDispatcher>())
         {
             Context = context.Object,
             Groups = new Mock<IGroupManager>().Object,

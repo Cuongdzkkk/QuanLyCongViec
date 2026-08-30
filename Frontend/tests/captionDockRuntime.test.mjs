@@ -7,9 +7,11 @@ import {
   LIVE_CAPTION_MAX_ROWS,
   isLiveCaptionForSession,
   normalizeLiveCaptionEvent,
+  normalizeTranscriptChunkEvent,
   removeExpiredLiveCaptions,
   upsertLiveCaptionFinal,
-  upsertLiveCaptionInterim
+  upsertLiveCaptionInterim,
+  upsertTranscriptHistory
 } from '../src/services/liveCaptionState.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -27,7 +29,7 @@ const event = (speakerUserId, text, overrides = {}) => ({
 })
 
 assert.equal(normalizeLiveCaptionEvent({ Text: '  Xin chào  ', SpeakerUserId: 'U1' }).text, 'Xin chào')
-assert.equal(LIVE_CAPTION_MAX_ROWS, 4)
+assert.equal(LIVE_CAPTION_MAX_ROWS, 3)
 assert.equal(LIVE_CAPTION_EXPIRY_MS, 8000)
 assert.equal(isLiveCaptionForSession(event('U1', 'current'), 'session-1'), true)
 assert.equal(isLiveCaptionForSession(event('U1', 'stale', { callSessionId: 'session-old' }), 'session-1'), false)
@@ -58,23 +60,32 @@ for (const speaker of ['U3', 'U4', 'U5']) {
   rows = upsertLiveCaptionFinal(rows, event(speaker, `Nội dung ${speaker}`, { id: `chunk-${speaker}` }), 1400)
 }
 assert.equal(rows.length, LIVE_CAPTION_MAX_ROWS)
-assert.equal(rows.some(row => row.speakerUserId === 'U2'), true)
+assert.deepEqual(rows.map(row => row.speakerUserId), ['U3', 'U4', 'U5'])
 assert.equal(removeExpiredLiveCaptions(rows, 9299).length, LIVE_CAPTION_MAX_ROWS)
 assert.equal(removeExpiredLiveCaptions(rows, 9400).length, 0)
 
-assert.match(view, /v-if="captionsEnabled && liveCaptionRows\.length" class="call-live-caption-dock"/)
+let transcriptHistory = upsertTranscriptHistory([], event('U1', 'Một câu hoàn chỉnh', { id: 'chunk-1' }))
+transcriptHistory = upsertTranscriptHistory(transcriptHistory, event('U1', 'Một câu hoàn chỉnh', { id: 'chunk-1' }))
+assert.equal(transcriptHistory.length, 1)
+assert.equal(normalizeTranscriptChunkEvent(transcriptHistory[0]).text, 'Một câu hoàn chỉnh')
+
+assert.match(view, /<LiveCaptionOverlay :enabled="captionsEnabled" :captions="liveCaptionRows"/)
 assert.match(view, /ref="presentationStage" class="call-presentation-stage"/)
 assert.match(service, /CallTranscriptInterim/)
 assert.match(service, /CallTranscriptChunkAdded/)
+assert.equal((service.match(/connection\.on\('CallTranscriptInterim'/g) || []).length, 1)
+assert.equal((service.match(/connection\.on\('CallTranscriptChunkAdded'/g) || []).length, 1)
+assert.equal((service.match(/registerHandlers\(\)/g) || []).length, 1)
+assert.doesNotMatch(service, /connection\.off\('CallTranscript(?:Interim|ChunkAdded)'/)
+assert.match(service, /await connection\.stop\(\)/)
 assert.match(view, /const isCurrentCaptionEvent = value =>/)
 assert.match(state, /eventSessionId.*currentSessionId/)
 assert.match(view, /upsertLiveCaptionInterim/)
 assert.match(view, /upsertLiveCaptionFinal/)
-assert.match(view, /callTranscriptChunks\.value = \[\.\.\.callTranscriptChunks\.value/)
+assert.match(view, /callTranscriptChunks\.value = upsertTranscriptHistory/)
 assert.match(view, /clearLiveCaptionRows\(\)/)
-assert.match(view, /:src="caption\.avatarUrl \|\| ''"/)
-assert.match(view, /caption\.speakerDisplayName/)
-assert.match(view, /caption\.text/)
+assert.match(view, /import LiveCaptionOverlay/)
+assert.match(view, /upsertTranscriptHistory/)
 assert.match(view, /aria-pressed="captionsEnabled"/)
 assert.doesNotMatch(view, /Array\.from\(new Uint8Array|MediaRecorder/)
 

@@ -506,7 +506,19 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
                         isUtteranceFinal,
                         "Deepgram",
                         parsed.Duration);
-                    await Volatile.Read(ref _callbacks).OnResult(_latestSource, resultValue);
+                    try
+                    {
+                        await Volatile.Read(ref _callbacks).OnResult(_latestSource, resultValue);
+                    }
+                    catch (Exception exception)
+                    {
+                        _logger.LogError(
+                            "[CAPTION_PROVIDER] event=RESULT_DELIVERY_FAIL callSessionId={CallSessionId} speakerUserId={SpeakerUserId} isFinal={IsFinal} exceptionType={ExceptionType}",
+                            _sessionId,
+                            _speakerId,
+                            resultValue.IsFinal,
+                            exception.GetType().FullName);
+                    }
                     if (isUtteranceFinal && parsed.Duration is > 0)
                     {
                         await _usageSink.RecordAsync(
