@@ -283,10 +283,10 @@
             </div>
           </div>
           <div class="header-actions">
-            <button type="button" class="ai-entry-button" :class="{ 'is-open': callAiState.state !== 'OFF' }" :disabled="!callTranscriptionCapabilities.configured" :aria-label="callAiButtonLabel" :title="callAiButtonLabel" @click="requestCallAi">
-              <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+            <button type="button" class="ai-entry-button transcript-entry-button" :class="{ 'is-open': showTranscriptPanel }" :disabled="!callTranscriptionCapabilities.configured" :aria-expanded="showTranscriptPanel" :aria-label="callAiButtonLabel" :title="callAiButtonLabel" @click="toggleTranscriptPanel">
+              <i class="fa-solid fa-closed-captioning" aria-hidden="true"></i>
               <span>Biên bản</span>
-              <span class="ai-off-state">{{ callTranscriptionCapabilities.configured ? callAiStateLabel : 'Chưa cấu hình' }}</span>
+              <span v-if="callAiState.state === 'ACTIVE'" class="call-header-status-dot" aria-label="Đang ghi"></span>
             </button>
             <button type="button" class="action-btn" aria-label="Mở danh sách người tham gia" title="Người tham gia" @click="openCallParticipants">
               <i class="fa-solid fa-layout-sidebar" aria-hidden="true"></i>
@@ -437,31 +437,22 @@
             </article>
           </section>
 
-          <aside v-if="callAiState.state !== 'OFF' || callTranscriptChunks.length || callTranscriptInterim.text" class="call-transcript-panel" aria-label="Biên bản cuộc gọi">
+          <aside v-if="showTranscriptPanel" class="call-transcript-panel" aria-label="Biên bản cuộc gọi">
             <div class="call-transcript-header">
-              <div class="call-transcript-title"><span class="context-kicker">Live transcript</span><strong>Biên bản cuộc gọi</strong><small>{{ callTranscriptionCapabilities.provider }} · {{ callCaptionLanguageLabel }}</small></div>
+              <div class="call-transcript-title"><span class="context-kicker">BIÊN BẢN</span><strong>Biên bản cuộc gọi</strong><small>{{ callTranscriptionCapabilities.provider }} · {{ callCaptionLanguageLabel }}</small></div>
               <span class="call-ai-state-pill" :class="`is-${callAiState.state.toLowerCase()}`">{{ callAiStateLabel }}</span>
             </div>
             <div v-if="callAiState.state === 'OFF'" class="call-transcript-off">
-              <strong>Phụ đề chưa được cấu hình</strong>
-              <p>Quản trị viên chưa cấu hình phiên âm cuộc họp. Bạn vẫn có thể tiếp tục cuộc gọi.</p>
+              <strong>{{ callTranscriptionCapabilities.configured ? 'Phụ đề đang tắt' : 'Phụ đề chưa được cấu hình' }}</strong>
+              <p>{{ callTranscriptionCapabilities.configured ? 'Bật Phụ đề ở thanh điều khiển để xem lời nói trực tiếp trong cuộc gọi.' : 'Quản trị viên chưa cấu hình phiên âm cuộc họp. Bạn vẫn có thể tiếp tục cuộc gọi.' }}</p>
             </div>
             <div v-else-if="callAiState.state === 'WAITING_FOR_CONSENT' || callAiState.state === 'PAUSED_CONSENT'" class="call-transcript-consent">
-              <strong>{{ callAiState.state === 'PAUSED_CONSENT' ? 'AI đã tạm dừng — chờ đồng ý' : 'Đang chờ sự đồng ý' }}</strong>
-              <p>AI sẽ ghi lời nói thành văn bản, không lưu âm thanh gốc.</p>
-              <div class="call-consent-list">
-                <div v-for="participant in callAiState.participants" :key="`consent-${participant.userId}`">
-                  <span>{{ participant.displayName }}</span><span>{{ consentStatusLabel(participant.consentStatus) }}</span>
-                </div>
-              </div>
-              <div v-if="currentCallConsentStatus === 'PENDING'" class="call-consent-actions">
-                <button type="button" class="ai-primary-action" @click="respondCallAiConsent(true)">Đồng ý</button>
-                <button type="button" class="ai-secondary-action" @click="respondCallAiConsent(false)">Từ chối</button>
-              </div>
+              <strong>{{ callAiState.state === 'PAUSED_CONSENT' ? 'Đã tạm dừng' : 'Đang chờ quyền bật phụ đề' }}</strong>
+              <p>Quyền bật phụ đề được xử lý trong hộp thoại xác nhận.</p>
             </div>
             <div v-else-if="callAiState.state === 'ACTIVE'" class="call-transcript-active">
-              <div class="call-transcript-indicator"><span></span> AI đang ghi biên bản</div>
-              <button type="button" class="ai-secondary-action" @click="stopCallAi">Dừng AI</button>
+              <div class="call-transcript-indicator"><span></span> Đang ghi</div>
+              <button type="button" class="ai-secondary-action" @click="toggleCallCaptions">Tắt phụ đề</button>
             </div>
             <div v-else class="call-transcript-paused">
               <strong>{{ callAiState.state === 'ERROR' ? 'Không thể khởi động phiên âm' : 'AI đang tắt' }}</strong>
@@ -585,7 +576,7 @@
                       @click="toggleCallPictureInPicture"
                     >Picture-in-picture</button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="togglePresentationFullscreen">{{ presentationIsFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình' }}</button>
-                    <button type="button" class="call-more-menu-item" :class="{ 'is-unavailable': !callTranscriptionCapabilities.configured }" role="menuitem" :disabled="!callTranscriptionCapabilities.configured" @click="moreMenuSection = 'captions'"><span>Phụ đề</span><small>{{ callTranscriptionCapabilities.configured ? callCaptionLanguageLabel : 'Chưa cấu hình' }}</small></button>
+                    <button type="button" class="call-more-menu-item" :class="{ 'is-unavailable': !callTranscriptionCapabilities.configured }" role="menuitem" :disabled="!callTranscriptionCapabilities.configured" @click="moreMenuSection = 'captions'"><span>Ngôn ngữ phụ đề</span><small>{{ callTranscriptionCapabilities.configured ? callCaptionLanguageLabel : 'Chưa cấu hình' }}</small></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'shortcuts'"><span>Phím tắt</span><small>Ctrl/Cmd+D · E</small></button>
                   </template>
                   <template v-else>
@@ -614,10 +605,9 @@
                       <span v-if="!callDevices.length" class="call-more-empty">Chưa tìm thấy thiết bị.</span>
                     </div>
                     <div v-else-if="moreMenuSection === 'captions'" class="call-device-panel">
-                      <span class="call-more-section-label">Ngôn ngữ phiên âm</span>
+                      <span class="call-more-section-label">Ngôn ngữ phụ đề</span>
                       <label class="call-device-select">Ngôn ngữ<select v-model="callCaptionLanguage" :disabled="callAiState.state === 'ACTIVE'" @change="setCallCaptionLanguage"><option v-for="language in callTranscriptionCapabilities.supportedLanguages" :key="language" :value="language">{{ language === 'vi' ? 'Tiếng Việt' : 'English' }}</option></select></label>
                       <span v-if="callAiState.state === 'ACTIVE'" class="call-more-empty">Dừng biên bản trước khi đổi ngôn ngữ.</span>
-                      <button type="button" class="call-device-option" :class="{ selected: captionsEnabled }" @click="toggleCallCaptions">{{ captionsEnabled ? 'Tắt phụ đề' : 'Bật phụ đề' }}</button>
                     </div>
                     <div v-else class="call-effects-panel">
                       <span class="call-more-section-label">Hiệu ứng hình ảnh</span>
@@ -1203,6 +1193,36 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="showCaptionConsentModal"
+      width="min(420px, calc(100vw - 32px))"
+      append-to-body
+      class="caption-consent-dialog"
+      :show-close="true"
+      :close-on-click-modal="false"
+      :close-on-press-escape="!captionConsentSubmitting"
+      @close="cancelCaptionConsent"
+    >
+      <template #header>
+        <div class="caption-consent-heading">
+          <span class="caption-consent-icon" aria-hidden="true"><i class="fa-solid fa-closed-captioning"></i></span>
+          <div><span class="context-kicker">PHỤ ĐỀ TRỰC TIẾP</span><h3>Bật phụ đề trực tiếp?</h3></div>
+        </div>
+      </template>
+      <div class="caption-consent-copy">
+        <p>Giọng nói trong cuộc gọi sẽ được gửi để chuyển thành văn bản trực tiếp.</p>
+        <small>Không lưu âm thanh gốc.</small>
+      </div>
+      <template #footer>
+        <div class="caption-consent-actions">
+          <button type="button" class="ai-secondary-action" :disabled="captionConsentSubmitting" @click="cancelCaptionConsent">Hủy</button>
+          <button type="button" class="ai-primary-action" :disabled="captionConsentSubmitting" @click="respondCallAiConsent(true)">
+            {{ captionConsentSubmitting ? 'Đang bật…' : 'Cho phép & bật phụ đề' }}
+          </button>
+        </div>
+      </template>
+    </el-dialog>
   </main>
 </template>
 
@@ -1598,6 +1618,9 @@ const cameraEffectNotice = ref('')
 const showCameraEffectsMenu = ref(false)
 const showMoreMenu = ref(false)
 const moreMenuSection = ref('')
+const showTranscriptPanel = ref(false)
+const showCaptionConsentModal = ref(false)
+const captionConsentSubmitting = ref(false)
 const callHandRaised = ref(false)
 const callReactions = ref([])
 const callLiveNotice = ref('')
@@ -1846,14 +1869,14 @@ const setPresentationVideoElement = (element, connectionId = '') => {
 
 const callAiStateLabel = computed(() => ({
   OFF: 'Đang tắt',
-  WAITING_FOR_CONSENT: 'Đang chờ sự đồng ý',
-  ACTIVE: 'AI đang ghi lời nói thành văn bản',
-  PAUSED_CONSENT: 'AI đã tạm dừng — chờ đồng ý',
-  STOPPING: 'Đang dừng AI',
-  ERROR: 'AI gặp lỗi'
+  WAITING_FOR_CONSENT: 'Chờ quyền',
+  ACTIVE: 'Đang ghi',
+  PAUSED_CONSENT: 'Đã tạm dừng',
+  STOPPING: 'Đang dừng',
+  ERROR: 'Có lỗi'
 }[callAiState.value.state] || 'Đang tắt'))
 const callAiButtonLabel = computed(() => callTranscriptionCapabilities.value.configured
-  ? `Biên bản cuộc họp: ${callAiStateLabel.value}`
+  ? `${showTranscriptPanel.value ? 'Đóng' : 'Mở'} biên bản cuộc gọi`
   : 'Biên bản và AI chưa sẵn sàng vì phiên âm chưa được cấu hình')
 const callCaptionLanguageLabel = computed(() => callCaptionLanguage.value === 'en' ? 'English' : 'Tiếng Việt')
 const callViewModes = [
@@ -1871,12 +1894,6 @@ const setCallViewMode = mode => {
   showMoreMenu.value = false
   moreMenuSection.value = ''
 }
-const currentCallConsentStatus = computed(() => {
-  const currentUserId = currentUser.value?.id
-  return callAiState.value.participants.find(item => `${item.userId}` === `${currentUserId}`)?.consentStatus || 'PENDING'
-})
-const consentStatusLabel = status => ({ PENDING: '…', ACCEPTED: '✓', DECLINED: '✕' }[status] || '…')
-
 const normalizeCallAiState = value => {
   const state = value || {}
   return {
@@ -1898,6 +1915,16 @@ const handleCallAiState = value => {
     clearLiveCaptionRows()
   }
   callAiState.value = nextState
+  if (nextState.state === 'ACTIVE') {
+    captionsEnabled.value = true
+    showCaptionConsentModal.value = false
+  } else if (nextState.state === 'OFF') {
+    captionsEnabled.value = false
+    showCaptionConsentModal.value = false
+    clearLiveCaptionRows()
+  } else if (nextState.state === 'WAITING_FOR_CONSENT' || nextState.state === 'PAUSED_CONSENT') {
+    if (captionsEnabled.value) showCaptionConsentModal.value = true
+  }
 }
 
 const normalizeMeetingAiReport = value => {
@@ -2374,11 +2401,20 @@ const handleCallShortcut = event => {
 
 const requestCallAi = async () => {
   if (!callSession.value || !callTranscriptionCapabilities.value.configured) return
+  if (callAiState.value.state !== 'OFF' && callAiState.value.state !== 'ERROR') return
   try {
     await callSession.value.requestAiTranscription()
   } catch (error) {
     handleCallError(error)
+    showCaptionConsentModal.value = false
+    captionsEnabled.value = false
   }
+}
+
+const toggleTranscriptPanel = () => {
+  showTranscriptPanel.value = !showTranscriptPanel.value
+  showMoreMenu.value = false
+  moreMenuSection.value = ''
 }
 
 const setCallCaptionLanguage = () => {
@@ -2391,25 +2427,55 @@ const setCallCaptionLanguage = () => {
 
 const toggleCallCaptions = async () => {
   if (!callSession.value || !callTranscriptionCapabilities.value.configured) return
-  captionsEnabled.value = !captionsEnabled.value
   showMoreMenu.value = false
   moreMenuSection.value = ''
-  if (!captionsEnabled.value) {
+  if (captionsEnabled.value) {
+    captionsEnabled.value = false
     clearLiveCaptionRows()
     callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
+    await stopCallAi()
     return
   }
-  if (callAiState.value.state !== 'OFF') return
+  if (callAiState.value.state === 'ACTIVE') {
+    captionsEnabled.value = true
+    return
+  }
+  captionsEnabled.value = true
   setCallCaptionLanguage()
+  showCaptionConsentModal.value = true
   await requestCallAi()
 }
 
 const respondCallAiConsent = async accepted => {
   if (!callSession.value) return
+  if (accepted) captionConsentSubmitting.value = true
   try {
     await callSession.value.respondToAiConsent(accepted, callAiState.value)
+    if (accepted) {
+      captionsEnabled.value = true
+      showCaptionConsentModal.value = false
+    } else {
+      captionsEnabled.value = false
+      clearLiveCaptionRows()
+      callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
+      showCaptionConsentModal.value = false
+    }
   } catch (error) {
     handleCallError(error)
+    if (accepted) captionsEnabled.value = false
+  } finally {
+    captionConsentSubmitting.value = false
+  }
+}
+
+const cancelCaptionConsent = () => {
+  if (captionConsentSubmitting.value) return
+  showCaptionConsentModal.value = false
+  if (callAiState.value.state === 'WAITING_FOR_CONSENT' || callAiState.value.state === 'PAUSED_CONSENT') {
+    void respondCallAiConsent(false)
+  } else {
+    captionsEnabled.value = false
+    clearLiveCaptionRows()
   }
 }
 
@@ -2548,6 +2614,9 @@ const leaveVoiceChannel = async (showMessage = true) => {
   callSession.value = null
   callParticipants.value = []
   callAiState.value = { state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] }
+  showTranscriptPanel.value = false
+  showCaptionConsentModal.value = false
+  captionConsentSubmitting.value = false
   callTranscriptChunks.value = []
   callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
   clearLiveCaptionRows()
@@ -8271,6 +8340,26 @@ background-color: #111c2d !important;
 .chat-workspace .call-chat-composer button.call-chat-clear:hover:not(:disabled) { background: var(--chat-line); color: var(--chat-ink); }
 .chat-workspace .call-chat-composer button:disabled { background: var(--chat-line); color: var(--chat-faint); }
 .chat-workspace .call-fullscreen-panel { border-left-color: var(--chat-line); background: var(--chat-surface); color: var(--chat-ink); }
+.chat-workspace .transcript-entry-button { position: relative; }
+.chat-workspace .transcript-entry-button.is-open { border-color: var(--chat-accent) !important; background: var(--chat-accent-soft) !important; }
+.call-header-status-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #36c98b; box-shadow: 0 0 0 3px color-mix(in srgb, #36c98b 16%, transparent); }
+.caption-consent-dialog .el-dialog__header { margin-right: 0; padding: 18px 20px 8px; }
+.caption-consent-dialog .el-dialog__body { padding: 8px 20px 18px; }
+.caption-consent-dialog .el-dialog__footer { padding: 0 20px 18px; }
+.caption-consent-heading { display: flex; align-items: center; gap: 11px; }
+.caption-consent-heading h3 { margin: 4px 0 0; color: var(--chat-ink); font-size: 17px; line-height: 1.2; }
+.caption-consent-icon { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 10px; background: var(--chat-accent-soft); color: var(--chat-accent); font-size: 16px; }
+.caption-consent-copy { display: grid; gap: 7px; }
+.caption-consent-copy p { margin: 0; color: var(--chat-ink); font-size: 13px; line-height: 1.5; }
+.caption-consent-copy small { color: var(--chat-muted); font-size: 11px; }
+.caption-consent-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.caption-consent-actions button { min-height: 38px; }
+.chat-workspace .call-transcript-panel { max-height: 280px; }
+.chat-workspace .call-transcript-consent { border-style: dashed; }
+.chat-workspace .call-transcript-consent p { margin-bottom: 0; }
+.chat-workspace .call-transcript-active { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.chat-workspace .call-transcript-active .call-transcript-indicator { margin-bottom: 0; }
+.chat-workspace .call-transcript-chunk.is-interim { opacity: .84; }
 .chat-workspace :where(button, input, textarea, [tabindex='0']):focus-visible { outline: 3px solid color-mix(in srgb, var(--chat-accent) 52%, transparent); outline-offset: 2px; }
 .chat-sidebar-backdrop { display: none; }
 

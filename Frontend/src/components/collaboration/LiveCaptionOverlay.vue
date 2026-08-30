@@ -9,10 +9,10 @@
       aria-relevant="additions text"
     >
       <article
-        v-for="caption in visibleCaptions"
+        v-for="(caption, index) in visibleCaptions"
         :key="caption.id"
         class="call-live-caption-row"
-        :class="{ 'is-interim': caption.isInterim }"
+        :class="{ 'is-interim': caption.isInterim, 'is-latest': index === 0 }"
         :aria-atomic="caption.isInterim ? 'false' : 'true'"
       >
         <img
@@ -51,9 +51,9 @@ const visibleCaptions = computed(() => props.captions.slice(-3).reverse())
   left: 50%;
   bottom: clamp(48px, 8%, 72px);
   display: grid;
-  width: min(720px, calc(100% - 28px));
-  max-height: 188px;
-  gap: 7px;
+  width: min(860px, calc(100% - 28px));
+  max-height: 168px;
+  gap: 5px;
   overflow: hidden;
   transform: translateX(-50%);
   pointer-events: none;
@@ -65,7 +65,7 @@ const visibleCaptions = computed(() => props.captions.slice(-3).reverse())
   align-items: start;
   gap: 10px;
   min-width: 0;
-  padding: 9px 12px 10px;
+  padding: 7px 10px 8px;
   border: 1px solid rgba(226, 232, 240, .18);
   border-radius: 10px;
   background: rgba(5, 12, 22, .92);
@@ -76,6 +76,10 @@ const visibleCaptions = computed(() => props.captions.slice(-3).reverse())
 
 .call-live-caption-row.is-interim {
   border-color: rgba(154, 240, 197, .28);
+}
+
+.call-live-caption-row:not(.is-latest) {
+  opacity: .72;
 }
 
 .call-live-caption-avatar {
@@ -124,6 +128,10 @@ const visibleCaptions = computed(() => props.captions.slice(-3).reverse())
   -webkit-line-clamp: 2;
 }
 
+.call-live-caption-row:not(.is-latest) .call-live-caption-copy span {
+  -webkit-line-clamp: 1;
+}
+
 .caption-dock-enter-active,
 .caption-dock-leave-active {
   transition: opacity 180ms ease, transform 180ms ease;
@@ -139,7 +147,7 @@ const visibleCaptions = computed(() => props.captions.slice(-3).reverse())
   .call-live-caption-dock {
     bottom: 42px;
     width: calc(100% - 16px);
-    max-height: 152px;
+    max-height: 140px;
   }
 
   .call-live-caption-row {

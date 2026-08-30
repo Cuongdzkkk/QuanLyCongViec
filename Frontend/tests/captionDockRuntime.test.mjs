@@ -30,7 +30,7 @@ const event = (speakerUserId, text, overrides = {}) => ({
 
 assert.equal(normalizeLiveCaptionEvent({ Text: '  Xin chào  ', SpeakerUserId: 'U1' }).text, 'Xin chào')
 assert.equal(LIVE_CAPTION_MAX_ROWS, 3)
-assert.equal(LIVE_CAPTION_EXPIRY_MS, 8000)
+assert.equal(LIVE_CAPTION_EXPIRY_MS, 3500)
 assert.equal(isLiveCaptionForSession(event('U1', 'current'), 'session-1'), true)
 assert.equal(isLiveCaptionForSession(event('U1', 'stale', { callSessionId: 'session-old' }), 'session-1'), false)
 
@@ -61,8 +61,8 @@ for (const speaker of ['U3', 'U4', 'U5']) {
 }
 assert.equal(rows.length, LIVE_CAPTION_MAX_ROWS)
 assert.deepEqual(rows.map(row => row.speakerUserId), ['U3', 'U4', 'U5'])
-assert.equal(removeExpiredLiveCaptions(rows, 9299).length, LIVE_CAPTION_MAX_ROWS)
-assert.equal(removeExpiredLiveCaptions(rows, 9400).length, 0)
+assert.equal(removeExpiredLiveCaptions(rows, 4899).length, LIVE_CAPTION_MAX_ROWS)
+assert.equal(removeExpiredLiveCaptions(rows, 5000).length, 0)
 
 let transcriptHistory = upsertTranscriptHistory([], event('U1', 'Một câu hoàn chỉnh', { id: 'chunk-1' }))
 transcriptHistory = upsertTranscriptHistory(transcriptHistory, event('U1', 'Một câu hoàn chỉnh', { id: 'chunk-1' }))
@@ -87,6 +87,14 @@ assert.match(view, /clearLiveCaptionRows\(\)/)
 assert.match(view, /import LiveCaptionOverlay/)
 assert.match(view, /upsertTranscriptHistory/)
 assert.match(view, /aria-pressed="captionsEnabled"/)
+assert.match(view, /Bật phụ đề trực tiếp\?/)
+assert.match(view, /Giọng nói trong cuộc gọi sẽ được gửi để chuyển thành văn bản trực tiếp\./)
+assert.match(view, /Cho phép &amp; bật phụ đề|Cho phép & bật phụ đề/)
+assert.match(view, /const toggleTranscriptPanel =/)
+assert.match(view, /v-if="showTranscriptPanel" class="call-transcript-panel"/)
+assert.match(service, /CAPTION_CHUNK_BYTES = 4000/)
+assert.match(service, /CAPTION_MAX_PENDING_CHUNKS = 4/)
+assert.match(service, /transcriptionQueue\.clear/)
 assert.doesNotMatch(view, /Array\.from\(new Uint8Array|MediaRecorder/)
 
 console.log('CAPTION_DOCK_RUNTIME: 22 focused live-caption behaviors covered')
