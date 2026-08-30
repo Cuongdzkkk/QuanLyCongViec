@@ -24,9 +24,23 @@
     context.fillRect(0, 0, canvas.width, canvas.height)
     return canvas.captureStream(10)
   }
-  const createPeer = () => {
+  const mapMediaTransceivers = entry => {
+    const transceivers = entry.pc.getTransceivers()
+    entry.audioTransceiver ||= transceivers.find(item => item.receiver.track.kind === 'audio') || null
+    const videos = transceivers.filter(item => item.receiver.track.kind === 'video')
+    entry.cameraTransceiver ||= videos[0] || null
+    entry.screenTransceiver ||= videos[1] || null
+  }
+  const createPeer = (fixture = null) => {
     const pc = new RTCPeerConnection({ iceServers: [] })
-    return { pc, audioTransceiver: pc.addTransceiver('audio', { direction: 'recvonly' }), cameraTransceiver: pc.addTransceiver('video', { direction: 'recvonly' }), screenTransceiver: pc.addTransceiver('video', { direction: 'recvonly' }), remoteMediaSources: new Map(), remoteMediaSourcesByTrackId: new Map(), received: [] }
+    const entry = { pc, audioTransceiver: null, cameraTransceiver: null, screenTransceiver: null, remoteMediaSources: new Map(), remoteMediaSourcesByTrackId: new Map(), remoteMediaSourcesByMid: new Map(), received: [] }
+    if (fixture) {
+      pc.addTrack(fixture.audio.stream.getAudioTracks()[0], fixture.audio.stream)
+      pc.addTrack(fixture.camera.getVideoTracks()[0], fixture.camera)
+      pc.addTrack(fixture.screen.getVideoTracks()[0], fixture.screen)
+      mapMediaTransceivers(entry)
+    }
+    return entry
   }
   const createAudio = () => {
     const context = new AudioContext()
@@ -52,20 +66,24 @@
   const negotiate = async (sender, receiver) => {
     const offer = await sender.pc.createOffer()
     await sender.pc.setLocalDescription(offer); await waitForIce(sender.pc)
+    sender.offerSdp = sender.pc.localDescription?.sdp || ''
     receiver.remoteMediaSourcesByMid = new Map([
       [sender.cameraTransceiver.mid, 'camera'],
       [sender.screenTransceiver.mid, 'screen']
     ])
     await receiver.pc.setRemoteDescription(sender.pc.localDescription)
+    mapMediaTransceivers(receiver)
+    await attach(receiver, receiver.fixture.audio, receiver.fixture.camera, receiver.fixture.screen)
     const answer = await receiver.pc.createAnswer()
     await receiver.pc.setLocalDescription(answer); await waitForIce(receiver.pc)
+    receiver.answerSdp = receiver.pc.localDescription?.sdp || ''
     await sender.pc.setRemoteDescription(receiver.pc.localDescription)
   }
   const receiveRoles = entry => new Promise(resolve => {
     const roles = []
     entry.pc.ontrack = event => {
       const role = event.track.kind === 'audio' ? 'audio' : classifyRemoteMediaRole(entry, event.transceiver, event.track, event.streams)
-      roles.push({ role, readyState: event.track.readyState, trackId: event.track.id, eventMid: event.transceiver.mid, cameraMid: entry.cameraTransceiver.mid, screenMid: entry.screenTransceiver.mid, transceiverIndex: entry.pc.getTransceivers().indexOf(event.transceiver) })
+      roles.push({ role, readyState: event.track.readyState, trackId: event.track.id, eventMid: event.transceiver.mid, cameraMid: entry.cameraTransceiver?.mid || null, screenMid: entry.screenTransceiver?.mid || null, transceiverIndex: entry.pc.getTransceivers().indexOf(event.transceiver) })
       entry.received = roles
       if (roles.some(item => item.role === 'audio') && roles.some(item => item.role === 'camera') && roles.some(item => item.role === 'screen')) resolve(roles)
     }
@@ -74,20 +92,27 @@
   const liveRole = (roles, role) => roles.some(item => item.role === role && item.readyState === 'live')
   const closeFixture = fixture => {
     fixture.audio.context.close()
-    fixture.camera.getTracks().forEach(track => track.stop())
-    fixture.screen.getTracks().forEach(track => track.stop())
+    fixture.camera?.getTracks().forEach(track => track.stop())
+    fixture.screen?.getTracks().forEach(track => track.stop())
   }
   const runTwoWayPair = async () => {
-    const participantA = createPeer(); const participantB = createPeer()
     const fixtureA = { audio: createAudio(), camera: canvasTrack('camera'), screen: canvasTrack('screen') }
     const fixtureB = { audio: createAudio(), camera: canvasTrack('camera'), screen: canvasTrack('screen') }
+    const participantA = createPeer(fixtureA)
+    const participantB = createPeer()
+    participantB.fixture = fixtureB
     const receivedByA = receiveRoles(participantA)
     const receivedByB = receiveRoles(participantB)
-    await attach(participantA, fixtureA.audio, fixtureA.camera, fixtureA.screen)
-    await attach(participantB, fixtureB.audio, fixtureB.camera, fixtureB.screen)
     await negotiate(participantA, participantB)
     const [receivedA, receivedB] = await Promise.all([receivedByA, receivedByB])
-    const result = { receivedA, receivedB }
+    const result = {
+      receivedA,
+      receivedB,
+      statesA: { signaling: participantA.pc.signalingState, connection: participantA.pc.connectionState, ice: participantA.pc.iceConnectionState, transceivers: participantA.pc.getTransceivers().map(item => ({ direction: item.direction, currentDirection: item.currentDirection, mid: item.mid })) },
+      statesB: { signaling: participantB.pc.signalingState, connection: participantB.pc.connectionState, ice: participantB.pc.iceConnectionState, transceivers: participantB.pc.getTransceivers().map(item => ({ direction: item.direction, currentDirection: item.currentDirection, mid: item.mid })) },
+      offerDirections: [...participantA.offerSdp.matchAll(/a=(sendrecv|sendonly|recvonly|inactive)/g)].map(match => match[1]),
+      answerDirections: [...participantB.answerSdp.matchAll(/a=(sendrecv|sendonly|recvonly|inactive)/g)].map(match => match[1])
+    }
     participantA.pc.close(); participantB.pc.close()
     closeFixture(fixtureA); closeFixture(fixtureB)
     return result
@@ -98,7 +123,8 @@
       const twoWay = await runTwoWayPair()
       const live = values => ['audio', 'camera', 'screen'].every(role => liveRole(values, role))
       if (!live(twoWay.receivedA) || !live(twoWay.receivedB)) throw new Error(`Missing live role in both directions: ${JSON.stringify(twoWay)}`)
-      result.textContent = `PASS\nA_RECEIVES_B=${JSON.stringify(twoWay.receivedA)}\nB_RECEIVES_A=${JSON.stringify(twoWay.receivedB)}`
+      if (!twoWay.answerDirections.every(direction => direction === 'sendrecv')) throw new Error(`Answer did not publish bidirectional media directions: ${JSON.stringify(twoWay)}`)
+      result.textContent = `PASS\nA_RECEIVES_B=${JSON.stringify(twoWay.receivedA)}\nB_RECEIVES_A=${JSON.stringify(twoWay.receivedB)}\nANSWER_DIRECTIONS=${JSON.stringify(twoWay.answerDirections)}`
     } catch (error) { result.textContent = `FAIL\n${error.message}` }
   })
 </script>

@@ -634,12 +634,22 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
 
   const syncPeerMedia = async entry => {
     const audioTrack = localStream?.getAudioTracks?.()[0] || null
-    if (entry.audioTransceiver?.sender.track !== audioTrack) await entry.audioTransceiver.sender.replaceTrack(audioTrack)
-    if (typeof entry.audioTransceiver?.sender.setStreams === 'function') entry.audioTransceiver.sender.setStreams(...(audioTrack && localStream ? [localStream] : []))
-    if (entry.audioTransceiver) entry.audioTransceiver.direction = audioTrack ? 'sendrecv' : 'recvonly'
-    traceWebRtcMedia('SENDER_ATTACHED', peerDiagnostic(entry, { trackKind: audioTrack?.kind, trackId: audioTrack?.id, trackReadyState: audioTrack?.readyState, mediaRole: 'audio', streamId: localStream?.id || '' }))
+    if (entry.audioTransceiver) {
+      if (entry.audioTransceiver.sender.track !== audioTrack) await entry.audioTransceiver.sender.replaceTrack(audioTrack)
+      if (typeof entry.audioTransceiver.sender.setStreams === 'function') entry.audioTransceiver.sender.setStreams(...(audioTrack && localStream ? [localStream] : []))
+      entry.audioTransceiver.direction = audioTrack ? 'sendrecv' : 'recvonly'
+      traceWebRtcMedia('SENDER_ATTACHED', peerDiagnostic(entry, { trackKind: audioTrack?.kind, trackId: audioTrack?.id, trackReadyState: audioTrack?.readyState, mediaRole: 'audio', streamId: localStream?.id || '' }))
+    }
     await syncVideoSender(entry, 'cameraTransceiver', cameraTrack, cameraStream, 'camera')
     await syncVideoSender(entry, 'screenTransceiver', screenTrack, screenStream, 'screen')
+  }
+
+  const bindOfferTransceivers = entry => {
+    const transceivers = entry.pc.getTransceivers()
+    entry.audioTransceiver ||= transceivers.find(item => item.receiver?.track?.kind === 'audio') || null
+    const videoTransceivers = transceivers.filter(item => item.receiver?.track?.kind === 'video')
+    entry.cameraTransceiver ||= videoTransceivers[0] || null
+    entry.screenTransceiver ||= videoTransceivers[1] || null
   }
 
   const recoverPeer = async (connectionId) => {
@@ -675,9 +685,18 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       remoteMediaSourcesByMid: new Map()
     }
     peers.set(connectionId, entry)
-    entry.audioTransceiver = entry.pc.addTransceiver('audio', { direction: 'recvonly' })
-    entry.cameraTransceiver = entry.pc.addTransceiver('video', { direction: 'recvonly' })
-    entry.screenTransceiver = entry.pc.addTransceiver('video', { direction: 'recvonly' })
+    if (initiate) {
+      const addLocalOrRecvonly = (kind, track, stream) => {
+        if (track) {
+          const sender = entry.pc.addTrack(track, stream)
+          return entry.pc.getTransceivers().find(item => item.sender === sender)
+        }
+        return entry.pc.addTransceiver(kind, { direction: 'recvonly' })
+      }
+      entry.audioTransceiver = addLocalOrRecvonly('audio', localStream?.getAudioTracks?.()[0] || null, localStream)
+      entry.cameraTransceiver = addLocalOrRecvonly('video', cameraTrack, cameraStream)
+      entry.screenTransceiver = addLocalOrRecvonly('video', screenTrack, screenStream)
+    }
 
     entry.pc.onicecandidate = ({ candidate }) => {
       if (candidate) void sendSignal('SendIceCandidate', connectionId, candidate)
@@ -717,6 +736,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     entry.isSettingRemoteAnswerPending = entry.pc.signalingState === 'have-local-offer'
     if (offerCollision) await entry.pc.setLocalDescription({ type: 'rollback' })
     await entry.pc.setRemoteDescription(description)
+    bindOfferTransceivers(entry)
+    await syncPeerMedia(entry)
     entry.isSettingRemoteAnswerPending = false
     for (const candidate of entry.pendingCandidates.splice(0)) await entry.pc.addIceCandidate(candidate)
     await entry.pc.setLocalDescription()
@@ -897,6 +918,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         trace('JOIN_BEGIN', 'reconnect-rejoin')
         const snapshot = await connection.invoke('JoinVoiceRoom', projectId, voiceChannelId)
         await refreshSnapshot(snapshot)
+        await sendMediaState()
         traceCaptionSource('RECONNECT_REJOIN', {
           oldCaptionSourceGeneration: transcriptionCapture?.sourceGeneration ?? null,
           newLocalMicrophoneGeneration: localMicrophoneGeneration,
@@ -1181,6 +1203,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       await connection.start()
       trace('JOIN_BEGIN', 'initial-join')
       await refreshSnapshot(await connection.invoke('JoinVoiceRoom', projectId, voiceChannelId))
+      await sendMediaState()
       trace('START_OK', 'session-started')
       emit('connected')
     })().finally(() => { startPromise = null })
