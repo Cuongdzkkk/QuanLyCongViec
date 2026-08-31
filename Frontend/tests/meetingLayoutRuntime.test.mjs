@@ -110,11 +110,35 @@ const threeParticipantRender = getMeetingRenderCollections({
 assert.deepEqual(threeParticipantRender.cameraStageParticipants.map(item => item.userId), ['U1', 'U2', 'U3'])
 assert.equal(threeParticipantRender.cameraRailParticipants.length, 0)
 
+const fourUsers = [...threeUsers, participant('U4', 'C4')]
+const fourParticipantRender = getMeetingRenderCollections({
+  mode: 'CAMERA_GRID',
+  participantsInCall: fourUsers
+})
+assert.deepEqual(fourParticipantRender.cameraStageParticipants.map(item => item.userId), ['U1', 'U2', 'U3', 'U4'])
+assert.equal(fourParticipantRender.cameraStageParticipants.length, 4)
+
+const fiveUsers = [...fourUsers, participant('U5', 'C5')]
+const fiveParticipantRender = getMeetingRenderCollections({
+  mode: 'CAMERA_GRID',
+  participantsInCall: fiveUsers
+})
+assert.equal(fiveParticipantRender.cameraStageParticipants.length, 5)
+assert.equal(new Set(fiveParticipantRender.cameraStageParticipants.map(item => item.userId)).size, 5)
+
 const duplicateUser = dedupeParticipantsByUser([
   { ...oneUser, cameraStream: { id: 'STREAM1' }, videoTrack: { id: 'TRACK1' } },
   { ...oneUser, connectionId: 'reconnected-C1', cameraStream: { id: 'STREAM1' }, videoTrack: { id: 'TRACK1' } }
 ], 'C1')
 assert.equal(duplicateUser.length, 1)
+
+const replacementUser = dedupeParticipantsByUser([
+  { ...oneUser, connectionId: 'stale-C1', cameraEnabled: false },
+  { ...oneUser, connectionId: 'replacement-C1', cameraEnabled: true }
+])
+assert.equal(replacementUser.length, 1)
+assert.equal(replacementUser[0].connectionId, 'replacement-C1')
+assert.equal(replacementUser[0].cameraEnabled, true)
 
 const productionEvidenceRender = getMeetingRenderCollections({
   mode: 'CAMERA_FOCUS',

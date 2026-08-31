@@ -133,9 +133,9 @@
                 <span class="item-name" style="white-space: normal; word-break: break-word; line-height: 1.3;">{{ vc.name }}</span>
               </button>
               <!-- Users in this voice channel -->
-              <div class="voice-users-list ml-6 flex flex-col gap-1.5 mt-1" v-if="vc.id === activeVoiceChannel?.id && callParticipants.length">
+              <div class="voice-users-list ml-6 flex flex-col gap-1.5 mt-1" v-if="vc.id === activeVoiceChannel?.id && participantsInCall.length">
                 <div 
-                  v-for="user in callParticipants"
+                  v-for="user in participantsInCall"
                   :key="user.connectionId"
                   class="voice-user flex items-center gap-2 py-0.5 text-xs text-secondary"
                   style="display: flex; align-items: center; gap: 6px; padding-left: 12px; margin-top: 2px;"
@@ -1061,10 +1061,10 @@
           <button type="button" class="context-tab" role="tab" @click="openAiAnalysis(showVoiceCallMain ? 'call' : 'text')">AI</button>
         </div>
         <div v-if="showVoiceCallMain && activeVoiceChannel" class="context-call-summary">
-          <span class="context-status-dot"></span><div><strong>{{ activeVoiceChannel.name }}</strong><span>{{ callParticipants.length }} người trong phòng</span></div>
+          <span class="context-status-dot"></span><div><strong>{{ activeVoiceChannel.name }}</strong><span>{{ participantsInCall.length }} người trong phòng</span></div>
         </div>
         <div v-if="showVoiceCallMain && activeVoiceChannel" class="context-member-list">
-          <div v-for="user in callParticipants" :key="`context-${user.connectionId}`" class="context-member-row">
+          <div v-for="user in participantsInCall" :key="`context-${user.connectionId}`" class="context-member-row">
             <el-avatar :size="30" :src="user.avatarUrl">{{ user.displayName?.charAt(0) }}</el-avatar><span>{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</span>
             <i v-if="user.userId === currentUser.id && !user.microphoneEnabled" class="fa-solid fa-microphone-slash" aria-label="Đang tắt micro"></i>
             <i v-if="user.handRaised" class="fa-solid fa-hand call-hand-indicator" aria-label="Đang giơ tay" title="Đang giơ tay"></i>
@@ -1830,7 +1830,7 @@ const callLayoutClasses = computed(() => ({
   'has-call-side-panel': callChatOpen.value || showMembersSidebar.value
 }))
 const focusParticipant = connectionId => {
-  const participant = callParticipants.value.find(user => user.connectionId === connectionId)
+  const participant = participantsInCall.value.find(user => user.connectionId === connectionId)
   if (!participant) return
   focusedParticipantConnectionId.value = focusedParticipantConnectionId.value === connectionId ? '' : connectionId
 }
