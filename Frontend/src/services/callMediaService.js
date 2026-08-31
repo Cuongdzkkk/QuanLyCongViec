@@ -998,7 +998,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         traceWebRtcMedia('PEER_CONNECTED', peerDiagnostic(entry))
         startPeriodicRtpSampling(entry)
       }
-      if (['failed', 'disconnected'].includes(entry.pc.connectionState)) void recoverPeer(connectionId)
+      if (entry.pc.connectionState === 'failed') void recoverPeer(connectionId)
       if (entry.pc.connectionState === 'connected') recoveryAttempts = 0
     }
     entry.pc.oniceconnectionstatechange = () => traceWebRtcMedia('ICE_CONNECTION_STATE_CHANGED', peerDiagnostic(entry))
