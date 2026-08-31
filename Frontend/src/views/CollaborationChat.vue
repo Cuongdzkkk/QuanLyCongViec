@@ -376,11 +376,6 @@
                     {{ user.microphoneEnabled ? 'Microphone đang bật' : 'Microphone đang tắt' }}
                   </small>
                 </div>
-                <audio
-                  v-if="user.connectionId !== callConnectionId && remoteStreams.has(user.connectionId)"
-                  :ref="el => setRemoteAudioElement(el, user.connectionId, 'stage')"
-                  autoplay
-                ></audio>
                 <span v-if="isParticipantVideoVisible(user)" class="call-camera-stage-label">
                   {{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}
                   <span v-if="user.handRaised" class="call-hand-indicator" title="Đang giơ tay"><i class="fa-solid fa-hand" aria-hidden="true"></i><span>Đang giơ tay</span></span>
@@ -427,11 +422,6 @@
                 <el-avatar v-else :size="44" :src="user.connectionId === callConnectionId ? currentUser.avatar : user.avatarUrl">
                   {{ (user.connectionId === callConnectionId ? currentUser.name : user.displayName)?.charAt(0) }}
                 </el-avatar>
-                <audio
-                  v-if="user.connectionId !== callConnectionId && remoteStreams.has(user.connectionId)"
-                  :ref="el => setRemoteAudioElement(el, user.connectionId, 'rail')"
-                  autoplay
-                ></audio>
               </div>
               <div class="call-thumb-caption">
                 <span class="truncate">{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</span>
@@ -441,6 +431,15 @@
               </div>
             </article>
           </section>
+
+          <audio
+            v-for="user in remoteAudioParticipants"
+            :key="`remote-audio-${user.connectionId}`"
+            :ref="el => setRemoteAudioElement(el, user.connectionId, 'output')"
+            class="call-remote-audio-output"
+            autoplay
+            aria-hidden="true"
+          ></audio>
 
           <aside v-if="showTranscriptPanel" class="call-transcript-panel" aria-label="Biên bản cuộc gọi">
             <div class="call-transcript-header">
@@ -1768,10 +1767,11 @@ const activePresenterStream = () => {
     : remoteStreams.value.get(presenter.connectionId)?.screenStream || null
 }
 
-const hasLiveVideoTrack = stream => stream?.getVideoTracks?.().some(track => track.readyState === 'live') === true
+const hasLiveVideoTrack = stream => stream?.getVideoTracks?.().some(track => track.readyState === 'live' && track.enabled !== false) === true
+const hasLiveAudioTrack = stream => stream?.getAudioTracks?.().some(track => track.readyState === 'live' && track.enabled !== false) === true
 const isParticipantVideoVisible = user => user.connectionId === callConnectionId.value
   ? isCallCameraOn.value && hasLiveVideoTrack(localCallStream.value)
-  : user.cameraEnabled && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId)?.cameraStream)
+  : hasLiveVideoTrack(remoteStreams.value.get(user.connectionId)?.cameraStream)
 const pictureInPictureUnsupportedMessage = 'Trình duyệt của bạn không hỗ trợ Picture-in-Picture.'
 const pictureInPictureNoVideoMessage = 'Hãy bật camera hoặc chia sẻ màn hình để sử dụng Picture-in-Picture.'
 const documentPictureInPictureSupported = () => typeof window !== 'undefined' &&
@@ -1792,6 +1792,10 @@ const pictureInPictureActionLabel = computed(() => {
 })
 const isParticipantSpeaking = user => user.isSpeaking === true || user.speaking === true || user.activeSpeaker === true
 const participantsInCall = computed(() => dedupeParticipantsByUser(callParticipants.value, callConnectionId.value))
+const remoteAudioParticipants = computed(() => participantsInCall.value.filter(user =>
+  user.connectionId !== callConnectionId.value &&
+  hasLiveAudioTrack(remoteStreams.value.get(user.connectionId)?.audioStream)
+))
 const meetingPictureInPicture = createMeetingPictureInPictureController()
 const getMeetingPictureInPictureSnapshot = () => ({
   meetingName: activeVoiceChannel.value?.name || 'Cuộc họp đang diễn ra',
@@ -1982,6 +1986,7 @@ const bindMediaElement = (element, stream, muted = false, { peerId = '', mediaRo
     streamId: stream?.id || ''
   })
   element.muted = muted
+  if (mediaRole === 'audio') element.volume = 1
   element.autoplay = true
   element.playsInline = true
   if (element.srcObject !== stream) {
