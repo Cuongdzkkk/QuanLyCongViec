@@ -46,12 +46,16 @@ class FakeMediaElement {
   constructor() {
     this.autoplay = false
     this.muted = true
+    this.paused = true
     this.playsInline = false
     this.srcObject = null
     this.volume = 1
   }
 
-  play() { return Promise.resolve() }
+  play() {
+    this.paused = false
+    return Promise.resolve()
+  }
 }
 
 class FakeRTCPeerConnection {
@@ -213,8 +217,11 @@ const { createCallMediaSession } = await import(`data:text/javascript;base64,${B
 
 const remoteStreamsRef = { value: new Map() }
 globalThis.__receivePathView = { remoteStreamsRef }
+const visibilityStart = viewSource.indexOf('const hasLiveVideoTrack =')
+const visibilityEnd = viewSource.indexOf('const pictureInPictureUnsupportedMessage', visibilityStart)
 const binderStart = viewSource.indexOf('const bindMediaElement =')
 const binderEnd = viewSource.indexOf('const setPresentationVideoElement =', binderStart)
+assert.ok(visibilityStart >= 0 && visibilityEnd > visibilityStart, 'real CollaborationChat remote camera visibility seam must remain available')
 assert.ok(binderStart >= 0 && binderEnd > binderStart, 'real CollaborationChat media binding seam must remain available')
 const binderPrelude = `
 const traceWebRtcMedia = () => {}
@@ -224,13 +231,15 @@ const remoteVideoElements = new Map()
 const remoteAudioElements = new Map()
 const localCallStream = { value: null }
 const callConnectionId = { value: 'B-connection' }
+const isCallCameraOn = { value: false }
 const remoteStreams = globalThis.__receivePathView.remoteStreamsRef
 const presentationVideoElement = { value: null }
 const activePresenterStream = () => null
 const activePresenter = { value: null }
 `
-const transformedBinder = `${binderPrelude}\n${viewSource.slice(binderStart, binderEnd)}\nexport { setRemoteVideoElement, setRemoteAudioElement, syncCallVideoElements }`
+const transformedBinder = `${binderPrelude}\n${viewSource.slice(visibilityStart, visibilityEnd)}\n${viewSource.slice(binderStart, binderEnd)}\nexport { isParticipantVideoVisible, setRemoteVideoElement, setRemoteAudioElement, syncCallVideoElements }`
 const {
+  isParticipantVideoVisible,
   setRemoteVideoElement,
   setRemoteAudioElement,
   syncCallVideoElements
@@ -241,12 +250,12 @@ const flushAsync = async () => {
   await new Promise(resolve => setImmediate(resolve))
 }
 
-const participant = connectionId => ({
+const participant = (connectionId, cameraEnabled = true) => ({
   connectionId,
   userId: 'A-user',
   displayName: 'User A',
   microphoneEnabled: true,
-  cameraEnabled: true,
+  cameraEnabled,
   screenSharing: false
 })
 
@@ -294,8 +303,7 @@ const createAppPath = () => {
     renderedParticipant = participantInCall
     if (!renderedParticipant) return
     const media = remoteStreamsRef.value.get(renderedParticipant.connectionId)
-    const cameraVisible = renderedParticipant.cameraEnabled &&
-      media?.cameraStream?.getVideoTracks?.().some(track => track.readyState === 'live') === true
+    const cameraVisible = isParticipantVideoVisible(renderedParticipant)
     if (cameraVisible && !videoElement) {
       videoElement = new FakeMediaElement()
       setRemoteVideoElement(videoElement, renderedParticipant.connectionId, 'stage')
@@ -329,11 +337,11 @@ const createAppPath = () => {
   }
 }
 
-test('User B keeps User A audio and camera attached through replacement and a transient disconnect', async () => {
+test('User B renders live User A audio and camera despite stale signaling state and through reconnect', async () => {
   FakeRTCPeerConnection.instances = []
   remoteStreamsRef.value = new Map()
   const app = createAppPath()
-  currentHub = new FakeHubConnection([snapshot([participant('A-old')])])
+  currentHub = new FakeHubConnection([snapshot([participant('A-old', false)])])
   const session = createCallMediaSession({
     projectId: 'project-1',
     voiceChannelId: 'voice-1',
@@ -357,7 +365,7 @@ test('User B keeps User A audio and camera attached through replacement and a tr
     assert.ok(app.state().videoElement?.srcObject?.getTracks().includes(oldCamera))
 
     currentHub.emit('ParticipantLeft', { connectionId: 'A-old' })
-    currentHub.emit('ParticipantJoined', { participant: participant('A-new') })
+    currentHub.emit('ParticipantJoined', { participant: participant('A-new', false) })
     await flushAsync()
     currentHub.emit('WebRtcOffer', offer('A-new'))
     await flushAsync()
