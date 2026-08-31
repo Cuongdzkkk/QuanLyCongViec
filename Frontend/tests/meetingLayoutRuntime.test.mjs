@@ -186,6 +186,27 @@ assert.match(view, /const callViewModes =/)
 assert.match(view, /\['spotlight', 'sidebar'\]/)
 assert.match(view, /callViewMode\.value === 'tiled'/)
 
+const layoutDiagnosticSource = view.slice(
+  view.indexOf('const meetingLayoutCorrelation'),
+  view.indexOf('const route = useRoute')
+)
+const layoutSnapshotSource = view.slice(
+  view.indexOf('const describeMeetingParticipant'),
+  view.indexOf('const callLayoutClasses')
+)
+assert.match(layoutDiagnosticSource, /\[MEETING_LAYOUT_DIAG\]/)
+assert.match(layoutSnapshotSource, /PARTICIPANT_SNAPSHOT/)
+assert.match(layoutSnapshotSource, /TILE_SNAPSHOT/)
+assert.match(layoutSnapshotSource, /GRID_SNAPSHOT/)
+assert.match(layoutSnapshotSource, /STREAM_OWNERSHIP_SNAPSHOT/)
+assert.match(layoutSnapshotSource, /userKey/)
+assert.match(layoutSnapshotSource, /connectionKey/)
+assert.match(layoutSnapshotSource, /displayNameCollisionCount/)
+assert.match(layoutSnapshotSource, /width: rect \? Math\.round\(rect\.width\) : 0/)
+assert.match(layoutSnapshotSource, /height: rect \? Math\.round\(rect\.height\) : 0/)
+assert.doesNotMatch(`${layoutDiagnosticSource}${layoutSnapshotSource}`, /\b(access_token|authorization|bearer|deviceId|trackId|streamId|SDP|ICE)\b/i)
+assert.match(view, /scheduleMeetingLayoutDiagnostics\(\)/)
+
 console.log('TWO_PARTICIPANTS_NO_SHARE_SHOWS_BOTH: covered')
 console.log('REMOTE_CAMERA_OFF_STILL_SHOWS_REMOTE_TILE: covered')
 console.log('REMOTE_CAMERA_ON_SHOWS_REMOTE_VIDEO: covered')
@@ -194,3 +215,4 @@ console.log('STOP_SHARE_RETURNS_TO_TWO_PERSON_GRID: covered')
 console.log('LOCAL_USER_DOES_NOT_HIDE_REMOTE_PARTICIPANT: covered')
 console.log('THREE_PARTICIPANTS_RENDER_GRID: covered')
 console.log('meetingLayoutRuntime.test.mjs: render collections prevent duplicate stage/thumb cameras and preserve presentation rails')
+console.log('MEETING_LAYOUT_DIAGNOSTICS: participant, tile, grid, and ownership snapshots are redacted and debug-gated')
