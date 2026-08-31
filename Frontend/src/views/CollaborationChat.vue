@@ -1297,6 +1297,29 @@ const traceCaptionRender = (resultType, receivedAt) => {
   }
 }
 
+const meetingLayoutCorrelation = (prefix, value, map) => {
+  const rawValue = `${value || ''}`
+  if (!rawValue) return ''
+  if (!map.has(rawValue)) map.set(rawValue, `${prefix}-${map.size + 1}`)
+  return map.get(rawValue)
+}
+
+const meetingLayoutUserKeys = new Map()
+const meetingLayoutConnectionKeys = new Map()
+let meetingLayoutDiagnosticSignature = ''
+let meetingLayoutDiagnosticQueued = false
+const meetingLayoutTraceEnabled = () => {
+  try { return globalThis.localStorage?.getItem('debug_webrtc_media') === '1' } catch { return false }
+}
+const traceMeetingLayout = (event, detail = {}) => {
+  if (!meetingLayoutTraceEnabled()) return
+  console.info('[MEETING_LAYOUT_DIAG]', {
+    timestamp: new Date().toISOString(),
+    event,
+    ...detail
+  })
+}
+
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -1823,6 +1846,118 @@ const callRailParticipants = computed(() => [
   ...meetingRenderCollections.value.cameraRailParticipants,
   ...meetingRenderCollections.value.presentationRailParticipants
 ])
+const describeMeetingParticipant = participant => {
+  const isSelf = participant.connectionId === callConnectionId.value
+  const remoteEntry = isSelf ? null : remoteStreams.value.get(participant.connectionId)
+  const cameraStream = isSelf ? localCallStream.value : remoteEntry?.cameraStream
+  const audioStream = isSelf ? localCallStream.value : remoteEntry?.audioStream
+  const screenStream = isSelf ? localScreenStream.value : remoteEntry?.screenStream
+  const displayName = `${participant.displayName || ''}`.trim().toLocaleLowerCase()
+  const displayNameCollisionCount = participantsInCall.value.filter(item =>
+    `${item.displayName || ''}`.trim().toLocaleLowerCase() === displayName
+  ).length
+  return {
+    userKey: meetingLayoutCorrelation('user', participant.userId, meetingLayoutUserKeys),
+    connectionKey: meetingLayoutCorrelation('connection', participant.connectionId, meetingLayoutConnectionKeys),
+    isSelf,
+    displayName: participant.displayName || '',
+    displayNameCollisionCount,
+    cameraEnabled: isSelf ? isCallCameraOn.value : participant.cameraEnabled === true,
+    micEnabled: isSelf ? callMicrophoneEnabled.value : participant.microphoneEnabled !== false,
+    remoteEntryExists: Boolean(remoteEntry),
+    selectedRemoteConnectionKey: isSelf ? '' : meetingLayoutCorrelation('connection', participant.connectionId, meetingLayoutConnectionKeys),
+    cameraStreamPresent: Boolean(cameraStream),
+    cameraLiveTrackPresent: hasLiveVideoTrack(cameraStream),
+    audioStreamPresent: Boolean(audioStream),
+    audioLiveTrackPresent: audioStream?.getAudioTracks?.().some(track => track.readyState === 'live') === true,
+    screenStreamPresent: Boolean(screenStream)
+  }
+}
+const traceMeetingLayoutSnapshot = () => {
+  if (!meetingLayoutTraceEnabled() || !meetingShell.value) return
+  const participants = participantsInCall.value.map(describeMeetingParticipant)
+  const renderedParticipants = [
+    ...cameraStageParticipants.value,
+    ...callRailParticipants.value
+  ]
+  const renderedElements = [...meetingShell.value.querySelectorAll('.call-camera-stage-tile, .call-participant-thumb')]
+  const tiles = renderedParticipants.map((participant, index) => {
+    const element = renderedElements[index]
+    const rect = element?.getBoundingClientRect?.()
+    const showingVideo = isParticipantVideoVisible(participant)
+    return {
+      userKey: meetingLayoutCorrelation('user', participant.userId, meetingLayoutUserKeys),
+      connectionKey: meetingLayoutCorrelation('connection', participant.connectionId, meetingLayoutConnectionKeys),
+      tileRole: participant.connectionId === callConnectionId.value ? 'SELF' : 'PARTICIPANT',
+      displayName: participant.displayName || '',
+      cameraEnabled: participant.connectionId === callConnectionId.value ? isCallCameraOn.value : participant.cameraEnabled === true,
+      cameraLiveTrackPresent: participant.connectionId === callConnectionId.value
+        ? hasLiveVideoTrack(localCallStream.value)
+        : hasLiveVideoTrack(remoteStreams.value.get(participant.connectionId)?.cameraStream),
+      showingVideo,
+      showingAvatarFallback: !showingVideo,
+      width: rect ? Math.round(rect.width) : 0,
+      height: rect ? Math.round(rect.height) : 0
+    }
+  })
+  const stage = meetingShell.value.querySelector('.call-camera-stage')
+  const stageStyle = stage ? getComputedStyle(stage) : null
+  const gridColumns = stageStyle?.gridTemplateColumns ? stageStyle.gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length : 0
+  const gridRows = stageStyle?.gridTemplateRows ? stageStyle.gridTemplateRows.trim().split(/\s+/).filter(Boolean).length : 0
+  const uniqueRenderedUserCount = new Set(tiles.map(tile => tile.userKey).filter(Boolean)).size
+  const signature = JSON.stringify({
+    participants,
+    tiles,
+    logicalParticipantCount: participants.length,
+    renderedTileCount: tiles.length,
+    uniqueRenderedUserCount,
+    gridColumns,
+    gridRows,
+    presentationActive: Boolean(activePresenter.value)
+  })
+  if (signature === meetingLayoutDiagnosticSignature) return
+  meetingLayoutDiagnosticSignature = signature
+  traceMeetingLayout('PARTICIPANT_SNAPSHOT', { participants })
+  traceMeetingLayout('TILE_SNAPSHOT', { tiles })
+  traceMeetingLayout('GRID_SNAPSHOT', {
+    logicalParticipantCount: participants.length,
+    renderedTileCount: tiles.length,
+    uniqueRenderedUserCount,
+    viewportWidth: Math.round(globalThis.innerWidth || 0),
+    viewportHeight: Math.round(globalThis.innerHeight || 0),
+    gridColumns,
+    gridRows,
+    presentationActive: Boolean(activePresenter.value),
+    duplicateLogicalUserDetected: uniqueRenderedUserCount !== tiles.length
+  })
+  const ownership = [...remoteStreams.value.entries()]
+    .filter(([, media]) => Boolean(media?.cameraStream))
+    .map(([connectionId, media]) => {
+      const selectedParticipant = participantsInCall.value.find(item => item.connectionId === connectionId)
+      const ownerKey = selectedParticipant
+        ? meetingLayoutCorrelation('user', selectedParticipant.userId, meetingLayoutUserKeys)
+        : ''
+      return {
+        streamOwnerUserKey: ownerKey,
+        streamConnectionKey: meetingLayoutCorrelation('connection', connectionId, meetingLayoutConnectionKeys),
+        selectedParticipantUserKey: ownerKey,
+        selectedParticipantConnectionKey: selectedParticipant
+          ? meetingLayoutCorrelation('connection', selectedParticipant.connectionId, meetingLayoutConnectionKeys)
+          : '',
+        ownershipMatches: Boolean(selectedParticipant && selectedParticipant.userId),
+        cameraLiveTrackPresent: hasLiveVideoTrack(media.cameraStream)
+      }
+    })
+  traceMeetingLayout('STREAM_OWNERSHIP_SNAPSHOT', { ownership })
+}
+const scheduleMeetingLayoutDiagnostics = () => {
+  if (!meetingLayoutTraceEnabled() || meetingLayoutDiagnosticQueued) return
+  meetingLayoutDiagnosticQueued = true
+  void nextTick().then(() => {
+    meetingLayoutDiagnosticQueued = false
+    traceMeetingLayoutSnapshot()
+  })
+}
 const callLayoutClasses = computed(() => ({
   'is-presentation-mode': callLayoutMode.value.startsWith('PRESENTATION'),
   'is-camera-mode': callLayoutMode.value.startsWith('CAMERA'),
@@ -2785,6 +2920,12 @@ watch(activePresenter, async presenter => {
 watch(
   [callParticipants, remoteStreams, localCallStream, localScreenStream, activePresenter, isCallCameraOn, isSharingScreen],
   syncMeetingPictureInPicture,
+  { deep: true }
+)
+
+watch(
+  [callParticipants, remoteStreams, localCallStream, localScreenStream, activePresenter, isCallCameraOn, callMicrophoneEnabled, callViewMode, presentationFocused, focusedParticipantConnectionId],
+  scheduleMeetingLayoutDiagnostics,
   { deep: true }
 )
 
@@ -4207,6 +4348,7 @@ const initializeCollaborationContext = async ({ forceProjects = false } = {}) =>
 onMounted(() => {
   componentMounted = true
   traceCallHubLifecycle('COMPONENT_MOUNT', { reason: 'collaboration-chat-mounted' })
+  scheduleMeetingLayoutDiagnostics()
   window.addEventListener('keydown', handleCallShortcut)
   document.addEventListener('fullscreenchange', syncPresentationFullscreen)
   registerRealtimeHandlers()
