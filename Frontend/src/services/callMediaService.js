@@ -5,6 +5,7 @@ import { createBackgroundBlurProcessor } from '@/services/cameraBackgroundEffect
 import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 import { launchCaptionTransportClientDiagnostic } from '@/services/captionTransportDiagnostics'
 import { createBoundedAsyncQueue } from '@/services/captionTransportQueue'
+import { summarizeRtpReport } from '@/services/webrtcRtpDiagnostics'
 
 const HUB_ROUTE = '/hubs/call'
 const MAX_RECOVERY_ATTEMPTS = 2
@@ -118,6 +119,47 @@ export const traceWebRtcMedia = (event, detail = {}) => {
   })
 }
 
+export const traceWebRtcRtp = (event, detail = {}) => {
+  if (!webRtcMediaTraceEnabled()) return
+  console.info('[WEBRTC_RTP_DIAG]', {
+    timestamp: new Date().toISOString(),
+    event,
+    peerId: detail.peerId || '',
+    roomId: detail.roomId || '',
+    callSessionId: detail.callSessionId || '',
+    trigger: detail.trigger || '',
+    kind: detail.kind || '',
+    direction: detail.direction || '',
+    trackPresent: typeof detail.trackPresent === 'boolean' ? detail.trackPresent : null,
+    enabled: typeof detail.enabled === 'boolean' ? detail.enabled : null,
+    muted: typeof detail.muted === 'boolean' ? detail.muted : null,
+    readyState: detail.readyState || '',
+    senderFound: typeof detail.senderFound === 'boolean' ? detail.senderFound : null,
+    receiverFound: typeof detail.receiverFound === 'boolean' ? detail.receiverFound : null,
+    senderTrackPresent: typeof detail.senderTrackPresent === 'boolean' ? detail.senderTrackPresent : null,
+    senderTrackEnabled: typeof detail.senderTrackEnabled === 'boolean' ? detail.senderTrackEnabled : null,
+    senderTrackMuted: typeof detail.senderTrackMuted === 'boolean' ? detail.senderTrackMuted : null,
+    senderTrackReadyState: detail.senderTrackReadyState || '',
+    receiverTrackMuted: typeof detail.receiverTrackMuted === 'boolean' ? detail.receiverTrackMuted : null,
+    receiverTrackReadyState: detail.receiverTrackReadyState || '',
+    transceiverDirection: detail.transceiverDirection || '',
+    currentDirection: detail.currentDirection || '',
+    outboundRtpFound: typeof detail.outboundRtpFound === 'boolean' ? detail.outboundRtpFound : null,
+    inboundRtpFound: typeof detail.inboundRtpFound === 'boolean' ? detail.inboundRtpFound : null,
+    packetsSent: detail.packetsSent ?? null,
+    bytesSent: detail.bytesSent ?? null,
+    packetsReceived: detail.packetsReceived ?? null,
+    bytesReceived: detail.bytesReceived ?? null,
+    packetsLost: detail.packetsLost ?? null,
+    framesEncoded: detail.framesEncoded ?? null,
+    framesDecoded: detail.framesDecoded ?? null,
+    totalAudioEnergy: detail.totalAudioEnergy ?? null,
+    audioLevel: detail.audioLevel ?? null,
+    result: detail.result || '',
+    errorName: detail.errorName || ''
+  })
+}
+
 const read = (value, camel, pascal) => value?.[camel] ?? value?.[pascal]
 
 const normalizeParticipant = (value) => ({
@@ -216,6 +258,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   let participants = new Map()
   const peers = new Map()
   const remoteStreams = new Map()
+  const rtpDiagnosticTimers = new Set()
   let transcriptionCapture = null
   const transcriptionQueue = createBoundedAsyncQueue({
     maxPending: CAPTION_MAX_PENDING_CHUNKS,
@@ -518,6 +561,92 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     ...detail
   })
 
+  const trackDiagnostic = track => ({
+    trackPresent: Boolean(track),
+    enabled: track ? track.enabled !== false : null,
+    muted: track ? track.muted === true : null,
+    readyState: track?.readyState || ''
+  })
+
+  const senderTrackDiagnostic = track => ({
+    senderTrackPresent: Boolean(track),
+    senderTrackEnabled: track ? track.enabled !== false : undefined,
+    senderTrackMuted: track ? track.muted === true : undefined,
+    senderTrackReadyState: track?.readyState || ''
+  })
+
+  const traceCameraSender = (event, entry, transceiver, track = transceiver?.sender?.track, detail = {}) =>
+    traceWebRtcRtp(event, peerDiagnostic(entry, {
+      senderFound: Boolean(transceiver?.sender),
+      ...senderTrackDiagnostic(track),
+      transceiverDirection: transceiver?.direction || '',
+      currentDirection: transceiver?.currentDirection || '',
+      ...detail
+    }))
+
+  const endpointStats = async (endpoint, pc) => typeof endpoint?.getStats === 'function'
+    ? endpoint.getStats()
+    : pc.getStats()
+
+  const rtpEventNames = {
+    outbound: { audio: 'RTP_OUTBOUND_AUDIO', video: 'RTP_OUTBOUND_VIDEO' },
+    inbound: { audio: 'RTP_INBOUND_AUDIO', video: 'RTP_INBOUND_VIDEO' }
+  }
+
+  const sampleRtpDirection = async (entry, trigger, direction, kind, transceiver) => {
+    const endpoint = direction === 'outbound' ? transceiver?.sender : transceiver?.receiver
+    const track = endpoint?.track || null
+    const report = await endpointStats(endpoint, entry.pc)
+    const summary = summarizeRtpReport(report, direction, kind)
+    traceWebRtcRtp(rtpEventNames[direction][kind], peerDiagnostic(entry, {
+      trigger,
+      kind,
+      direction,
+      senderFound: direction === 'outbound' ? Boolean(endpoint) : undefined,
+      receiverFound: direction === 'inbound' ? Boolean(endpoint) : undefined,
+      senderTrackPresent: direction === 'outbound' ? Boolean(track) : undefined,
+      senderTrackEnabled: direction === 'outbound' && track ? track.enabled !== false : undefined,
+      senderTrackMuted: direction === 'outbound' && track ? track.muted === true : undefined,
+      senderTrackReadyState: direction === 'outbound' ? track?.readyState || '' : undefined,
+      receiverTrackMuted: direction === 'inbound' && track ? track.muted === true : undefined,
+      receiverTrackReadyState: direction === 'inbound' ? track?.readyState || '' : undefined,
+      transceiverDirection: transceiver?.direction || '',
+      currentDirection: transceiver?.currentDirection || '',
+      ...summary
+    }))
+  }
+
+  const samplePeerRtpStats = async (entry, trigger) => {
+    if (!webRtcMediaTraceEnabled() || peers.get(entry.connectionId) !== entry) return
+    try {
+      await Promise.all([
+        sampleRtpDirection(entry, trigger, 'outbound', 'audio', entry.audioTransceiver),
+        sampleRtpDirection(entry, trigger, 'inbound', 'audio', entry.audioTransceiver),
+        sampleRtpDirection(entry, trigger, 'outbound', 'video', entry.cameraTransceiver),
+        sampleRtpDirection(entry, trigger, 'inbound', 'video', entry.cameraTransceiver)
+      ])
+    } catch (error) {
+      traceWebRtcRtp('RTP_STATS_FAIL', peerDiagnostic(entry, {
+        trigger,
+        errorName: error?.name || 'Error'
+      }))
+    }
+  }
+
+  const schedulePeerRtpStats = (entry, trigger, delayMs) => {
+    if (!webRtcMediaTraceEnabled()) return
+    const timer = globalThis.setTimeout(() => {
+      rtpDiagnosticTimers.delete(timer)
+      void samplePeerRtpStats(entry, trigger)
+    }, delayMs)
+    rtpDiagnosticTimers.add(timer)
+  }
+
+  const clearRtpDiagnosticTimers = () => {
+    for (const timer of rtpDiagnosticTimers) globalThis.clearTimeout(timer)
+    rtpDiagnosticTimers.clear()
+  }
+
   const removeRemoteTrack = (connectionId, source, track) => {
     const media = remoteStreams.get(connectionId)
     const stream = media?.[`${source}Stream`]
@@ -676,10 +805,23 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
 
   const syncVideoSender = async (entry, senderKey, track, stream, mediaRole) => {
     const transceiver = entry[senderKey]
+    if (mediaRole === 'camera') traceCameraSender('CAMERA_SENDER_FOUND', entry, transceiver)
     if (!transceiver) return
-    if (transceiver.sender.track !== track) await transceiver.sender.replaceTrack(track)
+    if (transceiver.sender.track !== track) {
+      if (mediaRole === 'camera') traceCameraSender('CAMERA_REPLACE_TRACK_BEGIN', entry, transceiver, track)
+      try {
+        await transceiver.sender.replaceTrack(track)
+        if (mediaRole === 'camera') traceCameraSender('CAMERA_REPLACE_TRACK_OK', entry, transceiver)
+      } catch (error) {
+        if (mediaRole === 'camera') traceCameraSender('CAMERA_REPLACE_TRACK_FAIL', entry, transceiver, track, {
+          errorName: error?.name || 'Error'
+        })
+        throw error
+      }
+    }
     if (typeof transceiver.sender.setStreams === 'function') transceiver.sender.setStreams(...(track && stream ? [stream] : []))
     transceiver.direction = track ? 'sendrecv' : 'recvonly'
+    if (mediaRole === 'camera') traceCameraSender('CAMERA_SENDER_STATE_AFTER', entry, transceiver)
     traceWebRtcMedia('SENDER_ATTACHED', peerDiagnostic(entry, {
       trackKind: track?.kind,
       trackId: track?.id,
@@ -738,6 +880,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       ignoreOffer: false,
       isSettingRemoteAnswerPending: false,
       initialNegotiationComplete: false,
+      rtpInitialSamplesScheduled: false,
       initiateInitialOffer: initiate,
       polite: isPolite(connectionId),
       audioTransceiver: null,
@@ -785,7 +928,14 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     }
     entry.pc.onconnectionstatechange = () => {
       traceWebRtcMedia('PEER_CONNECTION_STATE_CHANGED', peerDiagnostic(entry))
-      if (entry.pc.connectionState === 'connected') traceWebRtcMedia('PEER_CONNECTED', peerDiagnostic(entry))
+      if (entry.pc.connectionState === 'connected') {
+        traceWebRtcMedia('PEER_CONNECTED', peerDiagnostic(entry))
+        if (!entry.rtpInitialSamplesScheduled) {
+          entry.rtpInitialSamplesScheduled = true
+          schedulePeerRtpStats(entry, 'peer-connected-2s', 2000)
+          schedulePeerRtpStats(entry, 'controlled-audio-window', 6500)
+        }
+      }
       if (['failed', 'disconnected'].includes(entry.pc.connectionState)) void recoverPeer(connectionId)
       if (entry.pc.connectionState === 'connected') recoveryAttempts = 0
     }
@@ -1141,6 +1291,10 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     cameraTrack = await getCameraOutputTrack()
     cameraStream = new MediaStream([cameraTrack])
     cameraEnabled = true
+    traceWebRtcRtp('CAMERA_TRACK_ACQUIRED', {
+      kind: 'video',
+      ...senderTrackDiagnostic(cameraTrack)
+    })
     traceWebRtcMedia('LOCAL_TRACK_READY', {
       trackKind: cameraTrack.kind,
       trackId: cameraTrack.id,
@@ -1153,6 +1307,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const setCameraEnabled = async enabled => {
     if (enabled === cameraEnabled) return
     if (!enabled) {
+      traceWebRtcRtp('CAMERA_DISABLE_BEGIN', { kind: 'video', ...trackDiagnostic(cameraTrack) })
       await disposeBackgroundProcessor()
       cameraTrack?.stop()
       rawCameraTrack?.stop()
@@ -1160,9 +1315,18 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       rawCameraTrack = null
       cameraStream = null
       cameraEnabled = false
+      traceWebRtcRtp('CAMERA_REPLACE_WITH_NULL_OR_DISABLE', { kind: 'video', senderTrackPresent: false })
       for (const entry of peers.values()) await syncPeerMedia(entry)
-      for (const entry of peers.values()) await requestPeerNegotiation(entry)
+      for (const entry of peers.values()) {
+        await requestPeerNegotiation(entry)
+        traceCameraSender('NEGOTIATION_NEEDED_AFTER_CAMERA', entry, entry.cameraTransceiver, undefined, {
+          kind: 'video',
+          result: 'requested-if-initialized'
+        })
+      }
+      traceWebRtcRtp('CAMERA_DISABLE_OK', { kind: 'video', senderTrackPresent: false })
     } else {
+      traceWebRtcRtp('CAMERA_ENABLE_BEGIN', { kind: 'video', senderTrackPresent: Boolean(cameraTrack) })
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -1175,7 +1339,14 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         })
         await adoptCameraStream(stream)
         for (const entry of peers.values()) await syncPeerMedia(entry)
-        for (const entry of peers.values()) await requestPeerNegotiation(entry)
+        for (const entry of peers.values()) {
+          await requestPeerNegotiation(entry)
+          traceCameraSender('NEGOTIATION_NEEDED_AFTER_CAMERA', entry, entry.cameraTransceiver, undefined, {
+            kind: 'video',
+            result: 'requested-if-initialized'
+          })
+          schedulePeerRtpStats(entry, 'camera-enable-settled', 2000)
+        }
       } catch (error) {
         rawCameraTrack?.stop()
         rawCameraTrack = null
@@ -1197,9 +1368,28 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     }
     if (audioTrack) audioTrack.enabled = nextEnabled
     microphoneEnabled = nextEnabled
+    traceWebRtcRtp('MIC_STATE_CHANGED', {
+      kind: 'audio',
+      senderTrackPresent: Boolean(audioTrack),
+      senderTrackEnabled: audioTrack ? audioTrack.enabled !== false : undefined,
+      senderTrackMuted: audioTrack ? audioTrack.muted === true : undefined,
+      senderTrackReadyState: audioTrack?.readyState || '',
+      result: nextEnabled ? 'enabled' : 'disabled'
+    })
     if (senderNeedsSync) {
       for (const entry of peers.values()) await syncPeerMedia(entry)
       for (const entry of peers.values()) await requestPeerNegotiation(entry)
+    }
+    for (const entry of peers.values()) {
+      const senderTrack = entry.audioTransceiver?.sender?.track || null
+      traceWebRtcRtp('MIC_SENDER_STATE', peerDiagnostic(entry, {
+        kind: 'audio',
+        senderFound: Boolean(entry.audioTransceiver?.sender),
+        ...senderTrackDiagnostic(senderTrack),
+        transceiverDirection: entry.audioTransceiver?.direction || '',
+        currentDirection: entry.audioTransceiver?.currentDirection || ''
+      }))
+      if (nextEnabled) schedulePeerRtpStats(entry, 'microphone-enable-settled', 2000)
     }
     await sendMediaState()
     emit('media')
@@ -1376,6 +1566,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     if (leavePromise) return leavePromise
     leavePromise = (async () => {
       intentionalLeave = true
+      clearRtpDiagnosticTimers()
       trace('LEAVE_BEGIN', 'session-leave')
       if (startPromise) {
         try { await startPromise } catch { /* cleanup below remains authoritative */ }
