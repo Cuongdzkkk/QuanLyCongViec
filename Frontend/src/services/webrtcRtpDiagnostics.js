@@ -36,6 +36,10 @@ export const summarizeRtpReport = (report, direction, kind) => {
     summary[direction === 'outbound' ? 'framesEncoded' : 'framesDecoded'] = sumMetric(
       entries,
       direction === 'outbound' ? 'framesEncoded' : 'framesDecoded')
+    if (direction === 'inbound') {
+      const framesReceived = optionalMetric(entries, 'framesReceived')
+      if (framesReceived !== undefined) summary.framesReceived = framesReceived
+    }
   }
 
   if (kind === 'audio') {
@@ -46,4 +50,52 @@ export const summarizeRtpReport = (report, direction, kind) => {
   }
 
   return summary
+}
+
+export const createBoundedPeriodicSampler = ({
+  isActive,
+  sample,
+  intervalMs = 2000,
+  maxDurationMs = 20000,
+  setIntervalFn = globalThis.setInterval,
+  clearIntervalFn = globalThis.clearInterval,
+  setTimeoutFn = globalThis.setTimeout,
+  clearTimeoutFn = globalThis.clearTimeout,
+  nowFn = Date.now
+}) => {
+  let intervalId = null
+  let deadlineId = null
+  let deadlineAt = null
+  let running = false
+
+  const stop = () => {
+    running = false
+    if (intervalId !== null) clearIntervalFn(intervalId)
+    if (deadlineId !== null) clearTimeoutFn(deadlineId)
+    intervalId = null
+    deadlineId = null
+    deadlineAt = null
+  }
+
+  const tick = () => {
+    if (!running || !isActive() || nowFn() > deadlineAt) {
+      stop()
+      return
+    }
+    void sample()
+  }
+
+  const start = () => {
+    if (running || !isActive()) return false
+    running = true
+    deadlineAt = nowFn() + maxDurationMs
+    tick()
+    if (running) {
+      intervalId = setIntervalFn(tick, intervalMs)
+      deadlineId = setTimeoutFn(stop, maxDurationMs)
+    }
+    return true
+  }
+
+  return { start, stop }
 }
