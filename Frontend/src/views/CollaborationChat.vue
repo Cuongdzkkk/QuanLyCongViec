@@ -8649,7 +8649,256 @@ background-color: #111c2d !important;
   .chat-workspace .header-actions .action-btn:nth-last-child(-n + 2) { display: none; }
   .chat-workspace .call-control-dock { max-width: 100%; overflow-x: auto; }
 }
+
+/* Responsive meeting composition: preserve the desktop shell and promote secondary navigation to a drawer. */
+.chat-workspace .call-header .active-info > div {
+  min-width: 0;
+}
+
+.chat-workspace .call-header h4 {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-workspace .call-header .active-info > div > p {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .chat-workspace {
+    width: 100% !important;
+    height: min(820px, calc(100dvh - 76px));
+    min-height: 0;
+    margin: 0 auto 12px !important;
+    border-radius: 0;
+    border-inline: 0;
+    grid-template-columns: 52px minmax(0, 1fr) !important;
+  }
+
+  .chat-workspace .chat-sidebar {
+    position: absolute;
+    z-index: 6;
+    top: 0;
+    bottom: 0;
+    left: 52px;
+    width: min(280px, calc(100vw - 52px)) !important;
+    transform: translateX(-105%);
+    box-shadow: 14px 0 32px color-mix(in srgb, var(--chat-ink) 18%, transparent);
+    transition: transform 180ms ease-out;
+  }
+
+  .chat-workspace.is-sidebar-open .chat-sidebar {
+    transform: translateX(0);
+  }
+
+  .chat-workspace:not(.is-sidebar-open) .chat-sidebar {
+    transform: translateX(-105%);
+  }
+
+  .chat-workspace .chat-sidebar-backdrop {
+    display: block;
+    position: absolute;
+    z-index: 5;
+    inset: 0;
+    border: 0;
+    background: color-mix(in srgb, var(--chat-ink) 24%, transparent);
+    cursor: pointer;
+  }
+
+  .chat-workspace .mobile-sidebar-trigger {
+    display: inline-grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 8px;
+    background: var(--chat-surface-2);
+    color: var(--chat-muted);
+  }
+
+  .chat-workspace .chat-main {
+    grid-column: 2;
+  }
+
+  .chat-workspace .chat-header {
+    padding-inline: 12px !important;
+  }
+
+  .chat-workspace .header-actions {
+    max-width: 52%;
+    overflow-x: auto;
+  }
+
+  .chat-workspace .call-workspace-body {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px;
+  }
+
+  .chat-workspace .call-camera-stage,
+  .chat-workspace .call-presentation-stage,
+  .chat-workspace .call-participant-rail,
+  .chat-workspace .call-transcript-panel {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .chat-workspace .call-camera-stage {
+    overflow-x: hidden;
+  }
+
+  .chat-workspace .call-participant-rail {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .chat-workspace .call-header .active-info {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .chat-workspace .call-header .header-actions {
+    flex: 0 0 auto;
+    max-width: 42%;
+  }
+
+  .chat-workspace .call-header h4 {
+    max-width: clamp(7rem, 38vw, 13rem);
+  }
+
+  .chat-workspace .call-control-dock {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(44px, 1fr));
+    grid-auto-flow: row;
+    gap: 8px;
+    overflow: visible;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  }
+
+  .chat-workspace .call-control-dock > * {
+    width: 100%;
+    min-width: 0;
+    order: 4;
+  }
+
+  .chat-workspace .call-control-dock > .call-control-circle-btn:first-child {
+    order: 1;
+  }
+
+  .chat-workspace .call-control-dock > .call-control-circle-btn:nth-child(2) {
+    order: 2;
+  }
+
+  .chat-workspace .call-control-dock > .call-control-circle-btn.hang-up {
+    order: 3;
+  }
+
+  .chat-workspace .call-control-circle-btn {
+    width: 44px;
+    height: 44px;
+    justify-self: center;
+  }
+
+  .chat-workspace .call-control-label-btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    height: 44px;
+    padding-inline: 6px;
+    border-radius: 10px;
+  }
+
+  .chat-workspace .call-control-dock > .call-control-label-btn > span,
+  .chat-workspace .call-control-dock > .camera-effects-control > .call-control-label-btn > span {
+    display: none;
+  }
+
+  .chat-workspace .camera-effects-control {
+    min-width: 0;
+  }
+
+  .chat-workspace .call-camera-stage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: minmax(96px, 1fr);
+    align-content: stretch;
+    gap: 8px;
+    min-height: 0;
+    padding: 8px;
+  }
+
+  .chat-workspace .call-camera-stage[data-participant-count="1"] {
+    grid-template-columns: minmax(0, min(760px, 100%));
+    grid-auto-rows: auto;
+    align-content: center;
+  }
+
+  .chat-workspace .call-camera-stage[data-participant-count="1"] .call-camera-stage-tile {
+    width: 100%;
+    max-width: 100%;
+    max-height: min(54vh, 460px);
+  }
+
+  .chat-workspace .call-camera-stage-tile,
+  .chat-workspace .call-camera-stage-tile video,
+  .chat-workspace .call-camera-off-state {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .chat-workspace .call-camera-off-state {
+    min-height: 0;
+    padding: clamp(12px, 4vw, 28px);
+  }
+
+  .chat-workspace .call-chat-panel,
+  .chat-workspace .call-fullscreen-panel {
+    max-width: calc(100% - 16px);
+  }
+}
+
+@media (min-width: 360px) and (max-width: 560px) {
+  .chat-workspace .call-camera-stage[data-participant-count]:not([data-participant-count="1"]):not([data-participant-count="2"]) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chat-workspace .call-camera-stage[data-participant-count="3"] .call-camera-stage-tile:last-child {
+    grid-column: auto;
+    width: 100%;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .chat-workspace .chat-sidebar { transition: none; }
+}
+</style>
+
+<style>
+@media (max-width: 560px) {
+  .el-overlay-dialog {
+    box-sizing: border-box;
+    padding: 12px !important;
+  }
+
+  .group-call-dialog.video-call-dialog,
+  .add-friend-dialog {
+    width: min(100%, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px) !important;
+    margin: 0 auto !important;
+  }
+
+  .group-call-dialog.video-call-dialog .el-dialog__body,
+  .add-friend-dialog .el-dialog__body {
+    max-height: calc(100dvh - 180px);
+    overflow-y: auto;
+  }
 }
 </style>
