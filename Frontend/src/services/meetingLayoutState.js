@@ -7,7 +7,9 @@ export const dedupeParticipantsByUser = (participants = [], preferredConnectionI
     const key = participantIdentityKey(participant)
     if (!key) continue
     const previous = unique.get(key)
-    if (!previous || participant.connectionId === preferredConnectionId) unique.set(key, participant)
+    if (!previous || participant.connectionId === preferredConnectionId || previous.connectionId !== preferredConnectionId) {
+      unique.set(key, participant)
+    }
   }
   return [...unique.values()]
 }
