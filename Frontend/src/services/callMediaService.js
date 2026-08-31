@@ -5,7 +5,7 @@ import { createBackgroundBlurProcessor } from '@/services/cameraBackgroundEffect
 import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 import { launchCaptionTransportClientDiagnostic } from '@/services/captionTransportDiagnostics'
 import { createBoundedAsyncQueue } from '@/services/captionTransportQueue'
-import { summarizeRtpReport } from '@/services/webrtcRtpDiagnostics'
+import { createBoundedPeriodicSampler, summarizeRtpReport } from '@/services/webrtcRtpDiagnostics'
 
 const HUB_ROUTE = '/hubs/call'
 const MAX_RECOVERY_ATTEMPTS = 2
@@ -153,11 +153,26 @@ export const traceWebRtcRtp = (event, detail = {}) => {
     packetsLost: detail.packetsLost ?? null,
     framesEncoded: detail.framesEncoded ?? null,
     framesDecoded: detail.framesDecoded ?? null,
+    framesReceived: detail.framesReceived ?? null,
     totalAudioEnergy: detail.totalAudioEnergy ?? null,
     audioLevel: detail.audioLevel ?? null,
     result: detail.result || '',
     errorName: detail.errorName || ''
   })
+}
+
+const tracePeriodicRtpSnapshot = detail => {
+  if (!webRtcMediaTraceEnabled()) return
+  console.info('[WEBRTC_RTP_DIAG]', JSON.stringify({
+    event: 'RTP_PERIODIC_SNAPSHOT',
+    timestamp: new Date().toISOString(),
+    peerState: detail.peerState || 'unknown',
+    iceState: detail.iceState || 'unknown',
+    audioInbound: detail.audioInbound,
+    audioOutbound: detail.audioOutbound,
+    videoInbound: detail.videoInbound,
+    videoOutbound: detail.videoOutbound
+  }))
 }
 
 const read = (value, camel, pascal) => value?.[camel] ?? value?.[pascal]
@@ -633,6 +648,57 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     }
   }
 
+  const safeRtpCounters = (summary, fields) => Object.fromEntries(
+    fields
+      .filter(field => summary?.[field] !== undefined)
+      .map(field => [field, summary[field]]))
+
+  const summarizeTransceiverRtp = async (entry, direction, kind, transceiver) => {
+    if (!transceiver) return summarizeRtpReport(new Map(), direction, kind)
+    const endpoint = direction === 'outbound' ? transceiver.sender : transceiver.receiver
+    const report = await endpointStats(endpoint, entry.pc)
+    return summarizeRtpReport(report, direction, kind)
+  }
+
+  const samplePeriodicRtpSnapshot = async entry => {
+    try {
+      const [audioInbound, audioOutbound, cameraInbound, cameraOutbound, screenInbound, screenOutbound] = await Promise.all([
+        summarizeTransceiverRtp(entry, 'inbound', 'audio', entry.audioTransceiver),
+        summarizeTransceiverRtp(entry, 'outbound', 'audio', entry.audioTransceiver),
+        summarizeTransceiverRtp(entry, 'inbound', 'video', entry.cameraTransceiver),
+        summarizeTransceiverRtp(entry, 'outbound', 'video', entry.cameraTransceiver),
+        summarizeTransceiverRtp(entry, 'inbound', 'video', entry.screenTransceiver),
+        summarizeTransceiverRtp(entry, 'outbound', 'video', entry.screenTransceiver)
+      ])
+      if (peers.get(entry.connectionId) !== entry || entry.pc.connectionState !== 'connected') return
+      tracePeriodicRtpSnapshot({
+        peerState: entry.pc.connectionState,
+        iceState: entry.pc.iceConnectionState,
+        audioInbound: safeRtpCounters(audioInbound, ['packetsReceived', 'bytesReceived', 'totalAudioEnergy', 'audioLevel']),
+        audioOutbound: safeRtpCounters(audioOutbound, ['packetsSent', 'bytesSent']),
+        videoInbound: {
+          camera: safeRtpCounters(cameraInbound, ['packetsReceived', 'bytesReceived', 'framesReceived', 'framesDecoded']),
+          screen: safeRtpCounters(screenInbound, ['packetsReceived', 'bytesReceived', 'framesReceived', 'framesDecoded'])
+        },
+        videoOutbound: {
+          camera: safeRtpCounters(cameraOutbound, ['packetsSent', 'bytesSent', 'framesEncoded']),
+          screen: safeRtpCounters(screenOutbound, ['packetsSent', 'bytesSent', 'framesEncoded'])
+        }
+      })
+    } catch (error) {
+      traceWebRtcRtp('RTP_STATS_FAIL', peerDiagnostic(entry, { errorName: error?.name || 'Error' }))
+    }
+  }
+
+  const startPeriodicRtpSampling = entry => {
+    if (!webRtcMediaTraceEnabled()) return
+    entry.rtpPeriodicSampler ||= createBoundedPeriodicSampler({
+      isActive: () => peers.get(entry.connectionId) === entry && entry.pc.connectionState === 'connected',
+      sample: () => samplePeriodicRtpSnapshot(entry)
+    })
+    entry.rtpPeriodicSampler.start()
+  }
+
   const schedulePeerRtpStats = (entry, trigger, delayMs) => {
     if (!webRtcMediaTraceEnabled()) return
     const timer = globalThis.setTimeout(() => {
@@ -725,6 +791,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const closePeer = (connectionId) => {
     const peer = peers.get(connectionId)
     if (!peer) return
+    peer.rtpPeriodicSampler?.stop()
+    peer.rtpPeriodicSampler = null
     peer.pc.onicecandidate = null
     peer.pc.ontrack = null
     peer.pc.onconnectionstatechange = null
@@ -880,7 +948,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       ignoreOffer: false,
       isSettingRemoteAnswerPending: false,
       initialNegotiationComplete: false,
-      rtpInitialSamplesScheduled: false,
+      rtpPeriodicSampler: null,
       initiateInitialOffer: initiate,
       polite: isPolite(connectionId),
       audioTransceiver: null,
@@ -930,11 +998,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       traceWebRtcMedia('PEER_CONNECTION_STATE_CHANGED', peerDiagnostic(entry))
       if (entry.pc.connectionState === 'connected') {
         traceWebRtcMedia('PEER_CONNECTED', peerDiagnostic(entry))
-        if (!entry.rtpInitialSamplesScheduled) {
-          entry.rtpInitialSamplesScheduled = true
-          schedulePeerRtpStats(entry, 'peer-connected-2s', 2000)
-          schedulePeerRtpStats(entry, 'controlled-audio-window', 6500)
-        }
+        startPeriodicRtpSampling(entry)
       }
       if (['failed', 'disconnected'].includes(entry.pc.connectionState)) void recoverPeer(connectionId)
       if (entry.pc.connectionState === 'connected') recoveryAttempts = 0
