@@ -162,7 +162,6 @@ export const traceWebRtcRtp = (event, detail = {}) => {
 }
 
 const tracePeriodicRtpSnapshot = detail => {
-  if (!webRtcMediaTraceEnabled()) return
   console.info('[WEBRTC_RTP_DIAG]', JSON.stringify({
     event: 'RTP_PERIODIC_SNAPSHOT',
     timestamp: new Date().toISOString(),
@@ -691,7 +690,6 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   }
 
   const startPeriodicRtpSampling = entry => {
-    if (!webRtcMediaTraceEnabled()) return
     entry.rtpPeriodicSampler ||= createBoundedPeriodicSampler({
       isActive: () => peers.get(entry.connectionId) === entry && entry.pc.connectionState === 'connected',
       sample: () => samplePeriodicRtpSnapshot(entry)
@@ -1005,6 +1003,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     }
     entry.pc.oniceconnectionstatechange = () => traceWebRtcMedia('ICE_CONNECTION_STATE_CHANGED', peerDiagnostic(entry))
     entry.pc.onsignalingstatechange = () => traceWebRtcMedia('SIGNALING_STATE_CHANGED', peerDiagnostic(entry))
+    if (entry.pc.connectionState === 'connected') startPeriodicRtpSampling(entry)
     await syncPeerMedia(entry)
     traceWebRtcMedia('LOCAL_TRACK_STATE', peerDiagnostic(entry, {
       localAudioTrackCount: localStream?.getAudioTracks?.().length || 0,

@@ -232,12 +232,12 @@ for (const event of [
 
 assert.match(callMediaSource, /entry\.pc\.connectionState === 'connected'[\s\S]{0,180}startPeriodicRtpSampling\(entry\)/)
 assert.match(callMediaSource, /schedulePeerRtpStats\(entry, 'camera-enable-settled', 2000\)/)
-assert.match(callMediaSource, /const startPeriodicRtpSampling = entry => \{\s+if \(!webRtcMediaTraceEnabled\(\)\) return/)
 assert.match(callMediaSource, /framesDecoded: detail\.framesDecoded \?\? null,\s+framesReceived: detail\.framesReceived \?\? null/)
 
 const periodicRtpDiagnostic = callMediaSource.slice(
   callMediaSource.indexOf('const tracePeriodicRtpSnapshot'),
   callMediaSource.indexOf('\nconst read', callMediaSource.indexOf('const tracePeriodicRtpSnapshot')))
+assert.doesNotMatch(periodicRtpDiagnostic, /webRtcMediaTraceEnabled/)
 assert.match(periodicRtpDiagnostic, /console\.info\('\[WEBRTC_RTP_DIAG\]', JSON\.stringify\(\{/)
 assert.deepEqual(
   [...periodicRtpDiagnostic.matchAll(/^\s{4}(\w+):/gm)].map(match => match[1]),
@@ -252,6 +252,11 @@ for (const forbidden of [
   'cookie',
   'authorization'
 ]) assert.equal(periodicRtpDiagnostic.toLowerCase().includes(`${forbidden.toLowerCase()}:`), false, `unsafe RTP diagnostic field: ${forbidden}`)
+
+const periodicSamplerStart = callMediaSource.slice(
+  callMediaSource.indexOf('const startPeriodicRtpSampling'),
+  callMediaSource.indexOf('\n\n', callMediaSource.indexOf('const startPeriodicRtpSampling')))
+assert.doesNotMatch(periodicSamplerStart, /webRtcMediaTraceEnabled/)
 
 assert.match(callMediaSource, /const endpointStats = async[\s\S]{0,180}getStats/)
 assert.match(callMediaSource, /if \(!webRtcMediaTraceEnabled\(\)\) return[\s\S]{0,240}setTimeout/)
