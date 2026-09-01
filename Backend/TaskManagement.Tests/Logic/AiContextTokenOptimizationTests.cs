@@ -94,7 +94,7 @@ public sealed class AiContextTokenOptimizationTests
     }
 
     [Fact]
-    public async Task CapabilityPrompt_UsesCanonicalRegistryAndSeparatesCapabilityKinds()
+    public async Task DashboardCapabilityPrompt_UsesOnlyContextRelevantCanonicalActions()
     {
         await using var context = CreateContextWithUser(out var userId);
         var handler = new RecordingResponseHandler(SuccessResponse());
@@ -107,11 +107,10 @@ public sealed class AiContextTokenOptimizationTests
             Message = "Hãy mô tả chính xác capability của SprintA AI."
         });
 
-        foreach (var action in AiActionCatalog.Definitions)
-        {
-            handler.RequestBody.Should().Contain(action.Key);
-        }
-
+        handler.RequestBody.Should().Contain("summarize_dashboard");
+        handler.RequestBody.Should().Contain("get_personal_work_summary");
+        handler.RequestBody.Should().NotContain("list_task_comments");
+        handler.RequestBody.Should().NotContain("get_task_details");
         handler.RequestBody.Should().Contain("READ");
         handler.RequestBody.Should().Contain("ANALYZE");
         handler.RequestBody.Should().Contain("WRITE");
@@ -122,7 +121,7 @@ public sealed class AiContextTokenOptimizationTests
     [Fact]
     public async Task CapabilityCatalog_ContainsOnlyExecutableHandlers()
     {
-        AiActionCatalog.Definitions.Should().HaveCount(27);
+        AiActionCatalog.Definitions.Should().HaveCount(37);
         AiActionCatalog.Definitions.Select(action => action.Key)
             .Should().NotContain("unsupported_action");
         AiActionCatalog.Definitions
@@ -131,6 +130,28 @@ public sealed class AiContextTokenOptimizationTests
         AiActionCatalog.Definitions
             .Where(action => action.Value.CapabilityKind != AiCapabilityKind.Write)
             .Should().AllSatisfy(action => action.Value.RequiresConfirmation.Should().BeFalse());
+    }
+
+    [Fact]
+    public async Task ProjectPrompt_IncludesProjectReadActionsAndExcludesGlobalPersonalSummary()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Route = "/projects/example/work-items",
+            ProjectId = Guid.NewGuid(),
+            PageContext = new AiContextPageDto { PageType = "project", CurrentView = "Work items" },
+            Message = "Phân tích dữ liệu dự án hiện tại."
+        });
+
+        handler.RequestBody.Should().Contain("get_task_details");
+        handler.RequestBody.Should().Contain("search_tasks");
+        handler.RequestBody.Should().Contain("get_planning_summary");
+        handler.RequestBody.Should().NotContain("get_personal_work_summary");
+        handler.RequestBody.Should().NotContain("summarize_dashboard");
     }
 
     [Theory]
@@ -574,6 +595,25 @@ public sealed class AiContextTokenOptimizationTests
         result.Actions.Should().ContainSingle().Which.RequiresConfirmation.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task ReadAction_IsAlwaysMarkedAsNotRequiringConfirmation()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(ReadActionResponse());
+        var service = CreateService(context, handler);
+
+        var result = await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Route = "/projects/example/work-items",
+            ProjectId = Guid.NewGuid(),
+            PageContext = new AiContextPageDto { PageType = "project", CurrentView = "Work items" },
+            Message = "Xem chi tiết task hiện tại"
+        });
+
+        result.Actions.Should().ContainSingle().Which.RequiresConfirmation.Should().BeFalse();
+        result.Actions.Should().ContainSingle().Which.DirectExecution.Should().BeTrue();
+    }
+
     private static GeminiAiService CreateService(ApplicationDbContext context, RecordingResponseHandler handler)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -641,6 +681,14 @@ public sealed class AiContextTokenOptimizationTests
     {
         Content = new StringContent(
             "{\"choices\":[{\"message\":{\"content\":\"{\\\"answer\\\":\\\"ok\\\",\\\"suggestions\\\":[],\\\"warnings\\\":[],\\\"actions\\\":[{\\\"type\\\":\\\"create_task\\\",\\\"requiresConfirmation\\\":false}]}\"}}],\"usage\":{\"total_tokens\":1}}",
+            Encoding.UTF8,
+            "application/json")
+    };
+
+    private static HttpResponseMessage ReadActionResponse() => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(
+            "{\"choices\":[{\"message\":{\"content\":\"{\\\"answer\\\":\\\"ok\\\",\\\"suggestions\\\":[],\\\"warnings\\\":[],\\\"actions\\\":[{\\\"type\\\":\\\"get_task_details\\\",\\\"requiresConfirmation\\\":true}]}\"}}],\"usage\":{\"total_tokens\":1}}",
             Encoding.UTF8,
             "application/json")
     };
