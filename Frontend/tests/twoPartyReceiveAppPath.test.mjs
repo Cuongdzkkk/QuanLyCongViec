@@ -136,6 +136,7 @@ class FakeHubConnection {
     this.connectionId = 'B-connection'
     this.state = 'Disconnected'
     this.handlers = new Map()
+    this.invocations = []
   }
 
   on(name, handler) { this.handlers.set(name, handler) }
@@ -145,7 +146,8 @@ class FakeHubConnection {
   async start() { this.state = 'Connected' }
   async stop() { this.state = 'Disconnected' }
 
-  async invoke(method) {
+  async invoke(method, ...args) {
+    this.invocations.push({ method, args })
     if (method === 'JoinVoiceRoom') return this.snapshots.shift()
     if (method === 'GetCallChatHistory') return []
     return null
@@ -250,6 +252,12 @@ const flushAsync = async () => {
   await new Promise(resolve => setImmediate(resolve))
 }
 
+const deferred = () => {
+  let resolve
+  const promise = new Promise(complete => { resolve = complete })
+  return { promise, resolve }
+}
+
 const participant = (connectionId, cameraEnabled = true) => ({
   connectionId,
   userId: 'A-user',
@@ -265,6 +273,10 @@ const snapshot = participants => ({
   participants,
   transcription: {}
 })
+
+const publishedMediaStates = hub => hub.invocations
+  .filter(invocation => invocation.method === 'PublishParticipantMediaState')
+  .map(invocation => invocation.args[1])
 
 const offer = connectionId => ({
   fromConnectionId: connectionId,
@@ -411,5 +423,177 @@ test('User B renders live User A audio and camera despite stale signaling state 
     assert.ok(state.videoElement.srcObject.getTracks().includes(newCamera))
   } finally {
     await session.leave()
+  }
+})
+
+test('prejoin microphone and camera tracks are published after joining', async () => {
+  FakeRTCPeerConnection.instances = []
+  const microphoneTrack = new FakeTrack('audio', 'B-prejoin-mic')
+  const cameraTrack = new FakeTrack('video', 'B-prejoin-camera')
+  currentHub = new FakeHubConnection([snapshot([])])
+  const session = createCallMediaSession({
+    projectId: 'project-1',
+    voiceChannelId: 'voice-1',
+    initialMicrophoneEnabled: true,
+    initialMicrophoneStream: new FakeMediaStream([microphoneTrack]),
+    initialCameraEnabled: true,
+    initialCameraStream: new FakeMediaStream([cameraTrack])
+  })
+
+  try {
+    await session.start()
+    assert.deepEqual(publishedMediaStates(currentHub), [{
+      microphoneEnabled: true,
+      cameraEnabled: true,
+      screenSharing: false
+    }])
+  } finally {
+    await session.leave()
+  }
+})
+
+test('reconnect rejoins idempotently without replacing a healthy peer or local tracks', async () => {
+  FakeRTCPeerConnection.instances = []
+  const microphoneTrack = new FakeTrack('audio', 'B-reconnect-mic')
+  const cameraTrack = new FakeTrack('video', 'B-reconnect-camera')
+  const remoteParticipant = participant('A-connection')
+  currentHub = new FakeHubConnection([
+    snapshot([remoteParticipant]),
+    snapshot([remoteParticipant])
+  ])
+  const session = createCallMediaSession({
+    projectId: 'project-1',
+    voiceChannelId: 'voice-1',
+    initialMicrophoneEnabled: true,
+    initialMicrophoneStream: new FakeMediaStream([microphoneTrack]),
+    initialCameraEnabled: true,
+    initialCameraStream: new FakeMediaStream([cameraTrack])
+  })
+
+  try {
+    await session.start()
+    const healthyPeer = FakeRTCPeerConnection.instances[0]
+    healthyPeer.transitionConnection('connected')
+
+    currentHub.state = 'Reconnecting'
+    currentHub.reconnectingHandler?.()
+    currentHub.state = 'Connected'
+    await Promise.all([
+      currentHub.reconnectedHandler?.(),
+      currentHub.reconnectedHandler?.()
+    ])
+
+    assert.equal(FakeRTCPeerConnection.instances.length, 1)
+    assert.equal(currentHub.invocations.filter(invocation => invocation.method === 'JoinVoiceRoom').length, 2)
+    assert.equal(healthyPeer.connectionState, 'connected')
+    assert.equal(microphoneTrack.readyState, 'live')
+    assert.equal(cameraTrack.readyState, 'live')
+    assert.deepEqual(publishedMediaStates(currentHub), [
+      { microphoneEnabled: true, cameraEnabled: true, screenSharing: false },
+      { microphoneEnabled: true, cameraEnabled: true, screenSharing: false }
+    ])
+  } finally {
+    await session.leave()
+  }
+})
+
+test('reconnect publishes ended local tracks as disabled', async () => {
+  FakeRTCPeerConnection.instances = []
+  const microphoneTrack = new FakeTrack('audio', 'B-ended-mic')
+  const cameraTrack = new FakeTrack('video', 'B-ended-camera')
+  currentHub = new FakeHubConnection([snapshot([]), snapshot([])])
+  const session = createCallMediaSession({
+    projectId: 'project-1',
+    voiceChannelId: 'voice-1',
+    initialMicrophoneStream: new FakeMediaStream([microphoneTrack]),
+    initialCameraEnabled: true,
+    initialCameraStream: new FakeMediaStream([cameraTrack])
+  })
+
+  try {
+    await session.start()
+    microphoneTrack.readyState = 'ended'
+    cameraTrack.readyState = 'ended'
+
+    await currentHub.reconnect()
+
+    assert.deepEqual(publishedMediaStates(currentHub).at(-1), {
+      microphoneEnabled: false,
+      cameraEnabled: false,
+      screenSharing: false
+    })
+  } finally {
+    await session.leave()
+  }
+})
+
+test('leaving and entering a second call does not reuse peer or local track state', async () => {
+  FakeRTCPeerConnection.instances = []
+  const firstMicrophoneTrack = new FakeTrack('audio', 'first-call-mic')
+  currentHub = new FakeHubConnection([snapshot([participant('first-peer')])])
+  const firstSession = createCallMediaSession({
+    projectId: 'project-1',
+    voiceChannelId: 'voice-1',
+    initialMicrophoneStream: new FakeMediaStream([firstMicrophoneTrack])
+  })
+  await firstSession.start()
+  const firstPeer = FakeRTCPeerConnection.instances[0]
+
+  const secondMicrophoneTrack = new FakeTrack('audio', 'second-call-mic')
+  currentHub = new FakeHubConnection([snapshot([participant('second-peer')])])
+  const secondSession = createCallMediaSession({
+    projectId: 'project-2',
+    voiceChannelId: 'voice-2',
+    initialMicrophoneStream: new FakeMediaStream([secondMicrophoneTrack])
+  })
+
+  try {
+    await secondSession.start()
+    assert.equal(firstPeer.connectionState, 'closed')
+    assert.equal(firstMicrophoneTrack.readyState, 'ended')
+    assert.equal(secondMicrophoneTrack.readyState, 'live')
+    assert.deepEqual(secondSession.getPeerDiagnostics().map(peer => peer.connectionId), ['second-peer'])
+  } finally {
+    await secondSession.leave()
+  }
+
+  assert.equal(secondMicrophoneTrack.readyState, 'ended')
+  assert.deepEqual(secondSession.getPeerDiagnostics(), [])
+})
+
+test('a delayed reconnect cannot repopulate a call after a second session starts', async () => {
+  FakeRTCPeerConnection.instances = []
+  const delayedSnapshot = deferred()
+  const firstMicrophoneTrack = new FakeTrack('audio', 'delayed-first-call-mic')
+  const firstHub = new FakeHubConnection([snapshot([]), delayedSnapshot.promise])
+  currentHub = firstHub
+  const firstSession = createCallMediaSession({
+    projectId: 'project-1',
+    voiceChannelId: 'voice-1',
+    initialMicrophoneStream: new FakeMediaStream([firstMicrophoneTrack])
+  })
+  await firstSession.start()
+  firstHub.state = 'Connected'
+  const reconnectRun = firstHub.reconnectedHandler?.()
+
+  const secondMicrophoneTrack = new FakeTrack('audio', 'delayed-second-call-mic')
+  currentHub = new FakeHubConnection([snapshot([])])
+  const secondSession = createCallMediaSession({
+    projectId: 'project-2',
+    voiceChannelId: 'voice-2',
+    initialMicrophoneStream: new FakeMediaStream([secondMicrophoneTrack])
+  })
+
+  try {
+    await secondSession.start()
+    delayedSnapshot.resolve(snapshot([participant('stale-first-peer')]))
+    await reconnectRun
+
+    assert.equal(firstMicrophoneTrack.readyState, 'ended')
+    assert.deepEqual(firstSession.getPeerDiagnostics(), [])
+    assert.equal(secondMicrophoneTrack.readyState, 'live')
+  } finally {
+    delayedSnapshot.resolve(snapshot([]))
+    await secondSession.leave()
   }
 })

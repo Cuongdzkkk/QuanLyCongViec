@@ -250,6 +250,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   let connection = null
   let startPromise = null
   let leavePromise = null
+  let reconnectPromise = null
   let roomId = null
   let localStream = null
   let localMicrophoneGeneration = 0
@@ -309,6 +310,12 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   }
 
   const getCurrentMicrophoneTrack = () => localStream?.getAudioTracks?.()[0] || null
+  const isLiveEnabledTrack = track => track?.readyState === 'live' && track.enabled !== false
+  const getParticipantMediaState = () => ({
+    microphoneEnabled: microphoneEnabled && isLiveEnabledTrack(getCurrentMicrophoneTrack()),
+    cameraEnabled: cameraEnabled && isLiveEnabledTrack(cameraTrack),
+    screenSharing: screenSharing && isLiveEnabledTrack(screenTrack)
+  })
 
   const captionSourceMatchesCurrentMicrophone = capture => {
     if (!capture) return null
@@ -552,11 +559,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
 
   const sendMediaState = async () => {
     if (!connection || !roomId || connection.state !== signalR.HubConnectionState.Connected) return
-    await connection.invoke('PublishParticipantMediaState', roomId, {
-      microphoneEnabled,
-      cameraEnabled,
-      screenSharing
-    })
+    await connection.invoke('PublishParticipantMediaState', roomId, getParticipantMediaState())
   }
 
   const emptyRemoteMedia = () => ({
@@ -937,7 +940,9 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const createPeer = async (connectionId, { initiate = false } = {}) => {
     if (!connectionId || connectionId === localConnectionId()) return null
     if (!joinedAck) return null
-    if (peers.has(connectionId)) return peers.get(connectionId)
+    const existing = peers.get(connectionId)
+    if (existing && !['closed', 'failed'].includes(existing.pc.connectionState) && existing.pc.signalingState !== 'closed') return existing
+    if (existing) closePeer(connectionId)
     const entry = {
       connectionId,
       pc: new RTCPeerConnection({ iceServers }),
@@ -1017,6 +1022,15 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     // for it, avoiding the duplicate offer added after the known-good flow.
     if (entry.initiateInitialOffer) await negotiate(entry)
     return entry
+  }
+
+  const reconcilePeers = async ({ initiateMissing = false } = {}) => {
+    for (const connectionId of peers.keys()) {
+      if (!participants.has(connectionId)) closePeer(connectionId)
+    }
+    for (const participant of participants.values()) {
+      await createPeer(participant.connectionId, { initiate: initiateMissing })
+    }
   }
 
   const applyOffer = async message => {
@@ -1134,7 +1148,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     return connection.invoke('SendCallMessage', roomId, content, clientMessageId)
   }
 
-  const refreshSnapshot = async snapshot => {
+  const refreshSnapshot = async (snapshot, options) => {
     joinedAck = true
     roomId = read(snapshot, 'roomId', 'RoomId')
     const aiState = read(snapshot, 'aiState', 'AiState')
@@ -1170,7 +1184,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     })
     handleAiState(aiState)
     emitParticipants()
-    for (const participant of participants.values()) await createPeer(participant.connectionId)
+    await reconcilePeers(options)
     const queuedSignals = pendingInboundSignals.splice(0)
     for (const signal of queuedSignals) {
       if (signal.type === 'offer') await applyOffer(signal.value)
@@ -1266,30 +1280,35 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       trace('ON_RECONNECTING', 'signalr-automatic-reconnect')
       emit('reconnecting')
     })
-    connection.onreconnected(async () => {
+    connection.onreconnected(() => {
       if (intentionalLeave) return
-      trace('ON_RECONNECTED', 'signalr-automatic-reconnect-complete')
-      joinedAck = false
-      roomId = null
-      pendingInboundSignals.splice(0)
-      closeAllPeers()
-      emit('reconnecting')
-      try {
-        trace('JOIN_BEGIN', 'reconnect-rejoin')
-        const snapshot = await connection.invoke('JoinVoiceRoom', projectId, voiceChannelId)
-        await refreshSnapshot(snapshot)
-        await sendMediaState()
-        traceCaptionSource('RECONNECT_REJOIN', {
-          oldCaptionSourceGeneration: transcriptionCapture?.sourceGeneration ?? null,
-          newLocalMicrophoneGeneration: localMicrophoneGeneration,
-          activeCaptionAudioNodeRebuilt: false,
-          captionCapturePointsToCurrentLocalMicrophoneSource: captionSourceMatchesCurrentMicrophone(transcriptionCapture),
-          ...describeCaptionSource(transcriptionCapture)
-        })
-        emit('connected')
-      } catch (error) {
-        emit('error', { error, silent: true })
-      }
+      if (reconnectPromise) return reconnectPromise
+      reconnectPromise = (async () => {
+        trace('ON_RECONNECTED', 'signalr-automatic-reconnect-complete')
+        joinedAck = false
+        roomId = null
+        pendingInboundSignals.splice(0)
+        emit('reconnecting')
+        try {
+          trace('JOIN_BEGIN', 'reconnect-rejoin')
+          const snapshot = await connection.invoke('JoinVoiceRoom', projectId, voiceChannelId)
+          if (intentionalLeave) return
+          await refreshSnapshot(snapshot, { initiateMissing: true })
+          if (intentionalLeave) return
+          await sendMediaState()
+          traceCaptionSource('RECONNECT_REJOIN', {
+            oldCaptionSourceGeneration: transcriptionCapture?.sourceGeneration ?? null,
+            newLocalMicrophoneGeneration: localMicrophoneGeneration,
+            activeCaptionAudioNodeRebuilt: false,
+            captionCapturePointsToCurrentLocalMicrophoneSource: captionSourceMatchesCurrentMicrophone(transcriptionCapture),
+            ...describeCaptionSource(transcriptionCapture)
+          })
+          emit('connected')
+        } catch (error) {
+          emit('error', { error, silent: true })
+        }
+      })().finally(() => { reconnectPromise = null })
+      return reconnectPromise
     })
     connection.onclose(error => {
       trace('ON_CLOSE', error?.message || 'signalr-closed')
@@ -1709,7 +1728,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     isJoined: () => joinedAck && Boolean(callSessionId),
     getConnectionId: localConnectionId,
     getPeerDiagnostics: () => [...peers.values()].map(entry => inspectPeerConnection(entry.connectionId, entry.pc)),
-    getMediaState: () => ({ microphoneEnabled, cameraEnabled, screenSharing, backgroundEffect })
+    getMediaState: () => ({ ...getParticipantMediaState(), backgroundEffect })
   }
   return session
 }
