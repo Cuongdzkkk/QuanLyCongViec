@@ -2,7 +2,9 @@
   <NexusLayout>
     <router-view v-slot="{ Component, route }">
       <Transition name="route-soft" mode="out-in">
-        <component :is="Component" :key="route.path" />
+        <KeepAlive include="CollaborationChat">
+          <component :is="Component" :key="route.name === 'CollaborationChat' ? 'CollaborationChat' : route.path" />
+        </KeepAlive>
       </Transition>
     </router-view>
   </NexusLayout>
@@ -11,3 +13,4 @@
 <script setup>
 import NexusLayout from '@/components/layout/NexusLayout.vue'
 </script>
+

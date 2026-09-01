@@ -209,6 +209,19 @@ const rules = computed(() => ({
   ]
 }))
 
+const getApiErrorMessage = (error, fallbackKey) => {
+  if (error.response?.data?.message) {
+    return error.response.data.message
+  }
+  if (error.response?.data?.errors && typeof error.response.data.errors === 'object') {
+    const messages = Object.values(error.response.data.errors).flat()
+    if (messages.length > 0) {
+      return messages.join(', ')
+    }
+  }
+  return t(fallbackKey)
+}
+
 const handleSendOtp = async () => {
   if (step.value === 1 && !emailFormRef.value) return
   
@@ -230,7 +243,7 @@ const handleSendOtp = async () => {
         step.value = 2
       } catch (error) {
         console.error('Send OTP error:', error)
-        ElMessage.error(error.response?.data?.message || t('auth.register.messages.sendOtpFailed'))
+        ElMessage.error(getApiErrorMessage(error, 'auth.register.messages.sendOtpFailed'))
       } finally {
         isLoading.value = false
       }
@@ -260,7 +273,7 @@ const handleVerifyOtp = async () => {
     }
   } catch (error) {
     console.error('Verify OTP error:', error)
-    ElMessage.error(error.response?.data?.message || t('auth.messages.otpInvalid'))
+    ElMessage.error(getApiErrorMessage(error, 'auth.messages.otpInvalid'))
   } finally {
     isLoading.value = false
   }
@@ -284,7 +297,7 @@ const handleRegister = async () => {
         router.push('/login')
       } catch (error) {
         console.error('Register error:', error)
-        ElMessage.error(error.response?.data?.message || t('auth.register.messages.registerFailed'))
+        ElMessage.error(getApiErrorMessage(error, 'auth.register.messages.registerFailed'))
       } finally {
         isLoading.value = false
       }
