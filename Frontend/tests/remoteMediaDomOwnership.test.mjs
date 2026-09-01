@@ -124,6 +124,8 @@ assert.ok(binderStart >= 0 && binderEnd > binderStart)
 
 const transformedViewFunctions = `
 const traceWebRtcMedia = () => {}
+const isWebRtcDebugEnabled = () => false
+const recordMediaElementDiagnostic = () => {}
 const blockedMediaElements = new Set()
 const localVideoElements = new Map()
 const remoteVideoElements = new Map()

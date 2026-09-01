@@ -1227,6 +1227,8 @@
         </div>
       </template>
     </el-dialog>
+
+    <WebRtcDiagnosticsPanel :call-session="callSession" />
   </main>
 </template>
 
@@ -1239,6 +1241,7 @@ import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 import LiveCaptionOverlay from '@/components/collaboration/LiveCaptionOverlay.vue'
+import WebRtcDiagnosticsPanel from '@/components/WebRtcDiagnosticsPanel.vue'
 
 import { useI18n } from '@/composables/useI18n'
 
@@ -1253,6 +1256,7 @@ import {
   getCollaborationHubErrorCode
 } from '@/services/collaborationRealtime'
 import { createCallMediaSession, traceCallHubLifecycle, traceWebRtcMedia } from '@/services/callMediaService'
+import { isWebRtcDebugEnabled, recordMediaElementDiagnostic } from '@/utils/webrtcRuntimeDiagnostics'
 import {
   dedupeParticipantsByUser,
   getMeetingLayoutMode,
@@ -1989,6 +1993,7 @@ const bindMediaElement = (element, stream, muted = false, { peerId = '', mediaRo
   if (mediaRole === 'audio') element.volume = 1
   element.autoplay = true
   element.playsInline = true
+  if (isWebRtcDebugEnabled()) recordMediaElementDiagnostic(element, { mediaRole })
   if (element.srcObject !== stream) {
     element.srcObject = stream || null
     traceWebRtcMedia('REMOTE_MEDIA_ELEMENT_BOUND', {
@@ -2008,6 +2013,7 @@ const bindMediaElement = (element, stream, muted = false, { peerId = '', mediaRo
       mediaRole,
       streamId: stream?.id || ''
     })
+    if (isWebRtcDebugEnabled()) recordMediaElementDiagnostic(element, { mediaRole })
   }
   if (stream) {
     if (mediaRole === 'audio') traceWebRtcMedia('REMOTE_AUDIO_PLAY_BEGIN', {
@@ -2021,10 +2027,12 @@ const bindMediaElement = (element, stream, muted = false, { peerId = '', mediaRo
     if (playback?.then) {
       void playback.then(() => {
         blockedMediaElements.delete(element)
+        if (isWebRtcDebugEnabled()) recordMediaElementDiagnostic(element, { mediaRole, playResult: 'ok' })
         if (mediaRole === 'audio') traceWebRtcMedia('REMOTE_AUDIO_PLAY_OK', { peerId, mediaRole, result: 'play-resolved' })
         traceWebRtcMedia('VIDEO_PLAY_OK', { peerId, trackKind: track?.kind, trackId: track?.id, trackReadyState: track?.readyState, mediaRole, streamId: stream.id })
       }).catch(error => {
         if (error?.name === 'NotAllowedError') blockedMediaElements.add(element)
+        if (isWebRtcDebugEnabled()) recordMediaElementDiagnostic(element, { mediaRole, playResult: 'error', errorName: error?.name || 'Error' })
         if (mediaRole === 'audio') traceWebRtcMedia('REMOTE_AUDIO_PLAY_FAIL', { peerId, mediaRole, errorName: error?.name || 'Error' })
         traceWebRtcMedia('VIDEO_PLAY_FAILED', { peerId, trackKind: track?.kind, trackId: track?.id, trackReadyState: track?.readyState, mediaRole, streamId: stream.id })
       })

@@ -7,6 +7,7 @@ import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 import { launchCaptionTransportClientDiagnostic } from '@/services/captionTransportDiagnostics'
 import { createBoundedAsyncQueue } from '@/services/captionTransportQueue'
 import { createBoundedPeriodicSampler, summarizeRtpReport } from '@/services/webrtcRtpDiagnostics'
+import { collectPeerRuntimeStats, getIceServerDiagnostics, getRecentWebRtcDiagnosticEvents, isWebRtcDebugEnabled, recordIceServerDiagnostics, recordWebRtcDiagnosticEvent, resetWebRtcRuntimeDiagnostics } from '@/utils/webrtcRuntimeDiagnostics'
 
 const HUB_ROUTE = '/hubs/call'
 const MAX_RECOVERY_ATTEMPTS = 2
@@ -77,6 +78,7 @@ const safeCaptionErrorMessage = error => {
 }
 
 export const traceCallHubLifecycle = (event, detail = {}) => {
+  if (isWebRtcDebugEnabled()) recordWebRtcDiagnosticEvent(event, detail)
   if (!callHubTraceEnabled()) return
   console.info('[CALL_HUB]', {
     timestamp: new Date().toISOString(),
@@ -86,6 +88,7 @@ export const traceCallHubLifecycle = (event, detail = {}) => {
 }
 
 export const traceWebRtcMedia = (event, detail = {}) => {
+  if (isWebRtcDebugEnabled()) recordWebRtcDiagnosticEvent(event, detail)
   if (!webRtcMediaTraceEnabled()) return
   console.info('[WEBRTC_DIAG]', {
     timestamp: new Date().toISOString(),
@@ -121,6 +124,7 @@ export const traceWebRtcMedia = (event, detail = {}) => {
 }
 
 export const traceWebRtcRtp = (event, detail = {}) => {
+  if (isWebRtcDebugEnabled()) recordWebRtcDiagnosticEvent(event, detail)
   if (!webRtcMediaTraceEnabled()) return
   console.info('[WEBRTC_RTP_DIAG]', {
     timestamp: new Date().toISOString(),
@@ -238,16 +242,24 @@ export const classifyRemoteMediaRole = (entry, transceiver, track, streams = [])
 }
 
 const getIceServers = async () => {
-  const response = await axiosClient.get('/webrtc/ice-servers')
-  const payload = response?.data?.data ?? response?.data ?? {}
-  return (payload.iceServers ?? payload.IceServers ?? []).map(server => ({
-    urls: server.urls ?? server.Urls,
-    ...(server.username || server.Username ? { username: server.username ?? server.Username } : {}),
-    ...(server.credential || server.Credential ? { credential: server.credential ?? server.Credential } : {})
-  }))
+  try {
+    const response = await axiosClient.get('/webrtc/ice-servers')
+    const payload = response?.data?.data ?? response?.data ?? {}
+    const servers = payload.iceServers ?? payload.IceServers ?? []
+    recordIceServerDiagnostics(servers, { httpStatus: response?.status })
+    return servers.map(server => ({
+      urls: server.urls ?? server.Urls,
+      ...(server.username || server.Username ? { username: server.username ?? server.Username } : {}),
+      ...(server.credential || server.Credential ? { credential: server.credential ?? server.Credential } : {})
+    }))
+  } catch (error) {
+    recordIceServerDiagnostics([], { httpStatus: error?.response?.status })
+    throw error
+  }
 }
 
 export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams, onAiState, onTranscriptChunk, onTranscriptInterim, onTranscriptionError, onTranscriptionCapabilities, onHandChanged, onReaction, onSpeakerChanged, onForceMute, onForceRemoved, onCallMessage, onCallHistory, initialMicrophoneEnabled = true, initialMicrophoneStream = null, initialCameraEnabled = false, initialCameraStream = null, initialMicrophoneDeviceId = '', initialCameraDeviceId = '' }) => {
+  resetWebRtcRuntimeDiagnostics()
   let connection = null
   let startPromise = null
   let leavePromise = null
@@ -274,6 +286,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const pendingInboundSignals = []
   let participants = new Map()
   const peers = new Map()
+  const previousRuntimeDiagnostics = new Map()
   const remoteStreams = new Map()
   const rtpDiagnosticTimers = new Set()
   let transcriptionCapture = null
@@ -1748,6 +1761,36 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     isJoined: () => joinedAck && Boolean(callSessionId),
     getConnectionId: localConnectionId,
     getPeerDiagnostics: () => [...peers.values()].map(entry => inspectPeerConnection(entry.connectionId, entry.pc)),
+    getWebRtcRuntimeDiagnostics: async () => {
+      const peerSnapshots = []
+      for (const [connectionId, entry] of peers.entries()) {
+        try {
+          const snapshot = await collectPeerRuntimeStats({
+            pc: entry.pc,
+            previous: previousRuntimeDiagnostics.get(connectionId) || null
+          })
+          previousRuntimeDiagnostics.set(connectionId, snapshot)
+          peerSnapshots.push(snapshot)
+        } catch {
+          peerSnapshots.push({
+            connectionState: entry.pc?.connectionState || 'unknown',
+            iceConnectionState: entry.pc?.iceConnectionState || 'unknown',
+            signalingState: entry.pc?.signalingState || 'unknown',
+            selectedCandidatePair: null,
+            rtp: { audio: {}, video: {} },
+            tracks: { senders: [], receivers: [] }
+          })
+        }
+      }
+      return {
+        callSessionPresent: true,
+        roomPresent: Boolean(roomId),
+        participantCount: participants.size,
+        peerSnapshots,
+        iceServer: getIceServerDiagnostics(),
+        events: getRecentWebRtcDiagnosticEvents()
+      }
+    },
     getMediaState: () => ({ ...getParticipantMediaState(), backgroundEffect })
   }
   return session

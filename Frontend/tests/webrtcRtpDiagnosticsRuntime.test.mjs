@@ -197,7 +197,21 @@ globalThis.__callMediaRuntime = {
   launchCaptionTransportClientDiagnostic: () => {},
   createBoundedAsyncQueue,
   createBoundedPeriodicSampler,
-  summarizeRtpReport
+  summarizeRtpReport,
+  collectPeerRuntimeStats: async () => ({
+    connectionState: 'unknown',
+    iceConnectionState: 'unknown',
+    signalingState: 'unknown',
+    selectedCandidatePair: null,
+    rtp: { audio: {}, video: {} },
+    tracks: { senders: [], receivers: [] }
+  }),
+  getIceServerDiagnostics: () => ({ httpStatus: null, iceServerCount: 0, stunPresent: false, turnPresent: false, turnServerCount: 0 }),
+  getRecentWebRtcDiagnosticEvents: () => [],
+  isWebRtcDebugEnabled: () => false,
+  recordIceServerDiagnostics: () => {},
+  recordWebRtcDiagnosticEvent: () => {},
+  resetWebRtcRuntimeDiagnostics: () => {}
 }
 
 const runtimePrelude = `
@@ -213,7 +227,14 @@ const {
   launchCaptionTransportClientDiagnostic,
   createBoundedAsyncQueue,
   createBoundedPeriodicSampler,
-  summarizeRtpReport
+  summarizeRtpReport,
+  collectPeerRuntimeStats,
+  getIceServerDiagnostics,
+  getRecentWebRtcDiagnosticEvents,
+  isWebRtcDebugEnabled,
+  recordIceServerDiagnostics,
+  recordWebRtcDiagnosticEvent,
+  resetWebRtcRuntimeDiagnostics
 } = globalThis.__callMediaRuntime
 `
 const runtimeSource = `${runtimePrelude}\n${callMediaSource
