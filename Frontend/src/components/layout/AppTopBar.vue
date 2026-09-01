@@ -5,8 +5,15 @@
         <span class="grid-icon">⋮⋮⋮</span>
       </div>
 
-      <div class="sprinta-logo" @click="router.push('/site-selection')">
-        <img src="@/assets/logo_QLCV.png" alt="SprintA Logo" class="sprinta-logo-img" />
+      <div
+        class="sprinta-logo"
+        role="link"
+        tabindex="0"
+        @click="router.push('/site-selection')"
+        @keydown.enter="router.push('/site-selection')"
+        @keydown.space.prevent="router.push('/site-selection')"
+      >
+        <span role="img" aria-label="SprintA logo" class="sprinta-logo-mark"></span>
         <span class="logo-text">SprintA</span>
       </div>
 
@@ -22,10 +29,19 @@
           <span class="ws-name">{{ workspaceName }}</span>
           <i class="fa-solid fa-chevron-down ms-1"></i>
         </div>
-        <button class="menu-toggle" @click="emit('toggle-sidebar')">
-          <i class="fa-solid fa-bars-staggered"></i>
-        </button>
       </div>
+
+      <button
+        v-if="showSidebar"
+        class="menu-toggle"
+        type="button"
+        aria-controls="app-sidebar"
+        :aria-expanded="sidebarVisible"
+        aria-label="Mở hoặc đóng thanh điều hướng"
+        @click="emit('toggle-sidebar')"
+      >
+        <i class="fa-solid fa-bars-staggered" aria-hidden="true"></i>
+      </button>
     </div>
 
     <div class="nav-center" ref="searchWrapperRef">
@@ -117,6 +133,17 @@ import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import { buildSpacePath } from '@/utils/spaceRoute'
 
 const emit = defineEmits(['toggle-sidebar', 'toggle-ai', 'toggle-create'])
+
+defineProps({
+  sidebarVisible: {
+    type: Boolean,
+    default: false
+  },
+  showSidebar: {
+    type: Boolean,
+    default: true
+  }
+})
 
 const handleGlobalCreate = () => {
   window.dispatchEvent(new CustomEvent('global-create-click'))
@@ -354,13 +381,12 @@ onUnmounted(() => {
   min-height: 32px;
 }
 
-.sprinta-logo-img {
+.sprinta-logo-mark {
+  width: 24px;
   height: 22px;
-  width: auto;
-  object-fit: contain;
-  transform: scale(2.55);
-  margin-right: 10px;
-  margin-left: 6px;
+  flex: 0 0 24px;
+  margin: 0 8px 0 4px;
+  background: center / contain no-repeat url('/sprinta-mark-light.png');
   filter: drop-shadow(0 6px 14px rgba(14, 165, 233, 0.28));
 }
 
@@ -678,6 +704,11 @@ onUnmounted(() => {
   color: #f8fafc;
 }
 
+:global([data-theme='dark'] .sprinta-logo-mark) {
+  background-image: url('/sprinta-mark-dark.png');
+  filter: none;
+}
+
 [data-theme='light'] .icon-btn,
 [data-theme='dark'] .icon-btn,
 [data-theme='light'] .app-launcher-icon,
@@ -705,10 +736,11 @@ onUnmounted(() => {
     padding: 0 8px;
   }
 
-  .sprinta-logo-img {
-    height: 18px;
-    transform: scale(2.25);
-    margin-left: 3px;
+  .sprinta-logo-mark {
+    width: 22px;
+    height: 20px;
+    flex-basis: 22px;
+    margin-left: 2px;
     margin-right: 6px;
   }
 
