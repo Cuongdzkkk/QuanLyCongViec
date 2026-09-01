@@ -191,24 +191,32 @@ namespace TaskManagement.API.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
-            var userId = GetUserId();
-            var resolvedWorkspaceId = await ResolveActionWorkspaceAsync(userId, workspaceId);
-            await EnsureWorkspaceWriteAccessAsync(userId, resolvedWorkspaceId);
-            page = Math.Max(1, page);
-            pageSize = Math.Clamp(pageSize, 1, 50);
+            try
+            {
+                var userId = GetUserId();
+                var resolvedWorkspaceId = await ResolveActionWorkspaceAsync(userId, workspaceId);
+                await EnsureWorkspaceReadAccessAsync(userId, resolvedWorkspaceId);
+                page = Math.Max(1, page);
+                pageSize = Math.Clamp(pageSize, 1, 50);
 
-            var query = _dbContext.AiConversations
-                .AsNoTracking()
-                .Where(item => item.UserId == userId && item.WorkspaceId == resolvedWorkspaceId)
-                .OrderByDescending(item => item.UpdatedAt);
-            var total = await query.CountAsync();
-            var items = await query
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .Select(item => new { item.Id, item.Title, item.WorkspaceId, item.CreatedAt, item.UpdatedAt })
-                .ToListAsync();
+                var query = _dbContext.AiConversations
+                    .AsNoTracking()
+                    .Where(item => item.UserId == userId && item.WorkspaceId == resolvedWorkspaceId)
+                    .OrderByDescending(item => item.UpdatedAt);
+                var total = await query.CountAsync();
+                var items = await query
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(item => new { item.Id, item.Title, item.WorkspaceId, item.CreatedAt, item.UpdatedAt })
+                    .ToListAsync();
 
-            return Ok(ApiResponse<object>.Success(new { page, pageSize, total, items }));
+                return Ok(ApiResponse<object>.Success(new { page, pageSize, total, items }));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<object>.Error("Bạn không có quyền truy cập workspace này.", StatusCodes.Status403Forbidden));
+            }
         }
 
         [HttpPost("conversations")]
@@ -242,82 +250,114 @@ namespace TaskManagement.API.Controllers
         [HttpGet("conversations/{id:guid}")]
         public async Task<IActionResult> GetConversation(Guid id)
         {
-            var userId = GetUserId();
-            var conversation = await _dbContext.AiConversations
-                .AsNoTracking()
-                .FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
-            if (conversation == null) return NotFound(ApiResponse<object>.Error("Conversation does not exist."));
-            await EnsureWorkspaceWriteAccessAsync(userId, conversation.WorkspaceId);
-            return Ok(ApiResponse<object>.Success(new
+            try
             {
-                conversation.Id,
-                conversation.Title,
-                conversation.WorkspaceId,
-                conversation.CreatedAt,
-                conversation.UpdatedAt,
-                messages = ReadConversationMessages(conversation.MessagesJson)
-            }));
+                var userId = GetUserId();
+                var conversation = await _dbContext.AiConversations
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
+                if (conversation == null) return NotFound(ApiResponse<object>.Error("Conversation does not exist."));
+                await EnsureWorkspaceReadAccessAsync(userId, conversation.WorkspaceId);
+                return Ok(ApiResponse<object>.Success(new
+                {
+                    conversation.Id,
+                    conversation.Title,
+                    conversation.WorkspaceId,
+                    conversation.CreatedAt,
+                    conversation.UpdatedAt,
+                    messages = ReadConversationMessages(conversation.MessagesJson)
+                }));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<object>.Error("Bạn không có quyền truy cập workspace này.", StatusCodes.Status403Forbidden));
+            }
         }
 
         [HttpPut("conversations/{id:guid}")]
         public async Task<IActionResult> SaveConversation(Guid id, [FromBody] AiConversationSaveRequest request)
         {
-            var userId = GetUserId();
-            var conversation = await _dbContext.AiConversations
-                .FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
-            if (conversation == null) return NotFound(ApiResponse<object>.Error("Conversation does not exist."));
-            await EnsureWorkspaceWriteAccessAsync(userId, conversation.WorkspaceId);
-            if (request.Messages.ValueKind != JsonValueKind.Array)
+            try
             {
-                return BadRequest(ApiResponse<object>.Error("Messages must be a JSON array."));
-            }
+                var userId = GetUserId();
+                var conversation = await _dbContext.AiConversations
+                    .FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
+                if (conversation == null) return NotFound(ApiResponse<object>.Error("Conversation does not exist."));
+                await EnsureWorkspaceReadAccessAsync(userId, conversation.WorkspaceId);
+                if (request.Messages.ValueKind != JsonValueKind.Array)
+                {
+                    return BadRequest(ApiResponse<object>.Error("Messages must be a JSON array."));
+                }
 
-            var messagesJson = request.Messages.GetRawText();
-            if (Encoding.UTF8.GetByteCount(messagesJson) > 1024 * 1024)
+                var messagesJson = request.Messages.GetRawText();
+                if (Encoding.UTF8.GetByteCount(messagesJson) > 1024 * 1024)
+                {
+                    return BadRequest(ApiResponse<object>.Error("Conversation content exceeds 1 MB."));
+                }
+
+                conversation.MessagesJson = messagesJson;
+                if (!string.IsNullOrWhiteSpace(request.Title)) conversation.Title = NormalizeConversationTitle(request.Title);
+                conversation.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+                return Ok(ApiResponse<object>.Success(new { conversation.Id, conversation.Title, conversation.UpdatedAt }));
+            }
+            catch (UnauthorizedAccessException)
             {
-                return BadRequest(ApiResponse<object>.Error("Conversation content exceeds 1 MB."));
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<object>.Error("Bạn không có quyền truy cập workspace này.", StatusCodes.Status403Forbidden));
             }
-
-            conversation.MessagesJson = messagesJson;
-            if (!string.IsNullOrWhiteSpace(request.Title)) conversation.Title = NormalizeConversationTitle(request.Title);
-            conversation.UpdatedAt = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync();
-            return Ok(ApiResponse<object>.Success(new { conversation.Id, conversation.Title, conversation.UpdatedAt }));
         }
 
         [HttpPatch("conversations/{id:guid}/title")]
         public async Task<IActionResult> RenameConversation(Guid id, [FromBody] AiConversationRenameRequest request)
         {
-            var userId = GetUserId();
-            var conversation = await _dbContext.AiConversations
-                .FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
-            if (conversation == null) return NotFound(ApiResponse<object>.Error("Conversation does not exist."));
-            await EnsureWorkspaceWriteAccessAsync(userId, conversation.WorkspaceId);
-            conversation.Title = NormalizeConversationTitle(request.Title);
-            conversation.UpdatedAt = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync();
-            return Ok(ApiResponse<object>.Success(new { conversation.Id, conversation.Title, conversation.UpdatedAt }));
+            try
+            {
+                var userId = GetUserId();
+                var conversation = await _dbContext.AiConversations
+                    .FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
+                if (conversation == null) return NotFound(ApiResponse<object>.Error("Conversation does not exist."));
+                await EnsureWorkspaceReadAccessAsync(userId, conversation.WorkspaceId);
+                conversation.Title = NormalizeConversationTitle(request.Title);
+                conversation.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+                return Ok(ApiResponse<object>.Success(new { conversation.Id, conversation.Title, conversation.UpdatedAt }));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<object>.Error("Bạn không có quyền truy cập workspace này.", StatusCodes.Status403Forbidden));
+            }
         }
 
         [HttpDelete("conversations/{id:guid}")]
         public async Task<IActionResult> DeleteConversation(Guid id)
         {
-            var userId = GetUserId();
-            var conversation = await _dbContext.AiConversations
-                .FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
-            if (conversation == null) return NotFound(ApiResponse<object>.Error("Conversation does not exist."));
-            await EnsureWorkspaceWriteAccessAsync(userId, conversation.WorkspaceId);
-            var attachmentIds = await _dbContext.AiAttachments
-                .Where(item => item.ConversationId == id && item.UserId == userId)
-                .Select(item => item.Id)
-                .ToListAsync();
-            foreach (var attachmentId in attachmentIds)
+            try
             {
-                await _aiAttachmentService.DeleteAsync(userId, attachmentId);
+                var userId = GetUserId();
+                var conversation = await _dbContext.AiConversations
+                    .FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
+                if (conversation == null) return NotFound(ApiResponse<object>.Error("Conversation does not exist."));
+                await EnsureWorkspaceReadAccessAsync(userId, conversation.WorkspaceId);
+                var attachmentIds = await _dbContext.AiAttachments
+                    .Where(item => item.ConversationId == id && item.UserId == userId)
+                    .Select(item => item.Id)
+                    .ToListAsync();
+                foreach (var attachmentId in attachmentIds)
+                {
+                    await _aiAttachmentService.DeleteAsync(userId, attachmentId);
+                }
+                _dbContext.AiConversations.Remove(conversation);
+                await _dbContext.SaveChangesAsync();
+                return Ok(ApiResponse<object>.Success(new { id }));
             }
-            _dbContext.AiConversations.Remove(conversation);
-            await _dbContext.SaveChangesAsync();
-            return Ok(ApiResponse<object>.Success(new { id }));
+            catch (UnauthorizedAccessException)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<object>.Error("Bạn không có quyền truy cập workspace này.", StatusCodes.Status403Forbidden));
+            }
         }
 
         [HttpPost("attachments")]
@@ -1747,6 +1787,14 @@ namespace TaskManagement.API.Controllers
                 workspaceId,
                 ResourcePermissionCodes.WorkspaceRead);
             return authorization.Succeeded;
+        }
+
+        private async Task EnsureWorkspaceReadAccessAsync(Guid userId, Guid workspaceId)
+        {
+            if (!await UserHasWorkspaceAccessAsync(userId, workspaceId))
+            {
+                throw new UnauthorizedAccessException("You do not have access to this workspace.");
+            }
         }
 
         private async Task ValidateActionPermissionAsync(Guid userId, string actionType, AiExecuteActionRequestDto request)
