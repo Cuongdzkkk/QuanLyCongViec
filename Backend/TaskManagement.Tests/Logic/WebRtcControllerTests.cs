@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authorization;
@@ -44,6 +46,7 @@ public sealed class WebRtcControllerTests
         var controller = CreateController(new Dictionary<string, string?>
         {
             ["WebRtc:IceServers:0:Urls:0"] = "turn:turn.example.test:3478?transport=udp",
+            ["WebRtc:IceServers:0:Urls:1"] = "turn:turn.example.test:3478?transport=tcp",
             ["WebRtc:IceServers:0:SharedSecret"] = secret,
             ["WebRtc:IceServers:0:CredentialTtlSeconds"] = "900"
         }, userId);
@@ -51,8 +54,20 @@ public sealed class WebRtcControllerTests
         var response = controller.GetIceServers().Should().BeOfType<OkObjectResult>().Subject;
         var json = JsonSerializer.Serialize(response.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
-        json.Should().Contain("turn:turn.example.test:3478");
-        json.Should().Contain("username").And.Contain("credential").And.Contain("expiresAt");
+        using var document = JsonDocument.Parse(json);
+        var iceServers = document.RootElement.GetProperty("iceServers");
+        iceServers.GetArrayLength().Should().Be(1);
+        var turnServer = iceServers[0];
+        turnServer.GetProperty("urls").EnumerateArray().Select(url => url.GetString())
+            .Should().Equal(
+                "turn:turn.example.test:3478?transport=udp",
+                "turn:turn.example.test:3478?transport=tcp");
+        turnServer.GetProperty("username").GetString().Should().NotBeNullOrWhiteSpace();
+        turnServer.GetProperty("credential").GetString().Should().Be(
+            Convert.ToBase64String(HMACSHA1.HashData(
+                Encoding.UTF8.GetBytes(secret),
+                Encoding.UTF8.GetBytes(turnServer.GetProperty("username").GetString()!))));
+        turnServer.GetProperty("expiresAt").GetInt64().Should().BeGreaterThan(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         json.Should().NotContain(secret);
         json.Should().NotContain("static-auth-secret");
     }
