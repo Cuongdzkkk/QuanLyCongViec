@@ -1,4 +1,5 @@
 import { clearLegacyGitHubCredentialStorage } from '@/utils/githubCredentials'
+import { createAuthReadiness } from '@/utils/authTransport'
 
 const ACCESS_TOKEN_KEY = 'accessToken'
 const USER_KEY = 'user'
@@ -9,6 +10,7 @@ const ACCOUNT_CONTEXT_KEYS = [
   'lastProjectId',
   'active_checkin_project_id'
 ]
+const authReadiness = createAuthReadiness()
 
 const safeJsonParse = (value) => {
   try {
@@ -24,23 +26,47 @@ const notifyAuthSessionChanged = () => {
   }
 }
 
-export const getStoredAccessToken = () => {
+export const getCurrentAccessToken = () => {
   if (typeof window === 'undefined') return ''
 
-  return (
-    window.sessionStorage.getItem(ACCESS_TOKEN_KEY)
-    || window.localStorage.getItem(ACCESS_TOKEN_KEY)
-    || ''
-  )
+  return window.sessionStorage.getItem(ACCESS_TOKEN_KEY) || ''
 }
+
+export const getStoredAccessToken = getCurrentAccessToken
 
 export const getStoredUserSession = () => {
   if (typeof window === 'undefined') return {}
 
-  return safeJsonParse(
-    window.sessionStorage.getItem(USER_KEY)
-    || window.localStorage.getItem(USER_KEY)
-  )
+  return safeJsonParse(window.sessionStorage.getItem(USER_KEY))
+}
+
+export const restoreAuthSession = () => {
+  if (typeof window !== 'undefined') {
+    const legacyToken = window.localStorage.getItem(ACCESS_TOKEN_KEY)
+    const legacyUser = window.localStorage.getItem(USER_KEY)
+
+    if (!getCurrentAccessToken() && legacyToken) {
+      window.sessionStorage.setItem(ACCESS_TOKEN_KEY, legacyToken)
+    }
+    if (!window.sessionStorage.getItem(USER_KEY) && legacyUser) {
+      window.sessionStorage.setItem(USER_KEY, legacyUser)
+    }
+    window.localStorage.removeItem(ACCESS_TOKEN_KEY)
+    window.localStorage.removeItem(USER_KEY)
+  }
+  authReadiness.markReady()
+}
+
+export const waitForAuthReady = () => authReadiness.waitForReady()
+export const isAuthReady = () => authReadiness.isReady()
+
+export const updateCurrentAccessToken = (accessToken) => {
+  if (typeof window === 'undefined') return
+
+  if (accessToken) window.sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
+  else window.sessionStorage.removeItem(ACCESS_TOKEN_KEY)
+  window.localStorage.removeItem(ACCESS_TOKEN_KEY)
+  notifyAuthSessionChanged()
 }
 
 export const saveAuthSession = ({ accessToken, fullName, email, systemRoles, id, avatarColor, avatarUrl, username }) => {
@@ -54,7 +80,8 @@ export const saveAuthSession = ({ accessToken, fullName, email, systemRoles, id,
 
   const userPayload = JSON.stringify({ id, fullName, email, systemRoles, avatarColor, avatarUrl, username })
 
-  window.sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken || '')
+  if (accessToken) window.sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
+  else window.sessionStorage.removeItem(ACCESS_TOKEN_KEY)
   window.sessionStorage.setItem(USER_KEY, userPayload)
 
   // Clean legacy global storage to avoid cross-tab account collisions.
@@ -72,6 +99,7 @@ export const clearAuthSession = () => {
   window.sessionStorage.removeItem(USER_KEY)
   window.localStorage.removeItem(ACCESS_TOKEN_KEY)
   window.localStorage.removeItem(USER_KEY)
+  authReadiness.markReady()
   notifyAuthSessionChanged()
 }
 

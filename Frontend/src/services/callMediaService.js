@@ -1,6 +1,7 @@
 import * as signalR from '@microsoft/signalr'
 import axiosClient from '@/api/axiosClient'
-import { getStoredAccessToken } from '@/utils/authSession'
+import { AUTH_SESSION_CHANGED, getCurrentAccessToken, waitForAuthReady } from '@/utils/authSession'
+import { createCurrentAccessTokenFactory } from '@/utils/authTransport'
 import { createBackgroundBlurProcessor } from '@/services/cameraBackgroundEffect'
 import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 import { launchCaptionTransportClientDiagnostic } from '@/services/captionTransportDiagnostics'
@@ -250,6 +251,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   let connection = null
   let startPromise = null
   let leavePromise = null
+  let removeAuthSessionListener = null
   let reconnectPromise = null
   let roomId = null
   let localStream = null
@@ -1594,9 +1596,18 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     activeCallSession = session
     trace('START_BEGIN', 'session-start')
     startPromise = (async () => {
+      await waitForAuthReady()
+      if (!getCurrentAccessToken()) throw mediaError(null, 'AUTH_REQUIRED')
+      if (typeof RTCPeerConnection === 'undefined') throw mediaError(null, 'UNSUPPORTED_BROWSER')
+      if (!removeAuthSessionListener && typeof window !== 'undefined') {
+        const handleAuthSessionChanged = () => {
+          if (!getCurrentAccessToken()) void leave()
+        }
+        window.addEventListener(AUTH_SESSION_CHANGED, handleAuthSessionChanged)
+        removeAuthSessionListener = () => window.removeEventListener(AUTH_SESSION_CHANGED, handleAuthSessionChanged)
+      }
       intentionalLeave = false
       joinedAck = false
-      if (typeof RTCPeerConnection === 'undefined') throw mediaError(null, 'UNSUPPORTED_BROWSER')
       microphoneEnabled = Boolean(initialMicrophoneEnabled)
       if (initialMicrophoneStream) {
         setLocalMicrophoneStream(initialMicrophoneStream, 'initial-microphone-stream')
@@ -1628,8 +1639,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       }
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api'
       const hubBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '')
-      connection = configureRealtimeHub(new signalR.HubConnectionBuilder())
-        .withUrl(`${hubBaseUrl}${HUB_ROUTE}`, { accessTokenFactory: () => getStoredAccessToken() || '' })
+      connection = configureRealtimeHub(new signalR.HubConnectionBuilder(), getCurrentAccessToken)
+        .withUrl(`${hubBaseUrl}${HUB_ROUTE}`, { accessTokenFactory: createCurrentAccessTokenFactory(getCurrentAccessToken) })
         .build()
       registerHandlers()
       emit('connecting')
@@ -1640,7 +1651,14 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       await sendMediaState()
       trace('START_OK', 'session-started')
       emit('connected')
-    })().finally(() => { startPromise = null })
+    })().catch((error) => {
+      if (!connection) {
+        removeAuthSessionListener?.()
+        removeAuthSessionListener = null
+        if (activeCallSession === session) activeCallSession = null
+      }
+      throw error
+    }).finally(() => { startPromise = null })
     return startPromise
   }
 
@@ -1687,6 +1705,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         emitRemoteStreams()
         emit('disconnected')
         trace('LEAVE_DONE', 'session-leave')
+        removeAuthSessionListener?.()
+        removeAuthSessionListener = null
         if (activeCallSession === session) activeCallSession = null
       }
     })().finally(() => { leavePromise = null })

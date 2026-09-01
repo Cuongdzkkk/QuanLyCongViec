@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { getStoredUserSession, getStoredAccessToken, saveAuthSession, clearAuthSession, AUTH_SESSION_CHANGED } from '@/utils/authSession'
+import { getStoredUserSession, getStoredAccessToken, restoreAuthSession, saveAuthSession, clearAuthSession, AUTH_SESSION_CHANGED } from '@/utils/authSession'
 import { useProjectStore } from '@/store/useProjectStore'
 
 export const useAuthStore = defineStore('auth', {
@@ -20,6 +20,7 @@ export const useAuthStore = defineStore('auth', {
   
   actions: {
     initialize() {
+      restoreAuthSession()
       // Sync initial state
       this.user = getStoredUserSession() || {}
       this.token = getStoredAccessToken() || ''

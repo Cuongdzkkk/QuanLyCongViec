@@ -1,5 +1,6 @@
 import * as signalR from '@microsoft/signalr'
-import { getStoredAccessToken } from '@/utils/authSession'
+import { AUTH_SESSION_CHANGED, getCurrentAccessToken, waitForAuthReady } from '@/utils/authSession'
+import { createCurrentAccessTokenFactory } from '@/utils/authTransport'
 import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 
 export const COLLABORATION_REALTIME_EVENTS = Object.freeze({
@@ -59,6 +60,11 @@ class CollaborationRealtimeService {
     this.pinSubscribers = new Set()
     this.stateSubscribers = new Set()
     this.reconnectedSubscribers = new Set()
+    if (typeof window !== 'undefined') {
+      window.addEventListener(AUTH_SESSION_CHANGED, () => {
+        if (!getCurrentAccessToken()) void this.stop()
+      })
+    }
   }
 
   get state() {
@@ -74,9 +80,9 @@ class CollaborationRealtimeService {
 
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api'
     const hubBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '')
-    const connection = configureRealtimeHub(new signalR.HubConnectionBuilder())
+    const connection = configureRealtimeHub(new signalR.HubConnectionBuilder(), getCurrentAccessToken)
       .withUrl(`${hubBaseUrl}/hubs/chat`, {
-        accessTokenFactory: () => getStoredAccessToken() || ''
+        accessTokenFactory: createCurrentAccessTokenFactory(getCurrentAccessToken)
       })
       .configureLogging(signalR.LogLevel.None)
       .build()
@@ -118,7 +124,8 @@ class CollaborationRealtimeService {
   }
 
   async start() {
-    if (!getStoredAccessToken()) throw createClientError('AUTH_REQUIRED')
+    await waitForAuthReady()
+    if (!getCurrentAccessToken()) throw createClientError('AUTH_REQUIRED')
     if ([signalR.HubConnectionState.Connected, signalR.HubConnectionState.Connecting, signalR.HubConnectionState.Reconnecting]
       .includes(this.state)) return this.startPromise
     if (this.startPromise) return this.startPromise
