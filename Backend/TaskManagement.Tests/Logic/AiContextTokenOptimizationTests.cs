@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using TaskManagement.Application.DTOs.AI;
+using TaskManagement.Application.AI;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.AI;
 using TaskManagement.Infrastructure.Data;
@@ -73,6 +74,63 @@ public sealed class AiContextTokenOptimizationTests
         handler.RequestBody.Should().NotContain("Task count in context");
         handler.RequestBody.Should().NotContain("create_task {projectId");
         handler.RequestBody.Should().Contain("\"max_completion_tokens\":800");
+    }
+
+    [Theory]
+    [InlineData("Bạn là ai?")]
+    [InlineData("Bạn có thể làm được những gì trong dự án?")]
+    [InlineData("Bạn có chức năng gì?")]
+    public async Task CapabilityQuestions_ReturnGroundedVietnameseDescription(string message)
+    {
+        await using var context = CreateContext();
+        var service = CreateService(context, new RecordingResponseHandler(ShouldNotBeCalledResponse()));
+
+        var result = await service.ContextChatAsync(Guid.NewGuid(), new AiContextChatRequestDto { Message = message });
+
+        result.Answer.Should().Contain("Tạo công việc");
+        result.Answer.Should().Contain("Cập nhật trạng thái công việc");
+        result.Answer.Should().Contain("Tóm tắt dự án");
+        result.Answer.Should().Contain("xác nhận");
+    }
+
+    [Fact]
+    public async Task CapabilityPrompt_UsesCanonicalRegistryAndSeparatesCapabilityKinds()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Route = "/dashboard",
+            PageContext = new AiContextPageDto { PageType = "dashboard", CurrentView = "Dashboard" },
+            Message = "Hãy mô tả chính xác capability của SprintA AI."
+        });
+
+        foreach (var action in AiActionCatalog.Definitions)
+        {
+            handler.RequestBody.Should().Contain(action.Key);
+        }
+
+        handler.RequestBody.Should().Contain("READ");
+        handler.RequestBody.Should().Contain("ANALYZE");
+        handler.RequestBody.Should().Contain("WRITE");
+        handler.RequestBody.Should().Contain("capability");
+        handler.RequestBody.Should().NotContain("unsupported_action");
+    }
+
+    [Fact]
+    public async Task CapabilityCatalog_ContainsOnlyExecutableHandlers()
+    {
+        AiActionCatalog.Definitions.Should().HaveCount(27);
+        AiActionCatalog.Definitions.Select(action => action.Key)
+            .Should().NotContain("unsupported_action");
+        AiActionCatalog.Definitions
+            .Where(action => action.Value.CapabilityKind == AiCapabilityKind.Write)
+            .Should().AllSatisfy(action => action.Value.RequiresConfirmation.Should().BeTrue());
+        AiActionCatalog.Definitions
+            .Where(action => action.Value.CapabilityKind != AiCapabilityKind.Write)
+            .Should().AllSatisfy(action => action.Value.RequiresConfirmation.Should().BeFalse());
     }
 
     [Theory]

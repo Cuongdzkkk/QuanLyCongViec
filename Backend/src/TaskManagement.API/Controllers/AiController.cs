@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.AI;
+using TaskManagement.Application.AI;
 using TaskManagement.Application.DTOs.Common;
 using TaskManagement.Application.DTOs.Project;
 using TaskManagement.Application.DTOs.WorkTask;
@@ -1811,37 +1812,7 @@ namespace TaskManagement.API.Controllers
             ErrorCode = action.ErrorCode
         };
 
-        private static readonly IReadOnlyDictionary<string, AiActionDefinition> AiActionRegistry =
-            new Dictionary<string, AiActionDefinition>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["create_project"] = new("Project", true),
-                ["create_task"] = new("WorkTask", true),
-                ["create_cycle"] = new("Sprint", true),
-                ["create_module"] = new("Module", true),
-                ["create_page"] = new("Page", true),
-                ["create_view"] = new("ProjectView", true),
-                ["create_intake_request"] = new("Intake", true),
-                ["update_task_status"] = new("WorkTask", true),
-                ["update_task_priority"] = new("WorkTask", true),
-                ["update_task_due_date"] = new("WorkTask", true),
-                ["assign_task"] = new("WorkTask", true),
-                ["add_comment"] = new("Comment", true),
-                ["create_goal"] = new("Goal", true),
-                ["summarize_dashboard"] = new("Summary", false),
-                ["summarize_project"] = new("Summary", false),
-                ["list_work_items"] = new("WorkTaskList", false),
-                ["list_cycles"] = new("SprintList", false),
-                ["list_modules"] = new("ModuleList", false),
-                ["list_pages"] = new("PageList", false),
-                ["list_views"] = new("ProjectViewList", false),
-                ["list_intakes"] = new("IntakeList", false),
-                ["list_overdue_tasks"] = new("WorkTaskList", false),
-                ["get_workload"] = new("Workload", false),
-                ["explain_report"] = new("ReportExplanation", false),
-                ["summarize_page"] = new("PageSummary", false),
-                ["summarize_intakes"] = new("IntakeSummary", false),
-                ["suggest_view_filter"] = new("ViewFilterSuggestion", false)
-            };
+        private static IReadOnlyDictionary<string, AiActionDefinition> AiActionRegistry => AiActionCatalog.Definitions;
 
         private static readonly JsonSerializerOptions AiActionJsonOptions = new(JsonSerializerDefaults.Web);
         private static readonly object AiActionLocksSync = new();
@@ -1871,8 +1842,6 @@ namespace TaskManagement.API.Controllers
             public List<Guid> AttachmentIds { get; set; } = new();
             public string? Message { get; set; }
         }
-
-        private sealed record AiActionDefinition(string EntityType, bool RequiresConfirmation);
 
         private sealed class AiActionLockEntry
         {
