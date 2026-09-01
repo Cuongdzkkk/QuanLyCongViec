@@ -1,5 +1,5 @@
 <template>
-  <AppPageLayout fluid>
+  <AppPageLayout class="people-directory-layout" fluid>
     <template #header>
       <template v-if="!isEmbeddedInTeams">
       <AppPageHeader title="Mọi người">

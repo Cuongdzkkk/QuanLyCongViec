@@ -2,6 +2,7 @@
   <div class="dashboard-layout">
     <AppTopBar
       :sidebarVisible="sidebarVisible"
+      :showSidebar="!hideSidebar"
       @toggle-sidebar="toggleSidebar"
       @toggle-ai="toggleAI"
       @toggle-create="toggleCreate"
@@ -1770,7 +1771,7 @@ const openFromPet = (event) => {
 
 const handleGlobalKeydown = (event) => {
   const isEscape = event.key === 'Escape' || event.key === 'Esc' || event.code === 'Escape' || event.keyCode === 27
-  if (!isEscape || (!aiPetStore.isPanelOpen && !notesVisible.value)) return
+  if (!isEscape) return
   // Element Plus owns Escape while a real modal overlay is open. The AI panel
   // is not an overlay, so only close it when no modal is currently active.
   const hasActiveElementPlusOverlay = [...document.querySelectorAll('.el-overlay')].some((overlay) => {
@@ -1778,6 +1779,15 @@ const handleGlobalKeydown = (event) => {
     return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0'
   })
   if (hasActiveElementPlusOverlay) return
+
+  if (isMobile.value && sidebarVisible.value) {
+    event.preventDefault()
+    event.stopPropagation()
+    sidebarVisible.value = false
+    return
+  }
+
+  if (!aiPetStore.isPanelOpen && !notesVisible.value) return
   event.preventDefault()
   event.stopPropagation()
   aiPetStore.setPanelOpen(false)
@@ -1830,6 +1840,7 @@ onUnmounted(() => {
 })
 
 watch(() => route.fullPath, () => {
+  if (isMobile.value) sidebarVisible.value = false
   nextTick(() => window.setTimeout(normalizePetPosition, 160))
 })
 
@@ -2983,7 +2994,7 @@ const handleProjectCreated = (newProject) => {
     padding: 0;
     width: 100% !important;
     min-width: 0 !important;
-    overflow-x: hidden !important;
+    overflow-x: clip !important;
   }
 
   .sidebar-overlay {

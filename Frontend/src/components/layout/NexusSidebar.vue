@@ -1,5 +1,5 @@
 <template>
-  <aside class="plane-sidebar" :class="{ 'collapsed': !isVisible }">
+  <aside id="app-sidebar" class="plane-sidebar" :class="{ 'collapsed': !isVisible }">
     <div class="sidebar-scrollable">
       <div class="sidebar-top-action">
         <button class="new-work-btn" type="button" @click="triggerCreateTask">
@@ -660,8 +660,9 @@ const triggerCreateTask = async () => {
 }
 
 .workspace-more-button {
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
   margin-left: auto;
   display: inline-flex;
   align-items: center;
@@ -888,7 +889,7 @@ const triggerCreateTask = async () => {
   }
 
   .nav-link {
-    min-height: 30px;
+    min-height: 44px;
     font-size: 12px;
   }
 }

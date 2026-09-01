@@ -578,9 +578,9 @@ const handleGitHubLogin = () => {
 
 .custom-logo {
   display: block;
-  width: 12px;
-  height: 11px;
-  flex: 0 0 12px;
+  width: 24px;
+  height: 22px;
+  flex: 0 0 24px;
   background: center / contain no-repeat url('/sprinta-mark-light.png');
 }
 
@@ -913,6 +913,7 @@ const handleGitHubLogin = () => {
 
 .social-login {
   gap: 12px;
+  align-items: stretch;
 }
 
 .social-btn-wrapper,
@@ -932,7 +933,8 @@ const handleGitHubLogin = () => {
 
 .google-identity-button {
   width: 100%;
-  min-height: 42px;
+  height: 44px;
+  min-height: 44px;
   overflow: hidden;
   border-radius: 10px;
 }
@@ -1004,6 +1006,7 @@ const handleGitHubLogin = () => {
 
 .social-btn {
   width: 100%;
+  height: 44px;
   min-height: 44px;
   border-radius: 14px;
 }
@@ -1011,6 +1014,7 @@ const handleGitHubLogin = () => {
 .social-icon {
   width: 18px;
   height: 18px;
+  flex: 0 0 18px;
   margin-right: 8px;
 }
 
@@ -1078,7 +1082,8 @@ const handleGitHubLogin = () => {
 }
 
 .social-btn {
-  min-height: 42px;
+  height: 44px;
+  min-height: 44px;
   border: 1px solid var(--auth-border) !important;
   border-radius: 10px !important;
   color: var(--auth-text) !important;
@@ -1136,6 +1141,10 @@ const handleGitHubLogin = () => {
   .google-identity-shell,
   .google-identity-button {
     width: 100%;
+  }
+
+  .logo > .custom-logo {
+    display: block;
   }
 
   .remember-action {
