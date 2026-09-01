@@ -289,11 +289,11 @@
                           Thử lại
                         </button>
                         <template v-else>
-                          <button v-if="!isReadOnlyAction(action.type) && action.uiStatus !== 'success'" type="button" class="ai-action-cancel" :disabled="action.loading" @click="cancelAiAction(action)">Hủy</button>
+                          <button v-if="!isReadOnlyAction(action.type, action.requiresConfirmation) && action.uiStatus !== 'success'" type="button" class="ai-action-cancel" :disabled="action.loading" @click="cancelAiAction(action)">Hủy</button>
                           <button type="button" class="ai-action-confirm" :disabled="action.loading || action.uiStatus === 'success'" @click="executeAiAction(action)">
                           <i v-if="action.loading" class="fa-solid fa-spinner fa-spin"></i>
                           <i v-else-if="action.uiStatus === 'success'" class="fa-solid fa-check"></i>
-                          {{ action.uiStatus === 'success' ? 'Đã thực hiện' : (isReadOnlyAction(action.type) ? 'Xem kết quả' : 'Xác nhận') }}
+                          {{ action.uiStatus === 'success' ? 'Đã thực hiện' : (isReadOnlyAction(action.type, action.requiresConfirmation) ? 'Xem kết quả' : 'Xác nhận') }}
                           </button>
                         </template>
                       </div>
@@ -1884,7 +1884,7 @@ const readOnlyActionTypes = new Set([
   'refresh_report', 'export_report_csv', 'summarize_report'
 ])
 
-const isReadOnlyAction = (type) => readOnlyActionTypes.has(String(type || '').toLowerCase())
+const isReadOnlyAction = (type, requiresConfirmation) => requiresConfirmation === false || readOnlyActionTypes.has(String(type || '').toLowerCase())
 
 const escapeHtml = (value = '') => `${value}`
   .replace(/&/g, '&amp;')
@@ -2154,6 +2154,21 @@ const executeAiAction = async (action) => {
   action.uiStatus = 'loading'
   action.error = ''
   try {
+    if (action.directExecution === true) {
+      const response = await axiosClient.post('/ai/actions/execute', {
+        type: action.type,
+        workspaceId: currentWorkspaceId.value || null,
+        projectId: currentProjectId.value || actionPayload(action).projectId || null,
+        payload: actionPayload(action)
+      })
+      const root = response.data || {}
+      const result = root?.data ?? root
+      if (root?.success === false || !result || typeof result !== 'object') throw new Error('Backend không trả về kết quả đọc dữ liệu.')
+      action.result = result
+      action.uiStatus = 'success'
+      ElMessage.success(result?.message || 'Đã tải dữ liệu thành công.')
+      return
+    }
     action.idempotencyKey ||= `${action.type}-${crypto.randomUUID()}`
     if (!action.serverActionId) {
       const previewResponse = await axiosClient.post('/ai/actions/preview', {

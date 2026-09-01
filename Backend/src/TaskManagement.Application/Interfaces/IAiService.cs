@@ -114,6 +114,7 @@ namespace TaskManagement.Application.Interfaces
         public string Description { get; set; } = string.Empty;
         public Dictionary<string, object?> PayloadPreview { get; set; } = new();
         public bool RequiresConfirmation { get; set; } = true;
+        public bool DirectExecution { get; set; }
         public double Confidence { get; set; } = 0.75;
         public DateTime? ExpiresAt { get; set; }
         public DateTime? ExecutedAt { get; set; }
