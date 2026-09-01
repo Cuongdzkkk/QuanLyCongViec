@@ -136,14 +136,18 @@ for (const needle of [
 
 assert.match(source, /if \(!joinedAck \|\| !connection \|\| connection\.state !== signalR\.HubConnectionState\.Connected \|\| !roomId\) return/)
 assert.match(source, /joinedAck = true[\s\S]{0,220}roomId = read\(snapshot/)
-assert.match(source, /onreconnected\(async \(\) => \{[\s\S]{0,500}JoinVoiceRoom[\s\S]{0,220}refreshSnapshot/)
+const reconnectFlow = source.slice(source.indexOf('connection.onreconnected'), source.indexOf('connection.onclose'))
+assert.match(reconnectFlow, /if \(reconnectPromise\) return reconnectPromise/)
+assert.match(reconnectFlow, /JoinVoiceRoom[\s\S]*refreshSnapshot\(snapshot, \{ initiateMissing: true \}\)[\s\S]*await sendMediaState\(\)/)
+assert.equal(reconnectFlow.includes('closeAllPeers()'), false, 'reconnect must preserve healthy WebRTC peers')
 assert.match(source, /pendingInboundSignals\.splice\(0\)[\s\S]{0,260}applyOffer[\s\S]{0,160}applyCandidate/)
 assert.match(source, /await refreshSnapshot\(await connection\.invoke\('JoinVoiceRoom', projectId, voiceChannelId\)\)\n {6}await sendMediaState\(\)\n {6}trace\('START_OK'/, 'pre-join media state is published exactly after the initial join')
-assert.match(source, /const sendMediaState = async \(\) => \{[\s\S]{0,260}cameraEnabled[\s\S]{0,80}screenSharing[\s\S]{0,80}\}/, 'published state includes the current camera flag')
+assert.match(source, /const getParticipantMediaState = \(\) => \(\{[\s\S]{0,260}isLiveEnabledTrack\(cameraTrack\)[\s\S]{0,120}isLiveEnabledTrack\(screenTrack\)/, 'published state follows live local tracks')
+assert.match(source, /PublishParticipantMediaState', roomId, getParticipantMediaState\(\)/)
 const startFlow = source.slice(source.indexOf('const start = async'), source.indexOf('const leave = async'))
 assert.match(startFlow, /cameraEnabled = false[\s\S]*adoptCameraStream\(stream\)/, 'pre-join camera capture updates the current camera state')
 assert.match(startFlow, /JoinVoiceRoom[\s\S]*await sendMediaState\(\)/, 'pre-join camera on/off state is published after join')
-assert.match(source, /const snapshot = await connection\.invoke\('JoinVoiceRoom', projectId, voiceChannelId\)\n {8}await refreshSnapshot\(snapshot\)\n {8}await sendMediaState\(\)\n {8}traceCaptionSource\('RECONNECT_REJOIN'/, 'rejoin republishes current media state once')
+assert.match(reconnectFlow, /const snapshot = await connection\.invoke\('JoinVoiceRoom', projectId, voiceChannelId\)[\s\S]*await refreshSnapshot\(snapshot, \{ initiateMissing: true \}\)[\s\S]*await sendMediaState\(\)/, 'rejoin republishes current media state once')
 assert.match(source, /const createPeer = async \(connectionId, \{ initiate = false \} = \{\}\)/)
 assert.match(source, /initialNegotiationComplete: false,[\s\S]{0,100}initiateInitialOffer: initiate/)
 assert.match(source, /if \(initiate\) \{[\s\S]{0,700}entry\.pc\.addTrack\(track, stream\)/, 'initial offer peers attach local tracks with addTrack')
@@ -151,7 +155,7 @@ assert.match(source, /await entry\.pc\.setRemoteDescription\(description\)[\s\S]
 assert.match(source, /const bindOfferTransceivers = entry => \{[\s\S]{0,400}cameraTransceiver \|\|=/, 'answer peers preserve camera and screen m-line roles')
 assert.match(source, /onnegotiationneeded = \(\) => \{[\s\S]{0,180}initialNegotiationComplete \|\| entry\.initiateInitialOffer/)
 assert.match(source, /ParticipantJoined[\s\S]{0,320}createPeer\(participant\.connectionId, \{ initiate: true \}\)/)
-assert.match(source, /for \(const participant of participants\.values\(\)\) await createPeer\(participant\.connectionId\)/)
+assert.match(source, /for \(const participant of participants\.values\(\)\) \{[\s\S]{0,100}createPeer\(participant\.connectionId, \{ initiate: initiateMissing \}\)/)
 assert.match(source, /if \(entry\.initiateInitialOffer\) await negotiate\(entry\)/)
 assert.match(source, /createPeer\(connectionId, \{ initiate: `\$\{localConnectionId\(\)\}` < `\$\{connectionId\}` \}\)/)
 assert.equal(source.includes('await syncPeerMedia(entry)\n    await negotiate(entry)'), false, 'peer creation must not unconditionally send a duplicate initial offer')
@@ -218,7 +222,7 @@ for (const regression of [
   'LATE_JOIN_RECEIVES_EXISTING_SCREEN',
   'TRACK_END_REMOVES_ONLY_CORRECT_MEDIA',
   'ONE_INITIAL_NEGOTIATION_PER_PEER',
-  'RECONNECT_REBUILDS_MEDIA_WITHOUT_DUPLICATE_OFFER'
+  'RECONNECT_RECONCILES_MEDIA_WITHOUT_DUPLICATE_OFFER'
 ]) console.log(`${regression}: covered`)
 
 console.log('REMOTE_CAMERA_A_TO_B: covered by per-peer camera receiver mapping')
