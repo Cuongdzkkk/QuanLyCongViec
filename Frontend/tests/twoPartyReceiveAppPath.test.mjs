@@ -183,7 +183,10 @@ globalThis.__receivePathRuntime = {
     LogLevel: { Warning: 'Warning' }
   },
   axiosClient: { get: async () => ({ data: { iceServers: [] } }) },
-  getStoredAccessToken: () => '',
+  AUTH_SESSION_CHANGED: 'test:auth-session-changed',
+  getCurrentAccessToken: () => 'test-access-token',
+  waitForAuthReady: async () => {},
+  createCurrentAccessTokenFactory: getCurrentAccessToken => () => getCurrentAccessToken(),
   createBackgroundBlurProcessor: () => null,
   configureRealtimeHub: builder => builder,
   launchCaptionTransportClientDiagnostic: () => {},
@@ -196,7 +199,10 @@ const servicePrelude = `
 const {
   signalR,
   axiosClient,
-  getStoredAccessToken,
+  AUTH_SESSION_CHANGED,
+  getCurrentAccessToken,
+  waitForAuthReady,
+  createCurrentAccessTokenFactory,
   createBackgroundBlurProcessor,
   configureRealtimeHub,
   launchCaptionTransportClientDiagnostic,

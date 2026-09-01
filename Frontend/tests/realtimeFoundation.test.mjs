@@ -37,7 +37,7 @@ for (const [name, source] of Object.entries({ notificationHub, chat, kanbanHub, 
 
 assert.match(config, /SIGNALR_KEEP_ALIVE_MS = 15000/)
 assert.match(config, /SIGNALR_SERVER_TIMEOUT_MS = 60000/)
-assert.match(config, /withAutomaticReconnect\(SIGNALR_RECONNECT_DELAYS_MS\)/)
+assert.match(config, /createTokenAwareReconnectPolicy\(getCurrentAccessToken, SIGNALR_RECONNECT_DELAYS_MS\)/)
 assert.match(config, /withKeepAliveInterval\(SIGNALR_KEEP_ALIVE_MS\)/)
 assert.match(config, /withServerTimeout\(SIGNALR_SERVER_TIMEOUT_MS\)/)
 assert.doesNotMatch(config, /withKeepAliveIntervalInMilliseconds|withServerTimeoutInMilliseconds/)
