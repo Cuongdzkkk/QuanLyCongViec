@@ -214,22 +214,29 @@ namespace TaskManagement.API.Controllers
         [HttpPost("conversations")]
         public async Task<IActionResult> CreateConversation([FromBody] AiConversationCreateRequest request)
         {
-            var userId = GetUserId();
-            var workspaceId = await ResolveActionWorkspaceAsync(userId, request.WorkspaceId);
-            await EnsureWorkspaceWriteAccessAsync(userId, workspaceId);
-            var now = DateTime.UtcNow;
-            var conversation = new AiConversation
+            try
             {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                WorkspaceId = workspaceId,
-                Title = NormalizeConversationTitle(request.Title),
-                CreatedAt = now,
-                UpdatedAt = now
-            };
-            _dbContext.AiConversations.Add(conversation);
-            await _dbContext.SaveChangesAsync();
-            return Ok(ApiResponse<object>.Success(new { conversation.Id, conversation.Title, conversation.WorkspaceId, conversation.CreatedAt, conversation.UpdatedAt }));
+                var userId = GetUserId();
+                var workspaceId = await ResolveActionWorkspaceAsync(userId, request.WorkspaceId);
+                var now = DateTime.UtcNow;
+                var conversation = new AiConversation
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    WorkspaceId = workspaceId,
+                    Title = NormalizeConversationTitle(request.Title),
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+                _dbContext.AiConversations.Add(conversation);
+                await _dbContext.SaveChangesAsync();
+                return Ok(ApiResponse<object>.Success(new { conversation.Id, conversation.Title, conversation.WorkspaceId, conversation.CreatedAt, conversation.UpdatedAt }));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<object>.Error("Bạn không có quyền truy cập workspace này.", StatusCodes.Status403Forbidden));
+            }
         }
 
         [HttpGet("conversations/{id:guid}")]
