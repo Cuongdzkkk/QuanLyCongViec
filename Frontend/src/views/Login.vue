@@ -910,6 +910,8 @@ const handleGitHubLogin = () => {
 }
 
 .social-login {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   align-items: stretch;
 }
@@ -923,6 +925,9 @@ const handleGitHubLogin = () => {
   position: relative;
   min-width: 0;
   flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: stretch;
 }
 
 .google-identity-shell.is-busy {

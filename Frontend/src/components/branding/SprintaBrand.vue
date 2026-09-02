@@ -38,6 +38,10 @@ defineProps({
 
 .sprinta-brand__name {
   white-space: nowrap;
+  opacity: 1;
+  filter: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
 }
 
 /* These dimensions preserve the exact source treatment used by /site-selection. */
