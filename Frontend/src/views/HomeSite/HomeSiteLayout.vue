@@ -7,7 +7,7 @@
       <aside class="sidebar">
         <div class="sidebar-header">
           <div class="site-switcher" @click="goToSiteSelection">
-            <div class="site-icon">S</div>
+            <SprintaBrand class="site-icon" size="compact" :show-name="false" />
             <div class="site-info">
               <span class="site-name">SprintA Home</span>
               <span class="site-subtitle">{{ t('Site Management') }}</span>
@@ -74,6 +74,7 @@ import { computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getStoredUser } from '@/utils/permissions'
 import AppTopBar from '@/components/layout/AppTopBar.vue'
+import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 import { useI18nStore } from '@/store/useI18nStore'
 
 const router = useRouter()
@@ -316,16 +317,6 @@ const goToSiteSelection = () => {
 }
 
 .site-icon {
-  width: 32px;
-  height: 32px;
-  background-color: #0052cc;
-  color: white;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  font-weight: bold;
   flex-shrink: 0;
 }
 

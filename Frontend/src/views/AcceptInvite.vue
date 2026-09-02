@@ -28,8 +28,7 @@
     <!-- Main Modal -->
     <div class="invite-card">
       <div class="brand-row">
-        <img :src="logoImg" alt="SprintA" />
-        <span>SprintA</span>
+        <SprintaBrand size="dialog" />
       </div>
 
       <div v-if="loading" class="state-block">
@@ -163,7 +162,7 @@
   import { ElMessage } from 'element-plus'
   import axiosClient from '@/api/axiosClient'
 import { clearAuthSession, getStoredAccessToken, getStoredUserSession, saveAuthSession } from '@/utils/authSession'
-  import logoImg from '@/assets/logo_QLCV.png'
+  import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -434,8 +433,6 @@ onMounted(loadInvite)
   font-size: 26px;
   font-weight: 800;
 }
-
-.brand-row img { width: 40px; height: 40px; }
 
 .text-center { text-align: center; }
 
