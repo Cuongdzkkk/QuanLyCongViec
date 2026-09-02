@@ -97,8 +97,10 @@ export default {
         emailInvalid: 'Email không hợp lệ',
         nameRequired: 'Vui lòng nhập họ và tên',
         nameMin: 'Tên phải có ít nhất 2 ký tự',
+        nameMax: 'Họ và tên không được vượt quá 100 ký tự',
         passwordRequired: 'Vui lòng tạo mật khẩu',
         passwordMin: 'Mật khẩu phải có ít nhất 6 ký tự',
+        passwordMax: 'Mật khẩu không được vượt quá 100 ký tự',
         passwordComplexity: 'Mật khẩu phải có ít nhất 1 chữ hoa, 1 số và 1 ký tự đặc biệt'
       },
       messages: {

@@ -32,3 +32,23 @@ test('registration OTP send does not advance on an existing account or provider 
   assert.match(handlerSource, /auth\.register\.messages\.sendOtpUnavailable/)
   assert.match(handlerSource, /registrationConflict\.value = true/)
 })
+
+test('registration Step 3 mirrors backend length limits', () => {
+  assert.match(registerSource, /fullName.*maxlength="100"/s)
+  assert.match(registerSource, /password.*maxlength="100"/s)
+  assert.match(registerSource, /\{ max: 100, message: t\('auth\.register\.rules\.nameMax'\)/)
+  assert.match(registerSource, /\{ max: 100, message: t\('auth\.register\.rules\.passwordMax'\)/)
+})
+
+test('registration Step 3 keeps required fields and safe password validation', () => {
+  const handlerSource = registerSource.slice(registerSource.indexOf('const handleRegister'))
+
+  assert.match(handlerSource, /axiosClient\.post\('\/auth\/register'/)
+  assert.match(handlerSource, /email: form\.email/)
+  assert.match(handlerSource, /fullName: form\.fullName/)
+  assert.match(handlerSource, /password: form\.password/)
+  assert.match(handlerSource, /otpCode: verifiedOtpToken\.value/)
+  assert.match(registerSource, /nameRequired/)
+  assert.match(registerSource, /passwordRequired/)
+  assert.match(registerSource, /passwordComplexity/)
+})
