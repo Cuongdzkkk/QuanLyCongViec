@@ -91,6 +91,7 @@ export const registerGoogleAuthorizationCodeClient = async ({
   const client = api.initCodeClient({
     client_id: clientId,
     scope: 'openid email profile',
+    include_granted_scopes: false,
     ux_mode: 'popup',
     state: oauthState,
     callback: response => sharedState.callback?.(response),
