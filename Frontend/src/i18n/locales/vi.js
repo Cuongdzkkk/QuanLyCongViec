@@ -84,6 +84,7 @@ export default {
       changeEmail: 'Đổi email',
       or: 'hoặc',
       resendOtp: 'Gửi lại OTP',
+      resendCountdown: 'Gửi lại OTP sau {seconds} giây',
       fullNameLabel: 'Họ và Tên',
       fullNamePlaceholder: 'Nhập họ và tên',
       passwordLabel: 'Mật khẩu',
@@ -102,6 +103,7 @@ export default {
       },
       messages: {
         sendOtpFailed: 'Có lỗi xảy ra khi gửi OTP',
+        sendOtpRateLimited: 'Bạn đã yêu cầu OTP quá nhanh. Vui lòng thử lại sau {seconds} giây.',
         invalidOtpFormat: 'Vui lòng nhập mã OTP 6 ký tự',
         otpVerified: 'Xác thực email thành công',
         registerSuccess: 'Tạo tài khoản thành công! Khởi tạo phiên làm việc bằng cách đăng nhập.',

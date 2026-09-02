@@ -84,6 +84,7 @@ export default {
       changeEmail: 'Change email',
       or: 'or',
       resendOtp: 'Resend OTP',
+      resendCountdown: 'Resend OTP in {seconds} seconds',
       fullNameLabel: 'Full Name',
       fullNamePlaceholder: 'Enter full name',
       passwordLabel: 'Password',
@@ -102,6 +103,7 @@ export default {
       },
       messages: {
         sendOtpFailed: 'Error occurred while sending OTP',
+        sendOtpRateLimited: 'You requested an OTP too quickly. Try again in {seconds} seconds.',
         invalidOtpFormat: 'Please enter 6-digit OTP code',
         otpVerified: 'Email verified successfully',
         registerSuccess: 'Account created successfully! Start your session by logging in.',

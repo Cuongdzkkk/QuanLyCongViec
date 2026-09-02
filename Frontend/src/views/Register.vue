@@ -89,9 +89,13 @@
             <el-input v-model.trim="form.email" :placeholder="t('auth.register.emailPlaceholder')" size="large" />
           </el-form-item>
           
-          <el-button type="primary" native-type="submit" class="auth-btn" size="large" :loading="isLoading">
+          <el-button type="primary" native-type="submit" class="auth-btn" size="large" :loading="isLoading" :disabled="isLoading || hasActiveResendCooldown()">
             {{ t('auth.register.sendOtpBtn') }}
           </el-button>
+
+          <p v-if="hasActiveResendCooldown()" class="otp-cooldown" role="status" aria-live="polite">
+            {{ t('auth.register.resendCountdown', { seconds: resendCooldown }) }}
+          </p>
           
           <p class="auth-footer-text">
             {{ t('auth.register.hasAccount') }} <router-link to="/login">{{ t('auth.nav.login') }}</router-link>
@@ -113,7 +117,12 @@
             {{ t('auth.register.noOtpCode') }}
             <a href="#" @click.prevent="step = 1">{{ t('auth.register.changeEmail') }}</a>
             {{ t('auth.register.or') }}
-            <a href="#" @click.prevent="handleSendOtp">{{ t('auth.register.resendOtp') }}</a>
+            <template v-if="hasActiveResendCooldown()">
+              <span class="otp-cooldown" role="status" aria-live="polite">
+                {{ t('auth.register.resendCountdown', { seconds: resendCooldown }) }}
+              </span>
+            </template>
+            <a v-else href="#" @click.prevent="handleSendOtp">{{ t('auth.register.resendOtp') }}</a>
           </p>
         </el-form>
 
@@ -150,7 +159,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -177,6 +186,10 @@ const journey = [
 ]
 
 const isLoading = ref(false)
+const resendCooldown = ref(0)
+const resendCooldownEmail = ref('')
+let resendCooldownTimer = null
+let sendOtpInFlight = false
 const emailFormRef = ref(null)
 const profileFormRef = ref(null)
 const step = ref(1)
@@ -222,8 +235,40 @@ const getApiErrorMessage = (error, fallbackKey) => {
   return t(fallbackKey)
 }
 
+const normalizeEmail = email => String(email || '').trim().toLowerCase()
+
+const hasActiveResendCooldown = () => resendCooldown.value > 0
+  && resendCooldownEmail.value === normalizeEmail(form.email)
+
+const startResendCooldown = (seconds, email = form.email) => {
+  if (resendCooldownTimer) clearInterval(resendCooldownTimer)
+  const duration = Number(seconds)
+  resendCooldownEmail.value = normalizeEmail(email)
+  resendCooldown.value = Number.isFinite(duration) && duration > 0 ? Math.ceil(duration) : 0
+  if (resendCooldown.value <= 0) return
+
+  resendCooldownTimer = setInterval(() => {
+    resendCooldown.value -= 1
+    if (resendCooldown.value <= 0) {
+      clearInterval(resendCooldownTimer)
+      resendCooldownTimer = null
+    }
+  }, 1000)
+}
+
+const readRetryAfterSeconds = error => {
+  const headerValue = error.response?.headers?.get?.('Retry-After')
+    ?? error.response?.headers?.['retry-after']
+    ?? error.response?.data?.retryAfterSeconds
+  const seconds = Number(headerValue)
+  return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : 60
+}
+
 const handleSendOtp = async () => {
+  if (sendOtpInFlight || hasActiveResendCooldown()) return
   if (step.value === 1 && !emailFormRef.value) return
+
+  sendOtpInFlight = true
   
   const validatePromise = step.value === 1 
     ? emailFormRef.value.validate() 
@@ -238,20 +283,33 @@ const handleSendOtp = async () => {
           email: form.email,
           purpose: 'register'
         })
-        ElMessage.success(response.data.message || t('auth.forgotPassword.otpSentMessage'))
+        startResendCooldown(response.data?.resendCooldownSeconds || 60)
+        ElMessage.success(t('auth.forgotPassword.otpSentMessage'))
         form.otp = ''
         step.value = 2
       } catch (error) {
-        console.error('Send OTP error:', error)
-        ElMessage.error(getApiErrorMessage(error, 'auth.register.messages.sendOtpFailed'))
+        if (error.response?.status === 429) {
+          const seconds = readRetryAfterSeconds(error)
+          startResendCooldown(seconds, form.email)
+          ElMessage.error(t('auth.register.messages.sendOtpRateLimited', { seconds }))
+        } else {
+          console.error('Send OTP error:', error)
+          ElMessage.error(getApiErrorMessage(error, 'auth.register.messages.sendOtpFailed'))
+        }
       } finally {
         isLoading.value = false
       }
     }
   } catch (err) {
     // validation failed
+  } finally {
+    sendOtpInFlight = false
   }
 }
+
+onUnmounted(() => {
+  if (resendCooldownTimer) clearInterval(resendCooldownTimer)
+})
 
 const handleVerifyOtp = async () => {
   if (!form.otp || form.otp.length !== 6) {
@@ -655,6 +713,13 @@ const handleRegister = async () => {
   color: var(--auth-muted);
   background: color-mix(in srgb, var(--auth-surface-strong) 78%, transparent);
   line-height: 1.6;
+}
+
+.otp-cooldown {
+  margin: 12px 0 0;
+  color: var(--auth-muted);
+  font-size: 13px;
+  text-align: center;
 }
 
 .otp-input :deep(input) {
