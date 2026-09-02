@@ -72,7 +72,7 @@
       </div>
       <template v-else>
         <div class="table-container mt-16" v-if="filteredProjects.length > 0">
-          <table class="jira-table" v-if="viewMode === 'table'">
+          <table class="jira-table" v-if="effectiveViewMode === 'table'">
             <thead>
               <tr>
                 <th class="col-name">{{ labels.name }}</th>
@@ -131,20 +131,28 @@
           </table>
           
           <div class="project-card-list" v-else>
-            <article class="project-row-card" v-for="proj in filteredProjects" :key="proj.id" @click="goToProject(proj.id)">
-              <div class="project-row-main">
+            <article
+              class="project-row-card"
+              v-for="proj in filteredProjects"
+              :key="proj.id"
+            >
+              <button class="project-row-main project-row-open" type="button" @click="goToProject(proj.id)">
                 <ProjectAvatar :icon="proj.icon" :background="proj.cover" size="md" />
                 <div class="project-row-text">
                   <h3>{{ proj.title }}</h3>
                   <p>{{ proj.owner || proj.ownerName || labels.noOwner }}</p>
                 </div>
-              </div>
+              </button>
               <div class="project-row-meta">
                 <span class="status-badge" :class="getStatusClass(proj.status || labels.pending)">
                   {{ translateStatus(proj.status || labels.pending) }}
                 </span>
                 <span class="target-date-badge">
                   <i class="fa-regular fa-calendar"></i> {{ formatDate(proj.startDate || proj.createdAt) }}
+                </span>
+                <span class="updated-text" :title="labels.lastUpdated">
+                  <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                  {{ formatDate(proj.updatedAt || proj.createdAt) }}
                 </span>
                 <button class="row-action-btn" @click.stop="toggleFollow(proj.id)">
                   <i class="fa-regular fa-eye"></i>
@@ -233,7 +241,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import { useStarredStore } from '@/store/useStarredStore'
 import { useFollowerStore } from '@/store/useFollowerStore'
@@ -257,8 +265,10 @@ const siteStore = useSiteStore()
 
 const currentTab = ref('all')
 const searchQuery = ref('')
-const showProjectFilters = ref(false)
 const viewMode = ref('table')
+const isMobileViewport = ref(false)
+const effectiveViewMode = computed(() => isMobileViewport.value ? 'cards' : viewMode.value)
+let mobileViewportQuery = null
 const isVi = computed(() => i18nStore.locale === 'vi')
 const labels = computed(() => isVi.value
   ? {
@@ -388,7 +398,7 @@ const projectOperators = {
   starred: ['is', 'is not']
 }
 
-const customProjectValueMeta = (fieldKey, value) => {
+const customProjectValueMeta = (fieldKey) => {
   if (fieldKey === 'status') {
     return { icon: 'fa-solid fa-circle-dot', color: '#10b981' }
   }
@@ -422,10 +432,6 @@ const projectSortOptions = [
   { value: 'name', label: 'Tên dự án', icon: 'fa-solid fa-font' },
   { value: 'status', label: 'Trạng thái', icon: 'fa-solid fa-circle-dot' }
 ]
-const toggleProjectSort = () => {
-  projectSortDirection.value = projectSortDirection.value === 'desc' ? 'asc' : 'desc'
-}
-
 const uniqueValues = (selector) => Array.from(new Set(
   (projectStore.projects || [])
     .map(selector)
@@ -438,15 +444,9 @@ const statusOptions = computed(() => {
 });
 const ownerOptions = computed(() => uniqueValues(p => p.owner))
 
-const booleanOptions = computed(() => [
-  { label: isVi.value ? 'Có' : 'Yes', value: 'true' },
-  { label: isVi.value ? 'Không' : 'No', value: 'false' }
-])
-
 const clearFilters = () => {
   activeFilters.value = []
 }
-const hasActiveFilters = computed(() => activeFilters.value.length > 0)
 
 const isCreateModalOpen = ref(false)
 
@@ -488,9 +488,6 @@ const submitCreateProject = async () => {
   }
 }
 
-const route = useRoute()
-
-const isDirectory = computed(() => currentTab.value === 'all')
 const isFollowing = computed(() => currentTab.value === 'following')
 const isArchived = computed(() => currentTab.value === 'archived')
 
@@ -500,7 +497,14 @@ const pageTitle = computed(() => {
   return labels.value.title
 })
 
+const syncMobileViewport = (event) => {
+  isMobileViewport.value = event.matches
+}
+
 onMounted(async () => {
+  mobileViewportQuery = window.matchMedia('(max-width: 640px)')
+  syncMobileViewport(mobileViewportQuery)
+  mobileViewportQuery.addEventListener('change', syncMobileViewport)
   await siteStore.fetchSites()
   await projectStore.initializeRealtime()
   await projectStore.fetchProjects()
@@ -526,6 +530,7 @@ watch(
 )
 
 onUnmounted(() => {
+  mobileViewportQuery?.removeEventListener('change', syncMobileViewport)
   window.removeEventListener('global-create-click', openCreateModal)
   document.removeEventListener('click', handleOutsideClick)
 })
@@ -619,16 +624,6 @@ const toggleStar = async (id) => {
 
 const toggleFollow = async (id) => {
   await followerStore.toggleFollow('Project', id)
-}
-
-const getInitials = (value) => {
-  const text = String(value || '').trim()
-  if (!text) return '?'
-  return text
-    .split(/\s+/)
-    .slice(0, 2)
-    .map(part => part[0]?.toUpperCase())
-    .join('')
 }
 
 const formatDate = (value) => {
@@ -1668,6 +1663,16 @@ const isCompletedStatus = (status) => {
   flex: 1 1 auto;
 }
 
+.project-row-open {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .project-row-meta {
   flex: 0 0 auto;
   flex-wrap: wrap;
@@ -1736,6 +1741,12 @@ const isCompletedStatus = (status) => {
   padding: 0;
 }
 
+.project-row-meta > .updated-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 @media (max-width: 900px) {
   .project-card-list {
     grid-template-columns: 1fr;
@@ -1749,6 +1760,66 @@ const isCompletedStatus = (status) => {
   .project-row-meta {
     justify-content: flex-start;
   }
+}
+
+@media (max-width: 640px) {
+  .header-content {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .header-actions,
+  .primary-btn {
+    width: 100%;
+  }
+
+  .primary-btn,
+  .tab-btn,
+  .row-action-btn {
+    min-height: 44px;
+  }
+
+  .tabs-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .tab-btn {
+    padding-inline: 6px !important;
+    line-height: 1.2;
+  }
+
+  .view-toggles {
+    display: none;
+  }
+
+  .table-container,
+  .project-card-list,
+  .project-row-main,
+  .project-row-text {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .project-row-card {
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .project-row-meta {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .row-action-btn.icon-only {
+    width: 44px;
+  }
+}
+
+.project-row-open:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--home-accent, #0c66e4) 42%, transparent);
+  outline-offset: 2px;
 }
 
 .filter-dropdown-wrapper {
