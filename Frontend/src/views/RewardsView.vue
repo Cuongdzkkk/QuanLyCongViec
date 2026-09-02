@@ -1637,7 +1637,8 @@ const shopItems = computed(() => {
 
   return (seasonDashboard.value.availableRewards || []).filter(item => {
     const conf = getRewardConfig(item)
-    return conf.usePoints === true && (activeRewardsIds || []).some(id => id == item.id)
+    const isRedeemable = !item.method || item.method === 'Redeem'
+    return isRedeemable && conf.usePoints === true && (activeRewardsIds || []).some(id => id == item.id)
   })
 })
 

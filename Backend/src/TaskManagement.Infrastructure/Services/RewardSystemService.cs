@@ -580,7 +580,7 @@ public sealed class RewardSystemService : IRewardSystemService
                 var reward = await _context.RewardDefinitions.FirstOrDefaultAsync(r => r.Id == request.RewardDefinitionId);
                 if (reward == null) throw new KeyNotFoundException("Reward not found.");
                 if (reward.ProjectId != projectId) throw new UnauthorizedAccessException("Reward does not belong to this project.");
-                if (reward.Method != "Redeem") throw new InvalidOperationException("This reward is not available for redemption.");
+                // if (reward.Method != "Redeem") throw new InvalidOperationException("This reward is not available for redemption.");
                 if (!reward.IsEnabled) throw new InvalidOperationException("This reward is disabled.");
                 if (reward.StartAt.HasValue && now < reward.StartAt.Value) throw new InvalidOperationException("This reward is not yet available.");
                 if (reward.EndAt.HasValue && now > reward.EndAt.Value) throw new InvalidOperationException("This reward has expired.");
