@@ -64,3 +64,22 @@ export const createRefreshCoordinator = ({
     retryAfterRefresh: async retry => retry(await refresh())
   }
 }
+
+export const createAuthRestoreFlow = ({
+  getCurrentAccessToken,
+  restoreSession,
+  saveAuthSession,
+  clearAuthSession
+}) => async () => {
+  if (getCurrentAccessToken()) return true
+
+  try {
+    const authData = await restoreSession()
+    if (!authData?.accessToken) throw new Error('Auth restore response did not include an access token.')
+    saveAuthSession(authData)
+    return true
+  } catch {
+    clearAuthSession()
+    return false
+  }
+}

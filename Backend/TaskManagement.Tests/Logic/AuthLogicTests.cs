@@ -413,6 +413,43 @@ namespace TaskManagement.Tests.Logic
         }
 
         [Fact]
+        public async Task RefreshToken_ActiveUser_CanRestoreFromHttpOnlyCookieWithoutAccessToken()
+        {
+            var userId = Guid.NewGuid();
+            var user = new User
+            {
+                Id = userId,
+                Email = "cookie-refresh@example.com",
+                FullName = "Cookie Refresh User",
+                PasswordHash = "unused",
+                IsActive = true,
+                IsDeleted = false,
+                RefreshToken = "cookie-refresh",
+                RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(1)
+            };
+            _context.Users.Add(user);
+            _context.RefreshTokens.Add(new RefreshToken
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Token = "cookie-refresh",
+                DeviceId = "browser",
+                ExpiryTime = DateTime.UtcNow.AddDays(1),
+                IsRevoked = false
+            });
+            await _context.SaveChangesAsync();
+
+            _jwtServiceMock.Setup(service => service.GenerateAccessToken(user, It.IsAny<IList<string>>())).Returns("restored-access");
+            _jwtServiceMock.Setup(service => service.GenerateRefreshToken()).Returns("rotated-refresh");
+
+            var result = await _authService.RefreshTokenAsync(null, "cookie-refresh");
+
+            result.newAccessToken.Should().Be("restored-access");
+            result.newRefreshToken.Should().Be("rotated-refresh");
+            _jwtServiceMock.Verify(service => service.GetPrincipalFromExpiredToken(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
         public async Task RefreshToken_DeletedUser_IsRejectedAndSessionsAreRevoked()
         {
             var userId = Guid.NewGuid();

@@ -139,7 +139,7 @@ app.directive('draggable-y', {
   }
 });
 
-useAuthStore(pinia).initialize();
+await useAuthStore(pinia).initialize();
 app.mount('#app')
 
 // Register PWA Service Worker

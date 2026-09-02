@@ -453,14 +453,24 @@ namespace TaskManagement.Infrastructure.Services
             return (response, refreshToken);
         }
 
-        public async Task<(string newAccessToken, string newRefreshToken)> RefreshTokenAsync(string accessToken, string refreshToken)
+        public async Task<(string newAccessToken, string newRefreshToken)> RefreshTokenAsync(string? accessToken, string refreshToken)
         {
-            var principal = _jwtService.GetPrincipalFromExpiredToken(accessToken);
-            if (principal == null) throw new UnauthorizedAccessException("Invalid access token or refresh token");
+            var activeSession = await _context.RefreshTokens.FirstOrDefaultAsync(token =>
+                token.Token == refreshToken &&
+                !token.IsRevoked &&
+                token.ExpiryTime > DateTime.UtcNow);
 
-            var userIdString = principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(userIdString, out Guid userId))
-                throw new UnauthorizedAccessException("Invalid token claims");
+            if (activeSession == null)
+                throw new UnauthorizedAccessException("Invalid access token or refresh token");
+
+            var userId = activeSession.UserId;
+            if (!string.IsNullOrWhiteSpace(accessToken))
+            {
+                var principal = _jwtService.GetPrincipalFromExpiredToken(accessToken);
+                var userIdString = principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!Guid.TryParse(userIdString, out var accessTokenUserId) || accessTokenUserId != userId)
+                    throw new UnauthorizedAccessException("Invalid access token or refresh token");
+            }
 
             var user = await _context.Users
                 .Include(u => u.UserRoles)
@@ -483,19 +493,6 @@ namespace TaskManagement.Infrastructure.Services
                     await _context.SaveChangesAsync();
                 }
 
-                throw new UnauthorizedAccessException("Invalid access token or refresh token");
-            }
-
-            var activeSession = await _context.RefreshTokens.FirstOrDefaultAsync(token =>
-                token.UserId == userId &&
-                token.Token == refreshToken &&
-                !token.IsRevoked &&
-                token.ExpiryTime > DateTime.UtcNow);
-
-            // RefreshTokens is the source of truth for each active session.
-            // User.RefreshToken only tracks the latest issued token and must not invalidate other sessions.
-            if (activeSession == null)
-            {
                 throw new UnauthorizedAccessException("Invalid access token or refresh token");
             }
 
