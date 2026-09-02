@@ -1,4 +1,5 @@
 using System.Net;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
@@ -231,12 +232,124 @@ public sealed class AuthSecurityIntegrationTests : IDisposable
         _otpService.ValidateOtp("token@example.com", token).IsValid.Should().BeFalse();
     }
 
-    private AuthController CreateController()
+    [Fact]
+    public async Task Registration_SendVerifyRegisterLogin_Succeeds()
+    {
+        const string email = "full-registration@example.com";
+        string? sentOtp = null;
+        _emailService.Reset();
+        _emailService.Setup(service => service.SendOtpEmailAsync(email, It.IsAny<string>()))
+            .Callback<string, string>((_, otp) => sentOtp = otp)
+            .Returns(Task.CompletedTask);
+
+        var jwt = new Mock<IJwtService>();
+        jwt.Setup(service => service.GenerateAccessToken(It.IsAny<User>(), It.IsAny<IList<string>>()))
+            .Returns("access-token");
+        jwt.Setup(service => service.GenerateRefreshToken()).Returns("refresh-token");
+        var authService = new AuthService(
+            _context,
+            jwt.Object,
+            Mock.Of<IConfiguration>(),
+            _otpService,
+            _emailService.Object);
+        var controller = CreateController(authService);
+
+        var send = await controller.SendOtp(new SendOtpRequestDto
+        {
+            Email = email,
+            Purpose = "register"
+        });
+        send.Should().BeOfType<OkObjectResult>();
+        sentOtp.Should().NotBeNullOrWhiteSpace();
+
+        var verify = controller.VerifyOtp(new VerifyOtpRequestDto
+        {
+            Email = email,
+            OtpCode = sentOtp!
+        });
+        verify.Should().BeOfType<OkObjectResult>();
+        using var tokenJson = JsonDocument.Parse(JsonSerializer.Serialize(((OkObjectResult)verify).Value));
+        var verificationToken = tokenJson.RootElement.GetProperty("otpToken").GetString();
+        verificationToken.Should().NotBeNullOrWhiteSpace();
+
+        var register = await controller.Register(new RegisterRequestDto
+        {
+            Email = email,
+            FullName = "Full Registration User",
+            Password = "Password123!",
+            OtpCode = verificationToken!
+        });
+        register.Should().BeOfType<OkObjectResult>();
+        (await _context.Users.SingleAsync(user => user.Email == email)).FullName
+            .Should().Be("Full Registration User");
+
+        var login = await authService.LoginAsync(new LoginRequestDto
+        {
+            Email = email,
+            Password = "Password123!"
+        });
+        login.response.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Register_MissingOrInvalidOtp_ReturnsControlled400()
+    {
+        var authService = new AuthService(
+            _context,
+            Mock.Of<IJwtService>(),
+            Mock.Of<IConfiguration>(),
+            _otpService,
+            _emailService.Object);
+        var controller = CreateController(authService);
+
+        var missing = await controller.Register(new RegisterRequestDto
+        {
+            Email = "missing-token@example.com",
+            FullName = "Missing Token User",
+            Password = "Password123!",
+            OtpCode = string.Empty
+        });
+        var invalid = await controller.Register(new RegisterRequestDto
+        {
+            Email = "invalid-token@example.com",
+            FullName = "Invalid Token User",
+            Password = "Password123!",
+            OtpCode = "invalid-token"
+        });
+
+        missing.Should().BeOfType<BadRequestObjectResult>();
+        invalid.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public void RegisterDto_RejectsValuesLongerThanBackendLimits()
+    {
+        var request = new RegisterRequestDto
+        {
+            Email = "long-values@example.com",
+            FullName = new string('N', 101),
+            Password = new string('P', 101),
+            OtpCode = "123456"
+        };
+        var validationResults = new List<ValidationResult>();
+
+        var isValid = Validator.TryValidateObject(
+            request,
+            new ValidationContext(request),
+            validationResults,
+            validateAllProperties: true);
+
+        isValid.Should().BeFalse();
+        validationResults.Should().Contain(item => item.MemberNames.Contains(nameof(RegisterRequestDto.FullName)));
+        validationResults.Should().Contain(item => item.MemberNames.Contains(nameof(RegisterRequestDto.Password)));
+    }
+
+    private AuthController CreateController(IAuthService? authService = null)
     {
         var httpContext = new DefaultHttpContext();
         httpContext.Connection.RemoteIpAddress = IPAddress.Parse("127.0.0.1");
         return new AuthController(
-            Mock.Of<IAuthService>(),
+            authService ?? Mock.Of<IAuthService>(),
             _otpService,
             _emailService.Object,
             _context,

@@ -141,11 +141,11 @@
           @submit.prevent="handleRegister"
         >
           <el-form-item :label="t('auth.register.fullNameLabel')" prop="fullName">
-            <el-input v-model="form.fullName" :placeholder="t('auth.register.fullNamePlaceholder')" size="large" />
+            <el-input v-model="form.fullName" :placeholder="t('auth.register.fullNamePlaceholder')" size="large" maxlength="100" />
           </el-form-item>
 
           <el-form-item :label="t('auth.register.passwordLabel')" prop="password">
-            <el-input v-model="form.password" type="password" :placeholder="t('auth.register.passwordPlaceholder')" size="large" show-password />
+            <el-input v-model="form.password" type="password" :placeholder="t('auth.register.passwordPlaceholder')" size="large" maxlength="100" show-password />
           </el-form-item>
           
           <el-button type="primary" native-type="submit" class="auth-btn" size="large" :loading="isLoading">
@@ -215,11 +215,13 @@ const rules = computed(() => ({
   ],
   fullName: [
     { required: true, message: t('auth.register.rules.nameRequired'), trigger: 'blur' },
-    { min: 2, message: t('auth.register.rules.nameMin'), trigger: 'blur' }
+    { min: 2, message: t('auth.register.rules.nameMin'), trigger: 'blur' },
+    { max: 100, message: t('auth.register.rules.nameMax'), trigger: 'blur' }
   ],
   password: [
     { required: true, message: t('auth.register.rules.passwordRequired'), trigger: 'blur' },
     { min: 6, message: t('auth.register.rules.passwordMin'), trigger: 'blur' },
+    { max: 100, message: t('auth.register.rules.passwordMax'), trigger: 'blur' },
     { 
       pattern: /^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/, 
       message: t('auth.register.rules.passwordComplexity'),

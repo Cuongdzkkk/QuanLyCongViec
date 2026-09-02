@@ -97,8 +97,10 @@ export default {
         emailInvalid: 'Invalid email address format',
         nameRequired: 'Please enter full name',
         nameMin: 'Full name must be at least 2 characters',
+        nameMax: 'Full name must be 100 characters or fewer',
         passwordRequired: 'Please create password',
         passwordMin: 'Password must be at least 6 characters',
+        passwordMax: 'Password must be 100 characters or fewer',
         passwordComplexity: 'Password must contain at least 1 uppercase letter, 1 number, and 1 special character'
       },
       messages: {
