@@ -574,6 +574,65 @@
         <span>Bạn đang offline. Một số dữ liệu có thể không cập nhật.</span>
       </div>
     </transition>
+
+    <!-- Persistent Voice Call Dock Overlay (Discord-style) -->
+    <Transition name="route-soft">
+      <div
+        v-if="voiceCallStore.hasActiveCall && route.name !== 'CollaborationChat'"
+        class="persistent-call-overlay"
+        role="region"
+        aria-label="Kênh thoại đang kết nối"
+      >
+        <div class="call-overlay-info" @click="goToChatCall">
+          <span class="call-status-pulse"></span>
+          <div>
+            <strong>{{ voiceCallStore.activeVoiceChannel?.name || 'Kênh thoại' }}</strong>
+            <small>{{ voiceCallStore.participantsCount || 1 }} người trong phòng</small>
+          </div>
+        </div>
+
+        <div class="call-overlay-actions">
+          <button
+            type="button"
+            class="call-action-pill"
+            :class="{ muted: !voiceCallStore.isMicEnabled }"
+            :title="voiceCallStore.isMicEnabled ? 'Tắt micro' : 'Bật micro'"
+            @click="voiceCallStore.toggleMic()"
+          >
+            <i :class="voiceCallStore.isMicEnabled ? 'fa-solid fa-microphone' : 'fa-solid fa-microphone-slash'"></i>
+          </button>
+          
+          <button
+            type="button"
+            class="call-action-pill"
+            :class="{ active: voiceCallStore.isCameraEnabled }"
+            :title="voiceCallStore.isCameraEnabled ? 'Tắt camera' : 'Bật camera'"
+            @click="voiceCallStore.toggleCam()"
+          >
+            <i :class="voiceCallStore.isCameraEnabled ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'"></i>
+          </button>
+
+          <button
+            type="button"
+            class="call-action-pill open-call"
+            title="Mở màn hình cuộc gọi"
+            @click="goToChatCall"
+          >
+            <i class="fa-solid fa-expand"></i>
+            <span>Mở màn hình</span>
+          </button>
+
+          <button
+            type="button"
+            class="call-action-pill hang-up"
+            title="Rời kênh thoại"
+            @click="voiceCallStore.leaveCall()"
+          >
+            <i class="fa-solid fa-phone-slash"></i>
+          </button>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -595,12 +654,18 @@ import { useWorkTaskStore } from '@/store/useWorkTaskStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useGoalStore } from '@/store/useGoalStore'
 import { useSprintStore } from '@/store/useSprintStore'
+import { useVoiceCallStore } from '@/store/useVoiceCallStore'
 import { AUTH_SESSION_CHANGED, getStoredUserSession } from '@/utils/authSession'
 import { getDefaultPermissionMatrix, hasPermission } from '@/utils/permissionGuard'
 import { buildSpacePath } from '@/utils/spaceRoute'
 import { MAX_FLOATING_STICKIES, useStickyStore } from '@/store/useStickyStore'
 import { getRandomPaletteColor } from '@/utils/colors'
 import { getStickyAccountId } from '@/utils/stickyAccountIsolation'
+
+const voiceCallStore = useVoiceCallStore()
+const goToChatCall = () => {
+  router.push('/chat')
+}
 import {
   STICKY_LAUNCHER_DRAG_THRESHOLD,
   clampStickyLauncherY,
@@ -4309,4 +4374,104 @@ const handleProjectCreated = (newProject) => {
 .ai-credit-card.is-low .ai-credit-progress > span { background: #d9a441; }
 .ai-credit-card.is-empty { border-color: #d25b5b; }
 .ai-credit-card.is-empty .ai-credit-progress > span { width: 0 !important; background: #d25b5b; }
+
+.persistent-call-overlay {
+  position: fixed;
+  z-index: 2000;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--color-success, #10b981) 40%, var(--color-border));
+  background: var(--color-surface, #0f172a);
+  color: var(--color-text-primary, #ffffff);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  transition: all 0.2s ease;
+}
+.persistent-call-overlay .call-overlay-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.persistent-call-overlay .call-status-pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.25);
+  animation: call-pulse-ping 2s infinite ease-in-out;
+}
+@keyframes call-pulse-ping {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+}
+.persistent-call-overlay .call-overlay-info strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.persistent-call-overlay .call-overlay-info small {
+  display: block;
+  font-size: 11px;
+  color: var(--color-text-muted, #94a3b8);
+}
+.persistent-call-overlay .call-overlay-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.persistent-call-overlay .call-action-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.persistent-call-overlay .call-action-pill:hover {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 15%, var(--color-surface));
+  color: var(--color-accent);
+}
+.persistent-call-overlay .call-action-pill.muted {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+}
+.persistent-call-overlay .call-action-pill.active {
+  background: color-mix(in srgb, var(--color-accent) 20%, var(--color-surface));
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.persistent-call-overlay .call-action-pill.open-call {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #ffffff;
+}
+.persistent-call-overlay .call-action-pill.open-call:hover {
+  opacity: 0.9;
+}
+.persistent-call-overlay .call-action-pill.hang-up {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #ffffff;
+}
+.persistent-call-overlay .call-action-pill.hang-up:hover {
+  background: #dc2626;
+}
 </style>
