@@ -103,6 +103,79 @@ public sealed class ZenMuxAiClient
         }
     }
 
+    public async Task<ZenMuxTranscriptionResult> TranscribeAudioAsync(
+        string languageMode,
+        string audioFormat,
+        byte[] audioBytes,
+        CancellationToken cancellationToken = default)
+    {
+        var apiKey = _configuration["ZenMux:ApiKey"];
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new AiProviderException(AiProviderErrorKind.Unavailable);
+        }
+
+        var baseUrl = (_configuration["ZenMux:BaseUrl"] ?? "https://zenmux.ai/api/v1").TrimEnd('/');
+        var model = _configuration["ZenMux:TranscriptionModel"] ?? "qwen/qwen3-asr-flash";
+        var payload = new Dictionary<string, object?>
+        {
+            ["model"] = model,
+            ["input_audio"] = new
+            {
+                data = Convert.ToBase64String(audioBytes),
+                format = audioFormat
+            }
+        };
+
+        if (languageMode is "vi" or "en")
+        {
+            payload["language"] = languageMode;
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/audio/transcriptions");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
+        request.Content = JsonContent.Create(payload, options: _jsonOptions);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new AiProviderException(AiProviderErrorKind.Unavailable, innerException: ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new AiProviderException(AiProviderErrorKind.Unavailable, innerException: ex);
+        }
+
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode == HttpStatusCode.BadRequest)
+                {
+                    throw new AiTranscriptionProviderException(AiTranscriptionProviderErrorKind.InvalidRequest);
+                }
+
+                if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                {
+                    throw new AiTranscriptionProviderException(AiTranscriptionProviderErrorKind.Authentication);
+                }
+
+                throw new AiProviderException(
+                    response.StatusCode == HttpStatusCode.TooManyRequests
+                        ? AiProviderErrorKind.RateLimited
+                        : AiProviderErrorKind.Unavailable,
+                    GetRetryAfterSeconds(response));
+            }
+
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            return ParseTranscriptionResponse(responseBody);
+        }
+    }
+
     private ZenMuxChatResult ParseResponse(string responseBody, HttpResponseMessage response)
     {
         try
@@ -155,6 +228,36 @@ public sealed class ZenMuxAiClient
         }
     }
 
+    private ZenMuxTranscriptionResult ParseTranscriptionResponse(string responseBody)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(responseBody);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                throw new JsonException("Transcription response must be an object.");
+            }
+
+            var text = root.TryGetProperty("text", out var textElement) &&
+                       textElement.ValueKind == JsonValueKind.String
+                ? textElement.GetString() ?? string.Empty
+                : string.Empty;
+            var totalTokens = root.TryGetProperty("usage", out var usage) &&
+                              usage.ValueKind == JsonValueKind.Object &&
+                              usage.TryGetProperty("total_tokens", out var totalTokensElement) &&
+                              totalTokensElement.TryGetInt64(out var parsedTokens)
+                ? parsedTokens
+                : 0;
+
+            return new ZenMuxTranscriptionResult(text, totalTokens);
+        }
+        catch (JsonException exception)
+        {
+            throw new AiProviderException(AiProviderErrorKind.Unavailable, innerException: exception);
+        }
+    }
+
     private static string ExtractContent(JsonElement content)
     {
         if (content.ValueKind == JsonValueKind.String)
@@ -196,6 +299,8 @@ public sealed class ZenMuxAiClient
 }
 
 public sealed record ZenMuxChatResult(string Text, long TotalTokens, ZenMuxResponseDiagnostics Diagnostics);
+
+public sealed record ZenMuxTranscriptionResult(string Text, long TotalTokens);
 
 public sealed record ZenMuxResponseDiagnostics(
     int HttpStatus,

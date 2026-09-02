@@ -1574,78 +1574,36 @@ namespace TaskManagement.Infrastructure.Services
         {
             await EnsureQuotaAsync(userId);
 
-            var apiKey = _configuration["Gemini:ApiKey"];
-            if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Contains("PASTE_YOUR_GEMINI_API_KEY_HERE", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(_configuration["ZenMux:ApiKey"]))
             {
-                throw new InvalidOperationException("Chưa cấu hình Gemini API key.");
+                throw new AiProviderException(AiProviderErrorKind.Unavailable);
             }
 
             var reservationId = await _aiCreditUsageService.ReserveAsync(userId, 1, $"ai-transcription:{Guid.NewGuid():N}", cancellationToken);
             try
             {
-            var languageRule = languageMode switch
-            {
-                "vi" => "The speech is Vietnamese. Transcribe it in Vietnamese and preserve Vietnamese diacritics.",
-                "en" => "The speech is English. Transcribe it in English.",
-                _ => "Detect whether the speech is Vietnamese or English, including mixed Vietnamese/English speech, and transcribe it in the language spoken."
-            };
-            var prompt = $"""
-                Transcribe the supplied voice recording accurately.
-                {languageRule}
-                Return only the transcript. Do not answer the speaker, summarize, translate, add timestamps, or add quotation marks.
-                If there is no intelligible Vietnamese or English speech, return an empty string.
-                """;
-
-            var model = _configuration["Gemini:Model"] ?? "gemini-1.5-flash";
-            var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={Uri.EscapeDataString(apiKey)}";
-            var payload = new
-            {
-                systemInstruction = new
+                var audioFormat = mimeType switch
                 {
-                    parts = new[] { new { text = "You are a speech-to-text engine. Output transcript text only." } }
-                },
-                contents = new[]
+                    "audio/x-wav" or "audio/wave" => "wav",
+                    _ => mimeType.Split('/', 2).LastOrDefault() ?? "wav"
+                };
+                var result = await _zenMuxAiClient.TranscribeAudioAsync(
+                    languageMode, audioFormat, audioBytes, cancellationToken);
+                var transcript = result.Text.Trim();
+                var fallbackTokenEstimate = Math.Max(1, (transcript.Length + audioBytes.Length / 32) / 4);
+                _context.AITokenUsages.Add(new AITokenUsage
                 {
-                    new
-                    {
-                        role = "user",
-                        parts = new object[]
-                        {
-                            new { text = prompt },
-                            new { inlineData = new { mimeType, data = Convert.ToBase64String(audioBytes) } }
-                        }
-                    }
-                },
-                generationConfig = new
-                {
-                    temperature = 0,
-                    responseMimeType = "text/plain"
-                }
-            };
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    FeatureCode = "voice-transcription",
+                    TokensUsed = result.TotalTokens > 0 ? result.TotalTokens : fallbackTokenEstimate,
+                    CreatedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync(cancellationToken);
 
-            using var response = await _httpClient.PostAsJsonAsync(endpoint, payload, _jsonOptions, cancellationToken);
-            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new InvalidOperationException(AiSafetyGuard.SafeProviderError((int)response.StatusCode));
-            }
+                await _aiCreditUsageService.FinalizeReservationAsync(reservationId.ReservationId, cancellationToken);
 
-            var result = ParseGeminiResponse(responseBody);
-            var transcript = result.Text.Trim();
-            var fallbackTokenEstimate = Math.Max(1, (prompt.Length + transcript.Length + audioBytes.Length / 32) / 4);
-            _context.AITokenUsages.Add(new AITokenUsage
-            {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                FeatureCode = "voice-transcription",
-                TokensUsed = result.TotalTokens > 0 ? result.TotalTokens : fallbackTokenEstimate,
-                CreatedAt = DateTime.UtcNow
-            });
-            await _context.SaveChangesAsync(cancellationToken);
-
-            await _aiCreditUsageService.FinalizeReservationAsync(reservationId.ReservationId, cancellationToken);
-
-            return transcript;
+                return transcript;
             }
             catch
             {
