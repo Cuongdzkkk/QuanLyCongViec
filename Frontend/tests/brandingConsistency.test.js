@@ -72,5 +72,6 @@ test('auth layouts protect narrow viewports from horizontal overflow', () => {
   assert.match(brand, /\.sprinta-brand--compact[\s\S]*?height: 24px;/)
   assert.match(brand, /@media \(max-width: 680px\)[\s\S]*?\.sprinta-brand--compact[\s\S]*?height: 20px;/)
   assert.match(login, /@media \(max-width: 640px\)[\s\S]*?\.social-login \{[\s\S]*?flex-direction: column;/)
-  assert.match(home, /\.landing-page \{[\s\S]*?overflow-x: (hidden|clip);/)
+  assert.match(home, /\.hero \{[\s\S]*?overflow: clip;/)
+  assert.doesNotMatch(home, /\.landing-page \{[\s\S]*?overflow-x:\s*(hidden|clip);/)
 })
