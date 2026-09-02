@@ -4,81 +4,61 @@ import path from 'node:path'
 import test from 'node:test'
 
 const GOOGLE_STATE = Symbol.for('sprinta.googleIdentity')
-const loginSource = fs.readFileSync(
-  path.resolve(import.meta.dirname, '../src/views/Login.vue'),
-  'utf8'
-)
-const serviceSource = fs.readFileSync(
-  path.resolve(import.meta.dirname, '../src/services/googleIdentityService.js'),
-  'utf8'
-)
-const authApiSource = fs.readFileSync(
-  path.resolve(import.meta.dirname, '../src/api/authApi.js'),
-  'utf8'
-)
+const frontendRoot = path.resolve(import.meta.dirname, '..')
+const read = relativePath => fs.readFileSync(path.join(frontendRoot, relativePath), 'utf8')
+const loginSource = read('src/views/Login.vue')
+const serviceSource = read('src/services/googleIdentityService.js')
+const authApiSource = read('src/api/authApi.js')
 
 const resetGoogleState = () => {
   delete globalThis[GOOGLE_STATE]
   delete globalThis.google
 }
 
-test('Google button click uses the supported rendered-button path, not One Tap prompt', async () => {
+test('custom button uses GIS authorization-code request with exact Google label', async () => {
   resetGoogleState()
-  const renderCalls = []
-  let promptCalls = 0
+  let initializedOptions
+  let requestCount = 0
   globalThis.google = {
     accounts: {
-      id: {
-        renderButton: (container, options) => renderCalls.push({ container, options }),
-        prompt: () => { promptCalls += 1 },
-        initialize: () => {}
+      oauth2: {
+        initCodeClient: options => {
+          initializedOptions = options
+          return { requestCode: () => { requestCount += 1 } }
+        }
       }
     }
   }
 
-  const { renderGoogleIdentityButton } = await import('../src/services/googleIdentityService.js')
-  const container = {
-    clientWidth: 320,
-    replaceChildren: () => {}
-  }
+  const { registerGoogleAuthorizationCodeClient } = await import('../src/services/googleIdentityService.js')
+  const callbacks = []
+  const client = await registerGoogleAuthorizationCodeClient({
+    clientId: 'test-client-id',
+    state: 'server-issued-state',
+    callback: response => callbacks.push(response)
+  })
 
-  renderGoogleIdentityButton(container)
-  assert.equal(renderCalls.length, 1)
-  assert.equal(renderCalls[0].options.text, 'signin')
-  assert.equal(renderCalls[0].options.type, 'standard')
-  assert.equal(renderCalls[0].options.size, 'large')
-  assert.equal(promptCalls, 0)
-  assert.doesNotMatch(loginSource, /promptGoogleIdentity|google\.accounts\.id\.prompt/)
-  assert.doesNotMatch(serviceSource, /google\.accounts\.id\.prompt/)
-  assert.doesNotMatch(loginSource, /google-identity-button\.is-hidden/)
+  client.requestCode()
+  initializedOptions.callback({ code: 'authorization-code', state: 'server-issued-state' })
+
+  assert.equal(requestCount, 1)
+  assert.equal(initializedOptions.client_id, 'test-client-id')
+  assert.equal(initializedOptions.scope, 'openid email profile')
+  assert.equal(initializedOptions.ux_mode, 'popup')
+  assert.equal(initializedOptions.state, 'server-issued-state')
+  assert.deepEqual(callbacks, [{ code: 'authorization-code', state: 'server-issued-state' }])
+  assert.match(loginSource, /<span>Google<\/span>/)
+  assert.match(loginSource, /@click="startGoogleAuthorization"/)
+  assert.doesNotMatch(loginSource, /renderGoogleIdentityButton|renderButton/)
+  assert.doesNotMatch(serviceSource, /accounts\.id|renderButton|\.prompt\(/)
+  client.release()
   resetGoogleState()
 })
 
-test('Google Identity registration forwards the credential callback', async () => {
-  resetGoogleState()
-  let registeredCallback
-  globalThis.google = {
-    accounts: {
-      id: {
-        initialize: options => { registeredCallback = options.callback },
-        renderButton: () => {},
-        prompt: () => {}
-      }
-    }
-  }
-
-  const { registerGoogleIdentity } = await import('../src/services/googleIdentityService.js?callback')
-  const received = []
-  const release = await registerGoogleIdentity({
-    clientId: 'test-client-id',
-    callback: response => received.push(response)
-  })
-
-  registeredCallback({ credential: 'test-credential' })
-  assert.deepEqual(received, [{ credential: 'test-credential' }])
-  assert.match(serviceSource, /auto_select: false/)
-  assert.match(loginSource, /callback: handleGoogleLogin/)
-  assert.match(authApiSource, /['"]\/auth\/google-login['"]/)
-  release()
-  resetGoogleState()
+test('Google auth API posts code and state with the protected request header', () => {
+  assert.match(authApiSource, /['"]\/auth\/google-code\/start['"]/)
+  assert.match(authApiSource, /['"]\/auth\/google-code\/login['"]/)
+  assert.match(authApiSource, /X-Requested-With.*XmlHttpRequest/)
+  assert.doesNotMatch(loginSource, /google\.accounts\.id\.prompt|accounts\.id\.initialize|accounts\.id\.renderButton/)
+  assert.doesNotMatch(serviceSource, /auto_select|fedcm|prompt\(/i)
 })

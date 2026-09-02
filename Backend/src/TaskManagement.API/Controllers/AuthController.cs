@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.AspNetCore.WebUtilities;
+using System.Security.Cryptography;
 using TaskManagement.Application.Auth;
 using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.Auth;
@@ -20,19 +22,31 @@ namespace TaskManagement.API.Controllers
         private readonly IOtpService _otpService;
         private readonly IEmailService _emailService;
         private readonly ApplicationDbContext _context;
+        private readonly IConfiguration _configuration;
+        private readonly IGoogleAuthorizationCodeExchange _googleAuthorizationCodeExchange;
+        private readonly IGoogleLoginOAuthStateStore _googleLoginOAuthStateStore;
         private readonly ILogger<AuthController> _logger;
+
+        private const string GoogleLoginStateCookieName = "sprinta_google_login_state";
+        private const int GoogleLoginStateLifetimeMinutes = 5;
 
         public AuthController(
             IAuthService authService,
             IOtpService otpService,
             IEmailService emailService,
             ApplicationDbContext context,
+            IConfiguration configuration,
+            IGoogleAuthorizationCodeExchange googleAuthorizationCodeExchange,
+            IGoogleLoginOAuthStateStore googleLoginOAuthStateStore,
             ILogger<AuthController>? logger = null)
         {
             _authService = authService;
             _otpService = otpService;
             _emailService = emailService;
             _context = context;
+            _configuration = configuration;
+            _googleAuthorizationCodeExchange = googleAuthorizationCodeExchange;
+            _googleLoginOAuthStateStore = googleLoginOAuthStateStore;
             _logger = logger ?? NullLogger<AuthController>.Instance;
         }
 
@@ -469,6 +483,86 @@ namespace TaskManagement.API.Controllers
             }
         }
 
+        [HttpPost("google-code/start")]
+        public IActionResult StartGoogleAuthorizationCodeLogin()
+        {
+            if (!HasTrustedGoogleOrigin() ||
+                !TryGetGoogleAuthorizationCodeConfig(out _, out _, out var redirectUri) ||
+                !IsConfiguredRedirectUriForRequestOrigin(redirectUri))
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    statusCode = StatusCodes.Status503ServiceUnavailable,
+                    message = "Google authentication is temporarily unavailable."
+                });
+            }
+
+            var state = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
+            _googleLoginOAuthStateStore.Store(state, DateTime.UtcNow.AddMinutes(GoogleLoginStateLifetimeMinutes));
+            SetGoogleLoginStateCookie(state);
+
+            return Ok(new { statusCode = 200, data = new { state } });
+        }
+
+        [HttpPost("google-code/login")]
+        public async Task<IActionResult> GoogleAuthorizationCodeLogin([FromBody] GoogleAuthorizationCodeLoginRequestDto request)
+        {
+            if (!HasTrustedGoogleOrigin() ||
+                !string.Equals(Request.Headers["X-Requested-With"].ToString(), "XmlHttpRequest", StringComparison.Ordinal))
+            {
+                return BadRequest(new { statusCode = 400, message = "Google sign-in request is invalid." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Code) || string.IsNullOrWhiteSpace(request.State) ||
+                !Request.Cookies.TryGetValue(GoogleLoginStateCookieName, out var cookieState) ||
+                !CryptographicOperations.FixedTimeEquals(
+                    System.Text.Encoding.UTF8.GetBytes(request.State),
+                    System.Text.Encoding.UTF8.GetBytes(cookieState ?? string.Empty)) ||
+                !_googleLoginOAuthStateStore.TryConsume(request.State))
+            {
+                DeleteGoogleLoginStateCookie();
+                return Unauthorized(new { statusCode = 401, message = "Google sign-in state is invalid or expired." });
+            }
+
+            DeleteGoogleLoginStateCookie();
+
+            if (!TryGetGoogleAuthorizationCodeConfig(out var clientId, out var clientSecret, out var redirectUri) ||
+                !IsConfiguredRedirectUriForRequestOrigin(redirectUri))
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    statusCode = StatusCodes.Status503ServiceUnavailable,
+                    message = "Google authentication is temporarily unavailable."
+                });
+            }
+
+            try
+            {
+                var idToken = await _googleAuthorizationCodeExchange.ExchangeAsync(
+                    request.Code.Trim(),
+                    clientId,
+                    clientSecret,
+                    redirectUri,
+                    HttpContext.RequestAborted);
+
+                return await GoogleLogin(new GoogleLoginRequestDto { Credential = idToken });
+            }
+            catch (GoogleCredentialException)
+            {
+                _logger.LogWarning("Google authorization code rejected: invalid provider response");
+                return Unauthorized(new { statusCode = 401, message = "Google credential is invalid or expired." });
+            }
+            catch (GoogleProviderUnavailableException)
+            {
+                _logger.LogWarning("Google authorization code exchange failed: provider unavailable");
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    statusCode = StatusCodes.Status503ServiceUnavailable,
+                    message = "Google authentication is temporarily unavailable."
+                });
+            }
+        }
+
         [HttpPost("github-login")]
         public async Task<IActionResult> GitHubLogin([FromBody] GitHubLoginRequestDto request)
         {
@@ -492,6 +586,71 @@ namespace TaskManagement.API.Controllers
             {
                 return Unauthorized(new { statusCode = 401, message = ex.Message });
             }
+        }
+
+        private bool TryGetGoogleAuthorizationCodeConfig(
+            out string clientId,
+            out string clientSecret,
+            out string redirectUri)
+        {
+            clientId = _configuration["Google:ClientId"]?.Trim() ?? string.Empty;
+            clientSecret = _configuration["Google:ClientSecret"]?.Trim() ?? string.Empty;
+            redirectUri = _configuration["Google:RedirectUri"]?.Trim() ?? string.Empty;
+            return _configuration.GetValue<bool>("Google:Enabled") &&
+                !string.IsNullOrWhiteSpace(clientId) &&
+                !string.IsNullOrWhiteSpace(clientSecret) &&
+                Uri.TryCreate(redirectUri, UriKind.Absolute, out _);
+        }
+
+        private bool HasTrustedGoogleOrigin()
+        {
+            var origin = Request.Headers.Origin.ToString().TrimEnd('/');
+            if (string.IsNullOrWhiteSpace(origin)) return false;
+
+            var configuredOrigins = _configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+            var frontendOrigin = _configuration["Frontend:BaseUrl"]?.TrimEnd('/');
+            return configuredOrigins
+                .Append(frontendOrigin)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Any(item => string.Equals(item!.TrimEnd('/'), origin, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private bool IsConfiguredRedirectUriForRequestOrigin(string redirectUri)
+        {
+            if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var configuredUri)) return false;
+
+            var origin = Request.Headers.Origin.ToString().TrimEnd('/');
+            if (!Uri.TryCreate(origin, UriKind.Absolute, out var requestOrigin)) return false;
+
+            return configuredUri.Scheme.Equals(requestOrigin.Scheme, StringComparison.OrdinalIgnoreCase) &&
+                configuredUri.Host.Equals(requestOrigin.Host, StringComparison.OrdinalIgnoreCase) &&
+                configuredUri.Port == requestOrigin.Port &&
+                string.IsNullOrEmpty(configuredUri.AbsolutePath.Trim('/')) &&
+                string.IsNullOrEmpty(configuredUri.Query) &&
+                string.IsNullOrEmpty(configuredUri.Fragment);
+        }
+
+        private void SetGoogleLoginStateCookie(string state)
+        {
+            Response.Cookies.Append(GoogleLoginStateCookieName, state, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                IsEssential = true,
+                MaxAge = TimeSpan.FromMinutes(GoogleLoginStateLifetimeMinutes),
+                Path = "/api/auth/google-code"
+            });
+        }
+
+        private void DeleteGoogleLoginStateCookie()
+        {
+            Response.Cookies.Delete(GoogleLoginStateCookieName, new CookieOptions
+            {
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                Path = "/api/auth/google-code"
+            });
         }
 
         [HttpPost("register")]

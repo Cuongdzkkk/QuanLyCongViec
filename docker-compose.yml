@@ -68,6 +68,8 @@ services:
       MeetingAi__TranscriptChunkSize: "${MEETING_AI_TRANSCRIPT_CHUNK_SIZE:-8}"
       Google__Enabled: "true"
       Google__ClientId: "${GOOGLE_CLIENT_ID}"
+      Google__ClientSecret: "${GOOGLE_CLIENT_SECRET}"
+      Google__RedirectUri: "${GOOGLE_REDIRECT_URI}"
       GitHub__ClientId: "${GITHUB_CLIENT_ID}"
       GitHub__ClientSecret: "${GITHUB_CLIENT_SECRET}"
       GitHub__RedirectUri: "https://sprinta.id.vn/auth/github/callback"

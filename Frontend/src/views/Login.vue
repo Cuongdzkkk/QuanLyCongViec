@@ -133,27 +133,16 @@
               :class="{ 'is-busy': googleVerifying || isLoading }"
               :aria-busy="googleVerifying || isLoading"
             >
-              <div
-                ref="googleButtonContainer"
-                class="google-identity-button"
-              ></div>
-              <el-button
-                v-if="googleSdkState === 'loading'"
-                native-type="button"
-                class="social-btn google-btn google-placeholder"
-                loading
-                disabled
+              <button
+                type="button"
+                class="social-btn google-btn"
+                aria-label="Đăng nhập bằng Google"
+                :disabled="googleSdkState !== 'ready' || googleVerifying || isLoading"
+                @click="startGoogleAuthorization"
               >
-                Google
-              </el-button>
-              <el-button
-                v-else-if="googleSdkState === 'error'"
-                native-type="button"
-                class="social-btn google-btn google-placeholder"
-                @click="retryGoogleSetup"
-              >
-                <img :src="googleIcon" alt="" class="social-icon" /> {{ tr('Retry Google', 'Thử lại Google') }}
-              </el-button>
+                <img :src="googleIcon" alt="" class="social-icon" />
+                <span>Google</span>
+              </button>
               <div v-if="googleVerifying" class="google-verifying-overlay" aria-live="polite">
                 <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
                 <span>{{ tr('Verifying...', 'Đang xác minh...') }}</span>
@@ -201,7 +190,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -215,15 +204,15 @@ import {
   Zap
 } from 'lucide-vue-next'
 import axiosClient from '../api/axiosClient'
-import { loginWithGoogleCredential } from '@/api/authApi'
+import {
+  loginWithGoogleAuthorizationCode,
+  startGoogleAuthorizationCodeLogin
+} from '@/api/authApi'
 import { saveAuthSession } from '@/utils/authSession'
 import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 import { useI18n } from '@/composables/useI18n'
 import { currentTheme, toggleTheme } from '@/utils/theme'
-import {
-  registerGoogleIdentity,
-  renderGoogleIdentityButton
-} from '@/services/googleIdentityService'
+import { registerGoogleAuthorizationCodeClient } from '@/services/googleIdentityService'
 import googleIcon from '../assets/Icongoogle.png'
 import githubIcon from '../assets/Icongithub.png'
 
@@ -244,16 +233,13 @@ const form = reactive({
 const isLoading = ref(false)
 const requires2FA = ref(false)
 const otpCode = ref('')
-const googleButtonContainer = ref(null)
 const googleSdkState = ref('idle')
 const googleVerifying = ref(false)
 const googleError = ref(null)
-let releaseGoogleIdentity = null
+let googleAuthorizationClient = null
 let googleLoginAbortController = null
 let googleRequestId = 0
 let componentActive = true
-let lastCredentialFingerprint = ''
-let lastCredentialHandledAt = 0
 
 const getSafeRedirect = () => {
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
@@ -323,15 +309,6 @@ const handleGoogleLoginNotConfigured = () => {
   ElMessage.error(tr('Google sign-in is not configured.', 'Google Sign-In chưa được cấu hình.'))
 }
 
-const fingerprintCredential = (credential) => {
-  let hash = 2166136261
-  for (let index = 0; index < credential.length; index += 1) {
-    hash ^= credential.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-  return `${credential.length}:${hash >>> 0}`
-}
-
 const getGoogleError = (error) => {
   const status = Number(error?.response?.status || error?.status || 0)
   if (status === 400) {
@@ -395,30 +372,22 @@ const getGoogleError = (error) => {
 }
 
 const handleGoogleLogin = async (response) => {
-  if (!componentActive || isLoading.value || googleVerifying.value) return
+  if (!componentActive || isLoading.value) return
 
-  const credential = typeof response?.credential === 'string'
-    ? response.credential.trim()
+  const code = typeof response?.code === 'string'
+    ? response.code.trim()
     : ''
-  if (!credential) {
+  const state = typeof response?.state === 'string'
+    ? response.state.trim()
+    : ''
+  if (!code || !state) {
     googleError.value = getGoogleError({ status: 400 })
     ElMessage.error(googleError.value.message)
     return
   }
 
-  const now = Date.now()
-  const fingerprint = fingerprintCredential(credential)
-  if (
-    googleVerifying.value ||
-    (fingerprint === lastCredentialFingerprint && now - lastCredentialHandledAt < 2000)
-  ) {
-    return
-  }
-
   googleVerifying.value = true
   googleError.value = null
-  lastCredentialFingerprint = fingerprint
-  lastCredentialHandledAt = now
   googleLoginAbortController?.abort()
   const controller = new AbortController()
   googleLoginAbortController = controller
@@ -426,7 +395,7 @@ const handleGoogleLogin = async (response) => {
   let succeeded = false
 
   try {
-    const authData = await loginWithGoogleCredential(credential, {
+    const authData = await loginWithGoogleAuthorizationCode(code, state, {
       signal: controller.signal
     })
     if (!componentActive || requestId !== googleRequestId) return
@@ -450,7 +419,29 @@ const handleGoogleLogin = async (response) => {
   } finally {
     if (requestId === googleRequestId && !succeeded) {
       googleVerifying.value = false
+      setupGoogleIdentity()
     }
+  }
+}
+
+const handleGoogleAuthorizationError = () => {
+  googleVerifying.value = false
+  googleError.value = getGoogleError({ status: 400 })
+}
+
+const startGoogleAuthorization = () => {
+  if (googleSdkState.value !== 'ready' || !googleAuthorizationClient || googleVerifying.value || isLoading.value) {
+    return
+  }
+
+  googleVerifying.value = true
+  googleError.value = null
+  try {
+    googleAuthorizationClient.requestCode()
+  } catch (error) {
+    googleVerifying.value = false
+    googleError.value = getGoogleError(error)
+    setupGoogleIdentity()
   }
 }
 
@@ -460,24 +451,26 @@ const setupGoogleIdentity = async () => {
   googleError.value = null
 
   try {
-    releaseGoogleIdentity?.()
-    releaseGoogleIdentity = await registerGoogleIdentity({
+    googleAuthorizationClient?.release()
+    googleAuthorizationClient = null
+    const state = await startGoogleAuthorizationCodeLogin()
+    googleAuthorizationClient = await registerGoogleAuthorizationCodeClient({
       clientId: googleClientId,
-      callback: handleGoogleLogin
+      state,
+      callback: handleGoogleLogin,
+      errorCallback: handleGoogleAuthorizationError
     })
     if (!componentActive) {
-      releaseGoogleIdentity?.()
-      releaseGoogleIdentity = null
+      googleAuthorizationClient?.release()
+      googleAuthorizationClient = null
       return
     }
 
     googleSdkState.value = 'ready'
-    await nextTick()
-    renderGoogleIdentityButton(googleButtonContainer.value)
   } catch {
     if (!componentActive) return
-    releaseGoogleIdentity?.()
-    releaseGoogleIdentity = null
+    googleAuthorizationClient?.release()
+    googleAuthorizationClient = null
     googleSdkState.value = 'error'
     googleError.value = {
       status: 0,
@@ -502,9 +495,8 @@ onBeforeUnmount(() => {
   componentActive = false
   googleRequestId += 1
   googleLoginAbortController?.abort()
-  releaseGoogleIdentity?.()
-  releaseGoogleIdentity = null
-  lastCredentialFingerprint = ''
+  googleAuthorizationClient?.release()
+  googleAuthorizationClient = null
 })
 
 const handleGitHubLogin = () => {
@@ -934,18 +926,6 @@ const handleGitHubLogin = () => {
   pointer-events: none;
 }
 
-.google-identity-button {
-  width: 100%;
-  height: 44px;
-  min-height: 44px;
-  overflow: hidden;
-  border-radius: 10px;
-}
-
-.google-placeholder {
-  width: 100%;
-}
-
 .google-verifying-overlay {
   position: absolute;
   inset: 0;
@@ -1002,6 +982,22 @@ const handleGitHubLogin = () => {
   height: 44px;
   min-height: 44px;
   border-radius: 14px;
+}
+
+button.social-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+button.social-btn:disabled {
+  cursor: not-allowed;
+  opacity: .72;
+  transform: none;
 }
 
 .social-icon {

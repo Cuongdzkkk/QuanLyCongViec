@@ -338,7 +338,9 @@ public sealed class GoogleAuthTests
             ["Jwt:SecretKey"] = "testing-only-signing-key-not-for-deployment-1234567890",
             ["Features:AIEnabled"] = "false",
             ["Google:Enabled"] = "true",
-            ["Google:ClientId"] = "test-client-id.apps.googleusercontent.com"
+            ["Google:ClientId"] = "test-client-id.apps.googleusercontent.com",
+            ["Google:ClientSecret"] = "test-client-secret-material",
+            ["Google:RedirectUri"] = "https://app.example.test"
         });
         var environment = new Mock<IHostEnvironment>();
         environment.SetupGet(item => item.EnvironmentName).Returns("Testing");
@@ -435,6 +437,9 @@ public sealed class GoogleAuthTests
             Mock.Of<IOtpService>(),
             Mock.Of<IEmailService>(),
             context,
+            Configuration(new Dictionary<string, string?>()),
+            Mock.Of<IGoogleAuthorizationCodeExchange>(),
+            Mock.Of<IGoogleLoginOAuthStateStore>(),
             logger)
         {
             ControllerContext = new ControllerContext
