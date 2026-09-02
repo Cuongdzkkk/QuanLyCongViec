@@ -72,6 +72,86 @@ public sealed class AuthSecurityIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task SendOtp_RegisterExistingAccount_ReturnsConflictWithoutIssuingOtp()
+    {
+        _context.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "registered@example.com",
+            FullName = "Registered User",
+            PasswordHash = "password-hash",
+            IsActive = true,
+            IsDeleted = false
+        });
+        await _context.SaveChangesAsync();
+        var controller = CreateController();
+
+        var result = await controller.SendOtp(new SendOtpRequestDto
+        {
+            Email = "registered@example.com",
+            Purpose = "register"
+        });
+
+        result.Should().BeOfType<ConflictObjectResult>().Which.StatusCode
+            .Should().Be(StatusCodes.Status409Conflict);
+        JsonSerializer.Serialize(((ConflictObjectResult)result).Value)
+            .Should().Contain("statusCode").And.Contain("message");
+        _emailService.Verify(service => service.SendOtpEmailAsync(
+            "registered@example.com", It.IsAny<string>()), Times.Never);
+        _otpService.StoreOtp("registered@example.com", "123456", "127.0.0.1")
+            .Issued.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SendOtp_RegisterIncompleteInvitePlaceholder_RemainsSendable()
+    {
+        _context.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "invited-placeholder@example.com",
+            FullName = "Invited Placeholder",
+            PasswordHash = string.Empty,
+            IsActive = false,
+            IsDeleted = false
+        });
+        await _context.SaveChangesAsync();
+        var controller = CreateController();
+
+        var result = await controller.SendOtp(new SendOtpRequestDto
+        {
+            Email = "invited-placeholder@example.com",
+            Purpose = "register"
+        });
+
+        result.Should().BeOfType<OkObjectResult>();
+        _emailService.Verify(service => service.SendOtpEmailAsync(
+            "invited-placeholder@example.com", It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendOtp_ProviderFailure_ReturnsUnavailableAndRollsBackOtp()
+    {
+        const string email = "provider-failure@example.com";
+        _emailService.Reset();
+        _emailService.Setup(service => service.SendOtpEmailAsync(email, It.IsAny<string>()))
+            .ThrowsAsync(new InvalidOperationException("provider failure details"));
+        var controller = CreateController();
+
+        var result = await controller.SendOtp(new SendOtpRequestDto
+        {
+            Email = email,
+            Purpose = "register"
+        });
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode
+            .Should().Be(StatusCodes.Status503ServiceUnavailable);
+        JsonSerializer.Serialize(((ObjectResult)result).Value)
+            .Should().NotContain("provider failure details");
+        _otpService.StoreOtp(email, "654321", "127.0.0.1")
+            .Issued.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task SendOtp_ResendWithinCooldown_Returns429()
     {
         _context.Users.Add(new User

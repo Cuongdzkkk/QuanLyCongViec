@@ -104,6 +104,8 @@ export default {
       messages: {
         sendOtpFailed: 'Error occurred while sending OTP',
         sendOtpRateLimited: 'You requested an OTP too quickly. Try again in {seconds} seconds.',
+        emailAlreadyUsed: 'This email is already in use. Please log in or use Forgot password.',
+        sendOtpUnavailable: 'We could not send the verification email right now. Please try again later.',
         invalidOtpFormat: 'Please enter 6-digit OTP code',
         otpVerified: 'Email verified successfully',
         registerSuccess: 'Account created successfully! Start your session by logging in.',

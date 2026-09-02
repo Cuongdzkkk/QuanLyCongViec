@@ -69,10 +69,26 @@ namespace TaskManagement.API.Controllers
 
                 var account = await _context.Users
                     .AsNoTracking()
+                    .Include(user => user.ExternalLogins)
                     .FirstOrDefaultAsync(user => user.Email.ToLower() == email);
+                var canCompleteRegistration = account == null ||
+                    (!account.IsDeleted &&
+                     !account.IsActive &&
+                     string.IsNullOrWhiteSpace(account.PasswordHash) &&
+                     account.ExternalLogins.Count == 0);
+
+                if (purpose == "register" && !canCompleteRegistration)
+                {
+                    return Conflict(new
+                    {
+                        statusCode = StatusCodes.Status409Conflict,
+                        message = "Email này đã được sử dụng. Vui lòng đăng nhập hoặc sử dụng Quên mật khẩu."
+                    });
+                }
+
                 var shouldSend = purpose switch
                 {
-                    "register" => account == null,
+                    "register" => canCompleteRegistration,
                     "login" or "reset" or "forgot-password" => account is { IsActive: true, IsDeleted: false },
                     "invite" => true,
                     _ => false
@@ -100,9 +116,18 @@ namespace TaskManagement.API.Controllers
                     {
                         await _emailService.SendOtpEmailAsync(email, otpCode);
                     }
-                    catch
+                    catch (Exception exception)
                     {
                         _otpService.InvalidateOtp(email);
+                        _logger.LogWarning(
+                            "OTP email delivery failed for {Purpose} request. ErrorType={ErrorType}",
+                            purpose,
+                            exception.GetType().Name);
+                        return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                        {
+                            statusCode = StatusCodes.Status503ServiceUnavailable,
+                            message = "Không thể gửi email xác thực lúc này. Vui lòng thử lại sau."
+                        });
                     }
                 }
 
