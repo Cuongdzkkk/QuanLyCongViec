@@ -518,6 +518,13 @@ namespace TaskManagement.API.Controllers
                     languageMode = normalizedLanguage
                 }));
             }
+            catch (AiTranscriptionProviderException ex)
+            {
+                var statusCode = ex.Kind == AiTranscriptionProviderErrorKind.InvalidRequest
+                    ? StatusCodes.Status400BadRequest
+                    : StatusCodes.Status503ServiceUnavailable;
+                return StatusCode(statusCode, ApiResponse<object>.Error(ex.Message, statusCode));
+            }
             catch (InvalidOperationException)
             {
                 return StatusCode(StatusCodes.Status503ServiceUnavailable,
