@@ -937,6 +937,7 @@ button { font: inherit; }
 
 .brand { display: inline-flex; align-items: center; gap: 10px; min-width: max-content; }
 .brand-logo { width: 26px; height: 26px; object-fit: contain; filter: drop-shadow(0 0 12px rgba(65,192,242,.32)); }
+:global([data-theme='dark'] .brand-logo) { content: url('/sprinta-mark-dark.png'); }
 .brand-word { font-weight: 850; letter-spacing: .025em; }
 .brand-word small { margin-left: 5px; color: var(--cyan); font-size: 10px; letter-spacing: .19em; }
 
