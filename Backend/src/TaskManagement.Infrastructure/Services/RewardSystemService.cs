@@ -584,10 +584,11 @@ public sealed class RewardSystemService : IRewardSystemService
                 if (!reward.IsEnabled) throw new InvalidOperationException("This reward is disabled.");
                 if (reward.StartAt.HasValue && now < reward.StartAt.Value) throw new InvalidOperationException("This reward is not yet available.");
                 if (reward.EndAt.HasValue && now > reward.EndAt.Value) throw new InvalidOperationException("This reward has expired.");
-                if (reward.PointCost == null || reward.PointCost <= 0) throw new InvalidOperationException("Invalid point cost.");
+                var pointCost = reward.PointCost ?? 0;
+                if (pointCost < 0) throw new InvalidOperationException("Invalid point cost.");
                 
                 var wallet = await _context.UserWallets.FirstOrDefaultAsync(w => w.UserId == userId);
-                if (wallet == null || wallet.TotalPoints < reward.PointCost.Value)
+                if ((wallet == null && pointCost > 0) || (wallet != null && wallet.TotalPoints < pointCost))
                     throw new InvalidOperationException("Insufficient balance.");
 
                 if (reward.Quantity.HasValue && reward.Quantity.Value <= 0)
@@ -601,14 +602,22 @@ public sealed class RewardSystemService : IRewardSystemService
                 }
 
                 // Deduct balance
-                wallet.TotalPoints -= reward.PointCost.Value;
+                if (wallet != null)
+                {
+                    wallet.TotalPoints -= pointCost;
+                }
+                else if (pointCost == 0)
+                {
+                    wallet = new UserWallet { UserId = userId, TotalPoints = 0, Level = 1 };
+                    _context.UserWallets.Add(wallet);
+                }
 
                 // Create PointTransaction
                 var pointTx = new PointTransaction
                 {
                     Id = Guid.NewGuid(),
                     UserWalletUserId = userId,
-                    Amount = -reward.PointCost.Value,
+                    Amount = -pointCost,
                     Reason = $"Redeemed reward: {reward.Name}",
                     TransactionType = "Redeem",
                     CreatedAt = now.UtcDateTime
@@ -645,7 +654,7 @@ public sealed class RewardSystemService : IRewardSystemService
                     GrantId: grant.Id,
                     RewardDefinitionId: reward.Id,
                     RewardName: reward.Name,
-                    SpentPoints: reward.PointCost.Value,
+                    SpentPoints: pointCost,
                     RemainingPoints: wallet.TotalPoints,
                     RemainingQuantity: reward.Quantity
                 );
