@@ -3,7 +3,7 @@
     <header class="auth-navbar">
       <div class="container nav-content">
         <router-link to="/" class="logo">
-          <span role="img" aria-label="SprintA logo" class="custom-logo"></span>
+          <img src="/sprinta-mark-light.png" alt="" class="custom-logo" />
           <span>SprintA</span>
         </router-link>
         <div class="nav-actions">
@@ -135,17 +135,13 @@
               :class="{ 'is-busy': googleVerifying || isLoading }"
               :aria-busy="googleVerifying || isLoading"
             >
-              <div
-                ref="googleButtonContainer"
-                class="google-identity-button"
-                :class="{ 'is-hidden': !isGoogleConfigured }"
-              ></div>
               <el-button
-                v-if="googleSdkState === 'loading'"
+                v-if="googleSdkState === 'idle' || googleSdkState === 'loading'"
                 native-type="button"
                 class="social-btn google-btn google-placeholder"
                 loading
                 disabled
+                aria-label="Đăng nhập bằng Google"
               >
                 Google
               </el-button>
@@ -154,20 +150,42 @@
                 native-type="button"
                 class="social-btn google-btn google-placeholder"
                 @click="retryGoogleSetup"
+                aria-label="Đăng nhập bằng Google"
               >
-                <img :src="googleIcon" alt="" class="social-icon" /> {{ tr('Retry Google', 'Thử lại Google') }}
+                <img :src="googleIcon" alt="" class="social-icon" /> Google
+              </el-button>
+              <el-button
+                v-else
+                native-type="button"
+                class="social-btn google-btn"
+                :disabled="googleVerifying || isLoading"
+                aria-label="Đăng nhập bằng Google"
+                @click="handleGoogleLoginButton"
+              >
+                <img :src="googleIcon" alt="" class="social-icon" /> Google
               </el-button>
               <div v-if="googleVerifying" class="google-verifying-overlay" aria-live="polite">
                 <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
                 <span>{{ tr('Verifying...', 'Đang xác minh...') }}</span>
               </div>
             </div>
-            <el-button v-else native-type="button" class="social-btn google-btn" @click="handleGoogleLoginNotConfigured">
-              <img :src="googleIcon" alt="Google" class="social-icon" /> Google
+            <el-button
+              v-else
+              native-type="button"
+              class="social-btn google-btn"
+              aria-label="Đăng nhập bằng Google"
+              @click="handleGoogleLoginNotConfigured"
+            >
+              <img :src="googleIcon" alt="" class="social-icon" /> Google
             </el-button>
 
-            <el-button native-type="button" class="social-btn github-btn" @click="handleGitHubLogin">
-              <img :src="githubIcon" alt="GitHub" class="social-icon" /> GitHub
+            <el-button
+              native-type="button"
+              class="social-btn github-btn"
+              aria-label="Đăng nhập bằng GitHub"
+              @click="handleGitHubLogin"
+            >
+              <img :src="githubIcon" alt="" class="social-icon" /> GitHub
             </el-button>
           </div>
 
@@ -193,7 +211,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -212,8 +230,8 @@ import { saveAuthSession } from '@/utils/authSession'
 import { useI18n } from '@/composables/useI18n'
 import { currentTheme, toggleTheme } from '@/utils/theme'
 import {
-  registerGoogleIdentity,
-  renderGoogleIdentityButton
+  promptGoogleIdentity,
+  registerGoogleIdentity
 } from '@/services/googleIdentityService'
 import googleIcon from '../assets/Icongoogle.png'
 import githubIcon from '../assets/Icongithub.png'
@@ -236,7 +254,6 @@ const form = reactive({
 const isLoading = ref(false)
 const requires2FA = ref(false)
 const otpCode = ref('')
-const googleButtonContainer = ref(null)
 const googleSdkState = ref('idle')
 const googleVerifying = ref(false)
 const googleError = ref(null)
@@ -309,11 +326,28 @@ const handleLogin2FA = async () => {
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const hasGoogleClientId = Boolean(googleClientId && googleClientId !== 'CHANGE_ME_USE_LOCAL_ENV')
-const isGoogleConfigured = computed(() => hasGoogleClientId && googleSdkState.value === 'ready')
 const shouldShowGoogleIdentityShell = computed(() => hasGoogleClientId)
 
 const handleGoogleLoginNotConfigured = () => {
   ElMessage.error(tr('Google sign-in is not configured.', 'Google Sign-In chưa được cấu hình.'))
+}
+
+const handleGoogleLoginButton = () => {
+  if (googleVerifying.value || isLoading.value || googleSdkState.value !== 'ready') return
+
+  try {
+    promptGoogleIdentity()
+  } catch {
+    googleSdkState.value = 'error'
+    googleError.value = {
+      status: 0,
+      message: tr(
+        'Google sign-in could not be loaded. Please try again.',
+        'Không thể tải đăng nhập Google. Vui lòng thử lại.'
+      ),
+      retryable: true
+    }
+  }
 }
 
 const fingerprintCredential = (credential) => {
@@ -465,8 +499,6 @@ const setupGoogleIdentity = async () => {
     }
 
     googleSdkState.value = 'ready'
-    await nextTick()
-    renderGoogleIdentityButton(googleButtonContainer.value)
   } catch {
     if (!componentActive) return
     releaseGoogleIdentity?.()
@@ -524,6 +556,7 @@ const handleGitHubLogin = () => {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
   color: var(--auth-text);
   background:
     linear-gradient(180deg, #ffffff 0%, var(--auth-bg) 100%);
@@ -581,10 +614,10 @@ const handleGitHubLogin = () => {
   width: 24px;
   height: 22px;
   flex: 0 0 24px;
-  background: center / contain no-repeat url('/sprinta-mark-light.png');
+  object-fit: contain;
 }
 
-:global([data-theme='dark'] .custom-logo) { background-image: url('/sprinta-mark-dark.png'); filter: none; }
+:global([data-theme='dark'] .custom-logo) { content: url('/sprinta-mark-dark.png'); }
 
 .nav-actions {
   gap: 10px;
@@ -931,24 +964,6 @@ const handleGitHubLogin = () => {
   pointer-events: none;
 }
 
-.google-identity-button {
-  width: 100%;
-  height: 44px;
-  min-height: 44px;
-  overflow: hidden;
-  border-radius: 10px;
-}
-
-.google-identity-button.is-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  min-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
-}
-
 .google-placeholder {
   width: 100%;
 }
@@ -1138,8 +1153,7 @@ const handleGitHubLogin = () => {
     flex-direction: column;
   }
 
-  .google-identity-shell,
-  .google-identity-button {
+  .google-identity-shell {
     width: 100%;
   }
 

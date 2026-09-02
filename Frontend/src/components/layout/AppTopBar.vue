@@ -13,7 +13,7 @@
         @keydown.enter="router.push('/site-selection')"
         @keydown.space.prevent="router.push('/site-selection')"
       >
-        <span role="img" aria-label="SprintA logo" class="sprinta-logo-mark"></span>
+        <img src="/sprinta-mark-light.png" alt="" class="sprinta-logo-mark" />
         <span class="logo-text">SprintA</span>
       </div>
 
@@ -382,11 +382,12 @@ onUnmounted(() => {
 }
 
 .sprinta-logo-mark {
+  display: block;
   width: 24px;
   height: 22px;
   flex: 0 0 24px;
   margin: 0 8px 0 4px;
-  background: center / contain no-repeat url('/sprinta-mark-light.png');
+  object-fit: contain;
   filter: drop-shadow(0 6px 14px rgba(14, 165, 233, 0.28));
 }
 
@@ -705,7 +706,7 @@ onUnmounted(() => {
 }
 
 :global([data-theme='dark'] .sprinta-logo-mark) {
-  background-image: url('/sprinta-mark-dark.png');
+  content: url('/sprinta-mark-dark.png');
   filter: none;
 }
 
