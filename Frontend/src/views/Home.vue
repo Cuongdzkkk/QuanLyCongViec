@@ -846,7 +846,6 @@ onBeforeUnmount(() => {
   --tone-coral-b: #ff4f67;
   --shadow: 0 28px 80px rgba(0, 4, 18, .48);
   min-height: 100vh;
-  overflow-x: clip;
   color: var(--ink);
   background:
     radial-gradient(circle at 50% -10%, rgba(43, 123, 255, .13), transparent 34rem),
@@ -1081,6 +1080,7 @@ button { font: inherit; }
   min-height: 650px;
   display: grid;
   align-items: center;
+  overflow: clip;
   padding: 82px 0 78px;
 }
 .hero-grid {
@@ -2306,7 +2306,6 @@ button { font: inherit; }
 @media (max-width: 820px) {
   .landing-page {
     --mobile-side: 16px;
-    overflow-x: hidden;
   }
 
   .shell {
@@ -2367,6 +2366,7 @@ button { font: inherit; }
   }
   .hero-copy {
     max-width: 620px;
+    min-width: 0;
   }
   .hero-copy h1 {
     max-width: 100%;
@@ -2390,7 +2390,10 @@ button { font: inherit; }
     gap: 10px;
     flex-wrap: wrap;
   }
-  .hero-actions .btn { min-height: 44px; }
+  .hero-actions .btn {
+    min-height: 44px !important;
+    height: auto !important;
+  }
   .proof-row {
     margin-top: 20px;
     gap: 10px 16px;
@@ -2398,6 +2401,7 @@ button { font: inherit; }
   }
   .hero-stage {
     min-height: 300px;
+    min-width: 0;
     padding: 10px 0 18px;
   }
   .dashboard-tilt {
