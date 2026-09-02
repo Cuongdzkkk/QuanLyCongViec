@@ -10,11 +10,13 @@ import aiRoutes from './aiRoutes'
 import logRoutes from './logRoutes'
 import adminRoutes from './adminRoutes'
 import siteRoutes from './siteRoutes'
+import publicRoutes from './publicRoutes'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     ...homeRoutes,
+    ...publicRoutes,
     ...siteRoutes,
     ...authRoutes,
     ...dashboardRoutes,
@@ -27,7 +29,7 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   const token = getStoredAccessToken()
-  const publicPages = ['/login', '/register', '/', '/auth/github/callback', '/accept-invite', '/forgot-password']
+  const publicPages = ['/login', '/register', '/', '/about', '/privacy', '/terms', '/auth/github/callback', '/accept-invite', '/forgot-password']
   const authRequired = !publicPages.includes(to.path)
 
   if (authRequired && !token) {
