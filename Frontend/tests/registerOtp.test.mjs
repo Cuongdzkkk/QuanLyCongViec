@@ -19,3 +19,16 @@ test('registration OTP send has an in-flight guard, cooldown, and Retry-After ha
   assert.match(registerSource, /@click\.prevent="handleSendOtp"/)
   assert.equal((registerSource.match(/axiosClient\.post\('\/auth\/send-otp'/g) || []).length, 1)
 })
+
+test('registration OTP send does not advance on an existing account or provider failure', () => {
+  const handlerSource = registerSource.slice(registerSource.indexOf('const handleSendOtp'))
+
+  assert.match(registerSource, /const registrationConflict = ref\(false\)/)
+  assert.match(registerSource, /v-if="registrationConflict"/)
+  assert.match(registerSource, /<router-link to="\/login">/)
+  assert.match(handlerSource, /error\.response\?\.status === 409/)
+  assert.match(handlerSource, /auth\.register\.messages\.emailAlreadyUsed/)
+  assert.match(handlerSource, /error\.response\?\.status === 503/)
+  assert.match(handlerSource, /auth\.register\.messages\.sendOtpUnavailable/)
+  assert.match(handlerSource, /registrationConflict\.value = true/)
+})

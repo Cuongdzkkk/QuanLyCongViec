@@ -93,6 +93,11 @@
             {{ t('auth.register.sendOtpBtn') }}
           </el-button>
 
+          <div v-if="registrationConflict" class="registration-alert" role="alert">
+            <span>{{ t('auth.register.messages.emailAlreadyUsed') }}</span>
+            <router-link to="/login">{{ t('auth.nav.login') }}</router-link>
+          </div>
+
           <p v-if="hasActiveResendCooldown()" class="otp-cooldown" role="status" aria-live="polite">
             {{ t('auth.register.resendCountdown', { seconds: resendCooldown }) }}
           </p>
@@ -190,6 +195,7 @@ const resendCooldown = ref(0)
 const resendCooldownEmail = ref('')
 let resendCooldownTimer = null
 let sendOtpInFlight = false
+const registrationConflict = ref(false)
 const emailFormRef = ref(null)
 const profileFormRef = ref(null)
 const step = ref(1)
@@ -268,6 +274,7 @@ const handleSendOtp = async () => {
   if (sendOtpInFlight || hasActiveResendCooldown()) return
   if (step.value === 1 && !emailFormRef.value) return
 
+  registrationConflict.value = false
   sendOtpInFlight = true
   
   const validatePromise = step.value === 1 
@@ -288,10 +295,15 @@ const handleSendOtp = async () => {
         form.otp = ''
         step.value = 2
       } catch (error) {
-        if (error.response?.status === 429) {
+        if (error.response?.status === 409) {
+          registrationConflict.value = true
+          ElMessage.error(t('auth.register.messages.emailAlreadyUsed'))
+        } else if (error.response?.status === 429) {
           const seconds = readRetryAfterSeconds(error)
           startResendCooldown(seconds, form.email)
           ElMessage.error(t('auth.register.messages.sendOtpRateLimited', { seconds }))
+        } else if (error.response?.status === 503) {
+          ElMessage.error(t('auth.register.messages.sendOtpUnavailable'))
         } else {
           console.error('Send OTP error:', error)
           ElMessage.error(getApiErrorMessage(error, 'auth.register.messages.sendOtpFailed'))
@@ -720,6 +732,28 @@ const handleRegister = async () => {
   color: var(--auth-muted);
   font-size: 13px;
   text-align: center;
+}
+
+.registration-alert {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 8px;
+  margin-top: 12px;
+  color: #b42318;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+:global([data-theme='dark'] .registration-alert) {
+  color: #fda29b;
+}
+
+.registration-alert a {
+  color: #0ea5e9;
+  font-weight: 850;
+  text-decoration: none;
 }
 
 .otp-input :deep(input) {
