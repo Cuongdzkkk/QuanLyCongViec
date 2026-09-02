@@ -57,7 +57,7 @@ defineProps({
 }
 
 .sprinta-brand--site-selection .sprinta-brand__name {
-  color: #172b4d;
+  color: #f7fbff;
   font-size: 24px;
   font-weight: bold;
   letter-spacing: -0.5px;
