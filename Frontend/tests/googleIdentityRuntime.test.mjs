@@ -44,6 +44,7 @@ test('custom button uses GIS authorization-code request with exact Google label'
   assert.equal(requestCount, 1)
   assert.equal(initializedOptions.client_id, 'test-client-id')
   assert.equal(initializedOptions.scope, 'openid email profile')
+  assert.equal(initializedOptions.include_granted_scopes, false)
   assert.equal(initializedOptions.ux_mode, 'popup')
   assert.equal(initializedOptions.state, 'server-issued-state')
   assert.deepEqual(callbacks, [{ code: 'authorization-code', state: 'server-issued-state' }])
