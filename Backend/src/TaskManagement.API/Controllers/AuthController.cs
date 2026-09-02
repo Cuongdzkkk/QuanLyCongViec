@@ -82,13 +82,15 @@ namespace TaskManagement.API.Controllers
                 var issueResult = _otpService.StoreOtp(email, otpCode, GetOtpFingerprint());
                 if (!issueResult.Issued)
                 {
+                    var retryAfterSeconds = Math.Max(1, issueResult.RetryAfterSeconds);
+                    Response.Headers["Retry-After"] = retryAfterSeconds.ToString();
                     return StatusCode(StatusCodes.Status429TooManyRequests, new
                     {
                         statusCode = StatusCodes.Status429TooManyRequests,
                         message = issueResult.Locked
                             ? "Quá nhiều yêu cầu hoặc lần thử. Vui lòng thử lại sau."
                             : "Vui lòng chờ trước khi yêu cầu mã OTP mới.",
-                        retryAfterSeconds = issueResult.RetryAfterSeconds
+                        retryAfterSeconds
                     });
                 }
 
@@ -104,7 +106,17 @@ namespace TaskManagement.API.Controllers
                     }
                 }
 
-                return Ok(new { statusCode = 200, message = "Nếu email hợp lệ, mã OTP sẽ được gửi đến hộp thư của bạn." });
+                var configuredCooldown = _configuration["OtpSecurity:ResendCooldownSeconds"];
+                var resendCooldownSeconds = int.TryParse(configuredCooldown, out var parsedCooldown)
+                    ? Math.Max(1, parsedCooldown)
+                    : 60;
+
+                return Ok(new
+                {
+                    statusCode = 200,
+                    message = "Nếu email hợp lệ, mã OTP sẽ được gửi đến hộp thư của bạn.",
+                    resendCooldownSeconds
+                });
             }
             catch (Exception ex)
             {

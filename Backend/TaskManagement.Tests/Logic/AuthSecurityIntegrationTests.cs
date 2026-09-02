@@ -87,11 +87,35 @@ public sealed class AuthSecurityIntegrationTests : IDisposable
         var controller = CreateController();
         var request = new SendOtpRequestDto { Email = "cooldown-api@example.com", Purpose = "reset" };
 
-        (await controller.SendOtp(request)).Should().BeOfType<OkObjectResult>();
+        var firstSend = await controller.SendOtp(request);
+        firstSend.Should().BeOfType<OkObjectResult>();
+        JsonSerializer.Serialize(((OkObjectResult)firstSend).Value)
+            .Should().Contain("resendCooldownSeconds");
         var resend = await controller.SendOtp(request);
 
         resend.Should().BeOfType<ObjectResult>().Which.StatusCode
             .Should().Be(StatusCodes.Status429TooManyRequests);
+        controller.Response.Headers["Retry-After"].ToString().Should().Be("60");
+    }
+
+    [Fact]
+    public async Task SendOtp_DifferentEmails_DoNotShareCooldown()
+    {
+        var controller = CreateController();
+
+        var first = await controller.SendOtp(new SendOtpRequestDto
+        {
+            Email = "first-registration@example.com",
+            Purpose = "register"
+        });
+        var second = await controller.SendOtp(new SendOtpRequestDto
+        {
+            Email = "second-registration@example.com",
+            Purpose = "register"
+        });
+
+        first.Should().BeOfType<OkObjectResult>();
+        second.Should().BeOfType<OkObjectResult>();
     }
 
     [Fact]
