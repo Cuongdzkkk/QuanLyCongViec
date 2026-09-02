@@ -72,11 +72,21 @@ namespace TaskManagement.Infrastructure.Services
                         return;
                     }
 
-                    var targetUserId = task.AssignedUserId ?? task.ReporterId;
+                    Guid? targetUserIdNullable = task.AssignedUserId;
+                    if (targetUserIdNullable == null && task.TaskAssignments.Any(ta => ta.Status))
+                    {
+                        targetUserIdNullable = task.TaskAssignments.FirstOrDefault(ta => ta.Status)?.UserId;
+                    }
+
+                    if (targetUserIdNullable == null)
+                    {
+                        await transaction.CommitAsync();
+                        return;
+                    }
+                    var targetUserId = targetUserIdNullable.Value;
     
                     var wallet = await _context.UserWallets
                         .FirstOrDefaultAsync(w => w.UserId == targetUserId);
-    
                     if (wallet == null)
                     {
                         wallet = new UserWallet
@@ -91,13 +101,8 @@ namespace TaskManagement.Infrastructure.Services
     
                     if (!wasDone && isDone)
                     {
-                        // Tasks with active assignment shares are rewarded by the assignment flow.
-                        // This guard must never run for Done -> non-Done, because that would skip reversal.
-                        if (task.TaskAssignments.Any(ta => ta.Status))
-                        {
-                            await transaction.CommitAsync();
-                            return;
-                        }
+                        // Removed the guard that skips if task.TaskAssignments.Any(), 
+                        // because we now assign full task reward to exactly 1 user (targetUserId).
 
                         var hasUnreversedReward = await _context.PointTransactions.AnyAsync(reward =>
                             reward.UserWalletUserId == targetUserId &&
@@ -112,10 +117,43 @@ namespace TaskManagement.Infrastructure.Services
 
                         var rewardEventId = Guid.NewGuid();
                         var points = CalculateBaseRewardPoints(task, rewardRules);
+                        var expOnly = 0;
+                        bool useNewFormula = false;
+                        if (_rewardSystemService != null)
+                        {
+                            var activeSeason = await _context.RewardSeasons.FirstOrDefaultAsync(s => s.ProjectId == task.ProjectId && s.Status == "Active");
+                            var score = await _rewardSystemService.CalculateTaskScoreAsync(task, activeSeason);
+                            if (activeSeason == null)
+                            {
+                                points = 0;
+                                expOnly = score.Exp;
+                            }
+                            else
+                            {
+                                points = score.Points;
+                            }
+                            useNewFormula = true;
+                        }
                         void AddReward(int amount, string type, string reason)
                         {
                             if (amount == 0)
                             {
+                                return;
+                            }
+                            
+                            if (type == "ExpOnly")
+                            {
+                                _context.PointTransactions.Add(new PointTransaction
+                                {
+                                    Id = Guid.NewGuid(),
+                                    UserWalletUserId = targetUserId,
+                                    WorkTaskId = workTaskId,
+                                    Amount = amount,
+                                    TransactionType = type,
+                                    Reason = reason,
+                                    RewardEventId = rewardEventId,
+                                    CreatedAt = DateTime.UtcNow
+                                });
                                 return;
                             }
 
@@ -144,15 +182,22 @@ namespace TaskManagement.Infrastructure.Services
                         }
 
                         AddReward(points, RewardType, $"Cong diem hoan thanh task {task.SequenceId ?? task.Id.ToString()}");
+                        if (expOnly > 0)
+                        {
+                            AddReward(expOnly, "ExpOnly", $"Kinh nghiem hoan thanh task {task.SequenceId ?? task.Id.ToString()}");
+                        }
 
-                        var earlyBonus = CalculateEarlyBonus(points, task.DueDate, rewardRules);
-                        AddReward(earlyBonus, EarlyBonusType, $"Thuong hoan thanh som task {task.SequenceId ?? task.Id.ToString()}");
+                        if (!useNewFormula)
+                        {
+                            var earlyBonus = CalculateEarlyBonus(points, task.DueDate, rewardRules);
+                            AddReward(earlyBonus, EarlyBonusType, $"Thuong hoan thanh som task {task.SequenceId ?? task.Id.ToString()}");
 
-                        var accuracyBonus = CalculateAccuracyBonus(points, task.TotalEstimatedHours, task.TotalActualHours, rewardRules);
-                        AddReward(accuracyBonus, AccuracyBonusType, $"Thuong estimate sat thuc te cho task {task.SequenceId ?? task.Id.ToString()}");
+                            var accuracyBonus = CalculateAccuracyBonus(points, task.TotalEstimatedHours, task.TotalActualHours, rewardRules);
+                            AddReward(accuracyBonus, AccuracyBonusType, $"Thuong estimate sat thuc te cho task {task.SequenceId ?? task.Id.ToString()}");
 
-                        var latePenalty = CalculateLatePenalty(points, task.DueDate, rewardRules);
-                        AddReward(latePenalty, LatePenaltyType, $"Giam diem do task {task.SequenceId ?? task.Id.ToString()} hoan thanh tre han");
+                            var latePenalty = CalculateLatePenalty(points, task.DueDate, rewardRules);
+                            AddReward(latePenalty, LatePenaltyType, $"Giam diem do task {task.SequenceId ?? task.Id.ToString()} hoan thanh tre han");
+                        }
                     }
                     else if (wasDone && !isDone)
                     {
@@ -257,17 +302,34 @@ namespace TaskManagement.Infrastructure.Services
                         return;
                     }
 
-                    var assignment = task.TaskAssignments.FirstOrDefault(ta => ta.UserId == assigneeUserId && ta.Status);
-                    if (assignment == null)
+                    var assignment = task.TaskAssignments.FirstOrDefault(ta => ta.Status);
+                    if (assignment == null || assignment.UserId != assigneeUserId)
                     {
                         return;
                     }
 
                     var wallet = await GetOrCreateWalletAsync(assigneeUserId);
                     var basePoints = CalculateBaseRewardPoints(task, rewardRules);
-                    var activeAssignments = task.TaskAssignments.Where(ta => ta.Status).ToList();
-                    var share = CalculateAssignmentShare(task, assignment, activeAssignments);
-                    var points = Math.Max(1, (int)Math.Round(basePoints * share, MidpointRounding.AwayFromZero));
+                    var expOnly = 0;
+                    bool useNewFormula = false;
+                    if (_rewardSystemService != null)
+                    {
+                        var activeSeason = await _context.RewardSeasons.FirstOrDefaultAsync(s => s.ProjectId == task.ProjectId && s.Status == "Active");
+                        var score = await _rewardSystemService.CalculateTaskScoreAsync(task, activeSeason);
+                        if (activeSeason == null)
+                        {
+                            basePoints = 0;
+                            expOnly = score.Exp;
+                        }
+                        else
+                        {
+                            basePoints = score.Points;
+                        }
+                        useNewFormula = true;
+                    }
+                    var share = 1.0d; // Only one assignee gets 100% share
+                    var points = Math.Max(basePoints > 0 ? 1 : 0, (int)Math.Round(basePoints * share, MidpointRounding.AwayFromZero));
+                    var expAmount = Math.Max(expOnly > 0 ? 1 : 0, (int)Math.Round(expOnly * share, MidpointRounding.AwayFromZero));
 
                     if (IsOverdue(task.DueDate))
                     {
@@ -287,72 +349,93 @@ namespace TaskManagement.Infrastructure.Services
                         return;
                     }
 
-                    wallet.TotalPoints += points;
-                    wallet.Level = CalculateLevel(wallet.TotalPoints);
-                    _context.PointTransactions.Add(new PointTransaction
+                    if (points > 0)
                     {
-                        Id = Guid.NewGuid(),
-                        UserWalletUserId = assigneeUserId,
-                        WorkTaskId = workTaskId,
-                        Amount = points,
-                        TransactionType = AssignmentRewardType,
-                        Reason = $"Cong diem hoan thanh phan viec task {task.SequenceId ?? task.Id.ToString()}",
-                        CreatedAt = DateTime.UtcNow
-                    });
-
-                    var earlyBonus = CalculateEarlyBonus(points, task.DueDate, rewardRules);
-                    if (earlyBonus > 0)
-                    {
-                        wallet.TotalPoints += earlyBonus;
-                        _context.PointTransactions.Add(new PointTransaction
-                        {
-                            Id = Guid.NewGuid(),
-                            UserWalletUserId = assigneeUserId,
-                            WorkTaskId = workTaskId,
-                            Amount = earlyBonus,
-                            TransactionType = EarlyBonusType,
-                            Reason = $"Thuong hoan thanh som phan viec task {task.SequenceId ?? task.Id.ToString()}",
-                            CreatedAt = DateTime.UtcNow
-                        });
-                    }
-
-                    var accuracyBonus = CalculateAccuracyBonus(points, assignment.EstimatedHours, assignment.TotalActualHours, rewardRules);
-                    if (accuracyBonus > 0)
-                    {
-                        wallet.TotalPoints += accuracyBonus;
-                        _context.PointTransactions.Add(new PointTransaction
-                        {
-                            Id = Guid.NewGuid(),
-                            UserWalletUserId = assigneeUserId,
-                            WorkTaskId = workTaskId,
-                            Amount = accuracyBonus,
-                            TransactionType = AccuracyBonusType,
-                            Reason = $"Thuong estimate sat thuc te cho phan viec task {task.SequenceId ?? task.Id.ToString()}",
-                            CreatedAt = DateTime.UtcNow
-                        });
-                    }
-
-                    var latePenalty = CalculateLatePenalty(points, task.DueDate, rewardRules);
-                    if (latePenalty < 0)
-                    {
-                        wallet.TotalPoints = Math.Max(0, wallet.TotalPoints + latePenalty);
-                        _context.PointTransactions.Add(new PointTransaction
-                        {
-                            Id = Guid.NewGuid(),
-                            UserWalletUserId = assigneeUserId,
-                            WorkTaskId = workTaskId,
-                            Amount = latePenalty,
-                            TransactionType = LatePenaltyType,
-                            Reason = $"Giam diem do phan viec task {task.SequenceId ?? task.Id.ToString()} hoan thanh tre han",
-                            CreatedAt = DateTime.UtcNow
-                        });
-                    }
-
-                    if (task.DueDate.HasValue || accuracyBonus > 0 || latePenalty < 0)
-                    {
+                        wallet.TotalPoints += points;
                         wallet.Level = CalculateLevel(wallet.TotalPoints);
+                        _context.PointTransactions.Add(new PointTransaction
+                        {
+                            Id = Guid.NewGuid(),
+                            UserWalletUserId = assigneeUserId,
+                            WorkTaskId = workTaskId,
+                            Amount = points,
+                            TransactionType = AssignmentRewardType,
+                            Reason = $"Cong diem hoan thanh phan viec task {task.SequenceId ?? task.Id.ToString()}",
+                            CreatedAt = DateTime.UtcNow
+                        });
                     }
 
+                    if (expAmount > 0)
+                    {
+                        _context.PointTransactions.Add(new PointTransaction
+                        {
+                            Id = Guid.NewGuid(),
+                            UserWalletUserId = assigneeUserId,
+                            WorkTaskId = workTaskId,
+                            Amount = expAmount,
+                            TransactionType = "ExpOnly",
+                            Reason = $"Kinh nghiem hoan thanh phan viec task {task.SequenceId ?? task.Id.ToString()}",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+
+                    if (!useNewFormula)
+                    {
+                        var earlyBonus = CalculateEarlyBonus(points, task.DueDate, rewardRules);
+                        if (earlyBonus > 0)
+                        {
+                            wallet.TotalPoints += earlyBonus;
+                            _context.PointTransactions.Add(new PointTransaction
+                            {
+                                Id = Guid.NewGuid(),
+                                UserWalletUserId = assigneeUserId,
+                                WorkTaskId = workTaskId,
+                                Amount = earlyBonus,
+                                TransactionType = EarlyBonusType,
+                                Reason = $"Thuong hoan thanh som phan viec task {task.SequenceId ?? task.Id.ToString()}",
+                                CreatedAt = DateTime.UtcNow
+                            });
+                        }
+
+                        var accuracyBonus = CalculateAccuracyBonus(points, assignment.EstimatedHours, assignment.TotalActualHours, rewardRules);
+                        if (accuracyBonus > 0)
+                        {
+                            wallet.TotalPoints += accuracyBonus;
+                            _context.PointTransactions.Add(new PointTransaction
+                            {
+                                Id = Guid.NewGuid(),
+                                UserWalletUserId = assigneeUserId,
+                                WorkTaskId = workTaskId,
+                                Amount = accuracyBonus,
+                                TransactionType = AccuracyBonusType,
+                                Reason = $"Thuong estimate sat thuc te cho phan viec task {task.SequenceId ?? task.Id.ToString()}",
+                                CreatedAt = DateTime.UtcNow
+                            });
+                        }
+
+                        var latePenalty = CalculateLatePenalty(points, task.DueDate, rewardRules);
+                        if (latePenalty < 0)
+                        {
+                            wallet.TotalPoints = Math.Max(0, wallet.TotalPoints + latePenalty);
+                            _context.PointTransactions.Add(new PointTransaction
+                            {
+                                Id = Guid.NewGuid(),
+                                UserWalletUserId = assigneeUserId,
+                                WorkTaskId = workTaskId,
+                                Amount = latePenalty,
+                                TransactionType = LatePenaltyType,
+                                Reason = $"Giam diem do phan viec task {task.SequenceId ?? task.Id.ToString()} hoan thanh tre han",
+                                CreatedAt = DateTime.UtcNow
+                            });
+                        }
+
+                        if (task.DueDate.HasValue || accuracyBonus > 0 || latePenalty < 0)
+                        {
+                            wallet.Level = CalculateLevel(wallet.TotalPoints);
+                        }
+                    }
+
+                    var activeAssignments = task.TaskAssignments.Where(ta => ta.Status).ToList();
                     if (activeAssignments.Count > 1 && rewardRules.CollaborationBonusPoints > 0)
                     {
                         wallet.TotalPoints += rewardRules.CollaborationBonusPoints;

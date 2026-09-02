@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div>
     <div class="ai-page-flex-wrapper">
       <div class="ai-container">
@@ -609,8 +609,8 @@ const createBacklogItems = async (mode) => {
       notifyProjectRealtime('project-settings-updated', { source: 'ai-repo-create' })
     }
 
-    ElMessage.success(response.data?.message || `Da tao ${created.length} work items`)
-    repoStatus.value = `Da tao ${created.length} work items vao ${activeProjectName.value}.`
+    ElMessage.success(response.data?.message || `Đã tạo ${created.length} công việc`)
+    repoStatus.value = `Đã tạo ${created.length} công việc vào dự án ${activeProjectName.value}.`
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Khong tao duoc AI backlog items')
   } finally {
@@ -671,8 +671,8 @@ const createReviewedBacklogItems = async () => {
       notifyProjectRealtime('project-settings-updated', { source: 'ai-operational-review' })
     }
 
-    ElMessage.success(response.data?.message || `Da tao ${created.length} work items`)
-    repoStatus.value = `Da tao ${created.length} work items vao ${reviewTargetSprintLabel.value}.`
+    ElMessage.success(response.data?.message || `Đã tạo ${created.length} công việc`)
+    repoStatus.value = `Đã tạo ${created.length} công việc vào ${reviewTargetSprintLabel.value}.`
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Khong tao duoc reviewed AI backlog items')
   } finally {

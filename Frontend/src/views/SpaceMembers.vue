@@ -15,51 +15,70 @@
       </template>
     </ProjectPageHeader>
 
-    <el-tabs v-model="activeTab" class="nexus-tabs">
-      <!-- TAB 1: MEMBERS -->
-      <el-tab-pane label="Danh sách thành viên" name="members">
-        <ProjectPageToolbar
-          :showSearch="true"
-          v-model:searchQuery="searchQuery"
-          searchPlaceholder="Tìm kiếm thành viên theo tên/email..."
-        >
-          <template #filters>
-            <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
-              <button
-                class="timeline-filter-trigger icon-only-trigger"
-                type="button"
-                aria-label="Filters"
-                title="Bộ lọc"
-                @click="toggleFilterDropdown"
-                :class="{ active: showFilterDropdown || activeFilters.length }"
-              >
-                <i class="fa-solid fa-filter"></i>
-                <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
-              </button>
-              <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
-                <FilterBar
-                  v-model:filters="activeFilters"
-                  :fields="memberFilterFields"
-                  :operators="memberOperators"
-                  :custom-value-meta="customMemberValueMeta"
-                  :active="showFilterDropdown"
-                />
-              </div>
-            </div>
-          </template>
-          <template #sort>
-            <ToolbarSortMenu v-model="memberSortBy" v-model:direction="memberSortDirection" label="Sort members" :options="memberSortOptions" />
-          </template>
-        </ProjectPageToolbar>
+    <div class="yw-tabs" style="margin-top: 18px">
+      <button class="tab-btn" :class="{ 'active': activeTab === 'members' }" @click="activeTab = 'members'">Danh sách thành viên</button>
+      <button class="tab-btn" :class="{ 'active': activeTab === 'teams' }" @click="activeTab = 'teams'">Danh sách team</button>
+    </div>
 
-        <div v-if="loadingMembers" class="loading-state">
-          <el-icon class="is-loading"><Loading /></el-icon> Đang tải dữ liệu...
+    <ProjectPageToolbar
+      v-if="activeTab === 'members'"
+      :showSearch="true"
+      v-model:searchQuery="searchQuery"
+      searchPlaceholder="Tìm kiếm thành viên theo tên/email..."
+    >
+      <template #filters>
+        <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
+          <button
+            class="timeline-filter-trigger icon-only-trigger"
+            type="button"
+            aria-label="Filters"
+            title="Bộ lọc"
+            @click="toggleFilterDropdown"
+            :class="{ active: showFilterDropdown || activeFilters.length }"
+          >
+            <i class="fa-solid fa-filter"></i>
+            <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
+          </button>
+          <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
+            <FilterBar
+              v-model:filters="activeFilters"
+              :fields="memberFilterFields"
+              :operators="memberOperators"
+              :custom-value-meta="customMemberValueMeta"
+              :active="showFilterDropdown"
+            />
+          </div>
         </div>
-        <div v-else-if="filteredMembers.length === 0" class="empty-state">
-          <i class="fa-solid fa-users-slash empty-icon"></i>
-          <p>Không tìm thấy thành viên nào phù hợp.</p>
+      </template>
+      <template #sort>
+        <ToolbarSortMenu v-model="memberSortBy" v-model:direction="memberSortDirection" label="Sort members" :options="memberSortOptions" />
+      </template>
+    </ProjectPageToolbar>
+
+    <ProjectPageToolbar
+      v-if="activeTab === 'teams'"
+      :showSearch="true"
+      v-model:searchQuery="teamSearchQuery"
+      searchPlaceholder="Tìm kiếm team..."
+    >
+      <template #sort>
+        <ToolbarSortMenu v-model="teamSortBy" v-model:direction="teamSortDirection" label="Sort teams" :options="teamSortOptions" />
+      </template>
+    </ProjectPageToolbar>
+
+    <!-- TAB 1: MEMBERS -->
+    <div v-show="activeTab === 'members'" :style="(loadingMembers || filteredMembers.length > 0) ? 'margin-top: 24px' : ''">
+      <div v-if="loadingMembers" class="loading-state">
+        <el-icon class="is-loading"><Loading /></el-icon> Đang tải dữ liệu...
+      </div>
+      <div v-else-if="filteredMembers.length === 0" class="empty-state-global">
+        <div class="empty-spaces-icon"><i class="fa-solid fa-users-slash"></i></div>
+        <div class="empty-spaces-copy">
+          <h3>Không tìm thấy thành viên nào phù hợp.</h3>
+          <p>Thử điều chỉnh bộ lọc hoặc từ khóa tìm kiếm.</p>
         </div>
-        <div v-else class="table-container">
+      </div>
+      <div v-else class="table-container">
         <el-table border v-resizable :data="filteredMembers" style="width: 100%" class="nexus-table">
           <el-table-column min-width="200">
             <template #header>
@@ -138,29 +157,25 @@
             </template>
           </el-table-column>
         </el-table>
-        </div>
-      </el-tab-pane>
+      </div>
+    </div>
 
-      <!-- TAB 2: TEAMS -->
-      <el-tab-pane label="Danh sách team" name="teams">
-        <ProjectPageToolbar
-          :showSearch="true"
-          v-model:searchQuery="teamSearchQuery"
-          searchPlaceholder="Tìm kiếm team..."
-        >
-          <template #sort>
-            <ToolbarSortMenu v-model="teamSortBy" v-model:direction="teamSortDirection" label="Sort teams" :options="teamSortOptions" />
-          </template>
-        </ProjectPageToolbar>
-        <div v-if="loadingTeams" class="loading-state">
-          <el-icon class="is-loading"><Loading /></el-icon> Đang phân tích dữ liệu phòng ban...
+    <!-- TAB 2: TEAMS -->
+    <div v-show="activeTab === 'teams'" :style="(loadingTeams || linkedTeams.length > 0) ? 'margin-top: 24px' : ''">
+      <div v-if="loadingTeams" class="loading-state">
+        <el-icon class="is-loading"><Loading /></el-icon> Đang phân tích dữ liệu phòng ban...
+      </div>
+      <div v-else-if="linkedTeams.length === 0" class="empty-state-global">
+        <div class="empty-spaces-icon"><i class="fa-solid fa-users-rectangle"></i></div>
+        <div class="empty-spaces-copy">
+          <h3>Chưa có team nào được liên kết</h3>
+          <p>Liên kết team với dự án này để mọi người làm việc cùng nhau.</p>
         </div>
-        <div v-else-if="linkedTeams.length === 0" class="empty-state">
-          <i class="fa-solid fa-users-rectangle empty-icon"></i>
-          <p>Chưa có team nào được liên kết với dự án này.</p>
-          <el-button type="primary" plain class="mt-4" @click="openLinkTeamModal">Liên kết Team ngay</el-button>
-        </div>
-        <div v-else class="table-container">
+        <button class="empty-state-action-btn" type="button" @click="openLinkTeamModal">
+          <i class="fa-solid fa-link"></i> Liên kết Team ngay
+        </button>
+      </div>
+      <div v-else class="table-container">
         <el-table :data="linkedTeams" style="width: 100%" class="nexus-table">
           <el-table-column min-width="220">
             <template #header>
@@ -240,9 +255,8 @@
             </template>
           </el-table-column>
         </el-table>
-        </div>
-      </el-tab-pane>
-    </el-tabs>
+      </div>
+    </div>
 
     <!-- Modal Mời Thành Viên -->
     <el-dialog v-model="showAddMemberModal" width="560px" destroy-on-close append-to-body class="sa-data-dialog sa-modal--form" :show-close="false">
@@ -860,6 +874,43 @@ onUnmounted(() => {
   width: 168px;
 }
 
+.yw-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  border-radius: 14px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 88%, transparent), color-mix(in srgb, var(--color-surface-hover) 46%, transparent));
+  width: max-content;
+  max-width: 100%;
+  margin-top: 18px;
+}
+
+.tab-btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: var(--color-text-primary);
+}
+
+.tab-btn.active {
+  background: color-mix(in srgb, var(--color-accent) 15%, var(--color-surface));
+  color: var(--color-accent);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
 .member-info {
   display: flex;
   align-items: center;
@@ -884,70 +935,7 @@ onUnmounted(() => {
   color: var(--color-text-muted, #6b778c);
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 0;
-  color: var(--color-text-muted, #6b778c);
-}
 
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  color: var(--color-border, #dfe1e6);
-}
-
-.loading-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 40px;
-  color: var(--color-text-muted, #6b778c);
-}
-
-.team-selection-list {
-  max-height: 350px;
-  overflow-y: auto;
-  border: 1px solid var(--color-border, #dfe1e6);
-  border-radius: 6px;
-  padding: 8px;
-}
-
-.team-option {
-  display: flex;
-  align-items: center;
-  padding: 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: 1px solid transparent;
-}
-
-.team-option:hover {
-  background-color: var(--color-background-hover, #f4f5f7);
-}
-
-.team-option.is-selected {
-  background-color: color-mix(in srgb, var(--sp-blue-700) 10%, var(--color-surface));
-  border-color: var(--sp-blue-700);
-}
-
-/* Tweak Element Plus tabs to match SprintA design */
-:deep(.el-tabs__nav-wrap::after) {
-  height: 1px;
-  background-color: var(--color-border, #dfe1e6);
-}
-:deep(.el-tabs__item) {
-  font-size: 13px;
-  font-weight: 750;
-  color: var(--color-text-secondary, #42526e);
-}
-:deep(.el-tabs__item.is-active) {
-  color: var(--color-accent, #0c66e4);
-}
 :deep(.el-tabs__active-bar) {
   background-color: var(--color-accent, #0c66e4);
 }
@@ -1086,4 +1074,5 @@ onUnmounted(() => {
   padding: 0 !important;
   overflow: visible;
 }
+.empty-spaces-flat { margin: 18px; }
 </style>

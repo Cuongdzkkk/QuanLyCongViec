@@ -281,30 +281,36 @@ function navigateToTask(taskId) {
       </template>
     </ProjectPageToolbar>
 
-    <!-- Inbox List -->
-    <div v-loading="loading" class="intake-content-area">
-      <div v-if="!loading && loadError" class="intake-empty-state" role="alert">
-        <div class="empty-icon-wrapper">
-          <i class="fa-solid fa-shield-halved text-4xl text-[var(--color-text-muted)]"></i>
-        </div>
-        <h4 class="font-bold text-sm text-[var(--color-text-primary)] mt-4">Không thể mở Intake</h4>
-        <p class="text-xs text-[var(--color-text-muted)] mt-1 max-w-sm">{{ loadError }}</p>
+    <!-- Error State -->
+    <div v-if="!loading && loadError" class="empty-state-global" role="alert">
+      <div class="empty-spaces-icon" aria-hidden="true">
+        <i class="fa-solid fa-shield-halved"></i>
       </div>
-      
-      <!-- Empty State -->
-      <div v-else-if="!loading && intakes.length === 0" class="intake-empty-state">
-        <div class="empty-icon-wrapper">
-          <i class="fa-regular fa-envelope-open text-4xl text-[var(--color-text-muted)]"></i>
+      <div class="empty-spaces-copy">
+        <h3>Không thể mở Intake</h3>
+        <p>{{ loadError }}</p>
+      </div>
+    </div>
+    
+    <!-- Empty State -->
+    <div v-else-if="!loading && intakes.length === 0" class="empty-state-global">
+        <div class="empty-spaces-icon" aria-hidden="true">
+          <i class="fa-regular fa-envelope-open"></i>
         </div>
-        <h4 class="font-bold text-sm text-[var(--color-text-primary)] mt-4">Chưa có yêu cầu nào</h4>
-        <p class="text-xs text-[var(--color-text-muted)] mt-1 mb-4 max-w-sm">Hãy tạo form yêu cầu để nhân viên gửi công việc vào SprintA.</p>
-        <button v-if="intakePermissions.canCreate" class="nexus-btn-primary" @click="showCreate = true">
-          <i class="fa-solid fa-paper-plane mr-1"></i> Gửi yêu cầu mới
-        </button>
+        <div class="empty-spaces-copy">
+          <h3>Chưa có yêu cầu nào</h3>
+          <p>Hãy tạo form yêu cầu để nhân viên gửi công việc vào SprintA.</p>
+        </div>
+        <div class="empty-spaces-actions">
+          <button v-if="intakePermissions.canCreate" class="empty-state-action-btn" @click="showCreate = true">
+            <i class="fa-solid fa-paper-plane mr-1"></i> Gửi yêu cầu mới
+          </button>
+        </div>
       </div>
 
-      <!-- Table Listing -->
-      <div v-else class="table-container">
+    <!-- Inbox List -->
+    <div v-else v-loading="loading" class="intake-content-area">
+      <div class="table-container">
         <table v-resizable class="intake-table">
           <thead>
             <tr>
@@ -509,31 +515,11 @@ function navigateToTask(taskId) {
 
 .intake-content-area {
   width: 100%;
+  padding: 18px;
+  box-sizing: border-box;
 }
 
-/* Empty State */
-.intake-empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 80px 24px;
-  background: var(--color-surface);
-  border: 1px dashed var(--color-border);
-  border-radius: 16px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
-}
 
-.empty-icon-wrapper {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: rgba(148, 163, 184, 0.08);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 
 /* Table Listing */
 .table-container {

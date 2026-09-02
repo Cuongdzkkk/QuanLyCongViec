@@ -10,11 +10,17 @@ public interface IRewardSystemService
     Task<IReadOnlyList<RewardSeasonDto>> GetSeasonsAsync(Guid projectId, Guid userId);
     Task<RewardSeasonDto> CreateSeasonAsync(Guid projectId, Guid userId, CreateRewardSeasonRequest request);
     Task<RewardSeasonDto> ActivateSeasonAsync(Guid projectId, Guid seasonId, Guid userId);
+    Task<RewardSeasonDto> PauseSeasonAsync(Guid projectId, Guid seasonId, Guid userId);
     Task<RewardSeasonDto> CloseSeasonAsync(Guid projectId, Guid seasonId, Guid userId);
     Task<RewardDefinitionDto> CreateDefinitionAsync(Guid projectId, Guid seasonId, Guid userId, CreateRewardDefinitionRequest request);
+    Task<RewardDefinitionDto> UpdateDefinitionAsync(Guid projectId, Guid seasonId, Guid definitionId, Guid userId, CreateRewardDefinitionRequest request);
     Task HandleTaskStatusChangeAsync(Guid workTaskId, Guid actorUserId, string? oldStatusName, string? newStatusName);
     Task<RewardPointEventDto> ReviewPointEventAsync(Guid projectId, Guid eventId, Guid reviewerId, bool approve, string? reason);
     Task SettleSeasonAsync(Guid projectId, Guid seasonId, Guid userId);
     Task<RewardGrantDto> ResolveGrantAsync(Guid projectId, Guid grantId, Guid userId, bool award, string? note);
     Task<RewardGrantDto> FulfillGrantAsync(Guid projectId, Guid grantId, Guid userId);
+    Task<RedeemRewardResponse> RedeemRewardAsync(Guid projectId, Guid userId, RedeemRewardRequest request);
+    Task<IReadOnlyList<LevelConfigDto>> GetLevelConfigsAsync(Guid projectId, Guid userId);
+    Task<IReadOnlyList<LevelConfigDto>> UpdateLevelConfigsAsync(Guid projectId, Guid userId, UpdateLevelConfigsRequest request);
+    Task<(int Points, int Exp)> CalculateTaskScoreAsync(TaskManagement.Domain.Entities.WorkTask task, TaskManagement.Domain.Entities.RewardSeason? season);
 }

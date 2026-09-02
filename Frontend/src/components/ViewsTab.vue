@@ -798,15 +798,22 @@ const getInitials = (name) => {
         </template>
       </ProjectPageToolbar>
 
-    <main class="views-content">
+    <div v-if="!activeView && views.length === 0" class="empty-state-global">
+      <div class="empty-spaces-icon"><i class="fa-solid fa-layer-group"></i></div>
+      <div class="empty-spaces-copy">
+        <h3>{{ t('No custom views here.') }}</h3>
+        <p>{{ t('Create a filtered view to keep important work easy to find.') }}</p>
+      </div>
+      <button class="empty-state-action-btn" type="button" @click="openCreateModal">
+        <i class="fa-solid fa-plus"></i> {{ t('Add view') }}
+      </button>
+    </div>
+
+    <main v-else class="views-content">
       <div v-if="!activeView" class="views-list" :class="{ 'views-grid': viewListMode === 'grid' }">
 
 
-        <div v-if="views.length === 0" class="empty-placeholder">
-          <div class="empty-mark"><i class="fa-solid fa-layer-group"></i></div>
-          <h3>{{ t('No custom views here.') }}</h3>
-          <p>{{ t('Create a filtered view to keep important work easy to find.') }}</p>
-        </div>
+
         
         <div class="view-item-row" v-for="view in filteredViews" :key="view.id" @click="selectView(view)">
             <div class="vi-left">

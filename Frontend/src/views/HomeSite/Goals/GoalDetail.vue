@@ -766,12 +766,24 @@ const showUpdateForm = ref(false)
 const isFollowersModalOpen = ref(false)
 const showStatusOptions = ref(false)
 
-const archiveGoal = () => {
-  console.log('Archive goal clicked')
+
+
+const archiveGoal = async () => {
+  if (goal.value) {
+    await goalStore.toggleArchive()
+  }
 }
 
-const deleteGoal = () => {
-  console.log('Delete goal clicked')
+const deleteGoal = async () => {
+  if (goal.value && confirm('Bạn có chắc chắn muốn xóa mục tiêu này?')) {
+    try {
+      const workspaceId = await goalStore.ensureWorkspaceId()
+      await axiosClient.delete(`/workspaces/${workspaceId}/goals/${goal.value.id}`)
+      router.push(goalsBasePath.value)
+    } catch (err) {
+      console.error('Failed to delete goal', err)
+    }
+  }
 }
 
 const isUpdateStatusOpen = ref(false)

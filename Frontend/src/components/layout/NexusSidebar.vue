@@ -81,11 +81,20 @@
             <span>{{ t('Stickies') }}</span>
           </router-link>
         </li>
-        <li class="nav-item">
-          <router-link to="/rewards" class="nav-link" :class="{ active: $route.path === '/rewards' }">
+        <li class="nav-item" style="position: relative;">
+          <router-link to="/rewards" class="nav-link" :class="{ active: $route.path === '/rewards' }" style="padding-right: 36px;">
             <i class="fa-solid fa-trophy"></i>
             <span>{{ t('Rewards') }}</span>
           </router-link>
+          <button
+            type="button"
+            class="workspace-more-button"
+            title="Reward Settings"
+            @click="triggerRewardSettings"
+            style="position: absolute; right: 4px; top: 50%; transform: translateY(-50%); z-index: 10;"
+          >
+            <i class="fa-solid fa-gear"></i>
+          </button>
         </li>
       </ul>
 
@@ -472,6 +481,18 @@ const triggerCreateTask = async () => {
     return
   }
   window.dispatchEvent(new CustomEvent('global-create-task'))
+}
+
+const triggerRewardSettings = () => {
+  if (route.path !== '/rewards') {
+    router.push('/rewards').then(() => {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('open-reward-settings'))
+      }, 150)
+    })
+  } else {
+    window.dispatchEvent(new CustomEvent('open-reward-settings'))
+  }
 }
 </script>
 

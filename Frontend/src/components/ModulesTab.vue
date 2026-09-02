@@ -546,21 +546,23 @@ onUnmounted(() => {
         </template>
       </ProjectPageToolbar>
 
-    <div class="modules-toolbar-meta">
-      <span>{{ t('modules.loadedCount', { loaded: totalLoaded, total: modulePagination.totalCount }) }}</span>
-      <span>{{ t('modules.sortBy.' + sortBy, sortBy) }} · {{ sortDirection === 'desc' ? t('modules.desc', 'desc') : t('modules.asc', 'asc') }}</span>
-    </div>
+    <ProjectEmptyState 
+      v-if="!loadingModules && filteredModules.length === 0"
+      icon="fa-solid fa-cubes"
+      :title="t('modules.noModulesFound', 'No modules found')"
+      :description="t('modules.noModulesFoundDesc', 'Create a module, adjust the status, then assign work items into it.')"
+    >
+      <template #action>
+        <button class="empty-state-action-btn" type="button" @click="openCreateModal">
+          <i class="fa-solid fa-plus"></i> {{ t('modules.addModule', 'Add Module') }}
+        </button>
+      </template>
+    </ProjectEmptyState>
 
-    <div class="modules-body" v-loading="loadingModules">
-      <ProjectEmptyState 
-        v-if="!loadingModules && filteredModules.length === 0"
-        icon="fa-solid fa-cubes"
-        :title="t('modules.noModulesFound', 'No modules found')"
-        :description="t('modules.noModulesFoundDesc', 'Create a module, adjust the status, then assign work items into it.')"
-      />
+    <div v-show="loadingModules || filteredModules.length > 0" class="modules-body" v-loading="loadingModules">
 
       <!-- List View Mode -->
-      <div v-else-if="viewMode === 'list'" class="modules-list">
+      <div v-if="viewMode === 'list'" class="modules-list">
         <div class="module-row" v-for="module in filteredModules" :key="module.id" @click="openModuleTaskView(module)">
           <div class="mr-left">
             <div class="m-progress-ring">{{ Math.round(module.progress) }}%</div>

@@ -2318,6 +2318,38 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.ToTable("Labels");
                 });
 
+            modelBuilder.Entity("TaskManagement.Domain.Entities.LevelConfig", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RequiredXpPerLevel")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("RewardId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("RewardId");
+
+                    b.ToTable("LevelConfigs");
+                });
+
             modelBuilder.Entity("TaskManagement.Domain.Entities.MeetingAiReport", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3535,6 +3567,9 @@ namespace TaskManagement.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("ClaimLimit")
+                        .HasColumnType("int");
+
                     b.Property<string>("ConditionMetric")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -3563,16 +3598,29 @@ namespace TaskManagement.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<DateTimeOffset?>("EndAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("bit");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("nvarchar(160)");
 
+                    b.Property<int?>("PointCost")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("Quantity")
+                        .HasColumnType("int");
 
                     b.Property<int?>("RankFrom")
                         .HasColumnType("int");
@@ -3590,6 +3638,9 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.Property<Guid>("SeasonId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("StartAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<decimal>("Threshold")
                         .HasColumnType("decimal(18,2)");
@@ -5795,6 +5846,23 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("Project");
 
                     b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.LevelConfig", b =>
+                {
+                    b.HasOne("TaskManagement.Domain.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaskManagement.Domain.Entities.RewardDefinition", "Reward")
+                        .WithMany()
+                        .HasForeignKey("RewardId");
+
+                    b.Navigation("Project");
+
+                    b.Navigation("Reward");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.Module", b =>

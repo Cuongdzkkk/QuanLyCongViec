@@ -418,14 +418,21 @@
       <div class="sidebar-card">
         <div class="sidebar-card-header">
           <h3>Liên kết đội ngũ <span class="badge">0</span></h3>
-          <button class="icon-btn-micro" title="Add Link"><i class="fa-solid fa-plus"></i></button>
         </div>
         <div class="link-items">
-          <div class="link-item" @click="isSprintAProjectOpen = !isSprintAProjectOpen">
-            <div class="link-item-icon project"><i class="fa-solid fa-rocket"></i></div>
-            <span class="link-item-label">Thêm dự án SprintA</span>
-            <!-- SprintA Dropdown Menu -->
-            <div class="dropdown-menu search-dropdown" v-if="isSprintAProjectOpen" @click.stop style="position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: none !important; background: white; max-height: 200px; overflow-y: auto;">
+          <el-popover
+            placement="bottom-start"
+            :width="250"
+            trigger="click"
+            popper-class="search-dropdown-popper"
+          >
+            <template #reference>
+              <div class="link-item">
+                <div class="link-item-icon project"><i class="fa-solid fa-rocket"></i></div>
+                <span class="link-item-label">Thêm dự án SprintA</span>
+              </div>
+            </template>
+            <div class="dropdown-menu-content" style="max-height: 200px; overflow-y: auto;">
               <div style="padding: 4px 8px; font-size: 11px; font-weight: bold; color: #6B778C; text-transform: uppercase;">Dự án trong Space</div>
               <div class="team-option" v-for="sp in siteProjects" :key="sp.id" @click="linkProject(sp)" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
                  <i class="fa-solid fa-rocket" style="color: #6B778C; font-size: 14px;"></i>
@@ -433,19 +440,27 @@
               </div>
               <div v-if="!siteProjects || siteProjects.length === 0" style="padding: 8px; font-size: 12px; color: #6B778C;">Không có dự án nào</div>
             </div>
-          </div>
+          </el-popover>
           
-          <div class="link-item" @click="isSpaceDropdownOpen = !isSpaceDropdownOpen">
-            <div class="link-item-icon space"><i class="fa-brands fa-confluence"></i></div>
-            <span class="link-item-label">Thêm không gian</span>
-            <!-- Space Dropdown Menu -->
-            <div class="dropdown-menu search-dropdown" v-if="isSpaceDropdownOpen" @click.stop style="position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: none !important; background: white; max-height: 200px; overflow-y: auto;">
+          <el-popover
+            placement="bottom-start"
+            :width="250"
+            trigger="click"
+            popper-class="search-dropdown-popper"
+          >
+            <template #reference>
+              <div class="link-item">
+                <div class="link-item-icon space"><i class="fa-brands fa-confluence"></i></div>
+                <span class="link-item-label">Thêm không gian</span>
+              </div>
+            </template>
+            <div class="dropdown-menu-content" style="max-height: 200px; overflow-y: auto;">
               <div class="team-option" v-for="space in sites" :key="space.id" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
                  <div class="space-avatar" style="width: 20px; height: 20px; background: #0052CC; color: white; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px;">{{ space.name.substring(0,1).toUpperCase() }}</div>
                  <span class="option-name" style="font-size: 13px; color: #172B4D;">{{ space.name }}</span>
               </div>
             </div>
-          </div>
+          </el-popover>
           
           <div class="link-item">
             <div class="link-item-icon link"><i class="fa-solid fa-link"></i></div>
@@ -976,20 +991,23 @@ const selectManager = async (member) => {
   isManagerDropdownOpen.value = false
 }
 
-const linkGoal = (goal) => {
-  if (!teamStore.goals) teamStore.goals = []
-  if (!teamStore.goals.find(g => g.id === goal.id)) {
-    teamStore.goals.push({ ...goal, status: 'Đã hoàn tất 🚀' })
+const linkGoal = async (goal) => {
+  try {
+    await teamStore.linkGoal(goal.id)
+  } catch (err) {
+    console.error('Failed to link goal', err)
   }
   isGoalDropdownOpen.value = false
 }
 
-const linkProject = (proj) => {
-  if (!teamStore.projects) teamStore.projects = []
-  if (!teamStore.projects.find(p => p.id === proj.id)) {
-    teamStore.projects.push({ ...proj, status: 'Đang thực hiện' })
+const linkProject = async (proj) => {
+  try {
+    await teamStore.linkProject(proj.id)
+  } catch (err) {
+    console.error('Failed to link project', err)
   }
   isProjectDropdownOpen.value = false
+  isSprintAProjectOpen.value = false
 }
 
 const goToMemberProfile = (memberId) => {

@@ -4290,7 +4290,7 @@ const confirmAiSubtaskPreview = async () => {
 
         aiSubtaskPreview.value = [];
         emit('refresh-tasks');
-        ElMessage.success(`AI da tao ${created.length || 'cac'} sub-work items tu preview.`);
+        ElMessage.success(`AI đã tạo ${created.length || 'các'} sub-work items từ preview.`);
     } catch (e) {
         ElMessage.error(e.response?.data?.message || 'Khong tao duoc sub-work items tu preview.');
     } finally {

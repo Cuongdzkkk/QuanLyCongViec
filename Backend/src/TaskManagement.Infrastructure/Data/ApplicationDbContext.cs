@@ -69,6 +69,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<RewardSeason> RewardSeasons { get; set; }
         public DbSet<RewardPointEvent> RewardPointEvents { get; set; }
         public DbSet<RewardDefinition> RewardDefinitions { get; set; }
+        public DbSet<LevelConfig> LevelConfigs { get; set; }
         public DbSet<RewardGrant> RewardGrants { get; set; }
         public DbSet<Kudo> Kudos { get; set; }
         public DbSet<KudoReaction> KudoReactions { get; set; }

@@ -3,6 +3,7 @@ title Start Task Management System
 cd /d "%~dp0"
 
 if not defined DEV_SQL_DATABASE set "DEV_SQL_DATABASE=TaskManagementDB_V4"
+if not defined DEV_SQL_SERVER set "DEV_SQL_SERVER=.\SQLEXPRESS"
 for /f "usebackq delims=" %%s in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\resolve-sql-server.ps1" -PreferredServer "%DEV_SQL_SERVER%"`) do set "DEV_SQL_SERVER=%%s"
 if not defined DEV_SQL_SERVER (
     echo Khong tim thay SQL Server local dang ket noi duoc.
@@ -39,6 +40,8 @@ echo.
 echo Dang dong cac phien ban Backend API cu (neu co)...
 taskkill /FI "WINDOWTITLE eq Backend API*" /T /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Frontend Vue*" /T /F >nul 2>&1
+taskkill /IM dotnet.exe /F >nul 2>&1
+dotnet build-server shutdown >nul 2>&1
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\stop-dev-processes.ps1" -RepositoryRoot "%~dp0."
 if errorlevel 1 (
     echo Khong the dong tien trinh Backend/Frontend cu.
