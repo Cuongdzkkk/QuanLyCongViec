@@ -6,24 +6,28 @@ import path from 'node:path'
 const frontendRoot = path.resolve(import.meta.dirname, '..')
 const read = relativePath => fs.readFileSync(path.join(frontendRoot, relativePath), 'utf8')
 
+const brand = read('src/components/branding/SprintaBrand.vue')
 const home = read('src/views/Home.vue')
 const login = read('src/views/Login.vue')
 const register = read('src/views/Register.vue')
 const topbar = read('src/components/layout/AppTopBar.vue')
+const siteSelection = read('src/views/SiteSelection.vue')
+const forgotPassword = read('src/views/ForgotPassword.vue')
+const acceptInvite = read('src/views/AcceptInvite.vue')
+const billingCheckout = read('src/views/BillingCheckout.vue')
+const homeSiteLayout = read('src/views/HomeSite/HomeSiteLayout.vue')
 const googleService = read('src/services/googleIdentityService.js')
 
-test('auth and app chrome reuse the landing logo assets', () => {
-  assert.match(home, /<img class="brand-logo" src="\/sprinta-mark-light\.png"/)
+test('all top-level brand blocks use the site-selection branding component', () => {
+  assert.match(brand, /import logoUrl from ['"]@\/assets\/logo_QLCV\.png['"]/)
+  assert.match(brand, /alt="SprintA logo"/)
+  assert.match(brand, /sprinta-brand--site-selection/)
+  assert.match(brand, /sprinta-brand--compact/)
 
-  for (const source of [login, register]) {
-    assert.match(source, /class="custom-logo"><\/span>/)
-    assert.match(source, /background: center \/ contain no-repeat url\('\/sprinta-mark-light\.png'\)/)
-    assert.match(source, /background-image: url\('\/sprinta-mark-dark\.png'\)/)
+  for (const source of [home, login, register, topbar, siteSelection, forgotPassword, acceptInvite, billingCheckout, homeSiteLayout]) {
+    assert.match(source, /<SprintaBrand\b/)
+    assert.doesNotMatch(source, /sprinta-mark-(light|dark)\.png|logo_QLCV\.png/)
   }
-
-  assert.match(topbar, /class="sprinta-logo-mark"><\/span>/)
-  assert.match(topbar, /background: center \/ contain no-repeat url\('\/sprinta-mark-light\.png'\)/)
-  assert.match(topbar, /background-image: url\('\/sprinta-mark-dark\.png'\)/)
 })
 
 test('social buttons have exact labels, ARIA names, and shared dimensions', () => {
@@ -50,8 +54,9 @@ test('Google uses the registered callback path and GitHub OAuth handler remains 
 test('auth layouts protect narrow viewports from horizontal overflow', () => {
   for (const source of [login, register]) {
     assert.match(source, /\.auth-page \{[\s\S]*?overflow-x: hidden;/)
-    assert.match(source, /\.custom-logo \{[\s\S]*?background: center \/ contain/)
   }
+  assert.match(brand, /\.sprinta-brand--compact[\s\S]*?height: 24px;/)
+  assert.match(brand, /@media \(max-width: 680px\)[\s\S]*?\.sprinta-brand--compact[\s\S]*?height: 20px;/)
   assert.match(login, /@media \(max-width: 640px\)[\s\S]*?\.social-login \{[\s\S]*?flex-direction: column;/)
   assert.match(home, /\.landing-page \{[\s\S]*?overflow-x: (hidden|clip);/)
 })

@@ -3,8 +3,7 @@
     <header class="auth-navbar">
       <div class="container nav-content">
         <router-link to="/" class="logo">
-          <span role="img" aria-label="SprintA logo" class="custom-logo"></span>
-          <span>SprintA</span>
+          <SprintaBrand size="compact" />
         </router-link>
         <div class="nav-actions">
           <button class="theme-toggle" type="button" aria-label="Toggle theme" @click="toggleTheme()">
@@ -218,6 +217,7 @@ import {
 import axiosClient from '../api/axiosClient'
 import { loginWithGoogleCredential } from '@/api/authApi'
 import { saveAuthSession } from '@/utils/authSession'
+import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 import { useI18n } from '@/composables/useI18n'
 import { currentTheme, toggleTheme } from '@/utils/theme'
 import {
@@ -583,16 +583,6 @@ const handleGitHubLogin = () => {
   font-weight: 900;
   text-decoration: none;
 }
-
-.custom-logo {
-  display: block;
-  width: 24px;
-  height: 22px;
-  flex: 0 0 24px;
-  background: center / contain no-repeat url('/sprinta-mark-light.png');
-}
-
-:global([data-theme='dark'] .custom-logo) { background-image: url('/sprinta-mark-dark.png'); filter: none; }
 
 .nav-actions {
   gap: 10px;
@@ -1139,10 +1129,6 @@ const handleGitHubLogin = () => {
   .google-identity-shell,
   .google-identity-button {
     width: 100%;
-  }
-
-  .logo > .custom-logo {
-    display: block;
   }
 
   .remember-action {

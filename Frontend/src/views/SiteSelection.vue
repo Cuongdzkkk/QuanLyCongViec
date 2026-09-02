@@ -7,10 +7,7 @@
             <path d="M12 2L2 22H9L12 16L15 22H22L12 2Z"/>
           </svg>
         </div>
-        <div class="app-logo">
-          <img src="@/assets/logo_QLCV.png" alt="SprintA Logo" class="sprinta-logo-img" />
-          <span class="logo-text">SprintA</span>
-        </div>
+        <SprintaBrand size="site-selection" />
       </div>
       <div class="header-right">
         <button type="button" class="pill-btn blue" @click="router.push('/')">{{ t('siteSelection.goToSprintA') }}</button>
@@ -36,7 +33,7 @@
         <div class="card-header-row">
           <span class="pickup-text">
             {{ t('siteSelection.pickUpIn') }}
-            <img src="@/assets/logo_QLCV.png" alt="SprintA Logo" class="sprinta-logo-img small" />
+            <SprintaBrand size="inline" :show-name="false" />
             <strong>SprintA</strong>
           </span>
           <a href="#" class="create-site-link" @click.prevent="openCreateModal">{{ t('siteSelection.createNewSite') }}</a>
@@ -216,6 +213,7 @@ import { getStoredUser } from '@/utils/permissions'
 import { useI18n } from '@/composables/useI18n'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
+import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 
 const router = useRouter()
 const siteStore = useSiteStore()
@@ -362,35 +360,6 @@ const goToSpaceProject = async (siteId) => {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.app-logo {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  margin-left: 24px;
-}
-
-.sprinta-logo-img {
-  height: 40px;
-  width: auto;
-  object-fit: contain;
-  transform: scale(4);
-  margin-right: 8px;
-}
-
-.sprinta-logo-img.small {
-  height: 16px;
-  width: auto;
-  transform: scale(4);
-  margin: 0 16px;
-}
-
-.app-logo .logo-text {
-  font-size: 24px;
-  font-weight: bold;
-  color: #172b4d;
-  letter-spacing: -0.5px;
 }
 
 .header-right {

@@ -5,17 +5,15 @@
         <span class="grid-icon">⋮⋮⋮</span>
       </div>
 
-      <div
+      <SprintaBrand
         class="sprinta-logo"
+        size="compact"
         role="link"
         tabindex="0"
         @click="router.push('/site-selection')"
         @keydown.enter="router.push('/site-selection')"
         @keydown.space.prevent="router.push('/site-selection')"
-      >
-        <span role="img" aria-label="SprintA logo" class="sprinta-logo-mark"></span>
-        <span class="logo-text">SprintA</span>
-      </div>
+      />
 
       <!-- Home Site Context Navigation -->
       <nav v-if="isHomeContext" class="topbar-nav">
@@ -131,6 +129,7 @@ import { toggleTheme, currentTheme } from '@/utils/theme'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import { buildSpacePath } from '@/utils/spaceRoute'
+import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 
 const emit = defineEmits(['toggle-sidebar', 'toggle-ai', 'toggle-create'])
 
@@ -373,28 +372,9 @@ onUnmounted(() => {
 }
 
 .sprinta-logo {
-  display: flex;
-  align-items: center;
-  gap: 0;
   margin-right: 6px;
   cursor: pointer;
   min-height: 32px;
-}
-
-.sprinta-logo-mark {
-  width: 24px;
-  height: 22px;
-  flex: 0 0 24px;
-  margin: 0 8px 0 4px;
-  background: center / contain no-repeat url('/sprinta-mark-light.png');
-  filter: drop-shadow(0 6px 14px rgba(14, 165, 233, 0.28));
-}
-
-.logo-text {
-  font-size: 18px;
-  font-weight: 800;
-  color: #FFFFFF;
-  letter-spacing: -0.03em;
 }
 
 /* Home Site Nav */
@@ -704,11 +684,6 @@ onUnmounted(() => {
   color: #f8fafc;
 }
 
-:global([data-theme='dark'] .sprinta-logo-mark) {
-  background-image: url('/sprinta-mark-dark.png');
-  filter: none;
-}
-
 [data-theme='light'] .icon-btn,
 [data-theme='dark'] .icon-btn,
 [data-theme='light'] .app-launcher-icon,
@@ -734,18 +709,6 @@ onUnmounted(() => {
   .app-topbar {
     height: 48px;
     padding: 0 8px;
-  }
-
-  .sprinta-logo-mark {
-    width: 22px;
-    height: 20px;
-    flex-basis: 22px;
-    margin-left: 2px;
-    margin-right: 6px;
-  }
-
-  .logo-text {
-    font-size: 16px;
   }
 
   .workspace-switcher {

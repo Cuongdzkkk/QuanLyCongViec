@@ -4,7 +4,7 @@
       <button type="button" class="back-button" @click="router.push('/#pricing')">
         <ArrowLeft :size="17" /> {{ t('Quay lại bảng giá', 'Back to pricing') }}
       </button>
-      <div class="brand">SprintA <span>Billing</span></div>
+      <div class="brand"><SprintaBrand size="compact" /><span>Billing</span></div>
     </header>
 
     <section class="checkout-shell" v-loading="loading">
@@ -219,6 +219,7 @@ import { ArrowLeft, CircleAlert, CircleHelp, Clock3, Copy, QrCode, ShieldCheck }
 import axiosClient from '@/api/axiosClient'
 import { billingApi, unwrapBillingData } from '@/api/billingApi'
 import { language } from '@/i18n'
+import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 import {
   canShowPaymentReceipt,
   createCheckoutOrderGate,
@@ -567,7 +568,7 @@ onBeforeUnmount(() => {
 .checkout-page .back-button, .checkout-page .support-action, .checkout-page .close-detail { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--checkout-muted); font-family: inherit; }
 .checkout-page .back-button:hover, .checkout-page .support-action:hover, .checkout-page .close-detail:hover { color: var(--checkout-primary); }
 .checkout-page .brand { color: var(--checkout-text); font-family: var(--sp-font-display, var(--sp-font-ui, Inter, sans-serif)); }
-.checkout-page .brand span { color: var(--checkout-primary); }
+.checkout-page .brand > span { color: var(--checkout-primary); }
 .checkout-page .checkout-shell { width: min(1240px, calc(100% - 40px)); margin: 0 auto; padding: 44px 0 80px; }
 .checkout-page .checkout-intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 32px; min-height: 148px; padding-bottom: 36px; border-bottom: 1px solid var(--checkout-border); }
 .checkout-page .eyebrow, .checkout-page .section-kicker, .checkout-page .visual-meta, .checkout-page .state-eyebrow { color: var(--checkout-muted); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }

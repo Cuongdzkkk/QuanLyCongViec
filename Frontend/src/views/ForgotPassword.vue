@@ -3,8 +3,7 @@
     <header class="auth-navbar">
       <div class="container nav-content">
         <router-link to="/" class="logo">
-          <span role="img" aria-label="SprintA logo" class="custom-logo"></span>
-          <span>SprintA</span>
+          <SprintaBrand size="compact" />
         </router-link>
         <div class="nav-actions">
           <button class="theme-toggle" type="button" aria-label="Toggle theme" @click="toggleTheme()">
@@ -149,6 +148,7 @@ import { LockKeyhole, MailCheck, Moon, ShieldCheck, Sun } from 'lucide-vue-next'
 import axiosClient from '../api/axiosClient'
 import { useLocale } from '@/composables/useLocale'
 import { currentTheme, toggleTheme } from '@/utils/theme'
+import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 
 const router = useRouter()
 const { t } = useLocale()
@@ -340,16 +340,6 @@ const handleResetPassword = async () => {
   font-weight: 900;
   text-decoration: none;
 }
-
-.custom-logo {
-  display: block;
-  width: 12px;
-  height: 11px;
-  flex: 0 0 12px;
-  background: center / contain no-repeat url('/sprinta-mark-light.png');
-}
-
-:global([data-theme='dark'] .custom-logo) { background-image: url('/sprinta-mark-dark.png'); filter: none; }
 
 .nav-actions {
   gap: 10px;
