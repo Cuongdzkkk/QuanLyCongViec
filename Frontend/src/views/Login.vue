@@ -10,7 +10,6 @@
             <Moon v-if="currentTheme === 'dark'" :size="18" />
             <Sun v-else :size="18" />
           </button>
-          <router-link class="nav-link" to="/login">{{ t('auth.nav.login') }}</router-link>
           <router-link class="nav-primary" to="/register">{{ t('auth.nav.register') }}</router-link>
         </div>
       </div>

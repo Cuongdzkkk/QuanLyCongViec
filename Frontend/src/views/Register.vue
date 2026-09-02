@@ -95,7 +95,10 @@
 
           <div v-if="registrationConflict" class="registration-alert" role="alert">
             <span>{{ t('auth.register.messages.emailAlreadyUsed') }}</span>
-            <router-link to="/login">{{ t('auth.nav.login') }}</router-link>
+            <span class="registration-alert-actions">
+              <router-link to="/login">{{ t('auth.nav.login') }}</router-link>
+              <router-link to="/forgot-password">{{ t('auth.forgotPassword.title') }}</router-link>
+            </span>
           </div>
 
           <p v-if="hasActiveResendCooldown()" class="otp-cooldown" role="status" aria-live="polite">
@@ -120,7 +123,7 @@
           
           <p class="auth-footer-text">
             {{ t('auth.register.noOtpCode') }}
-            <a href="#" @click.prevent="step = 1">{{ t('auth.register.changeEmail') }}</a>
+            <a href="#" @click.prevent="resetVerificationState">{{ t('auth.register.changeEmail') }}</a>
             {{ t('auth.register.or') }}
             <template v-if="hasActiveResendCooldown()">
               <span class="otp-cooldown" role="status" aria-live="polite">
@@ -164,7 +167,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onUnmounted } from 'vue'
+import { ref, reactive, computed, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -264,6 +267,23 @@ const startResendCooldown = (seconds, email = form.email) => {
   }, 1000)
 }
 
+const resetVerificationState = () => {
+  if (resendCooldownTimer) clearInterval(resendCooldownTimer)
+  resendCooldownTimer = null
+  resendCooldown.value = 0
+  resendCooldownEmail.value = ''
+  form.otp = ''
+  verifiedOtpToken.value = ''
+  step.value = 1
+  registrationConflict.value = false
+}
+
+watch(() => form.email, (nextEmail, previousEmail) => {
+  if (previousEmail && normalizeEmail(nextEmail) !== normalizeEmail(previousEmail)) {
+    resetVerificationState()
+  }
+})
+
 const readRetryAfterSeconds = error => {
   const headerValue = error.response?.headers?.get?.('Retry-After')
     ?? error.response?.headers?.['retry-after']
@@ -298,6 +318,7 @@ const handleSendOtp = async () => {
         step.value = 2
       } catch (error) {
         if (error.response?.status === 409) {
+          resetVerificationState()
           registrationConflict.value = true
           ElMessage.error(t('auth.register.messages.emailAlreadyUsed'))
         } else if (error.response?.status === 429) {

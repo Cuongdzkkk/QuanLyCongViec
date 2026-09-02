@@ -106,7 +106,7 @@ export default {
       messages: {
         sendOtpFailed: 'Có lỗi xảy ra khi gửi OTP',
         sendOtpRateLimited: 'Bạn đã yêu cầu OTP quá nhanh. Vui lòng thử lại sau {seconds} giây.',
-        emailAlreadyUsed: 'Email này đã được sử dụng. Vui lòng đăng nhập hoặc sử dụng Quên mật khẩu.',
+        emailAlreadyUsed: 'Email này đã có tài khoản.',
         sendOtpUnavailable: 'Không thể gửi email xác thực lúc này. Vui lòng thử lại sau.',
         invalidOtpFormat: 'Vui lòng nhập mã OTP 6 ký tự',
         otpVerified: 'Xác thực email thành công',
