@@ -42,9 +42,9 @@ test('canonical wordmark stays crisp and billing branding has collision-safe lay
 })
 
 test('social buttons have exact labels, ARIA names, and shared dimensions', () => {
-  assert.match(login, /class="social-btn google-btn"[\s\S]*?Google[\s\S]*?<\/el-button>/)
+  assert.match(login, /class="social-btn google-btn"[\s\S]*?Google[\s\S]*?<\/(?:el-button|button)>/)
   assert.match(login, /class="social-btn github-btn"[\s\S]*?GitHub[\s\S]*?<\/el-button>/)
-  assert.equal(login.match(/aria-label="Đăng nhập bằng Google"/g)?.length, 1)
+  assert.equal(login.match(/aria-label="Đăng nhập bằng Google"/g)?.length, 2)
   assert.equal(login.match(/aria-label="Đăng nhập bằng GitHub"/g)?.length, 1)
   assert.match(login, /\.social-btn \{[\s\S]*?height: 44px;[\s\S]*?min-height: 44px;[\s\S]*?border-radius: 10px !important;/)
   assert.match(login, /\.social-login \{[\s\S]*?gap: 12px;/)
@@ -53,14 +53,15 @@ test('social buttons have exact labels, ARIA names, and shared dimensions', () =
 })
 
 test('Google uses the registered callback path and GitHub OAuth handler remains intact', () => {
-  assert.match(login, /renderGoogleIdentityButton/)
+  assert.match(login, /registerGoogleAuthorizationCodeClient/)
   assert.match(login, /callback: handleGoogleLogin/)
-  assert.match(login, /loginWithGoogleCredential\(credential/)
+  assert.match(login, /loginWithGoogleAuthorizationCode\(code, state/)
   assert.match(login, /const handleGitHubLogin = \(\) => \{/)
   assert.match(login, /https:\/\/github\.com\/login\/oauth\/authorize\?client_id=\$\{clientId\}/)
-  assert.doesNotMatch(login, /promptGoogleIdentity/)
-  assert.match(googleService, /renderButton/)
-  assert.doesNotMatch(googleService, /api\.prompt\(\)/)
+  assert.match(googleService, /initCodeClient/)
+  assert.match(googleService, /ux_mode: 'popup'/)
+  assert.doesNotMatch(login, /google\.accounts\.id\.prompt|accounts\.id\.renderButton/)
+  assert.doesNotMatch(googleService, /accounts\.id|renderButton|\.prompt\(/)
   assert.doesNotMatch(googleService, /console\.(log|error|warn).*key|apiKey/i)
 })
 

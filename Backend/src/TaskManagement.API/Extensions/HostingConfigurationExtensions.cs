@@ -50,6 +50,15 @@ public static class HostingConfigurationExtensions
         if (configuration.GetValue<bool>("Google:Enabled"))
         {
             RequireSecret(configuration, "Google:ClientId", environment, 10);
+            RequireSecret(configuration, "Google:ClientSecret", environment, 12);
+            RequireSecret(configuration, "Google:RedirectUri", environment, 10);
+            if (!Uri.TryCreate(configuration["Google:RedirectUri"], UriKind.Absolute, out var googleRedirectUri) ||
+                !string.IsNullOrEmpty(googleRedirectUri.Query) ||
+                !string.IsNullOrEmpty(googleRedirectUri.Fragment) ||
+                (!environment.IsDevelopment() && googleRedirectUri.Scheme != Uri.UriSchemeHttps))
+            {
+                throw new InvalidOperationException("Google:RedirectUri must be an absolute HTTPS URI outside Development.");
+            }
         }
 
         if (!environment.IsEnvironment("Testing") && configuration.GetValue("Features:AIEnabled", true))

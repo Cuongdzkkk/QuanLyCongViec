@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Moq;
 using TaskManagement.API.Controllers;
@@ -134,7 +135,10 @@ public sealed class AuthSecurityIntegrationTests : IDisposable
             Mock.Of<IAuthService>(),
             _otpService,
             _emailService.Object,
-            _context)
+            _context,
+            Mock.Of<IConfiguration>(),
+            Mock.Of<IGoogleAuthorizationCodeExchange>(),
+            Mock.Of<IGoogleLoginOAuthStateStore>())
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext }
         };
