@@ -595,7 +595,13 @@ namespace TaskManagement.Infrastructure.Services
         public async Task RegisterAsync(RegisterRequestDto request)
         {
             var canonicalEmail = EmailCanonicalizer.Normalize(request.Email);
-            var otpValidation = _otpService.ValidateOtp(canonicalEmail, request.OtpCode);
+            var otpToken = request.OtpToken?.Trim() ?? string.Empty;
+            if (otpToken.Length != 43 || otpToken.Any(character => !char.IsLetterOrDigit(character) && character is not ('-' or '_')))
+            {
+                throw new InvalidOperationException("Token xác thực email không hợp lệ hoặc đã hết hạn.");
+            }
+
+            var otpValidation = _otpService.ValidateOtp(canonicalEmail, otpToken);
             if (otpValidation.Status == OtpValidationStatus.Locked)
                 throw new OtpRateLimitException(otpValidation.RetryAfterSeconds);
             if (!otpValidation.IsValid)

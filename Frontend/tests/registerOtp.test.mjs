@@ -47,7 +47,7 @@ test('registration Step 3 keeps required fields and safe password validation', (
   assert.match(handlerSource, /email: form\.email/)
   assert.match(handlerSource, /fullName: form\.fullName/)
   assert.match(handlerSource, /password: form\.password/)
-  assert.match(handlerSource, /otpCode: verifiedOtpToken\.value/)
+  assert.match(handlerSource, /otpToken: otpToken\.value/)
   assert.match(registerSource, /nameRequired/)
   assert.match(registerSource, /passwordRequired/)
   assert.match(registerSource, /passwordComplexity/)

@@ -202,7 +202,7 @@ const registrationConflict = ref(false)
 const emailFormRef = ref(null)
 const profileFormRef = ref(null)
 const step = ref(1)
-const verifiedOtpToken = ref('')
+const otpToken = ref('')
 
 const form = reactive({
   email: '',
@@ -273,7 +273,7 @@ const resetVerificationState = () => {
   resendCooldown.value = 0
   resendCooldownEmail.value = ''
   form.otp = ''
-  verifiedOtpToken.value = ''
+  otpToken.value = ''
   step.value = 1
   registrationConflict.value = false
 }
@@ -360,8 +360,14 @@ const handleVerifyOtp = async () => {
     })
     
     if (response.data.verified) {
+      const nextOtpToken = String(response.data?.otpToken || '').trim()
+      if (!nextOtpToken) {
+        resetVerificationState()
+        ElMessage.error(t('auth.register.messages.verificationTokenMissing'))
+        return
+      }
       ElMessage.success(t('auth.register.messages.otpVerified'))
-      verifiedOtpToken.value = response.data.otpToken
+      otpToken.value = nextOtpToken
       step.value = 3
     }
   } catch (error) {
@@ -374,6 +380,11 @@ const handleVerifyOtp = async () => {
 
 const handleRegister = async () => {
   if (!profileFormRef.value) return
+  if (!otpToken.value) {
+    resetVerificationState()
+    ElMessage.error(t('auth.register.messages.verificationTokenMissing'))
+    return
+  }
   
   await profileFormRef.value.validate(async (valid) => {
     if (valid) {
@@ -383,7 +394,7 @@ const handleRegister = async () => {
           email: form.email,
           fullName: form.fullName,
           password: form.password,
-          otpCode: verifiedOtpToken.value
+          otpToken: otpToken.value
         })
         
         ElMessage.success(t('auth.register.messages.registerSuccess'))

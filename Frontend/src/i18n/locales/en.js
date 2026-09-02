@@ -110,6 +110,7 @@ export default {
         sendOtpUnavailable: 'We could not send the verification email right now. Please try again later.',
         invalidOtpFormat: 'Please enter 6-digit OTP code',
         otpVerified: 'Email verified successfully',
+        verificationTokenMissing: 'The email verification session is invalid or expired. Please verify your email again.',
         registerSuccess: 'Account created successfully! Start your session by logging in.',
         registerFailed: 'Error occurred while creating account'
       }
