@@ -84,6 +84,25 @@ namespace TaskManagement.Tests.Logic
                 Times.Never);
         }
 
+        [Fact]
+        public async Task TranscribeAudio_MissingProviderConfiguration_Returns503()
+        {
+            _aiService
+                .Setup(service => service.TranscribeAudioAsync(
+                    It.IsAny<Guid>(),
+                    "auto",
+                    "audio/wav",
+                    It.IsAny<byte[]>(),
+                    It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("Gemini API key is not configured."));
+            var controller = CreateController();
+
+            var result = await controller.TranscribeAudio(CreateWaveFile(), "auto", CancellationToken.None);
+
+            var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+            objectResult.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        }
+
         private AiController CreateController()
         {
             var controller = new AiController(
