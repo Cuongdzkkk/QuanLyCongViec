@@ -437,15 +437,16 @@ onBeforeUnmount(() => {
           <button class="btn btn-primary nav-cta" type="button" @click="go(authenticated ? '/dashboard' : '/register')">
             {{ authenticated ? copy.launch : copy.start }}
           </button>
-          <button class="icon-btn mobile-menu" type="button" aria-label="Open menu" @click="mobileOpen = !mobileOpen">
+          <button class="icon-btn mobile-menu" type="button" :aria-label="mobileOpen ? 'Close menu' : 'Open menu'" :aria-expanded="mobileOpen" aria-controls="landing-mobile-nav" @click="mobileOpen = !mobileOpen">
             <X v-if="mobileOpen" :size="18" />
             <Menu v-else :size="18" />
           </button>
         </div>
       </div>
 
-      <nav v-if="mobileOpen" class="mobile-nav" aria-label="Mobile navigation">
+      <nav v-if="mobileOpen" id="landing-mobile-nav" class="mobile-nav" aria-label="Mobile navigation">
         <a v-for="(item, index) in copy.nav" :key="item" :href="['#features','#ai','#workflow','#pricing','#video'][index]" @click="mobileOpen = false">{{ item }}</a>
+        <router-link v-if="!authenticated" to="/login" @click.prevent="go('/login')">{{ copy.signIn }}</router-link>
         <button class="btn btn-primary" type="button" @click="go(authenticated ? '/dashboard' : '/register')">
           {{ authenticated ? copy.launch : copy.start }}
         </button>
@@ -2334,7 +2335,7 @@ button { font: inherit; }
   .icon-btn, .lang-btn { min-height: 36px; height: 36px; }
   .icon-btn { width: 36px; }
   .lang-btn { padding-inline: 9px; }
-  .mobile-menu { display: grid; }
+  .mobile-menu { display: grid; min-width: 44px; min-height: 44px; }
   .desktop-nav, .desktop-only, .nav-cta { display: none !important; }
   .mobile-nav {
     margin: 0 8px 8px;
