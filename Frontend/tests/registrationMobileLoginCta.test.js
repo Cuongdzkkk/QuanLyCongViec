@@ -13,7 +13,7 @@ test('duplicate registration resets the wizard to a clean email step', () => {
   const sendOtpHandler = register.slice(register.indexOf('const handleSendOtp'))
 
   assert.match(register, /const resetVerificationState = \(\) => \{/)
-  assert.match(register, /verifiedOtpToken\.value = ''/)
+  assert.match(register, /otpToken\.value = ''/)
   assert.match(register, /resendCooldown\.value = 0/)
   assert.match(sendOtpHandler, /error\.response\?\.status === 409[\s\S]*?resetVerificationState\(\)/)
   assert.match(sendOtpHandler, /auth\.register\.messages\.emailAlreadyUsed/)
@@ -28,10 +28,15 @@ test('registration email changes invalidate OTP verification', () => {
 
 test('Step 3 registers exactly once and preserves full name semantics', () => {
   const registerHandler = register.slice(register.indexOf('const handleRegister'))
+  const verifyHandler = register.slice(register.indexOf('const handleVerifyOtp'))
   assert.equal((registerHandler.match(/axiosClient\.post\('\/auth\/send-otp'/g) || []).length, 0)
   assert.equal((registerHandler.match(/axiosClient\.post\('\/auth\/register'/g) || []).length, 1)
   assert.match(registerHandler, /fullName: form\.fullName/)
-  assert.match(registerHandler, /otpCode: verifiedOtpToken\.value/)
+  assert.match(registerHandler, /otpToken: otpToken\.value/)
+  assert.doesNotMatch(registerHandler, /otpCode:/)
+  assert.match(registerHandler, /if \(!otpToken\.value\)/)
+  assert.match(verifyHandler, /response\.data\?\.otpToken/)
+  assert.match(verifyHandler, /verificationTokenMissing/)
 })
 
 test('public navigation exposes the right auth CTAs without a self-login link', () => {

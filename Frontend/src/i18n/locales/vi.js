@@ -110,6 +110,7 @@ export default {
         sendOtpUnavailable: 'Không thể gửi email xác thực lúc này. Vui lòng thử lại sau.',
         invalidOtpFormat: 'Vui lòng nhập mã OTP 6 ký tự',
         otpVerified: 'Xác thực email thành công',
+        verificationTokenMissing: 'Phiên xác thực email không hợp lệ hoặc đã hết hạn. Vui lòng xác thực email lại.',
         registerSuccess: 'Tạo tài khoản thành công! Khởi tạo phiên làm việc bằng cách đăng nhập.',
         registerFailed: 'Có lỗi xảy ra khi tạo tài khoản'
       }

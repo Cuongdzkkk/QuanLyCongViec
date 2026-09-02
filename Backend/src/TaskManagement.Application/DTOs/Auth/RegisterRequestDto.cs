@@ -19,8 +19,9 @@ namespace TaskManagement.Application.DTOs.Auth
             ErrorMessage = "Mật khẩu phải có ít nhất 1 chữ hoa, 1 chữ số và 1 ký tự đặc biệt.")]
         public string Password { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Mã OTP là bắt buộc.")]
-        [StringLength(6, MinimumLength = 6, ErrorMessage = "Mã OTP phải có 6 ký tự.")]
-        public string OtpCode { get; set; } = string.Empty;
+        [Required(ErrorMessage = "Token xác thực email là bắt buộc.")]
+        [StringLength(43, MinimumLength = 43, ErrorMessage = "Token xác thực email không hợp lệ.")]
+        [RegularExpression("^[A-Za-z0-9_-]{43}$", ErrorMessage = "Token xác thực email không hợp lệ.")]
+        public string OtpToken { get; set; } = string.Empty;
     }
 }

@@ -277,7 +277,7 @@ public sealed class AuthSecurityIntegrationTests : IDisposable
             Email = email,
             FullName = "Full Registration User",
             Password = "Password123!",
-            OtpCode = verificationToken!
+            OtpToken = verificationToken!
         });
         register.Should().BeOfType<OkObjectResult>();
         (await _context.Users.SingleAsync(user => user.Email == email)).FullName
@@ -307,18 +307,129 @@ public sealed class AuthSecurityIntegrationTests : IDisposable
             Email = "missing-token@example.com",
             FullName = "Missing Token User",
             Password = "Password123!",
-            OtpCode = string.Empty
+            OtpToken = string.Empty
         });
         var invalid = await controller.Register(new RegisterRequestDto
         {
             Email = "invalid-token@example.com",
             FullName = "Invalid Token User",
             Password = "Password123!",
-            OtpCode = "invalid-token"
+            OtpToken = "invalid-token"
         });
 
         missing.Should().BeOfType<BadRequestObjectResult>();
         invalid.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public void RegisterDto_RequiresOpaqueVerificationToken()
+    {
+        var validToken = _otpService.IssueVerificationToken("dto-token@example.com");
+        var valid = new RegisterRequestDto
+        {
+            Email = "dto-token@example.com",
+            FullName = "DTO Token User",
+            Password = "Password123!",
+            OtpToken = validToken
+        };
+        var missing = new RegisterRequestDto
+        {
+            Email = "dto-token@example.com",
+            FullName = "DTO Token User",
+            Password = "Password123!"
+        };
+        var rawOtp = new RegisterRequestDto
+        {
+            Email = "dto-token@example.com",
+            FullName = "DTO Token User",
+            Password = "Password123!",
+            OtpToken = "123456"
+        };
+        var malformed = new RegisterRequestDto
+        {
+            Email = "dto-token@example.com",
+            FullName = "DTO Token User",
+            Password = "Password123!",
+            OtpToken = new string('!', 43)
+        };
+
+        static bool IsValid(RegisterRequestDto request)
+        {
+            return Validator.TryValidateObject(
+                request,
+                new ValidationContext(request),
+                new List<ValidationResult>(),
+                validateAllProperties: true);
+        }
+
+        IsValid(valid).Should().BeTrue();
+        IsValid(missing).Should().BeFalse();
+        IsValid(rawOtp).Should().BeFalse();
+        IsValid(malformed).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Register_VerificationTokenIsBoundToEmailAndSingleUse()
+    {
+        const string verifiedEmail = "verified-token@example.com";
+        var token = _otpService.IssueVerificationToken(verifiedEmail);
+        var authService = new AuthService(
+            _context,
+            Mock.Of<IJwtService>(),
+            Mock.Of<IConfiguration>(),
+            _otpService,
+            _emailService.Object);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => authService.RegisterAsync(new RegisterRequestDto
+        {
+            Email = "different-email@example.com",
+            FullName = "Different Email",
+            Password = "Password123!",
+            OtpToken = token
+        }));
+
+        await authService.RegisterAsync(new RegisterRequestDto
+        {
+            Email = verifiedEmail,
+            FullName = "Verified Token User",
+            Password = "Password123!",
+            OtpToken = token
+        });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => authService.RegisterAsync(new RegisterRequestDto
+        {
+            Email = verifiedEmail,
+            FullName = "Verified Token User",
+            Password = "Password123!",
+            OtpToken = token
+        }));
+    }
+
+    [Fact]
+    public async Task Register_ExpiredVerificationTokenIsRejected()
+    {
+        using var shortLivedCache = new MemoryCache(new MemoryCacheOptions());
+        var shortLivedOtpService = new OtpService(shortLivedCache, Options.Create(new OtpSecurityOptions
+        {
+            VerificationTokenExpirationSeconds = 1
+        }));
+        const string email = "expired-token@example.com";
+        var token = shortLivedOtpService.IssueVerificationToken(email);
+        await Task.Delay(1200);
+        var authService = new AuthService(
+            _context,
+            Mock.Of<IJwtService>(),
+            Mock.Of<IConfiguration>(),
+            shortLivedOtpService,
+            _emailService.Object);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => authService.RegisterAsync(new RegisterRequestDto
+        {
+            Email = email,
+            FullName = "Expired Token User",
+            Password = "Password123!",
+            OtpToken = token
+        }));
     }
 
     [Fact]
@@ -329,7 +440,7 @@ public sealed class AuthSecurityIntegrationTests : IDisposable
             Email = "long-values@example.com",
             FullName = new string('N', 101),
             Password = new string('P', 101),
-            OtpCode = "123456"
+            OtpToken = "123456"
         };
         var validationResults = new List<ValidationResult>();
 

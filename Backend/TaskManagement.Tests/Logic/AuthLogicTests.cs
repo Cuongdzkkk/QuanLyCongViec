@@ -279,18 +279,20 @@ namespace TaskManagement.Tests.Logic
         }
 
         [Fact]
-        public async Task Register_ValidOtp_Succeeds()
+        public async Task Register_ValidVerificationToken_Succeeds()
         {
             var email = "register@example.com";
             var otp = _otpService.GenerateOtp();
             _otpService.StoreOtp(email, otp);
+            _otpService.ValidateOtp(email, otp).IsValid.Should().BeTrue();
+            var otpToken = _otpService.IssueVerificationToken(email);
 
             var request = new RegisterRequestDto
             {
                 Email = email,
                 FullName = "Register User",
                 Password = "Password123!",
-                OtpCode = otp
+                OtpToken = otpToken
             };
 
             await _authService.RegisterAsync(request);
@@ -302,7 +304,7 @@ namespace TaskManagement.Tests.Logic
         }
 
         [Fact]
-        public async Task Register_InvalidOtp_ThrowsInvalidOperationException()
+        public async Task Register_InvalidVerificationToken_ThrowsInvalidOperationException()
         {
             var email = "register@example.com";
 
@@ -311,7 +313,7 @@ namespace TaskManagement.Tests.Logic
                 Email = email,
                 FullName = "Register User",
                 Password = "Password123!",
-                OtpCode = "INVALID"
+                OtpToken = "INVALID"
             };
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => _authService.RegisterAsync(request));
