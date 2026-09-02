@@ -3,7 +3,7 @@
     <header class="auth-navbar">
       <div class="container nav-content">
         <router-link to="/" class="logo">
-          <img src="/sprinta-mark-light.png" alt="" class="custom-logo" />
+          <span role="img" aria-label="SprintA logo" class="custom-logo"></span>
           <span>SprintA</span>
         </router-link>
         <div class="nav-actions">
@@ -373,10 +373,10 @@ const handleRegister = async () => {
   width: 24px;
   height: 22px;
   flex: 0 0 24px;
-  object-fit: contain;
+  background: center / contain no-repeat url('/sprinta-mark-light.png');
 }
 
-:global([data-theme='dark'] .custom-logo) { content: url('/sprinta-mark-dark.png'); }
+:global([data-theme='dark'] .custom-logo) { background-image: url('/sprinta-mark-dark.png'); filter: none; }
 
 .nav-actions {
   gap: 10px;

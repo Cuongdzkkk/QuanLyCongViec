@@ -9,7 +9,8 @@ const getState = () => {
       loadPromise: null,
       initializedClientId: '',
       callback: null,
-      callbackOwner: null
+      callbackOwner: null,
+      renderedContainers: new WeakSet()
     }
   }
   return root[GOOGLE_IDENTITY_STATE]
@@ -100,11 +101,25 @@ export const registerGoogleIdentity = async ({ clientId, callback }) => {
   }
 }
 
-export const promptGoogleIdentity = () => {
+export const renderGoogleIdentityButton = (container, options = {}) => {
   const api = getGoogleIdentityApi()
-  if (!api) {
+  if (!api || !container) {
     throw new Error('Google Identity Services is not ready.')
   }
 
-  api.prompt()
+  const state = getState()
+  if (state.renderedContainers.has(container)) return
+
+  container.replaceChildren()
+  api.renderButton(container, {
+    type: 'standard',
+    theme: 'outline',
+    size: 'large',
+    text: 'continue_with',
+    shape: 'rectangular',
+    logo_alignment: 'left',
+    width: Math.min(400, Math.max(180, Math.floor(container.clientWidth || 200))),
+    ...options
+  })
+  state.renderedContainers.add(container)
 }

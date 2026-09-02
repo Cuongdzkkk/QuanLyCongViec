@@ -528,12 +528,9 @@ namespace TaskManagement.API.Controllers
                 }
 
                 var authHeader = Request.Headers["Authorization"].FirstOrDefault();
-                if (authHeader == null || !authHeader.StartsWith("Bearer "))
-                {
-                    return Unauthorized(new { statusCode = 401, message = "Access token is missing" });
-                }
-
-                var accessToken = authHeader.Substring("Bearer ".Length).Trim();
+                var accessToken = authHeader != null && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                    ? authHeader.Substring("Bearer ".Length).Trim()
+                    : null;
                 var (newAccessToken, newRefreshToken) = await _authService.RefreshTokenAsync(accessToken, refreshToken);
 
                 var cookieOptions = new CookieOptions
