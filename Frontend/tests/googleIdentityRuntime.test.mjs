@@ -8,6 +8,14 @@ const loginSource = fs.readFileSync(
   path.resolve(import.meta.dirname, '../src/views/Login.vue'),
   'utf8'
 )
+const serviceSource = fs.readFileSync(
+  path.resolve(import.meta.dirname, '../src/services/googleIdentityService.js'),
+  'utf8'
+)
+const authApiSource = fs.readFileSync(
+  path.resolve(import.meta.dirname, '../src/api/authApi.js'),
+  'utf8'
+)
 
 const resetGoogleState = () => {
   delete globalThis[GOOGLE_STATE]
@@ -36,9 +44,12 @@ test('Google button click uses the supported rendered-button path, not One Tap p
 
   renderGoogleIdentityButton(container)
   assert.equal(renderCalls.length, 1)
-  assert.equal(renderCalls[0].options.text, 'continue_with')
+  assert.equal(renderCalls[0].options.text, 'signin')
+  assert.equal(renderCalls[0].options.type, 'standard')
+  assert.equal(renderCalls[0].options.size, 'large')
   assert.equal(promptCalls, 0)
   assert.doesNotMatch(loginSource, /promptGoogleIdentity|google\.accounts\.id\.prompt/)
+  assert.doesNotMatch(serviceSource, /google\.accounts\.id\.prompt/)
   assert.doesNotMatch(loginSource, /google-identity-button\.is-hidden/)
   resetGoogleState()
 })
@@ -65,6 +76,9 @@ test('Google Identity registration forwards the credential callback', async () =
 
   registeredCallback({ credential: 'test-credential' })
   assert.deepEqual(received, [{ credential: 'test-credential' }])
+  assert.match(serviceSource, /auto_select: false/)
+  assert.match(loginSource, /callback: handleGoogleLogin/)
+  assert.match(authApiSource, /['"]\/auth\/google-login['"]/)
   release()
   resetGoogleState()
 })

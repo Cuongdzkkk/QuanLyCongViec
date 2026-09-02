@@ -115,7 +115,7 @@ export const renderGoogleIdentityButton = (container, options = {}) => {
     type: 'standard',
     theme: 'outline',
     size: 'large',
-    text: 'continue_with',
+    text: 'signin',
     shape: 'rectangular',
     logo_alignment: 'left',
     width: Math.min(400, Math.max(180, Math.floor(container.clientWidth || 200))),
