@@ -579,7 +579,13 @@ public sealed class RewardSystemService : IRewardSystemService
             {
                 var reward = await _context.RewardDefinitions.FirstOrDefaultAsync(r => r.Id == request.RewardDefinitionId);
                 if (reward == null) throw new KeyNotFoundException("Reward not found.");
-                if (reward.ProjectId != projectId) throw new UnauthorizedAccessException("Reward does not belong to this project.");
+                
+                var project = await _context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId);
+                var workspaceProjectIds = project != null
+                    ? await _context.Projects.AsNoTracking().Where(p => p.WorkspaceId == project.WorkspaceId && !p.IsDeleted).Select(p => p.Id).ToListAsync()
+                    : new List<Guid> { projectId };
+
+                if (!workspaceProjectIds.Contains(reward.ProjectId)) throw new UnauthorizedAccessException("Reward does not belong to this workspace.");
                 // if (reward.Method != "Redeem") throw new InvalidOperationException("This reward is not available for redemption.");
                 if (!reward.IsEnabled) throw new InvalidOperationException("This reward is disabled.");
                 if (reward.StartAt.HasValue && now < reward.StartAt.Value) throw new InvalidOperationException("This reward is not yet available.");
