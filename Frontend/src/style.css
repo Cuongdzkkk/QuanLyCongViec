@@ -3851,3 +3851,61 @@ body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-none > i 
 .empty-spaces-actions {
   margin-top: 16px;
 }
+
+/* Shared full-information list view, matching the Work items spreadsheet. */
+.work-items-table-shell {
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  scrollbar-color: color-mix(in srgb, var(--sa-primary, var(--color-accent)) 32%, var(--color-border)) transparent;
+}
+
+.work-items-style-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+  font-size: 13px;
+  background: var(--color-surface);
+}
+
+.work-items-style-table th {
+  padding: 14px 16px !important;
+  color: color-mix(in srgb, var(--color-text-primary) 78%, var(--color-text-muted));
+  font-size: 11px !important;
+  font-weight: 850 !important;
+  letter-spacing: .015em;
+  white-space: nowrap;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-table-header) 84%, var(--color-surface) 16%), var(--color-table-header));
+  border-bottom: 1px solid var(--color-border) !important;
+  border-right: 1px solid var(--color-border);
+}
+
+.work-items-style-table th i {
+  color: var(--sa-primary, var(--color-accent));
+  margin-right: 6px;
+  opacity: .88;
+}
+
+.work-items-style-table td {
+  height: 50px;
+  padding: 10px 14px !important;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--color-border) !important;
+  border-right: 1px solid var(--color-border);
+}
+
+.work-items-style-table tbody tr {
+  box-shadow: inset 3px 0 0 transparent;
+  transition: background .18s ease, box-shadow .18s ease;
+}
+
+.work-items-style-table tbody tr:hover {
+  box-shadow: inset 3px 0 0 var(--sa-primary, var(--color-accent));
+}
+
+.work-items-style-table tbody tr:hover > td {
+  background: color-mix(in srgb, var(--color-table-row-hover) 82%, var(--sa-primary, var(--color-accent)) 6%) !important;
+}

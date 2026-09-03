@@ -81,8 +81,8 @@
           <i class="fa-solid fa-plus"></i> Thêm thành viên
         </button>
       </div>
-      <div v-else class="table-container">
-        <el-table border v-resizable :data="filteredMembers" style="width: 100%" class="nexus-table">
+      <div v-else class="table-container work-items-table-shell">
+        <el-table border v-resizable :data="filteredMembers" style="width: 100%" class="nexus-table work-items-style-table">
           <el-table-column min-width="200">
             <template #header>
               <i class="fa-solid fa-user-group"></i> Thành viên
@@ -178,8 +178,8 @@
           <i class="fa-solid fa-link"></i> Liên kết Team ngay
         </button>
       </div>
-      <div v-else class="table-container">
-        <el-table :data="linkedTeams" style="width: 100%" class="nexus-table">
+      <div v-else class="table-container work-items-table-shell">
+        <el-table :data="linkedTeams" style="width: 100%" class="nexus-table work-items-style-table">
           <el-table-column min-width="220">
             <template #header>
               <i class="fa-solid fa-people-group"></i> Tên Đội ngũ / Team

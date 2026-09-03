@@ -310,8 +310,8 @@ function navigateToTask(taskId) {
 
     <!-- Inbox List -->
     <div v-else v-loading="loading" class="intake-content-area">
-      <div class="table-container">
-        <table v-resizable class="intake-table">
+      <div class="table-container work-items-table-shell">
+        <table v-resizable class="intake-table work-items-style-table">
           <thead>
             <tr>
               <th><i class="fa-solid fa-inbox"></i> Tiêu đề yêu cầu</th>

@@ -24,7 +24,7 @@
             </el-button>
             <button 
               class="cyber-create-task-btn" 
-              @click="openCreateTask('TO DO')" 
+              @click="handleSymbioteClick(() => openCreateTask('TO DO'))" 
               @mouseenter="onSymbioteEnter"
               @mouseleave="onSymbioteLeave"
               :disabled="!canCurrentUserCreateTask" 
@@ -1849,30 +1849,75 @@ const loadProjectPermissionMatrix = async () => {
 }
 const symbioteProgress = ref(0)
 let symbioteRaf = null
+let animationStartTime = 0
+let startProgress = 0
 let targetProgress = 0
+let duration = 0
+let isClicking = false
+let clickActionCallback = null
 
-const onSymbioteEnter = () => {
-  targetProgress = 1
-  animateSymbiote()
-}
+// Organic Easing: hesitant start (x^3), steady middle, decisive end (like an easeInOut)
+const easeOrganic = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+// Fast forward easing for click: decisive and accelerating
+const easeClick = (t) => t * t;
 
-const onSymbioteLeave = () => {
-  targetProgress = 0
-  animateSymbiote()
-}
-
-const animateSymbiote = () => {
+const startSymbioteAnimation = (target, timeMs) => {
   cancelAnimationFrame(symbioteRaf)
-  const step = () => {
-    // Elastic, organic easing toward target
-    symbioteProgress.value += (targetProgress - symbioteProgress.value) * 0.08
-    if (Math.abs(targetProgress - symbioteProgress.value) > 0.001) {
+  startProgress = symbioteProgress.value
+  targetProgress = target
+  duration = timeMs
+  animationStartTime = performance.now()
+  
+  const step = (timestamp) => {
+    const elapsed = Math.max(0, timestamp - animationStartTime)
+    let t = duration > 0 ? Math.min(elapsed / duration, 1) : 1
+    
+    // Apply appropriate easing
+    let easedT = t
+    if (isClicking) {
+      easedT = easeClick(t)
+    } else {
+      easedT = easeOrganic(t)
+    }
+    
+    symbioteProgress.value = startProgress + (targetProgress - startProgress) * easedT
+    
+    if (t < 1) {
       symbioteRaf = requestAnimationFrame(step)
     } else {
       symbioteProgress.value = targetProgress
+      if (isClicking && clickActionCallback) {
+        clickActionCallback()
+        isClicking = false
+        clickActionCallback = null
+      }
     }
   }
   symbioteRaf = requestAnimationFrame(step)
+}
+
+const onSymbioteEnter = () => {
+  if (isClicking) return
+  // Hover infection: slow spread approx 3000ms
+  const remaining = 1 - symbioteProgress.value
+  startSymbioteAnimation(1, remaining * 3000)
+}
+
+const onSymbioteLeave = () => {
+  if (isClicking) return
+  // Leave retraction: approx 2000ms
+  const remaining = symbioteProgress.value
+  startSymbioteAnimation(0, remaining * 2000)
+}
+
+const handleSymbioteClick = (callback) => {
+  if (isClicking) return
+  isClicking = true
+  clickActionCallback = callback
+  
+  // Fast forward: 350ms, at least 150ms if very close
+  const remaining = 1 - symbioteProgress.value
+  startSymbioteAnimation(1, Math.max(remaining * 350, 150))
 }
 
 const canCurrentUserCreateTask = computed(() => {

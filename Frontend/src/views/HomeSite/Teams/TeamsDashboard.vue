@@ -88,7 +88,8 @@
         </div>
 
         <!-- Table View -->
-        <table v-else-if="viewMode === 'table'" class="jira-table">
+        <div v-else-if="viewMode === 'table'" class="table-container work-items-table-shell">
+        <table v-resizable class="jira-table work-items-style-table">
           <thead>
             <tr>
               <th style="width: 25%">{{ t('homeSite.teams.team') }}</th>
@@ -124,6 +125,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
       </section>
     </div>
 
@@ -223,7 +225,7 @@ const teamSearch = ref('')
 const memberSearchQuery = ref('')
 const isMemberDropdownOpen = ref(false)
 const memberInputRef = ref(null)
-const viewMode = ref('grid')
+const viewMode = ref('table')
 const teamSortDirection = ref('asc')
 const teamSortBy = ref('name')
 const teamSortOptions = computed(() => {

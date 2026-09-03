@@ -83,8 +83,8 @@
         </div>
 
         <div class="goals-list-container">
-          <div v-if="!isLoading && filteredGoals.length > 0" class="table-container">
-            <table v-resizable class="jira-table goals-table">
+          <div v-if="!isLoading && filteredGoals.length > 0" class="table-container work-items-table-shell">
+            <table v-resizable class="jira-table work-items-style-table goals-table">
               <thead>
                 <tr>
                   <th class="col-title"><i class="fa-solid fa-bullseye"></i> {{ labels.goal }}</th>

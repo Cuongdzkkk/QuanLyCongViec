@@ -61,8 +61,8 @@
       </div>
     </div>
 
-    <div v-else-if="viewMode === 'table' && filteredTeams.length > 0" class="table-container">
-    <table v-resizable class="jira-table teams-table">
+    <div v-else-if="viewMode === 'table' && filteredTeams.length > 0" class="table-container work-items-table-shell">
+    <table v-resizable class="jira-table work-items-style-table teams-table">
       <thead>
         <tr>
           <th style="width: 25%"><i class="fa-solid fa-people-group"></i> Đội ngũ</th>
@@ -162,7 +162,7 @@ const teamsBasePath = computed(() => route.path.startsWith('/teams') ? '/teams' 
 const teamStore = useTeamStore()
 
 const searchQuery = ref('')
-const viewMode = ref('grid')
+const viewMode = ref('table')
 const teamSortDirection = ref('asc')
 const teamSortBy = ref('name')
 const teamSortOptions = [
