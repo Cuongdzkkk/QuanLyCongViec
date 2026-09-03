@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { computed, ref } from 'vue'
 import {
   dedupeParticipantsByUser,
+  getBoundedCallStageParticipants,
   getMeetingLayoutMode,
   getMeetingRenderCollections,
   getMeetingVisualRegions
@@ -126,6 +128,33 @@ const fiveParticipantRender = getMeetingRenderCollections({
 assert.equal(fiveParticipantRender.cameraStageParticipants.length, 5)
 assert.equal(new Set(fiveParticipantRender.cameraStageParticipants.map(item => item.userId)).size, 5)
 
+const boundedStage = participants => getBoundedCallStageParticipants(participants)
+const overflowCount = participants => Math.max(participants.length - boundedStage(participants).length, 0)
+for (const [count, expectedReal, expectedOverflow] of [[1, 1, 0], [2, 2, 0], [3, 3, 0], [4, 4, 0], [5, 3, 2], [9, 3, 6], [20, 3, 17]]) {
+  const items = Array.from({ length: count }, (_, index) => participant(`U${index + 1}`, `C${index + 1}`))
+  assert.equal(boundedStage(items).length, expectedReal)
+  assert.equal(overflowCount(items), expectedOverflow)
+}
+const orderedBoundedStage = boundedStage(Array.from({ length: 9 }, (_, index) => participant(`U${index + 1}`, `C${index + 1}`)))
+assert.deepEqual(orderedBoundedStage.map(item => item.userId), ['U1', 'U2', 'U3'])
+const localUser = participant('LOCAL', 'local-C1')
+assert.equal(dedupeParticipantsByUser([localUser, { ...localUser, connectionId: 'local-C1-reconnected' }], 'local-C1').length, 1)
+assert.equal(overflowCount(fiveUsers.map((item, index) => index === 1 ? { ...item, cameraEnabled: false } : item)), 2)
+const reactiveParticipants = ref(twoUsers)
+const reactiveVisibleStage = computed(() => boundedStage(reactiveParticipants.value))
+const reactiveOverflow = computed(() => Math.max(reactiveParticipants.value.length - reactiveVisibleStage.value.length, 0))
+assert.equal(reactiveVisibleStage.value.length, 2)
+assert.equal(reactiveOverflow.value, 0)
+reactiveParticipants.value = [...reactiveParticipants.value, participant('U3', 'C3'), participant('U4', 'C4')]
+assert.equal(reactiveVisibleStage.value.length, 4)
+assert.equal(reactiveOverflow.value, 0)
+reactiveParticipants.value = [...reactiveParticipants.value, participant('U5', 'C5')]
+assert.equal(reactiveVisibleStage.value.length, 3)
+assert.equal(reactiveOverflow.value, 2)
+reactiveParticipants.value = reactiveParticipants.value.slice(0, 4)
+assert.equal(reactiveVisibleStage.value.length, 4)
+assert.equal(reactiveOverflow.value, 0)
+
 const duplicateUser = dedupeParticipantsByUser([
   { ...oneUser, cameraStream: { id: 'STREAM1' }, videoTrack: { id: 'TRACK1' } },
   { ...oneUser, connectionId: 'reconnected-C1', cameraStream: { id: 'STREAM1' }, videoTrack: { id: 'TRACK1' } }
@@ -151,7 +180,13 @@ const renderedCameraSources = [
 ].map(item => `${item.cameraStream?.id || ''}/${item.videoTrack?.id || ''}`)
 assert.deepEqual(renderedCameraSources, ['STREAM1/TRACK1'])
 
-assert.match(view, /v-for="user in cameraStageParticipants"/)
+assert.match(view, /v-for="user in visibleCallStageParticipants"/)
+assert.doesNotMatch(view, /v-for="user in cameraStageParticipants"/)
+assert.match(view, /v-if="callOverflowCount > 0"/)
+assert.match(view, /v-for="user in participantsInCall\.slice\(visibleCallStageParticipants\.length/)
+assert.match(view, /\+\{\{ callOverflowCount \}\} người còn lại/)
+assert.match(view, /@keydown\.enter\.prevent="openCallParticipants"/)
+assert.match(view, /@keydown\.space\.prevent="openCallParticipants"/)
 assert.match(view, /v-else-if="hasCallParticipants" class="call-camera-stage"/)
 assert.match(view, /v-else class="call-camera-off-state"/)
 assert.match(view, /Camera đang tắt/)
@@ -175,7 +210,7 @@ assert.match(view, /callHandRaised \? 'Hạ tay' : 'Giơ tay'/)
 assert.match(view, /callTranscriptionCapabilities\.configured/)
 assert.match(view, /@click="toggleCallCaptions"/)
 assert.match(view, /<LiveCaptionOverlay :enabled="captionsEnabled" :captions="liveCaptionRows"/)
-assert.match(view, /:data-participant-count="cameraStageParticipants\.length"/)
+assert.match(view, /:data-participant-count="visibleCallStageParticipants\.length"/)
 assert.match(view, /\.call-camera-stage\[data-participant-count="1"\]/)
 assert.match(view, /\.call-camera-stage\[data-participant-count="2"\]/)
 assert.match(view, /\.call-camera-stage\[data-participant-count="3"\]/)
@@ -185,6 +220,11 @@ assert.match(view, /call-reaction-option/)
 assert.match(view, /const callViewModes =/)
 assert.match(view, /\['spotlight', 'sidebar'\]/)
 assert.match(view, /callViewMode\.value === 'tiled'/)
+assert.match(view, /const visibleCallStageParticipants = computed\(\(\) => callLayoutMode\.value === 'CAMERA_GRID'/)
+assert.match(view, /getBoundedCallStageParticipants\(participantsInCall\.value\)/)
+assert.match(view, /const callOverflowCount = computed\(\(\) => callLayoutMode\.value === 'CAMERA_GRID'/)
+assert.match(view, /Math\.max\(participantsInCall\.value\.length - visibleCallStageParticipants\.value\.length, 0\)/)
+assert.doesNotMatch(view, /participantsInCall\.value\s*=/)
 
 const layoutDiagnosticSource = view.slice(
   view.indexOf('const meetingLayoutCorrelation'),
