@@ -6284,6 +6284,93 @@ onUnmounted(() => {
   border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
   color: var(--color-accent) !important;
 }
+
+/* Work items: premium blue gaming actions */
+.cyber-create-task-btn {
+  height: 40px;
+  min-width: 164px;
+  padding: 0 18px;
+  border: 1px solid rgba(56, 189, 248, 0.48);
+  border-radius: 10px;
+  color: #eaf7ff;
+  background: linear-gradient(135deg, #0b65d8 0%, #118fe8 52%, #08b4e8 100%);
+  box-shadow: 0 8px 20px rgba(8, 112, 214, 0.24), inset 0 1px 0 rgba(255,255,255,.24);
+  isolation: isolate;
+  transition: transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease, filter .22s ease;
+}
+.cyber-create-task-btn::before {
+  inset: -70%;
+  width: 240%;
+  height: 240%;
+  background: conic-gradient(from 180deg, transparent 0 58%, rgba(125,231,255,.9) 72%, transparent 84% 100%);
+  opacity: .25;
+  z-index: -1;
+}
+.cyber-create-task-btn::after {
+  inset: 1px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #0d70df, #087fdb 55%, #079ddf);
+  opacity: .96;
+  z-index: -1;
+}
+.cyber-create-task-btn:hover:not(:disabled) {
+  border-color: rgba(147, 239, 255, .95);
+  transform: translateY(-2px) scale(1.015);
+  filter: saturate(1.12) brightness(1.08);
+  box-shadow: 0 12px 28px rgba(0, 132, 255, .34), 0 0 0 3px rgba(56,189,248,.12), 0 0 24px rgba(34,211,238,.28);
+}
+.cyber-create-task-btn:hover:not(:disabled)::before { opacity: 1; }
+.cyber-create-task-btn:active:not(:disabled) {
+  transform: translateY(0) scale(.97);
+  filter: brightness(.98);
+  box-shadow: 0 5px 12px rgba(0, 100, 220, .28), inset 0 2px 5px rgba(0,0,0,.18) !important;
+}
+.cyber-base-text, .cyber-freeze-text {
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: .1px;
+}
+.cyber-create-task-btn .cyber-base-text i,
+.cyber-create-task-btn .cyber-freeze-text i {
+  color: #baf4ff;
+  filter: drop-shadow(0 0 5px rgba(125,231,255,.65));
+}
+
+.col-empty-state.clickable {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--col-color) 28%, #cbd5e1);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--col-color) 7%, var(--color-surface)), var(--color-surface));
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+.col-empty-state.clickable:hover {
+  border-color: color-mix(in srgb, var(--col-color) 70%, #38bdf8);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--col-color) 18%, var(--color-surface)), color-mix(in srgb, #0ea5e9 7%, var(--color-surface)));
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--col-color) 18%, transparent), inset 0 0 18px rgba(56,189,248,.08);
+  transform: translateY(-2px);
+}
+.col-empty-state .add-action-text {
+  padding: 9px 15px;
+  border: 1px solid color-mix(in srgb, var(--col-color) 42%, #93c5fd);
+  border-radius: 9px;
+  color: color-mix(in srgb, var(--col-color) 82%, #075985);
+  background: color-mix(in srgb, var(--col-color) 8%, var(--color-surface));
+  font-weight: 700;
+  transition: color .2s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.col-empty-state.clickable:hover .add-action-text {
+  color: #fff;
+  border-color: #38bdf8;
+  background: linear-gradient(135deg, #0878df, #0ea5e9);
+  box-shadow: 0 0 16px rgba(14,165,233,.32);
+  transform: translateY(-1px);
+}
+.col-empty-state .add-action-text i { transition: transform .2s ease, filter .2s ease; }
+.col-empty-state.clickable:hover .add-action-text i { transform: rotate(90deg) scale(1.08); filter: drop-shadow(0 0 4px #baf4ff); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cyber-create-task-btn::before { animation: none; }
+  .cyber-create-task-btn, .col-empty-state.clickable, .col-empty-state .add-action-text { transition: none; }
+}
 </style>
  
  
