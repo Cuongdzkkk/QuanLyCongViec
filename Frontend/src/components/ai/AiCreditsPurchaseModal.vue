@@ -1,8 +1,8 @@
 <template>
   <AppModal
     :model-value="modelValue"
-    title="AI Credits & gói dịch vụ"
-    subtitle="Thông tin quyền lợi, lịch sử thanh toán và các gói đang được SprintA cung cấp."
+    title="AI Credits & gói SprintA"
+    subtitle="Theo dõi số dư, quyền lợi và lịch sử thanh toán trong một nơi."
     icon="fa-solid fa-sparkles"
     size="large"
     width="960px"
@@ -21,13 +21,13 @@
       <template v-else>
         <section v-if="billing" class="wallet-summary" aria-labelledby="ai-wallet-title">
           <div>
-            <span class="section-kicker">AI CREDITS</span>
+            <span class="section-kicker">SỐ DƯ AI CREDITS</span>
             <h2 id="ai-wallet-title">{{ billing.planName || 'Gói hiện tại' }}</h2>
             <p>Ví credits cập nhật theo tài khoản và kỳ sử dụng hiện tại.</p>
           </div>
           <div class="wallet-balance">
             <strong>{{ formatCredits(billing.totalRemainingCredits ?? billing.remainingCredits) }}</strong>
-            <span>credits còn lại</span>
+            <span>Còn lại</span>
           </div>
           <div class="wallet-progress-block">
             <div class="wallet-progress-label">
@@ -44,13 +44,13 @@
         <section class="plans-section" aria-labelledby="ai-plans-title">
           <div class="section-heading">
             <div>
-              <span class="section-kicker">PLANS</span>
+              <span class="section-kicker">GÓI DỊCH VỤ</span>
               <h2 id="ai-plans-title">Chọn gói phù hợp</h2>
             </div>
             <button type="button" class="text-action" @click="openBilling">Mở trang gói &amp; thanh toán</button>
           </div>
           <div class="plan-grid">
-            <article v-for="plan in plans" :key="plan.code" class="plan-card" :class="{ 'is-current': isCurrentPlan(plan) }">
+            <article v-for="plan in plans" :key="plan.code" class="plan-card" :class="{ 'is-current': isCurrentPlan(plan), 'is-recommended': plan.isRecommended }">
               <div class="plan-card-head">
                 <div>
                   <span class="plan-code">{{ plan.code }}</span>
@@ -87,7 +87,7 @@
         <section class="history-section" aria-labelledby="ai-history-title">
           <div class="section-heading">
             <div>
-              <span class="section-kicker">BILLING HISTORY</span>
+              <span class="section-kicker">LỊCH SỬ THANH TOÁN</span>
               <h2 id="ai-history-title">Lịch sử thanh toán</h2>
             </div>
             <span class="history-count">{{ historyTotal }} giao dịch</span>
@@ -275,5 +275,80 @@ h2, h3, p { margin: 0; }
   .section-heading { align-items: start; flex-direction: column; }
   .history-row { grid-template-columns: minmax(0, 1fr) auto; }
   .history-row > strong { grid-column: 2; grid-row: 1; }
+}
+
+/* A dark-first product surface that still follows the active semantic theme. */
+:deep(.sprinta-app-modal) {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 20%, var(--color-border));
+  border-radius: 20px;
+  background: var(--color-surface);
+  box-shadow: 0 28px 90px color-mix(in srgb, var(--color-text-primary) 28%, transparent);
+}
+
+:deep(.sprinta-app-modal .el-dialog__header) {
+  padding: 22px 24px 18px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 14%, var(--color-surface)), var(--color-surface) 62%);
+}
+
+:deep(.sprinta-app-modal .el-dialog__title) { font-size: 20px; letter-spacing: -.025em; }
+:deep(.sprinta-app-modal .el-dialog__headerbtn) { border-radius: 9px; }
+:deep(.sprinta-app-modal .el-dialog__headerbtn:hover) { background: var(--sa-primary-soft); }
+:deep(.sprinta-app-modal .el-dialog__body) { padding: 22px 24px 26px; }
+
+.ai-credits-modal { gap: 28px; }
+.credits-state { background: color-mix(in srgb, var(--color-surface-hover) 80%, var(--color-surface)); }
+.wallet-summary {
+  position: relative;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+  background:
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--color-accent) 17%, transparent), transparent 38%),
+    color-mix(in srgb, var(--color-accent) 7%, var(--color-surface));
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--color-accent) 9%, transparent);
+}
+.wallet-summary::after {
+  position: absolute;
+  right: 20px;
+  bottom: -54px;
+  width: 130px;
+  height: 130px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
+  border-radius: 50%;
+  content: '';
+  pointer-events: none;
+}
+.wallet-balance strong { color: var(--color-text-primary); font-size: 32px; }
+.wallet-progress { background: color-mix(in srgb, var(--color-border) 75%, var(--color-bg)); }
+.wallet-progress span { background: linear-gradient(90deg, var(--color-accent), var(--sa-primary)); }
+.section-heading { align-items: center; }
+.section-kicker { font-size: 9px; letter-spacing: .13em; }
+.section-heading h2 { font-size: 21px; letter-spacing: -.025em; }
+.text-action, .secondary-action { background: color-mix(in srgb, var(--color-surface-hover) 70%, transparent); }
+.text-action:hover, .text-action:focus-visible, .secondary-action:hover, .secondary-action:focus-visible { background: var(--sa-primary-soft); }
+
+.plan-card {
+  position: relative;
+  border-color: color-mix(in srgb, var(--color-border) 90%, var(--color-accent));
+  background: color-mix(in srgb, var(--color-surface-hover) 48%, var(--color-surface));
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.plan-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--color-accent) 48%, var(--color-border)); }
+.plan-card.is-current { background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface)); }
+.plan-card.is-recommended:not(.is-current) { border-color: color-mix(in srgb, var(--color-accent) 52%, var(--color-border)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 14%, transparent), 0 12px 28px color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.plan-price { color: var(--color-text-primary); font-size: 23px; letter-spacing: -.035em; }
+.plan-action { background: color-mix(in srgb, var(--color-surface) 85%, var(--color-accent)); transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease; }
+.plan-action:not(:disabled):hover { border-color: var(--color-accent); background: var(--sa-primary-soft); color: var(--color-accent); transform: translateY(-1px); }
+.plan-action.primary:not(:disabled):hover { background: var(--sa-primary); color: var(--color-text-inverse); filter: brightness(1.06); }
+.pricing-disclaimer { border-radius: 0 10px 10px 0; background: color-mix(in srgb, var(--color-warning) 9%, var(--color-surface)); }
+.history-row { background: color-mix(in srgb, var(--color-surface-hover) 45%, var(--color-surface)); transition: border-color 160ms ease, background 160ms ease; }
+.history-row:hover { border-color: color-mix(in srgb, var(--color-accent) 32%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)); }
+.history-status { background: color-mix(in srgb, var(--color-surface-hover) 85%, var(--color-bg)); }
+
+@media (max-width: 760px) {
+  :deep(.sprinta-app-modal .el-dialog__header) { padding: 18px 16px 15px; }
+  :deep(.sprinta-app-modal .el-dialog__body) { padding: 16px; }
+  .wallet-summary { gap: 15px; }
 }
 </style>

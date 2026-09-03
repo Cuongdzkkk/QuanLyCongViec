@@ -105,4 +105,34 @@ const hasReadOnlyActions = actions => actions.some(action => isReadOnlyAction(ac
 .ai-thinking-step.active { color: var(--color-text-secondary); }
 .ai-suggested-actions, .ai-suggested-tasks { display: grid; gap: 8px; margin-top: 12px; padding: 10px; border: 1px solid var(--color-border); border-radius: 9px; background: var(--color-surface-hover); }.ai-suggested-action { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface); }.ai-suggested-action p { margin: 0; color: var(--color-text-secondary); font-size: 11px; }.ai-suggested-action div, .ai-suggested-tasks-head, .ai-suggested-task > div, .ai-suggested-task-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }.ai-suggested-action span, .ai-suggested-task strong { color: var(--color-text-primary); font-size: 11px; }.ai-suggested-action button, .ai-suggested-tasks-head button, .ai-suggested-task-foot button { min-height: 28px; padding: 5px 8px; border: 1px solid var(--color-accent); border-radius: 6px; background: transparent; color: var(--color-accent); cursor: pointer; font-size: 10px; font-weight: 750; }.ai-suggested-action button:disabled, .ai-suggested-tasks-head button:disabled, .ai-suggested-task-foot button:disabled { cursor: not-allowed; opacity: .55; }.ai-suggested-tasks-head strong { color: var(--color-text-primary); font-size: 11px; }.ai-suggested-task-list { display: grid; gap: 7px; max-height: 300px; overflow-y: auto; }.ai-suggested-task { display: grid; gap: 5px; padding: 8px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface); }.ai-suggested-task > div > span { padding: 2px 5px; border-radius: 999px; background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)); color: var(--color-accent); font-size: 9px; font-weight: 800; }.ai-suggested-task p, .ai-suggested-task small, .ai-permission-note { margin: 0; color: var(--color-text-muted); font-size: 10px; line-height: 1.45; }.ai-suggested-task-foot { padding-top: 6px; border-top: 1px solid var(--color-border); }.ai-suggested-task-foot .is-created { color: var(--color-success); font-size: 10px; font-weight: 750; }.ai-permission-note { color: var(--color-danger); text-align: center; }
 .ai-duplicate-warning { display: grid; gap: 6px; margin: 8px 0 10px; padding: 9px; border: 1px solid color-mix(in srgb, var(--color-warning) 42%, var(--color-border)); border-radius: 7px; background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface)); }.ai-duplicate-warning strong { color: var(--color-warning); font-size: 11px; }.ai-duplicate-warning p { margin: 0; color: var(--color-text-secondary); font-size: 10px; }.ai-duplicate-warning > div { display: flex; flex-wrap: wrap; gap: 5px; }.ai-duplicate-warning button { padding: 5px 7px; border: 1px solid var(--color-border); border-radius: 5px; background: transparent; color: var(--color-text-secondary); cursor: pointer; font-size: 10px; }.ai-duplicate-warning button:last-child { color: var(--color-danger); }
+
+.ai-message { gap: 11px; }
+.ai-message-avatar { border-radius: 11px; background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface-hover)); box-shadow: 0 5px 12px color-mix(in srgb, var(--color-text-primary) 7%, transparent); }
+.ai-message-avatar.is-user { background: linear-gradient(145deg, var(--color-accent), var(--sa-primary)); }
+.ai-message-author { letter-spacing: .01em; }
+.ai-message-bubble {
+  padding: 14px 16px;
+  border-color: color-mix(in srgb, var(--color-border) 90%, var(--color-accent));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-surface) 94%, var(--color-accent));
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+}
+.ai-message.user .ai-message-bubble {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-accent) 15%, var(--color-surface)), color-mix(in srgb, var(--color-accent) 7%, var(--color-surface)));
+}
+.ai-markdown { color: var(--color-text-primary); }
+.ai-markdown :deep(a) { color: var(--color-accent); text-decoration-color: color-mix(in srgb, var(--color-accent) 45%, transparent); }
+.ai-markdown :deep(blockquote) { margin: 10px 0; padding: 8px 12px; border-left: 3px solid var(--color-accent); background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)); color: var(--color-text-secondary); }
+.ai-message-tools button, .ai-message-attachment-open { transition: background 160ms ease, color 160ms ease; }
+.ai-message-tools button:hover, .ai-message-tools button:focus-visible { background: var(--sa-primary-soft); color: var(--color-accent); outline: none; }
+.ai-action-preview-card {
+  border-color: color-mix(in srgb, var(--color-accent) 25%, var(--color-border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent) 5%, var(--color-surface));
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+}
+.ai-action-preview-card.is-pending { box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 12%, transparent), 0 10px 24px color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.ai-action-status { background: color-mix(in srgb, var(--color-surface-hover) 86%, var(--color-surface)); }
+.ai-suggested-prompts button { transition: border-color 160ms ease, background 160ms ease, color 160ms ease; }
+.ai-suggested-prompts button:hover { border-color: var(--color-accent); background: var(--sa-primary-soft); }
 </style>
