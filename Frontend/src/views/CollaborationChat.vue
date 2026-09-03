@@ -1237,6 +1237,7 @@ const projectOptions = computed(() => projectStore.sidebarProjects)
 const activeProjectId = ref('')
 const navigatorQuery = ref('')
 const expandedProjectId = ref('')
+const expandedProjectBeforeSearch = ref('')
 const channelsByProjectId = ref({})
 const voiceChannelsByProjectId = ref({})
 const normalizeNavigatorText = (value) => `${value || ''}`.trim().toLocaleLowerCase()
@@ -3576,6 +3577,7 @@ const clearCollaborationState = () => {
   voiceChannelsByProjectId.value = {}
   navigatorQuery.value = ''
   expandedProjectId.value = ''
+  expandedProjectBeforeSearch.value = ''
   activeProjectId.value = ''
   currentUser.value = { id: '', name: '', avatar: '' }
   clearScopedCurrentProjectId()
@@ -4364,9 +4366,11 @@ watch(
   }
 )
 
-watch(navigatorQuery, (query) => {
+watch(navigatorQuery, (query, previousQuery) => {
+  if (query && !previousQuery) expandedProjectBeforeSearch.value = expandedProjectId.value
   if (!query) {
-    if (activeProjectId.value) expandedProjectId.value = activeProjectId.value
+    expandedProjectId.value = expandedProjectBeforeSearch.value || activeProjectId.value
+    expandedProjectBeforeSearch.value = ''
     return
   }
   const firstMatch = filteredProjects.value[0]

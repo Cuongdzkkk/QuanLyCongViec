@@ -21,6 +21,8 @@ test('accordion state is single-project and active project follows navigation', 
   assert.match(view, /:aria-expanded="expandedProjectId === project.id"/)
   assert.match(view, /expandedProjectId\.value = activeProjectId\.value/)
   assert.match(view, /watch\(\s*\[activeProjectId,\s*\(\) => activeChat\.value\?\.id/)
+  assert.match(view, /watch\(navigatorQuery, \(query, previousQuery\) =>/)
+  assert.match(view, /expandedProjectBeforeSearch\.value = expandedProjectId\.value/)
 })
 
 test('text, voice, direct-message, unread, and create actions stay wired', () => {
