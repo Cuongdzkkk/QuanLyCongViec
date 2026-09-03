@@ -3394,27 +3394,42 @@ onUnmounted(() => {
   gap: 8px;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-  transition: color 0.6s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.6s ease;
+  transition: color 0.4s ease, border-color 0.4s ease;
   position: relative;
   overflow: hidden;
   z-index: 1; /* Keep text above the liquid */
 }
 
-/* The Venom liquid / blob that fills the button initially */
+/* Venom layer 1 */
 .cyber-create-task-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 150%;
+  height: 450%;
+  background: var(--color-accent);
+  border-radius: 45% 55% 40% 60% / 55% 45% 60% 40%;
+  transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  /* Unhover: Symbiote bursts out organically */
+  transition: transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 0.7s ease, opacity 0.2s;
+  z-index: -1;
+}
+
+/* Venom layer 2 for depth */
+.cyber-create-task-btn::after {
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
   width: 140%;
   height: 400%;
-  background: linear-gradient(135deg, var(--color-accent) 0%, #3b82f6 100%);
-  /* Organic, imperfect blob shape */
-  border-radius: 40% 60% 60% 40% / 50% 50% 50% 50%;
-  /* It is fully expanded, covering the whole button */
+  background: #2563eb;
+  border-radius: 60% 40% 55% 45% / 40% 60% 45% 55%;
   transform: translate(-50%, -50%) scale(1) rotate(0deg);
-  transition: transform 0.6s cubic-bezier(0.6, -0.28, 0.735, 0.045), border-radius 0.6s ease, opacity 0.6s ease;
-  z-index: -1;
+  /* Unhover: Secondary layer bursts slightly differently */
+  transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 0.8s ease, opacity 0.2s;
+  z-index: -2;
 }
 
 /* Hover state: text absorbs the color */
@@ -3424,11 +3439,19 @@ onUnmounted(() => {
   box-shadow: 0 6px 16px rgba(59, 130, 246, 0.2);
 }
 
-/* On hover, the blob shrinks and twists rapidly, simulating being sucked into the center text */
+/* Hover: Symbiote gets sucked into the center (text) */
 .cyber-create-task-btn:hover:not(:disabled)::before {
   transform: translate(-50%, -50%) scale(0) rotate(180deg);
   border-radius: 50%;
   opacity: 0;
+  transition: transform 0.5s cubic-bezier(0.6, -0.28, 0.735, 0.045), border-radius 0.5s ease, opacity 0.4s 0.1s;
+}
+
+.cyber-create-task-btn:hover:not(:disabled)::after {
+  transform: translate(-50%, -50%) scale(0) rotate(-180deg);
+  border-radius: 50%;
+  opacity: 0;
+  transition: transform 0.6s cubic-bezier(0.6, -0.28, 0.735, 0.045), border-radius 0.6s ease, opacity 0.4s 0.2s;
 }
 
 .cyber-create-task-btn:active:not(:disabled) {
@@ -3443,7 +3466,8 @@ onUnmounted(() => {
   box-shadow: none;
   cursor: not-allowed;
 }
-.cyber-create-task-btn:disabled::before {
+.cyber-create-task-btn:disabled::before,
+.cyber-create-task-btn:disabled::after {
   display: none;
 }
 
