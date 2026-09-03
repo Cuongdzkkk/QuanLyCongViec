@@ -102,3 +102,21 @@ test('AI page exposes the existing workspace switch contract', () => {
   assert.match(aiPage, /sprinta-workspace-changed/)
   assert.match(aiPage, /aria-label="Chọn workspace"/)
 })
+
+test('AI product surfaces keep the visual hierarchy and theme contract', () => {
+  assert.match(aiPage, /CÔNG CỤ NHANH/)
+  assert.match(aiPage, /NGỮ CẢNH HIỆN TẠI/)
+  assert.match(aiPage, /Quản lý gói/)
+  assert.match(aiPage, /\.ai-details-panel[\s\S]*var\(--color-surface\)/)
+  assert.match(nexusLayout, /is-ai-open/)
+  assert.match(nexusLayout, /--ai-sidebar-width/)
+  assert.match(nexusLayout, /global-utility-rail\.is-ai-open/)
+  assert.match(composer, /\.ai-composer:focus-within/)
+  assert.match(message, /\.ai-message-bubble[\s\S]*color-mix/)
+  assert.match(creditsModal, /is-recommended/)
+  assert.match(creditsModal, /dark-first product surface/)
+  for (const source of [aiPage, nexusLayout, composer, message, creditsModal]) {
+    assert.doesNotMatch(source, /background:\s*#fff/i)
+    assert.doesNotMatch(source, /color:\s*#000/i)
+  }
+})
