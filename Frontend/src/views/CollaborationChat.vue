@@ -1,26 +1,5 @@
 <template>
   <main class="chat-container chat-workspace" :class="{ 'has-context-panel': showMembersSidebar && !showVoiceCallMain, 'is-sidebar-open': sidebarOpen }" aria-label="Không gian cộng tác SprintA">
-    <!-- Project scope sidebar for real collaboration channels -->
-    <nav class="server-bar" aria-label="Project spaces">
-      <div class="rail-caption">PROJECTS</div>
-        <button
-        type="button"
-        v-for="project in projectOptions"
-        :key="project.id"
-        class="server-icon-wrapper"
-        :class="{ active: activeProjectId === project.id }"
-        @click="selectProject(project.id)"
-        :aria-label="`Mở project ${project.name}`"
-        :aria-current="activeProjectId === project.id ? 'page' : undefined"
-        :title="project.name"
-      >
-        <span class="server-icon">
-          {{ project.name.charAt(0).toUpperCase() }}
-        </span>
-        <div class="active-indicator"></div>
-       </button>
-    </nav>
-
     <button
       v-if="sidebarOpen"
       type="button"
@@ -29,124 +8,62 @@
       @click="sidebarOpen = false"
     ></button>
 
-    <!-- Chat Sidebar (Channels & Direct Messages) -->
-    <div class="chat-sidebar">
-
-      <div class="sidebar-header" style="display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); margin-bottom: 14px;">
+    <!-- Unified project and channel navigator -->
+    <aside class="chat-sidebar" aria-label="Project and channel navigation">
+      <div class="navigator-header">
+        <div class="navigator-heading">
           <span class="eyebrow">SPRINTA / COLLABORATION</span>
-        <div class="flex items-center justify-between" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-          <h3 class="font-bold" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0; white-space: normal; line-height: 1.3;">
-            <span class="workspace-mark" aria-hidden="true">S</span>
-            <span>{{ activeProject?.name || 'Chọn project' }}</span>
-          </h3>
-          <button v-if="currentTab === 'dm'" type="button" class="workspace-back-button" @click="switchTab('channel')">
-            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>Channels</span>
+          <span class="navigator-count">{{ projectOptions.length }} projects</span>
+        </div>
+        <label class="navigator-search">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input v-model="navigatorQuery" type="search" placeholder="Tìm dự án hoặc kênh" aria-label="Tìm dự án hoặc kênh" />
+          <button v-if="navigatorQuery" type="button" class="navigator-search-clear" aria-label="Xóa tìm kiếm" @click="navigatorQuery = ''"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        </label>
+      </div>
+
+      <div class="sidebar-lists-scrollable navigator-list">
+        <div v-if="projectsLoading" class="channel-state" role="status"><i class="fa-solid fa-spinner fa-spin"></i><span>Đang tải Project...</span></div>
+        <div v-else-if="projectsError" class="channel-state channel-state-error" role="alert"><span>{{ projectsError }}</span><button type="button" class="state-action" @click="retryProjects">Thử lại</button></div>
+        <div v-else-if="!filteredProjects.length" class="channel-state navigator-empty">Không tìm thấy dự án hoặc kênh phù hợp.</div>
+
+        <section v-for="project in filteredProjects" :key="project.id" class="project-accordion" :class="{ 'is-expanded': expandedProjectId === project.id, 'is-active': activeProjectId === project.id }">
+          <button type="button" class="project-row" :aria-expanded="expandedProjectId === project.id" :aria-current="activeProjectId === project.id ? 'page' : undefined" @click="toggleProject(project.id)">
+            <span class="project-chevron" aria-hidden="true"><i class="fa-solid fa-chevron-right"></i></span>
+            <span class="project-avatar" aria-hidden="true">{{ project.name.charAt(0).toUpperCase() }}</span>
+            <span class="project-name">{{ project.name || 'Project' }}</span>
+            <span v-if="projectUnreadCount(project) > 0" class="collaboration-unread-badge" role="status" :aria-label="`${projectUnreadCount(project)} tin nhắn chưa đọc trong ${project.name}`">{{ formatUnreadCount(projectUnreadCount(project)) }}</span>
           </button>
-      </div>
-      </div>
 
-      <!-- Sidebar lists wrap in scrollable container to pin voice panel at bottom -->
-      <div class="sidebar-lists-scrollable">
-        <!-- Channels List -->
-        <div class="sidebar-section" v-if="currentTab === 'channel'">
-          <div class="flex items-center justify-between section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <span class="section-title" style="margin-bottom: 0;">TEXT CHANNELS</span>
-            <button
-              class="add-btn-small"
-              title="Tạo Channel"
-              aria-label="Tạo Channel"
-              :disabled="!activeProjectId || channelsLoading"
-              @click="openCreateChannelModal"
-            >
-              <i class="fa-solid fa-plus text-xs"></i>
-            </button>
-          </div>
-          <div class="section-list">
-            <div v-if="projectsLoading || channelsLoading" class="channel-state" role="status">
-              <i class="fa-solid fa-spinner fa-spin"></i>
-              <span>Đang tải Channel...</span>
-            </div>
-            <div v-else-if="projectsError" class="channel-state channel-state-error" role="alert">
-              <span>{{ projectsError }}</span>
-              <button type="button" class="state-action" @click="retryProjects">Thử lại</button>
-            </div>
-            <div v-else-if="channelsError" class="channel-state channel-state-error" role="alert">
-              <span>{{ channelsError }}</span>
-              <button type="button" class="state-action" @click="retryChannels">Thử lại</button>
-            </div>
-            <div v-else-if="!activeProjectId" class="channel-state">
-              Chọn Project để xem Channel.
-            </div>
-            <div v-else-if="channels.length === 0" class="channel-state">
-              Chưa có channel trong project này.
-            </div>
-            <button 
-              v-for="ch in visibleChannels" 
-              :key="ch.id" 
-              class="list-item" 
-              :class="{ active: activeChat?.id === ch.id && activeChat?.type === 'channel' }"
-              @click="selectChat(ch, 'channel')"
-            >
-              <span class="item-icon">#</span>
-              <span class="item-name truncate">{{ ch.name }}</span>
-              <span
-                v-if="ch.unreadCount > 0"
-                class="collaboration-unread-badge"
-                role="status"
-                aria-live="polite"
-                :aria-label="`${ch.unreadCount} tin nhắn chưa đọc trong Channel ${ch.name}`"
-              >{{ formatUnreadCount(ch.unreadCount) }}</span>
-            </button>
-            <button
-              v-if="channels.length < channelPagination.totalCount"
-              type="button"
-              class="state-action load-more-action"
-              :disabled="channelsLoadingMore"
-              @click="loadMoreChannels"
-            >
-              {{ channelsLoadingMore ? 'Đang tải...' : 'Tải thêm Channel' }}
-            </button>
-          </div>
-        </div>
+          <div v-if="expandedProjectId === project.id" class="project-channel-tree">
+            <div v-if="project.id === activeProjectId && channelsLoading && !projectChannels(project.id).length" class="channel-state" role="status"><i class="fa-solid fa-spinner fa-spin"></i><span>Đang tải Channel...</span></div>
+            <div v-else-if="project.id === activeProjectId && channelsError" class="channel-state channel-state-error" role="alert"><span>{{ channelsError }}</span><button type="button" class="state-action" @click="retryChannels">Thử lại</button></div>
 
-        <!-- Voice Channels List -->
-        <div class="sidebar-section mt-4" v-if="currentTab === 'channel' && activeProjectId">
-          <div class="flex items-center justify-between section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <span class="section-title" style="margin-bottom: 0;">KÊNH THOẠI (VOICE)</span>
-            <button type="button" class="add-btn-small" title="Tạo kênh thoại mới" aria-label="Tạo kênh thoại mới" @click="openCreateVoiceModal">
-              <i class="fa-solid fa-plus text-xs"></i>
-            </button>
-          </div>
-          <div class="section-list">
-            <div 
-              v-for="vc in voiceChannels" 
-              :key="vc.id" 
-              class="voice-item-wrapper"
-            >
-              <button 
-                class="list-item voice-item w-full text-left" 
-                :class="{ active: activeVoiceChannel?.id === vc.id }"
-                @click="openPreJoinVoiceChannel(vc)"
-                style="display: flex; align-items: center;"
-              >
-                <span class="item-icon"><i class="fa-solid fa-volume-high"></i></span>
-                <span class="item-name" style="white-space: normal; word-break: break-word; line-height: 1.3;">{{ vc.name }}</span>
+            <div class="navigator-section-head"><span class="section-title">TEXT CHANNELS</span><button type="button" class="add-btn-small" title="Tạo Channel" aria-label="Tạo Channel" :disabled="project.id !== activeProjectId || channelsLoading" @click="openCreateChannelModal"><i class="fa-solid fa-plus text-xs"></i></button></div>
+            <div class="section-list">
+              <div v-if="!projectChannels(project.id).length && project.id === activeProjectId && !channelsLoading && !channelsError" class="channel-state">Chưa có channel trong project này.</div>
+              <button v-for="ch in channelsForNavigator(project)" :key="ch.id" type="button" class="list-item navigator-channel" :class="{ active: activeChat?.id === ch.id && activeChat?.type === 'channel' }" @click="selectChat(ch, 'channel')">
+                <span class="item-icon">#</span><span class="item-name truncate">{{ ch.name }}</span>
+                <span v-if="ch.unreadCount > 0" class="collaboration-unread-badge" role="status" aria-live="polite" :aria-label="`${ch.unreadCount} tin nhắn chưa đọc trong Channel ${ch.name}`">{{ formatUnreadCount(ch.unreadCount) }}</span>
               </button>
-              <!-- Users in this voice channel -->
-              <div class="voice-users-list ml-6 flex flex-col gap-1.5 mt-1" v-if="vc.id === activeVoiceChannel?.id && participantsInCall.length">
-                <div 
-                  v-for="user in participantsInCall"
-                  :key="user.connectionId"
-                  class="voice-user flex items-center gap-2 py-0.5 text-xs text-secondary"
-                  style="display: flex; align-items: center; gap: 6px; padding-left: 12px; margin-top: 2px;"
-                >
-                  <el-avatar :size="16" :src="user.avatarUrl">{{ user.displayName.charAt(0) }}</el-avatar>
-                  <span class="truncate text-xs" style="font-size: 11px; color: var(--color-text-secondary);">{{ user.displayName }}</span>
-                </div>
+              <button v-if="project.id === activeProjectId && channels.length < channelPagination.totalCount && !navigatorQuery" type="button" class="state-action load-more-action" :disabled="channelsLoadingMore" @click="loadMoreChannels">{{ channelsLoadingMore ? 'Đang tải...' : 'Tải thêm Channel' }}</button>
+            </div>
+
+            <div class="navigator-section-head voice-section-head"><span class="section-title">KÊNH THOẠI (VOICE)</span><button type="button" class="add-btn-small" title="Tạo kênh thoại mới" aria-label="Tạo kênh thoại mới" :disabled="project.id !== activeProjectId" @click="openCreateVoiceModal"><i class="fa-solid fa-plus text-xs"></i></button></div>
+            <div class="section-list">
+              <div v-for="vc in voiceChannelsForProject(project)" :key="vc.id" class="voice-item-wrapper">
+                <button type="button" class="list-item voice-item navigator-channel" :class="{ active: activeVoiceChannel?.id === vc.id }" @click="openPreJoinVoiceChannel(vc)"><span class="item-icon"><i class="fa-solid fa-volume-high"></i></span><span class="item-name">{{ vc.name }}</span></button>
+                <div v-if="vc.id === activeVoiceChannel?.id && participantsInCall.length" class="voice-users-list"><div v-for="user in participantsInCall" :key="user.connectionId" class="voice-user"><el-avatar :size="16" :src="user.avatarUrl">{{ user.displayName.charAt(0) }}</el-avatar><span class="truncate">{{ user.displayName }}</span></div></div>
               </div>
+              <div v-if="!voiceChannelsForProject(project).length" class="channel-state">Chưa có kênh thoại trong project này.</div>
             </div>
           </div>
-        </div>
+        </section>
+
+        <section v-if="directConversations.length" class="direct-section navigator-direct-section">
+          <div class="navigator-section-head"><span class="section-title">TIN NHẮN TRỰC TIẾP</span></div>
+          <div class="section-list"><button v-for="conversation in directConversations" :key="conversation.id" type="button" class="list-item direct-item" :class="{ active: activeChat?.id === conversation.id && activeChat?.type === 'dm' }" @click="selectChat(conversation, 'dm')"><el-avatar :size="24" :src="conversation.avatar">{{ conversation.name?.charAt(0) }}</el-avatar><span class="item-name truncate">{{ conversation.name }}</span><span v-if="conversation.unreadCount > 0" class="collaboration-unread-badge">{{ formatUnreadCount(conversation.unreadCount) }}</span></button></div>
+        </section>
       </div>
 
       <!-- Connected Voice Control Panel (Discord style) -->
@@ -182,7 +99,7 @@
           </button>
         </div>
       </div>
-    </div>
+    </aside>
 
     <!-- Active Chat Area -->
     <div class="chat-main">
@@ -1219,7 +1136,7 @@ defineOptions({
 })
 
 import { ref, onMounted, onBeforeUnmount, nextTick, watch, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
@@ -1227,10 +1144,6 @@ import DataModalSection from '@/components/common/Foundation/DataModalSection.vu
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 import LiveCaptionOverlay from '@/components/collaboration/LiveCaptionOverlay.vue'
 import WebRtcDiagnosticsPanel from '@/components/WebRtcDiagnosticsPanel.vue'
-
-import { useI18n } from '@/composables/useI18n'
-
-const { t } = useI18n()
 
 import { collaborationApi } from '@/api/collaborationApi'
 import { useProjectStore } from '@/store/useProjectStore'
@@ -1312,7 +1225,6 @@ const traceMeetingLayout = (event, detail = {}) => {
 }
 
 const route = useRoute()
-const router = useRouter()
 const projectStore = useProjectStore()
 const authStore = useAuthStore()
 const currentTab = ref('channel')
@@ -1323,9 +1235,49 @@ const switchTab = (tab) => {
 
 const projectOptions = computed(() => projectStore.sidebarProjects)
 const activeProjectId = ref('')
-const activeProject = computed(() =>
-  projectOptions.value.find(project => project.id === activeProjectId.value) || null
-)
+const navigatorQuery = ref('')
+const expandedProjectId = ref('')
+const expandedProjectBeforeSearch = ref('')
+const channelsByProjectId = ref({})
+const voiceChannelsByProjectId = ref({})
+const normalizeNavigatorText = (value) => `${value || ''}`.trim().toLocaleLowerCase()
+const projectChannels = (projectId) => projectId === activeProjectId.value
+  ? visibleChannels.value
+  : (channelsByProjectId.value[projectId] || []).filter(channel => !channel.desc?.startsWith('__voice_chat_channel__'))
+const projectVoiceChannels = (projectId) => projectId === activeProjectId.value
+  ? voiceChannels.value
+  : (voiceChannelsByProjectId.value[projectId] || [])
+const projectHasNavigatorMatch = (project) => {
+  const query = normalizeNavigatorText(navigatorQuery.value)
+  if (!query) return true
+  return normalizeNavigatorText(project.name).includes(query)
+    || projectChannels(project.id).some(channel => normalizeNavigatorText(channel.name).includes(query))
+    || projectVoiceChannels(project.id).some(channel => normalizeNavigatorText(channel.name).includes(query))
+}
+const filteredProjects = computed(() => projectOptions.value.filter(projectHasNavigatorMatch))
+const channelsForNavigator = (project) => {
+  const items = projectChannels(project.id)
+  const query = normalizeNavigatorText(navigatorQuery.value)
+  if (!query || normalizeNavigatorText(project.name).includes(query)) return items
+  return items.filter(channel => normalizeNavigatorText(channel.name).includes(query))
+}
+const voiceChannelsForProject = (project) => {
+  const items = projectVoiceChannels(project.id)
+  const query = normalizeNavigatorText(navigatorQuery.value)
+  if (!query || normalizeNavigatorText(project.name).includes(query)) return items
+  return items.filter(channel => normalizeNavigatorText(channel.name).includes(query))
+}
+const projectUnreadCount = (project) => [...projectChannels(project.id), ...projectVoiceChannels(project.id)]
+  .reduce((total, channel) => total + Math.max(0, Number(channel.unreadCount || 0)), 0)
+const toggleProject = (projectId) => {
+  if (!projectOptions.value.some(project => project.id === projectId)) return
+  if (expandedProjectId.value === projectId) {
+    expandedProjectId.value = ''
+    return
+  }
+  expandedProjectId.value = projectId
+  if (activeProjectId.value !== projectId) selectProject(projectId)
+}
 const projectsLoading = ref(false)
 const projectsError = ref('')
 
@@ -1356,6 +1308,7 @@ const loadVoiceChannels = (projectId) => {
   if (stored) {
     try {
       voiceChannels.value = JSON.parse(stored)
+      voiceChannelsByProjectId.value = { ...voiceChannelsByProjectId.value, [projectId]: voiceChannels.value }
       return
     } catch (e) {
       console.error(e)
@@ -1366,12 +1319,14 @@ const loadVoiceChannels = (projectId) => {
     { id: `vc-tech-${projectId}`, name: 'Trao Đổi Kỹ Thuật 💻', users: [] }
   ]
   voiceChannels.value = defaultVcs
+  voiceChannelsByProjectId.value = { ...voiceChannelsByProjectId.value, [projectId]: defaultVcs }
   localStorage.setItem(key, JSON.stringify(defaultVcs))
 }
 
 const saveVoiceChannels = () => {
   if (!activeProjectId.value) return
   const key = `voice_channels_${activeProjectId.value}`
+  voiceChannelsByProjectId.value = { ...voiceChannelsByProjectId.value, [activeProjectId.value]: voiceChannels.value }
   localStorage.setItem(key, JSON.stringify(voiceChannels.value))
 }
 
@@ -3618,6 +3573,11 @@ const clearCollaborationState = () => {
   void collaborationRealtime.stop()
   clearChannels()
   clearDirectContext()
+  channelsByProjectId.value = {}
+  voiceChannelsByProjectId.value = {}
+  navigatorQuery.value = ''
+  expandedProjectId.value = ''
+  expandedProjectBeforeSearch.value = ''
   activeProjectId.value = ''
   currentUser.value = { id: '', name: '', avatar: '' }
   clearScopedCurrentProjectId()
@@ -3626,7 +3586,6 @@ const clearCollaborationState = () => {
 const selectProject = (projectId) => {
   if (!projectOptions.value.some(project => project.id === projectId)) return
   activeProjectId.value = projectId
-  sidebarOpen.value = false
 }
 
 const loadProjects = async ({ force = false } = {}) => {
@@ -3697,6 +3656,7 @@ const loadChannels = async ({
     const merged = append ? [...channels.value, ...items] : items
     const unique = new Map(merged.map(item => [item.id, item]))
     channels.value = Array.from(unique.values())
+    channelsByProjectId.value = { ...channelsByProjectId.value, [projectId]: channels.value }
     channelPagination.value = {
       page: Number(result?.page || page),
       pageSize: Number(result?.pageSize || 50),
@@ -4399,6 +4359,24 @@ watch(activeProjectId, async (projectId, previousProjectId) => {
   await loadChannels({ page: 1 })
 })
 
+watch(
+  [activeProjectId, () => activeChat.value?.id, () => activeVoiceChannel.value?.id],
+  () => {
+    if (!navigatorQuery.value && activeProjectId.value) expandedProjectId.value = activeProjectId.value
+  }
+)
+
+watch(navigatorQuery, (query, previousQuery) => {
+  if (query && !previousQuery) expandedProjectBeforeSearch.value = expandedProjectId.value
+  if (!query) {
+    expandedProjectId.value = expandedProjectBeforeSearch.value || activeProjectId.value
+    expandedProjectBeforeSearch.value = ''
+    return
+  }
+  const firstMatch = filteredProjects.value[0]
+  if (firstMatch) expandedProjectId.value = firstMatch.id
+})
+
 watch(() => authStore.token, async (token, previousToken) => {
   if (!componentMounted || token === previousToken) return
   collaborationContextVersion += 1
@@ -4420,6 +4398,9 @@ watch(projectOptions, (projects) => {
     !projects.some(project => project.id === activeProjectId.value)
   ) {
     activeProjectId.value = ''
+  }
+  if (!expandedProjectId.value && activeProjectId.value && projects.some(project => project.id === activeProjectId.value)) {
+    expandedProjectId.value = activeProjectId.value
   }
 })
 
@@ -9043,6 +9024,64 @@ background-color: #111c2d !important;
 @media (prefers-reduced-motion: reduce) {
   .chat-workspace .chat-sidebar { transition: none; }
 }
+
+/* Unified project accordion navigator. */
+.chat-workspace { grid-template-columns: minmax(248px, 276px) minmax(0, 1fr) !important; }
+.chat-workspace .chat-sidebar { grid-column: 1; width: auto !important; min-width: 0; padding: 16px 12px 12px !important; background: var(--chat-surface) !important; border-right: 1px solid var(--chat-line) !important; }
+.chat-workspace .chat-main { grid-column: 2; }
+.navigator-header { display: grid; gap: 12px; padding: 0 2px 14px; border-bottom: 1px solid var(--chat-line); }
+.navigator-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.navigator-heading .eyebrow { margin: 0; }
+.navigator-count { color: var(--chat-faint); font-size: 10px; white-space: nowrap; }
+.navigator-search { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 10px; border: 1px solid var(--chat-line); border-radius: 10px; background: var(--chat-surface-2); color: var(--chat-faint); }
+.navigator-search:focus-within { border-color: var(--chat-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--chat-accent) 14%, transparent); }
+.navigator-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--chat-ink); font: inherit; font-size: 12px; }
+.navigator-search input::placeholder { color: var(--chat-faint); }
+.navigator-search-clear { display: inline-grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--chat-faint); cursor: pointer; }
+.navigator-search-clear:hover { background: var(--chat-surface); color: var(--chat-ink); }
+.navigator-list { display: flex; flex-direction: column; gap: 4px; padding: 12px 2px 4px; }
+.project-accordion { min-width: 0; }
+.project-row { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 44px; padding: 7px 8px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--chat-muted); text-align: left; cursor: pointer; }
+.project-row:hover, .project-row:focus-visible { border-color: var(--chat-line); background: var(--chat-surface-2); color: var(--chat-ink); }
+.project-accordion.is-active > .project-row { color: var(--chat-ink); }
+.project-accordion.is-expanded > .project-row { border-color: color-mix(in srgb, var(--chat-accent) 28%, var(--chat-line)); background: var(--chat-accent-soft); color: var(--chat-ink); }
+.project-chevron { display: inline-grid; width: 14px; flex: 0 0 14px; place-items: center; color: var(--chat-faint); font-size: 10px; transition: transform .16s ease; }
+.project-accordion.is-expanded .project-chevron { color: var(--chat-accent); transform: rotate(90deg); }
+.project-avatar { display: inline-grid; width: 26px; height: 26px; flex: 0 0 26px; place-items: center; border: 1px solid var(--chat-line); border-radius: 8px; background: var(--chat-surface-2); color: var(--chat-accent); font-size: 11px; font-weight: 800; }
+.project-name { min-width: 0; overflow: hidden; flex: 1; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 750; }
+.project-channel-tree { display: grid; gap: 5px; margin: 2px 0 8px 22px; padding: 6px 0 4px 13px; border-left: 1px solid color-mix(in srgb, var(--chat-accent) 30%, var(--chat-line)); }
+.navigator-section-head { display: flex; align-items: center; justify-content: space-between; min-height: 30px; padding: 0 2px; }
+.navigator-section-head .add-btn-small { width: 28px; height: 28px; }
+.voice-section-head { margin-top: 8px; }
+.navigator-channel { min-height: 36px !important; padding: 7px 9px !important; border-radius: 8px !important; }
+.navigator-channel .item-name { min-width: 0; }
+.navigator-channel.voice-item { align-items: center; }
+.navigator-channel.voice-item .item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.navigator-empty { margin: 10px 0; }
+.navigator-direct-section { padding-top: 10px; border-top: 1px solid var(--chat-line); }
+.navigator-direct-section .direct-item { min-height: 40px; }
+.voice-users-list { display: grid; gap: 4px; margin: 3px 0 4px 28px; }
+.voice-user { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 2px 4px; color: var(--chat-faint); font-size: 10px; }
+.voice-user span { min-width: 0; }
+@media (max-width: 1120px) and (min-width: 761px) { .chat-workspace { grid-template-columns: minmax(236px, 260px) minmax(0, 1fr) !important; } }
+@media (max-width: 900px) and (min-width: 761px) {
+  .chat-workspace .chat-sidebar {
+    position: relative;
+    top: auto;
+    bottom: auto;
+    left: auto;
+    width: auto !important;
+    transform: none !important;
+    box-shadow: none;
+  }
+  .chat-workspace .chat-sidebar-backdrop { display: none !important; }
+}
+@media (max-width: 760px) {
+  .chat-workspace { grid-template-columns: minmax(0, 1fr) !important; }
+  .chat-workspace .chat-sidebar { left: 0; width: min(320px, calc(100vw - 18px)) !important; }
+  .chat-workspace .chat-main { grid-column: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .project-chevron { transition: none; } }
 </style>
 
 <style>
