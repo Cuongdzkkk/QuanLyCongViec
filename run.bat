@@ -174,11 +174,14 @@ exit /b 0
 
 :ensure_dotnet_ef
 for /f "tokens=2" %%v in ('dotnet tool list -g ^| findstr /R /C:"^dotnet-ef " 2^>nul') do set "CURRENT_DOTNET_EF=%%v"
-if "%CURRENT_DOTNET_EF%"=="%DOTNET_EF_VERSION%" exit /b 0
-echo Dang cap nhat dotnet-ef len phien ban %DOTNET_EF_VERSION%...
-dotnet tool update --global dotnet-ef --version %DOTNET_EF_VERSION%
+if not "%CURRENT_DOTNET_EF%"=="" (
+    echo dotnet-ef da duoc cai dat ^(phien ban %CURRENT_DOTNET_EF%^).
+    exit /b 0
+)
+echo Dang cai dat dotnet-ef...
+dotnet tool install --global dotnet-ef --version %DOTNET_EF_VERSION%
 if errorlevel 1 (
-    echo Khong the cap nhat dotnet-ef. Hay chay: dotnet tool update --global dotnet-ef --version %DOTNET_EF_VERSION%
+    echo Khong the cai dat dotnet-ef.
     exit /b 1
 )
 exit /b 0

@@ -65,11 +65,9 @@ public sealed class RewardSystemService : IRewardSystemService
         
         if (season == null)
         {
-            var availableDefinitions = await _context.RewardDefinitions.AsNoTracking().Where(item => workspaceProjectIds.Contains(item.ProjectId) && item.IsEnabled).ToListAsync();
-
             return new RewardDashboardDto(null, careerXp, CalculateLevel(careerXp), 0,
                 Array.Empty<RewardLeaderboardEntryDto>(), Array.Empty<RewardPointEventDto>(),
-                Array.Empty<RewardGrantDto>(), Array.Empty<RewardGrantDto>(), availableDefinitions.Select(ToDefinitionDto).ToList(), Array.Empty<RewardProgressDto>(), canManage);
+                Array.Empty<RewardGrantDto>(), Array.Empty<RewardGrantDto>(), Array.Empty<RewardDefinitionDto>(), Array.Empty<RewardProgressDto>(), canManage);
         }
 
         var members = await _context.ProjectMembers.AsNoTracking()
@@ -91,7 +89,9 @@ public sealed class RewardSystemService : IRewardSystemService
         var grants = await _context.RewardGrants.AsNoTracking()
             .Where(item => item.SeasonId == season.Id).Include(item => item.RecipientUser).Include(item => item.RewardDefinition)
             .OrderByDescending(item => item.EarnedAt).ToListAsync();
-        var definitions = await _context.RewardDefinitions.AsNoTracking().Where(item => workspaceProjectIds.Contains(item.ProjectId) && item.IsEnabled).ToListAsync();
+        var definitions = await _context.RewardDefinitions.AsNoTracking()
+            .Where(item => item.SeasonId == season.Id && item.IsEnabled)
+            .ToListAsync();
         var myEvents = events.Where(item => item.UserId == userId && item.Status == "Finalized").ToList();
         var myOnTimeRate = myEvents.Count == 0 ? 0 : myEvents.Count(item => !item.DueDateSnapshot.HasValue || item.CompletedAt.UtcDateTime.Date <= item.DueDateSnapshot.Value.Date) * 100m / myEvents.Count;
         var myRank = leaderboard.FirstOrDefault(item => item.UserId == userId)?.Rank ?? leaderboard.Count + 1;
@@ -360,7 +360,7 @@ public sealed class RewardSystemService : IRewardSystemService
             if (season == null) return;
             var members = await _context.ProjectMembers.AsNoTracking().Where(item => item.ProjectId == task.ProjectId && item.Status && item.LeftAt == null).Select(item => item.UserId).ToListAsync();
             var assignees = task.TaskAssignments.Where(item => item.Status).Select(item => item.UserId).Where(members.Contains).Distinct().ToList();
-            if (assignees.Count == 0) { if (task.AssignedUserId.HasValue && members.Contains(task.AssignedUserId.Value)) assignees.Add(task.AssignedUserId.Value); else if (members.Contains(actorUserId)) assignees.Add(actorUserId); }
+            if (assignees.Count == 0) { if (task.AssignedUserId.HasValue && members.Contains(task.AssignedUserId.Value)) assignees.Add(task.AssignedUserId.Value); }
             
             var singleAssignee = assignees.FirstOrDefault();
             assignees.Clear();
@@ -586,6 +586,11 @@ public sealed class RewardSystemService : IRewardSystemService
                     : new List<Guid> { projectId };
 
                 if (!workspaceProjectIds.Contains(reward.ProjectId)) throw new UnauthorizedAccessException("Reward does not belong to this workspace.");
+                
+                var season = await _context.RewardSeasons.AsNoTracking().FirstOrDefaultAsync(s => s.Id == reward.SeasonId);
+                if (season == null || season.Status != "Active" || now < season.StartAt || (season.EndAt.HasValue && now > season.EndAt.Value))
+                    throw new InvalidOperationException("This reward is not available because its season is not active.");
+
                 // if (reward.Method != "Redeem") throw new InvalidOperationException("This reward is not available for redemption.");
                 if (!reward.IsEnabled) throw new InvalidOperationException("This reward is disabled.");
                 if (reward.StartAt.HasValue && now < reward.StartAt.Value) throw new InvalidOperationException("This reward is not yet available.");
@@ -661,7 +666,7 @@ public sealed class RewardSystemService : IRewardSystemService
                     RewardDefinitionId: reward.Id,
                     RewardName: reward.Name,
                     SpentPoints: pointCost,
-                    RemainingPoints: wallet.TotalPoints,
+                    RemainingPoints: wallet!.TotalPoints,
                     RemainingQuantity: reward.Quantity
                 );
             }
