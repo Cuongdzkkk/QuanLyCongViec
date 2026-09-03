@@ -28,6 +28,8 @@
             :profileData="profileData"
           />
 
+          <ConnectedAccountsCard v-else-if="activeTab === 'connected'" />
+
           <!-- Security Overview / MFA / Password / Sessions -->
           <SecurityCard
             v-else
@@ -66,6 +68,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 import axiosClient from '@/api/axiosClient'
 import { ElMessage } from 'element-plus'
@@ -76,8 +79,10 @@ import ProfileSidebar from '@/components/profile/ProfileSidebar.vue'
 import ProfileCard from '@/components/profile/ProfileCard.vue'
 import EmailCard from '@/components/profile/EmailCard.vue'
 import SecurityCard from '@/components/profile/SecurityCard.vue'
+import ConnectedAccountsCard from '@/components/profile/ConnectedAccountsCard.vue'
 
 const { t } = useLocale()
+const route = useRoute()
 
 const activeTab = ref('profile')
 const isLoading = ref(false)
@@ -387,7 +392,10 @@ const resetPasswordFlow = () => {
   passwordHints.special = false
 }
 
-onMounted(fetchProfile)
+onMounted(() => {
+  if (route.query.tab === 'connected') activeTab.value = 'connected'
+  fetchProfile()
+})
 
 onUnmounted(() => {
   if (passwordCountdownTimer) clearInterval(passwordCountdownTimer)

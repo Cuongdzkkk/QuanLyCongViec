@@ -62,6 +62,11 @@ const menuItems = computed(() => [
     icon: 'fa-solid fa-shield-halved'
   },
   {
+    value: 'connected',
+    label: t('Connected Accounts', 'Tài khoản liên kết'),
+    icon: 'fa-solid fa-link'
+  },
+  {
     value: 'password',
     label: t('Password', 'Mật khẩu'),
     icon: 'fa-solid fa-lock'
