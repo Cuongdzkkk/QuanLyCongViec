@@ -252,6 +252,17 @@ public sealed class RewardSystemService : IRewardSystemService
         if (request.Description != null) definition.Description = request.Description.Trim();
         if (request.DisplayValue != null) definition.DisplayValue = request.DisplayValue;
         
+        definition.PointCost = request.PointCost.HasValue ? Math.Max(0, request.PointCost.Value) : null;
+        definition.Quantity = request.Quantity;
+        definition.ClaimLimit = request.ClaimLimit;
+        definition.Method = string.IsNullOrWhiteSpace(request.Method) ? "Redeem" : request.Method.Trim();
+        definition.RequireActiveMemberAtSettlement = request.RequireActiveMemberAtSettlement;
+        
+        if (!string.IsNullOrWhiteSpace(request.RewardType)) definition.RewardType = request.RewardType;
+        if (!string.IsNullOrWhiteSpace(request.ConditionType)) definition.ConditionType = request.ConditionType;
+        if (!string.IsNullOrWhiteSpace(request.ConditionMetric)) definition.ConditionMetric = request.ConditionMetric;
+        definition.Threshold = Math.Max(0, request.Threshold);
+        
         definition.UpdatedAt = UtcNow;
         await _context.SaveChangesAsync();
         return ToDefinitionDto(definition);

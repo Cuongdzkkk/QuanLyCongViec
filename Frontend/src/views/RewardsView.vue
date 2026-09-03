@@ -808,6 +808,7 @@
                               <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
                                 <input type="checkbox" v-model="getRewardConfig(reward).deductLeaderboard" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-chart-line" style="color: #ef4444; width: 16px;"></i> Trừ điểm Bảng xếp hạng
                               </label>
+                              <button type="button" class="reward-nexus-btn btn-primary" style="width: 100%; margin-top: 12px; height: 32px !important; font-size: 13px;" @click="saveEditReward(reward)">Lưu cài đặt</button>
                             </div>
                           </div>
                         </el-popover>
@@ -1310,15 +1311,31 @@ const saveEditReward = async (reward) => {
     
     managerBusy.value = true
     try {
-      const currentConfig = parseDescription(r.description)
-      currentConfig.text = editRewardForm.value.description
+      const currentConfig = getRewardConfig(r)
+      
+      // If we are saving from the Edit Form, update the text and name
+      if (editRewardForm.value && editRewardForm.value.name) {
+        currentConfig.text = editRewardForm.value.description
+      }
+      
+      const payloadName = (editRewardForm.value && editRewardForm.value.name) ? editRewardForm.value.name : r.name
       
       await axiosClient.put(`/projects/${pid}/rewards/seasons/${seasonDashboard.value.currentSeason.id}/definitions/${r.id}`, {
-        name: editRewardForm.value.name,
-        description: JSON.stringify(currentConfig)
+        name: payloadName,
+        description: JSON.stringify(currentConfig),
+        rewardType: r.rewardType || 'Gift',
+        conditionType: r.conditionType || 'PersonalMilestone',
+        conditionMetric: r.conditionMetric || 'SeasonPoints',
+        threshold: r.threshold || 0,
+        rankTo: r.rankTo || 1,
+        method: currentConfig.usePoints ? 'Redeem' : 'Gift',
+        pointCost: currentConfig.pointCost || 0,
+        quantity: r.quantity || null,
+        claimLimit: r.claimLimit || null,
+        requireActiveMemberAtSettlement: r.requireActiveMemberAtSettlement ?? false
       })
       
-      r.name = editRewardForm.value.name
+      r.name = payloadName
       r.description = JSON.stringify(currentConfig)
       ElMessage.success('Đã lưu cấu hình phần thưởng vào CSDL thành công!')
     } catch (err) {
