@@ -511,7 +511,7 @@ function navigateToTask(taskId) {
 
 .intake-content-area {
   width: 100%;
-  padding: 18px;
+  padding: 0;
   box-sizing: border-box;
 }
 

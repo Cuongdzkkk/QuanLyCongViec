@@ -3469,32 +3469,36 @@ onUnmounted(() => {
   border-color: #e2e8f0;
 }
 
-/* Button Content (Freezing Text) */
+/* Button Content (Premium Freezing Text) */
 .cyber-btn-content {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-weight: 500; /* match el-button */
   font-size: 14px; /* match el-button */
-  /* Freeze effect text: wipe from right (gray) to left (blue) */
-  background: linear-gradient(
-    90deg, 
-    var(--color-accent) 0%, 
-    var(--color-accent) 48%, 
-    #93c5fd 50%, /* laser light highlight */
-    #606266 52%, 
-    #606266 100%
-  );
-  background-size: 250% 100%;
-  background-position: 100% center;
+  /* Premium frost effect: expanding radial gradient from the laser origin */
+  background-image: 
+    radial-gradient(
+      circle at top right, 
+      var(--color-accent) 0%, 
+      var(--color-accent) 60%, 
+      #93c5fd 80%, /* glowing frost edge */
+      transparent 85%
+    ),
+    linear-gradient(#606266, #606266); /* base gray text */
+  background-size: 0% 0%, 100% 100%;
+  background-repeat: no-repeat, no-repeat;
+  background-position: top right, center;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  transition: background-position 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  filter: drop-shadow(0 0 0px rgba(59, 130, 246, 0));
+  transition: background-size 0.7s cubic-bezier(0.16, 1, 0.3, 1), filter 0.7s ease;
 }
 
 .cyber-create-task-btn:hover:not(:disabled) .cyber-btn-content {
-  background-position: 0% center; /* fill the text */
+  background-size: 350% 350%, 100% 100%; /* expands the frost layer to cover everything */
+  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.4)); /* soft glow when frozen */
 }
 
 /* ==================================

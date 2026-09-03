@@ -3854,9 +3854,20 @@ body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-none > i 
 
 /* Shared full-information list view, matching the Work items spreadsheet. */
 .work-items-table-shell {
+  width: calc(100% + 36px);
+  margin-left: -18px;
+  margin-right: -18px;
   overflow-x: auto !important;
   overflow-y: hidden;
   scrollbar-color: color-mix(in srgb, var(--sa-primary, var(--color-accent)) 32%, var(--color-border)) transparent;
+}
+
+@media (max-width: 768px) {
+  .work-items-table-shell {
+    width: calc(100% + 28px);
+    margin-left: -14px;
+    margin-right: -14px;
+  }
 }
 
 .work-items-style-table {
