@@ -28,11 +28,12 @@ import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 import { billingApi, unwrapBillingData } from '@/api/billingApi'
 import ProductVideoSection from '@/components/landing/ProductVideoSection.vue'
+import EnterpriseLeadModal from '@/components/landing/EnterpriseLeadModal.vue'
 import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { currentTheme, toggleTheme } from '@/utils/theme'
 import { clearAuthSession, getStoredAccessToken, getStoredUserSession } from '@/utils/authSession'
-import { language, setLanguage } from '@/i18n'
+import { language, setLanguage, t } from '@/i18n'
 import { createCheckoutOrderGate } from '@/utils/billingCheckoutState'
 
 const router = useRouter()
@@ -49,6 +50,7 @@ const landingRoot = ref(null)
 const scrollProgress = ref(0)
 const showPlanBenefits = ref(true)
 const checkoutPlanCode = ref('')
+const enterpriseLeadOpen = ref(false)
 const checkoutOrderGate = createCheckoutOrderGate(async (code) => unwrapBillingData(await billingApi.createOrder(code)))
 let revealObserver = null
 let revealFallbackTimer = null
@@ -140,6 +142,7 @@ const copy = computed(() => isVi.value ? {
   includedUsers: 'người dùng bao gồm',
   includedCredits: 'AI credits bao gồm',
   pending: 'Liên hệ',
+  enterpriseContact: 'Liên hệ tư vấn',
   monthly: 'Theo tháng',
   serverPricing: 'Quyền lợi theo gói',
   popular: 'Được đề xuất',
@@ -177,6 +180,7 @@ const copy = computed(() => isVi.value ? {
   includedUsers: 'included users',
   includedCredits: 'included AI credits',
   pending: 'Contact us',
+  enterpriseContact: 'Contact sales',
   monthly: 'Monthly',
   serverPricing: 'Plan benefits',
   popular: 'Recommended',
@@ -320,7 +324,10 @@ const planFeatures = (plan) => {
 
 const handlePlan = async (plan) => {
   const code = planCode(plan)
-  if (code === 'enterprise' || plan.monthlyPriceVnd == null) return
+  if (code === 'enterprise' || plan.monthlyPriceVnd == null) {
+    if (code === 'enterprise') enterpriseLeadOpen.value = true
+    return
+  }
   const checkoutPath = `/billing/checkout/${encodeURIComponent(code)}`
   if (!authenticated.value) {
     router.push({ path: '/login', query: { redirect: checkoutPath } })
@@ -446,10 +453,11 @@ onBeforeUnmount(() => {
 
       <nav v-if="mobileOpen" id="landing-mobile-nav" class="mobile-nav" aria-label="Mobile navigation">
         <a v-for="(item, index) in copy.nav" :key="item" :href="['#features','#ai','#workflow','#pricing','#video'][index]" @click="mobileOpen = false">{{ item }}</a>
-        <router-link v-if="!authenticated" to="/login" @click.prevent="go('/login')">{{ copy.signIn }}</router-link>
-        <button class="btn btn-primary" type="button" @click="go(authenticated ? '/dashboard' : '/register')">
-          {{ authenticated ? copy.launch : copy.start }}
-        </button>
+        <div v-if="!authenticated" class="mobile-cta-stack">
+          <router-link to="/login" class="btn btn-secondary mobile-login-cta" @click="mobileOpen = false">{{ copy.signIn }}</router-link>
+          <router-link to="/register" class="btn btn-primary mobile-register-cta" @click="mobileOpen = false">{{ copy.start }}</router-link>
+        </div>
+        <button v-else class="btn btn-primary mobile-launch-cta" type="button" @click="go('/dashboard')">{{ copy.launch }}</button>
       </nav>
     </header>
 
@@ -633,11 +641,11 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="confirm-card">
-                <div><span class="confirm-icon"><ShieldCheck :size="19" /></span><b>{{ isVi ? 'Chờ xác nhận' : 'Waiting for confirmation' }}</b></div>
-                <p>{{ isVi ? 'AI sẽ không thực hiện khi chưa được bạn xác nhận.' : 'AI will not execute until you confirm.' }}</p>
+                <div><span class="confirm-icon"><ShieldCheck :size="19" /></span><b>{{ t('landing.aiConfirmation.title') }}</b></div>
+                <p>{{ t('landing.aiConfirmation.supportingCopy') }}</p>
                 <div class="confirm-actions">
-                  <button type="button" class="btn btn-secondary"><X :size="15" /> {{ isVi ? 'Hủy bỏ' : 'Cancel' }}</button>
-                  <button type="button" class="btn btn-primary"><Check :size="15" /> {{ isVi ? 'Xác nhận & Áp dụng' : 'Confirm & Apply' }}</button>
+                  <button type="button" class="btn btn-secondary"><X :size="15" /> {{ t('landing.aiConfirmation.cancel') }}</button>
+                  <button type="button" class="btn btn-primary"><Check :size="15" /> {{ t('landing.aiConfirmation.apply') }}</button>
                 </div>
               </div>
             </div>
@@ -705,8 +713,8 @@ onBeforeUnmount(() => {
                 <span v-if="plan.monthlyPriceVnd != null">{{ copy.perMonth }}<template v-if="plan.perUser"> {{ copy.perUser }}</template></span>
               </div>
               <p class="price-status"><i></i>{{ plan.monthlyPriceVnd == null ? copy.pending : copy.transparentPricing }}</p>
-              <button class="plan-cta" type="button" :disabled="plan.monthlyPriceVnd == null || Boolean(checkoutPlanCode)" @click="handlePlan(plan)">
-                {{ plan.monthlyPriceVnd == null ? copy.pending : purchaseLabel(plan) }} <ArrowRight v-if="plan.monthlyPriceVnd != null && !isCheckoutPlanLoading(plan)" :size="15" />
+              <button class="plan-cta" type="button" :disabled="(plan.monthlyPriceVnd == null && planCode(plan) !== 'enterprise') || Boolean(checkoutPlanCode)" @click="handlePlan(plan)">
+                {{ plan.monthlyPriceVnd == null ? (planCode(plan) === 'enterprise' ? copy.enterpriseContact : copy.pending) : purchaseLabel(plan) }} <ArrowRight v-if="plan.monthlyPriceVnd != null && !isCheckoutPlanLoading(plan)" :size="15" />
               </button>
               <div v-show="showPlanBenefits" class="feature-list">
                 <div v-for="feature in planFeatures(plan)" :key="feature" class="price-line"><span><Check :size="13" /></span>{{ feature }}</div>
@@ -808,6 +816,7 @@ onBeforeUnmount(() => {
         <div class="footer-bottom"><span>© 2026 SprintA</span><span>{{ isVi ? 'Quản lý công việc rõ ràng hơn.' : 'Make work visible.' }}</span></div>
       </div>
     </footer>
+    <EnterpriseLeadModal v-if="enterpriseLeadOpen" @close="enterpriseLeadOpen = false" />
   </div>
 </template>
 
@@ -1007,6 +1016,11 @@ button { font: inherit; }
   padding: 0 18px 18px;
 }
 .mobile-nav a { padding: 10px 0; color: var(--ink-2); border-bottom: 1px solid var(--line); }
+.mobile-cta-stack { display:grid; gap:10px; margin-top:7px; padding-top:12px; border-top:1px solid var(--line); }
+.mobile-cta-stack .btn,
+.mobile-launch-cta { width:100%; height:auto !important; min-height:44px !important; margin:0; padding:0 14px !important; text-decoration:none; white-space:nowrap; }
+.mobile-cta-stack .btn-secondary { border:1px solid var(--line-strong) !important; background:transparent !important; }
+.mobile-cta-stack .btn-primary { color:#fff; border:1px solid rgba(84,212,255,.62) !important; background:linear-gradient(135deg,#0d8fe9 0%,#176be7 54%,#1d54d4 100%) !important; }
 
 .btn {
   min-height: 42px;
@@ -2354,7 +2368,8 @@ button { font: inherit; }
     font-weight: 750;
   }
   .mobile-nav a:hover { background: color-mix(in srgb, var(--cyan) 10%, transparent); }
-  .mobile-nav .btn { margin-top: 5px; width: 100%; }
+  .mobile-nav .btn { width: 100%; }
+  .mobile-cta-stack .btn { padding: 0 14px !important; }
 
   /* HERO — readable at 100% zoom, dashboard visible without swallowing the screen */
   .hero {
@@ -2745,7 +2760,8 @@ button { font: inherit; }
   .control-pill { max-width: 112px; text-align: center; }
   .assistant-panel { padding: 12px; }
   .user-line p { max-width: 100%; }
-  .confirm-actions .btn { flex: 1 1 120px; }
+  .confirm-actions { display: grid; grid-template-columns: 1fr; }
+  .confirm-actions .btn { width: 100%; height: auto !important; min-height: 44px !important; white-space: nowrap; }
   .ai-showcase { padding-bottom: 118px; }
   .mascot-stage { width: 106px !important; height: 118px !important; }
   .mascot-stage img { width: 100px !important; }

@@ -69,6 +69,13 @@
           </router-link>
         </li>
 
+        <li class="menu-heading">{{ t('SALES', 'SALES') }}</li>
+        <li>
+          <router-link to="/admin/enterprise-leads" class="menu-item" :class="{ active: $route.path.startsWith('/admin/enterprise-leads') }">
+            {{ t('Enterprise leads', 'Enterprise leads') }}
+          </router-link>
+        </li>
+
         <li class="menu-heading">{{ t('SECURITY', 'SECURITY') }}</li>
         <li>
           <router-link to="/admin/security/2fa" class="menu-item" :class="{ active: $route.path === '/admin/security/2fa' }">
@@ -193,7 +200,6 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useLocale } from '@/composables/useLocale'
-import { canAccessAdminUserDirectory, getStoredUser, hasSystemAdminAccess } from '@/utils/permissions'
 
 const { locale, toggleLocale, t } = useLocale()
 
@@ -222,7 +228,7 @@ onUnmounted(() => {
 
 const activeCategory = computed(() => {
   const path = route.path
-  if (path.startsWith('/admin/system') || path.startsWith('/admin/instance') || path.startsWith('/admin/security') || path.startsWith('/admin/audit-log') || path.startsWith('/admin/billing')) {
+  if (path.startsWith('/admin/system') || path.startsWith('/admin/instance') || path.startsWith('/admin/security') || path.startsWith('/admin/audit-log') || path.startsWith('/admin/billing') || path.startsWith('/admin/enterprise-leads')) {
     return 'System'
   }
   if (path.startsWith('/admin/users') || path.startsWith('/admin/roles')) {

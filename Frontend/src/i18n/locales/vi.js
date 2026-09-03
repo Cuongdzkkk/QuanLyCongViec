@@ -265,6 +265,12 @@ export default {
   landing: {
     login: 'Đăng nhập',
     register: 'Đăng ký',
+    aiConfirmation: {
+      title: 'Chờ xác nhận',
+      supportingCopy: 'AI chỉ thực hiện thay đổi sau khi bạn xác nhận.',
+      cancel: 'Hủy',
+      apply: 'Áp dụng thay đổi'
+    },
     badge: 'SprintA Agile Workspace',
     heroTitle: 'Đăng ký hoặc đăng nhập để vào bảng điều khiển chính.',
     heroSubtitle: 'Luồng vào hệ thống đã được khóa lại: người dùng phải đăng ký hoặc đăng nhập trước khi sử dụng bảng điều khiển, dự án và các chức năng nội bộ.',

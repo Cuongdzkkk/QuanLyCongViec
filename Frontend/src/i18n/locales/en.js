@@ -265,6 +265,12 @@ export default {
   landing: {
     login: 'Log in',
     register: 'Sign up',
+    aiConfirmation: {
+      title: 'Awaiting confirmation',
+      supportingCopy: 'AI only makes changes after you confirm.',
+      cancel: 'Cancel',
+      apply: 'Apply changes'
+    },
     badge: 'SprintA Agile Workspace',
     heroTitle: 'Sign up or log in to enter the main dashboard.',
     heroSubtitle: 'System entry is protected: users must sign up or log in before using the dashboard, projects, and internal features.',

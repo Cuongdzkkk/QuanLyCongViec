@@ -55,14 +55,17 @@ builder.Services.AddRateLimiter(options =>
         context.HttpContext.Response.Headers["Retry-After"] =
             retryAfterSeconds.ToString();
 
+        var isEnterpriseLead = context.HttpContext.Request.Path.StartsWithSegments("/api/public/enterprise-leads");
         await context.HttpContext.Response.WriteAsJsonAsync(new
         {
             statusCode = StatusCodes.Status429TooManyRequests,
             success = false,
-            message = "Bạn đang thao tác AI quá nhanh. Vui lòng thử lại sau.",
+            message = isEnterpriseLead
+                ? "Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau."
+                : "Bạn đang thao tác AI quá nhanh. Vui lòng thử lại sau.",
             data = new
             {
-                code = "AI_RATE_LIMITED",
+                code = isEnterpriseLead ? "ENTERPRISE_LEAD_RATE_LIMITED" : "AI_RATE_LIMITED",
                 retryAfterSeconds
             }
         }, cancellationToken);
@@ -113,6 +116,20 @@ builder.Services.AddRateLimiter(options =>
 
         return RateLimitPartition.GetFixedWindowLimiter(
             $"ai-heavy:{identity}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
+
+    options.AddPolicy("EnterpriseLeadSubmission", httpContext =>
+    {
+        var identity = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"enterprise-lead:{identity}",
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 5,
