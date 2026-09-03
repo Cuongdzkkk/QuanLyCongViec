@@ -795,7 +795,7 @@ onUnmounted(() => {
         :description="t('cyclesTab.cyclesDesc', 'Manage project sprints and iterations')"
       >
         <template #actions>
-          <button class="nexus-btn-primary" type="button" @click="showCreateModal = true" :disabled="!canManageSprint" :title="!canManageSprint ? t('cyclesTab.noPermissionToAddCycle', 'You do not have permission to add a cycle') : ''">
+          <button class="nexus-btn-primary cycles-add-button" type="button" @click="showCreateModal = true" :disabled="!canManageSprint" :title="!canManageSprint ? t('cyclesTab.noPermissionToAddCycle', 'You do not have permission to add a cycle') : ''">
             <i class="fa-solid fa-plus"></i> {{ t('cyclesTab.addCycle', 'Add cycle') }}
           </button>
         </template>
@@ -2306,5 +2306,63 @@ onUnmounted(() => {
   border: none;
   padding: 0 !important;
   overflow: visible;
+}
+
+/* Premium primary action for the cycle page. */
+.cycles-add-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-width: 142px;
+  height: 42px !important;
+  padding: 0 18px !important;
+  border: 1px solid rgba(125, 211, 252, .42) !important;
+  border-radius: 12px !important;
+  background: linear-gradient(135deg, #0757c9 0%, #0b75dc 52%, #159ee8 100%) !important;
+  color: #fff !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  letter-spacing: .01em;
+  box-shadow: 0 8px 18px rgba(7, 87, 201, .22), inset 0 1px 0 rgba(255, 255, 255, .2) !important;
+  transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+}
+
+.cycles-add-button::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 -70%;
+  width: 48%;
+  transform: skewX(-20deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .25), transparent);
+  transition: left .5s ease;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.cycles-add-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: saturate(1.08) brightness(1.04);
+  box-shadow: 0 12px 24px rgba(7, 87, 201, .3), 0 0 0 4px rgba(14, 165, 233, .1), inset 0 1px 0 rgba(255, 255, 255, .24) !important;
+}
+
+.cycles-add-button:hover:not(:disabled)::before {
+  left: 125%;
+}
+
+.cycles-add-button:focus-visible {
+  outline: 3px solid rgba(56, 189, 248, .35);
+  outline-offset: 3px;
+}
+
+.cycles-add-button:active:not(:disabled) {
+  transform: translateY(0) scale(.98);
+  filter: brightness(.96);
+  box-shadow: 0 5px 12px rgba(7, 87, 201, .22), inset 0 2px 5px rgba(2, 30, 78, .2) !important;
+}
+
+.cycles-add-button:disabled {
+  opacity: .55;
+  filter: grayscale(.2);
+  box-shadow: none !important;
 }
 </style>

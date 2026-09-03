@@ -3469,36 +3469,21 @@ onUnmounted(() => {
   border-color: #e2e8f0;
 }
 
-/* Button Content (Premium Freezing Text) */
+/* Button Content (Simple Elegant Glow) */
 .cyber-btn-content {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-weight: 500; /* match el-button */
-  font-size: 14px; /* match el-button */
-  /* Premium frost effect: expanding radial gradient from the laser origin */
-  background-image: 
-    radial-gradient(
-      circle at top right, 
-      var(--color-accent) 0%, 
-      var(--color-accent) 60%, 
-      #93c5fd 80%, /* glowing frost edge */
-      transparent 85%
-    ),
-    linear-gradient(#606266, #606266); /* base gray text */
-  background-size: 0% 0%, 100% 100%;
-  background-repeat: no-repeat, no-repeat;
-  background-position: top right, center;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 0px rgba(59, 130, 246, 0));
-  transition: background-size 0.7s cubic-bezier(0.16, 1, 0.3, 1), filter 0.7s ease;
+  font-weight: 500;
+  font-size: 14px;
+  color: #606266;
+  text-shadow: 0 0 0px transparent;
+  transition: color 0.6s ease-out, text-shadow 0.6s ease-out;
 }
 
 .cyber-create-task-btn:hover:not(:disabled) .cyber-btn-content {
-  background-size: 350% 350%, 100% 100%; /* expands the frost layer to cover everything */
-  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.4)); /* soft glow when frozen */
+  color: var(--color-accent);
+  text-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
 }
 
 /* ==================================
