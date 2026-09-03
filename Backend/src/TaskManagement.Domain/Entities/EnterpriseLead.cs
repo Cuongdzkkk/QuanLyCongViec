@@ -1,7 +1,9 @@
 using System;
+using System.Text.Json.Serialization;
 
 namespace TaskManagement.Domain.Entities;
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum EnterpriseLeadStatus
 {
     New,

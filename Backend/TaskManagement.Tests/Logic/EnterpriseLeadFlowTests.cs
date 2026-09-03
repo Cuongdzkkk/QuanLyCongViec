@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
@@ -15,6 +16,16 @@ namespace TaskManagement.Tests.Logic;
 
 public sealed class EnterpriseLeadFlowTests
 {
+    [Fact]
+    public void AdminUpdateRequest_DeserializesStringStatus()
+    {
+        var request = JsonSerializer.Deserialize<UpdateEnterpriseLeadRequest>(
+            "{\"status\":\"Contacted\"}",
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        request!.Status.Should().Be(EnterpriseLeadStatus.Contacted);
+    }
+
     [Fact]
     public async Task ValidAnonymousLead_IsPersistedWithCanonicalEmail()
     {
