@@ -720,7 +720,11 @@
                               <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
                                 <input type="checkbox" v-model="rewardForm.useTop" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-crown" style="color: #f59e0b; width: 16px;"></i> Đạt Top xếp hạng
                               </label>
-                              <input v-if="rewardForm.useTop" v-model="rewardForm.topRequired" type="number" placeholder="Top N (vd: 3)..." class="reward-nexus-input" style="width: calc(100% - 20px); height: 28px !important; margin-left: 20px;" />
+                              <input v-if="rewardForm.useTop" v-model="rewardForm.topRequired" type="number" placeholder="Top N (vd: 3)..." class="reward-nexus-input" style="width: calc(100% - 20px); height: 28px !important; margin-left: 20px; margin-bottom: 12px;" />
+                              
+                              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
+                                <input type="checkbox" v-model="rewardForm.deductLeaderboard" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-chart-line" style="color: #ef4444; width: 16px;"></i> Trừ điểm Bảng xếp hạng
+                              </label>
                             </div>
                           </div>
                         </el-popover>
@@ -799,7 +803,11 @@
                               <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
                                 <input type="checkbox" v-model="getRewardConfig(reward).useTop" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-crown" style="color: #f59e0b; width: 16px;"></i> Đạt Top xếp hạng
                               </label>
-                              <input v-if="getRewardConfig(reward).useTop" v-model="getRewardConfig(reward).topRequired" type="number" placeholder="Top N (vd: 3)..." class="reward-nexus-input" style="width: calc(100% - 20px); height: 28px !important; margin-left: 20px;" />
+                              <input v-if="getRewardConfig(reward).useTop" v-model="getRewardConfig(reward).topRequired" type="number" placeholder="Top N (vd: 3)..." class="reward-nexus-input" style="width: calc(100% - 20px); height: 28px !important; margin-left: 20px; margin-bottom: 12px;" />
+                              
+                              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
+                                <input type="checkbox" v-model="getRewardConfig(reward).deductLeaderboard" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-chart-line" style="color: #ef4444; width: 16px;"></i> Trừ điểm Bảng xếp hạng
+                              </label>
                             </div>
                           </div>
                         </el-popover>
@@ -1262,13 +1270,16 @@ const isCreatingSeason = ref(false)
 const isCreatingReward = ref(false)
 
 const parseDescription = (desc) => {
-  if (!desc) return { text: '', usePoints: true, pointCost: 0, useLevel: false, useTop: false }
+  if (!desc) return { text: '', usePoints: true, pointCost: 0, useLevel: false, useTop: false, deductLeaderboard: true }
   try {
     const obj = JSON.parse(desc)
-    if (obj.text !== undefined) return obj
-    return { text: desc, usePoints: true, pointCost: 0, useLevel: false, useTop: false }
+    if (obj.text !== undefined) {
+      if (obj.deductLeaderboard === undefined) obj.deductLeaderboard = true
+      return obj
+    }
+    return { text: desc, usePoints: true, pointCost: 0, useLevel: false, useTop: false, deductLeaderboard: true }
   } catch(e) {
-    return { text: desc, usePoints: true, pointCost: 0, useLevel: false, useTop: false }
+    return { text: desc, usePoints: true, pointCost: 0, useLevel: false, useTop: false, deductLeaderboard: true }
   }
 }
 
@@ -2116,6 +2127,7 @@ const createReward = async () => {
       levelRequired: rewardForm.value.levelRequired || 1,
       useTop: rewardForm.value.useTop,
       topRequired: rewardForm.value.topRequired || 3,
+      deductLeaderboard: rewardForm.value.deductLeaderboard ?? true
     }
     const descriptionJson = JSON.stringify(config)
 

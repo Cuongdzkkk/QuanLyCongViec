@@ -89,7 +89,6 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost]
-        [RequirePermission("goals.dashboard.create")]
         public async Task<IActionResult> Create(Guid workspaceId, [FromBody] object dto)
         {
             var userIdValue = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;

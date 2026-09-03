@@ -638,6 +638,22 @@ public sealed class RewardSystemService : IRewardSystemService
                 // Create negative RewardPointEvent to drop leaderboard score
                 if (pointCost > 0)
                 {
+                    bool deductLeaderboard = true;
+                    if (!string.IsNullOrEmpty(reward.Description))
+                    {
+                        try
+                        {
+                            using var doc = System.Text.Json.JsonDocument.Parse(reward.Description);
+                            if (doc.RootElement.TryGetProperty("deductLeaderboard", out var prop))
+                            {
+                                deductLeaderboard = prop.GetBoolean();
+                            }
+                        }
+                        catch { }
+                    }
+
+                    if (deductLeaderboard)
+                    {
                     var pointEvent = new RewardPointEvent
                     {
                         Id = Guid.NewGuid(),
@@ -652,7 +668,8 @@ public sealed class RewardSystemService : IRewardSystemService
                         FinalizedAt = now,
                         CancellationReason = $"Redeemed reward: {reward.Name}"
                     };
-                    _context.RewardPointEvents.Add(pointEvent);
+                        _context.RewardPointEvents.Add(pointEvent);
+                    }
                 }
 
                 // Reduce Quantity

@@ -1319,6 +1319,10 @@ watch(isAddMemberOpen, (val) => {
   }
 })
 
+watch(() => route.params.id, async (id, previousId) => {
+  if (id && id !== previousId) await teamStore.fetchTeamDetail(id)
+})
+
 const submitAddMember = async () => {
   if (selectedMembers.value.length === 0) return
   await teamStore.addMembers(selectedMembers.value)

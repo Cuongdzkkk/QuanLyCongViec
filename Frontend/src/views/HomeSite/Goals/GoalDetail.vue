@@ -385,7 +385,7 @@
                     </div>
                   </div>
                 </div>
-                <div v-if="isMineGoalItem(item)" class="goal-item-actions"><button type="button" class="icon-btn-micro" title="Chỉnh sửa" @click="editGoalItem(item, 'lessons')"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>
+                <div class="goal-item-actions"><button type="button" class="icon-btn-micro" title="Tùy chọn" @click.stop="toggleGoalItemMenu(item, 'lessons')"><i class="fa-solid fa-ellipsis-vertical"></i></button><div v-if="openGoalItemMenu === goalItemMenuKey(item, 'lessons')" class="goal-item-menu"><button :disabled="!isMineGoalItem(item)" @click="editGoalItem(item, 'lessons')">Chỉnh sửa</button><button :disabled="!isMineGoalItem(item)" @click="deleteGoalItem(item, 'lessons')">Xóa</button></div></div>
                 <div class="post-content">
                   <h4 style="margin: 0 0 8px 0; color: #172B4D; font-size: 16px;"><i class="fa-regular fa-lightbulb" style="color: #FFAB00; margin-right: 6px;"></i> {{ item.title }}</h4>
                   <div v-html="sanitizeHtml(item.text)"></div>
@@ -442,7 +442,7 @@
                     </div>
                   </div>
                 </div>
-                <div v-if="isMineGoalItem(item)" class="goal-item-actions"><button type="button" class="icon-btn-micro" title="Chỉnh sửa" @click="editGoalItem(item, 'risks')"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>
+                <div class="goal-item-actions"><button type="button" class="icon-btn-micro" title="Tùy chọn" @click.stop="toggleGoalItemMenu(item, 'risks')"><i class="fa-solid fa-ellipsis-vertical"></i></button><div v-if="openGoalItemMenu === goalItemMenuKey(item, 'risks')" class="goal-item-menu"><button :disabled="!isMineGoalItem(item)" @click="editGoalItem(item, 'risks')">Chỉnh sửa</button><button :disabled="!isMineGoalItem(item)" @click="deleteGoalItem(item, 'risks')">Xóa</button></div></div>
                 <div class="post-content">
                   <h4 style="margin: 0 0 8px 0; color: #172B4D; font-size: 16px;"><i class="fa-solid fa-triangle-exclamation" style="color: #FF5630; margin-right: 6px;"></i> {{ item.title }}</h4>
                   <div v-html="sanitizeHtml(item.text)"></div>
@@ -499,7 +499,7 @@
                     </div>
                   </div>
                 </div>
-                <div v-if="isMineGoalItem(item)" class="goal-item-actions"><button type="button" class="icon-btn-micro" title="Chỉnh sửa" @click="editGoalItem(item, 'decisions')"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>
+                <div class="goal-item-actions"><button type="button" class="icon-btn-micro" title="Tùy chọn" @click.stop="toggleGoalItemMenu(item, 'decisions')"><i class="fa-solid fa-ellipsis-vertical"></i></button><div v-if="openGoalItemMenu === goalItemMenuKey(item, 'decisions')" class="goal-item-menu"><button :disabled="!isMineGoalItem(item)" @click="editGoalItem(item, 'decisions')">Chỉnh sửa</button><button :disabled="!isMineGoalItem(item)" @click="deleteGoalItem(item, 'decisions')">Xóa</button></div></div>
                 <div class="post-content">
                   <h4 style="margin: 0 0 8px 0; color: #172B4D; font-size: 16px;"><i class="fa-solid fa-check-circle" style="color: #36B37E; margin-right: 6px;"></i> {{ item.title }}</h4>
                   <div v-html="sanitizeHtml(item.text)"></div>
@@ -1009,21 +1009,28 @@ const removeTeam = async id => {
   linkedTeams.value = linkedTeams.value.filter(x => x.id !== id)
 }
 
+const openGoalItemMenu = ref(null)
+const goalItemMenuKey = (item, tab) => `${tab}:${item.id}`
 const isMineGoalItem = item => `${item.creatorId || ''}` === `${authStore.userId || ''}`
+const toggleGoalItemMenu = (item, tab) => {
+  const key = goalItemMenuKey(item, tab)
+  openGoalItemMenu.value = openGoalItemMenu.value === key ? null : key
+}
 const editGoalItem = async (item, tab) => {
   if (!isMineGoalItem(item)) return
-  const shouldDelete = window.confirm('Nhấn OK để xóa nội dung này. Nhấn Hủy để chỉnh sửa.')
   const workspaceId = await goalStore.ensureWorkspaceId()
-  if (shouldDelete) {
-    await axiosClient.delete(`/workspaces/${workspaceId}/goals/${goal.value.id}/${tab}/${item.id}`)
-    const list = goalStore[tab] || []
-    goalStore[tab] = list.filter(value => value.id !== item.id)
-    return
-  }
   const content = window.prompt('Chỉnh sửa nội dung', item.text || item.title || '')
   if (content === null || !content.trim()) return
   await axiosClient.put(`/workspaces/${workspaceId}/goals/${goal.value.id}/${tab}/${item.id}`, { text: content })
   item.text = content
+  openGoalItemMenu.value = null
+}
+const deleteGoalItem = async (item, tab) => {
+  if (!isMineGoalItem(item) || !window.confirm('Bạn có chắc muốn xóa nội dung này?')) return
+  const workspaceId = await goalStore.ensureWorkspaceId()
+  await axiosClient.delete(`/workspaces/${workspaceId}/goals/${goal.value.id}/${tab}/${item.id}`)
+  goalStore[tab] = (goalStore[tab] || []).filter(value => value.id !== item.id)
+  openGoalItemMenu.value = null
 }
 
 const saveStartDate = async () => {
@@ -1221,6 +1228,10 @@ const postUpdate = () => {
 .goal-sprint-project i:first-child { color: #0052cc; margin-right: 10px; }
 .goal-sprint-project > i { color: #6b778c; }
 .goal-item-actions { display:flex; justify-content:flex-end; margin-top:-34px; margin-bottom:8px; min-height:28px; position:relative; z-index:2; }
+.goal-item-menu { position:absolute; right:0; top:32px; display:flex; flex-direction:column; min-width:120px; padding:4px; background:#fff; border:1px solid #DFE1E6; border-radius:6px; box-shadow:0 4px 12px rgba(9,30,66,.2); }
+.goal-item-menu button { border:0; background:transparent; padding:8px 10px; text-align:left; border-radius:4px; cursor:pointer; color:#172B4D; }
+.goal-item-menu button:hover:not(:disabled) { background:#EBECF0; }
+.goal-item-menu button:disabled { color:#A5ADBA; cursor:not-allowed; }
 .goal-item-actions .icon-btn-micro { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; color:#42526E; background:#F4F5F7; border:1px solid #DFE1E6; border-radius:4px; cursor:pointer; }
 .goal-item-actions .icon-btn-micro:hover { background:#EBECF0; color:#172B4D; }
 .goal-detail-wrapper {
