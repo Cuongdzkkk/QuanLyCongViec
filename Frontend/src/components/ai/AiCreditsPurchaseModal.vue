@@ -47,7 +47,7 @@
               <span class="section-kicker">PLANS</span>
               <h2 id="ai-plans-title">Chọn gói phù hợp</h2>
             </div>
-            <button type="button" class="text-action" @click="openBilling">Mở billing</button>
+            <button type="button" class="text-action" @click="openBilling">Mở trang gói &amp; thanh toán</button>
           </div>
           <div class="plan-grid">
             <article v-for="plan in plans" :key="plan.code" class="plan-card" :class="{ 'is-current': isCurrentPlan(plan) }">
@@ -103,7 +103,7 @@
             </div>
           </div>
           <p v-else class="history-empty">Chưa có giao dịch thanh toán trong tài khoản.</p>
-          <button type="button" class="secondary-action history-action" @click="openBilling">Xem đầy đủ trong billing</button>
+          <button type="button" class="secondary-action history-action" @click="openBilling">Mở trang thanh toán &amp; lịch sử</button>
         </section>
       </template>
     </div>

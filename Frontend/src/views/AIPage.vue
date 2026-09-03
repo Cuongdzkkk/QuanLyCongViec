@@ -22,8 +22,17 @@
             <span class="header-pill">Workspace assistant</span>
             <span class="workspace-context-pill" :title="currentWorkspaceId ? `Workspace ${currentWorkspaceId}` : 'Chưa chọn workspace'">
               <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
-              {{ activeProjectName }} · {{ currentWorkspaceId ? 'Workspace hiện tại' : 'Chưa chọn workspace' }}
+              {{ activeProjectName }} · {{ activeWorkspaceName }}
             </span>
+            <label v-if="workspaceOptions.length" class="workspace-selector">
+              <i class="fa-solid fa-building" aria-hidden="true"></i>
+              <span class="sr-only">Workspace</span>
+              <select v-model="selectedWorkspaceId" aria-label="Chọn workspace" @change="handleWorkspaceChange">
+                <option v-for="workspace in workspaceOptions" :key="workspace.id || workspace.Id" :value="workspace.id || workspace.Id">
+                  {{ workspace.name || workspace.Name }}
+                </option>
+              </select>
+            </label>
             <span v-if="aiUsage" class="credit-pill">
               {{ aiUsage.usedCredits }}/{{ aiUsage.includedCredits }} credits · còn {{ aiUsage.remainingCredits }}
             </span>
@@ -327,12 +336,14 @@ import AiCreditsPurchaseModal from '@/components/ai/AiCreditsPurchaseModal.vue'
 import axiosClient from '@/api/axiosClient'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
+import { useSiteStore } from '@/store/useSiteStore'
 import { useSprintStore } from '@/store/useSprintStore'
 import { useI18nStore } from '@/store/useI18nStore'
 import { broadcastAdminRealtime } from '@/utils/adminRealtime'
 import { signalRService } from '@/api/signalrService'
 import { hasProjectWritePermission, normalizeProjectRole } from '@/utils/permissions'
-import { getScopedCurrentProjectId } from '@/utils/projectContext'
+import { AUTH_SESSION_CHANGED, getStoredUserSession } from '@/utils/authSession'
+import { clearScopedCurrentProjectId, getScopedCurrentProjectId } from '@/utils/projectContext'
 import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
 import { useAiConversationStore } from '@/store/useAiConversationStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
@@ -346,9 +357,11 @@ const aiConversationStore = useAiConversationStore()
 const aiPetStore = useAiPetStore()
 const projectStore = useProjectStore()
 const workTaskStore = useWorkTaskStore()
+const siteStore = useSiteStore()
 const sprintStore = useSprintStore()
 const i18nStore = useI18nStore()
-const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
+const currentUser = ref(getStoredUserSession())
+const selectedWorkspaceId = ref('')
 const showCustomizeModal = ref(false)
 const sidebarPreferences = ref({ audit: true, users: true })
 
@@ -399,7 +412,8 @@ const conversationSearch = computed({
   get: () => aiConversationStore.search,
   set: value => { aiConversationStore.search = value }
 })
-const currentWorkspaceId = computed(() => currentProjectRecord.value?.workspaceId || currentProjectRecord.value?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null)
+const workspaceOptions = computed(() => siteStore.sites || [])
+const currentWorkspaceId = computed(() => selectedWorkspaceId.value || currentProjectRecord.value?.workspaceId || currentProjectRecord.value?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null)
 const formatConversationDate = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : ''
 const {
   pendingAttachments,
@@ -443,7 +457,7 @@ const defaultProgressSteps = [
 let progressTimer = null
 
 const userInitials = computed(() => {
-  const name = currentUser?.name || currentUser?.fullName || 'ME'
+  const name = currentUser.value?.fullName || currentUser.value?.username || currentUser.value?.email || 'ME'
   return name.substring(0, 2).toUpperCase()
 })
 
@@ -454,6 +468,49 @@ const activeProjectName = computed(() => {
   const project = projectStore.allProjects.find(item => item.id === projectId) || projectStore.currentProject
   return project?.name || `Project ${projectId}`
 })
+const activeWorkspaceName = computed(() => {
+  const workspace = workspaceOptions.value.find(item => `${item.id || item.Id}` === `${currentWorkspaceId.value || ''}`)
+  return workspace?.name || workspace?.Name || (currentWorkspaceId.value ? 'Workspace hiện tại' : 'Chưa chọn workspace')
+})
+const workspaceIdOf = workspace => workspace?.id || workspace?.Id || ''
+const syncSelectedWorkspace = () => {
+  const preferredId = currentProjectRecord.value?.workspaceId
+    || currentProjectRecord.value?.WorkspaceId
+    || siteStore.activeSite?.id
+    || siteStore.activeSite?.Id
+    || ''
+  const preferredWorkspace = workspaceOptions.value.find(item => `${workspaceIdOf(item)}` === `${preferredId}`)
+  selectedWorkspaceId.value = workspaceIdOf(preferredWorkspace) || workspaceIdOf(workspaceOptions.value[0])
+}
+const handleWorkspaceChanged = event => {
+  const workspaceId = event?.detail?.workspaceId
+  if (!workspaceId || `${workspaceId}` === `${selectedWorkspaceId.value}`) return
+  selectedWorkspaceId.value = workspaceId
+  clearScopedCurrentProjectId()
+  projectStore.clearWorkspaceData()
+  aiConversationStore.startNewConversation()
+  loadConversations(true)
+}
+const handleWorkspaceChange = () => {
+  const workspace = workspaceOptions.value.find(item => `${workspaceIdOf(item)}` === `${selectedWorkspaceId.value}`)
+  if (!workspace) return
+
+  const previousWorkspaceId = currentProjectRecord.value?.workspaceId
+    || currentProjectRecord.value?.WorkspaceId
+    || siteStore.activeSite?.id
+    || siteStore.activeSite?.Id
+    || ''
+  siteStore.setRecentSite(workspace)
+  if (`${previousWorkspaceId || ''}` === `${selectedWorkspaceId.value}`) return
+
+  clearScopedCurrentProjectId()
+  projectStore.clearWorkspaceData()
+  aiConversationStore.startNewConversation()
+  loadConversations(true)
+}
+const refreshCurrentUser = () => {
+  currentUser.value = getStoredUserSession()
+}
 const currentProjectRecord = computed(() => {
   const projectId = `${currentProjectId.value || ''}`
   if (!projectId) {
@@ -960,6 +1017,9 @@ const loadAiUsage = async () => {
 }
 
 onMounted(() => {
+  siteStore.fetchSites().then(syncSelectedWorkspace).catch(() => {})
+  window.addEventListener('sprinta-workspace-changed', handleWorkspaceChanged)
+  window.addEventListener(AUTH_SESSION_CHANGED, refreshCurrentUser)
   clearLegacyGitHubCredentialStorage()
   projectStore.fetchAllProjects().catch(() => [])
   loadAiUsage()
@@ -1016,6 +1076,8 @@ watch(repoAnalysis, () => {
 
 onBeforeUnmount(() => {
   clearProgressTimer()
+  window.removeEventListener('sprinta-workspace-changed', handleWorkspaceChanged)
+  window.removeEventListener(AUTH_SESSION_CHANGED, refreshCurrentUser)
 })
 
 const handleSidebarSaved = (prefs) => {
@@ -1635,6 +1697,12 @@ const handleSidebarSaved = (prefs) => {
 .header-left { min-width: 0; }
 .workspace-context-pill { display: inline-flex; align-items: center; gap: 6px; max-width: 280px; padding: 6px 9px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-context-pill i { color: var(--color-accent); }
+.workspace-selector { display: inline-flex; align-items: center; gap: 7px; min-height: 30px; max-width: 220px; padding: 0 9px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-text-secondary); }
+.workspace-selector:focus-within { border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--sa-primary-soft); }
+.workspace-selector i { color: var(--color-accent); font-size: 11px; }
+.workspace-selector select { min-width: 0; max-width: 180px; border: 0; outline: 0; background: transparent; color: var(--color-text-primary); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.workspace-selector option { background: var(--color-surface); color: var(--color-text-primary); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .credit-buy-inline { min-height: 30px; padding: 0 9px; border: 1px solid var(--color-border); border-radius: 8px; background: transparent; color: var(--color-accent); font-size: 11px; font-weight: 800; cursor: pointer; }
 .credit-buy-inline:hover, .credit-buy-inline:focus-visible { border-color: var(--color-accent); background: var(--sa-primary-soft); outline: none; }
 .header-actions { gap: 7px; }

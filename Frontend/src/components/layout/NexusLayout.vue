@@ -1259,7 +1259,7 @@ const localizedPageSuggestions = {
 const quickPrompts = computed(() => {
   const contextualText = (localizedPageSuggestions[pageType.value] || localizedPageSuggestions.unknown)[0]
   return [
-    ...AI_QUICK_ACTIONS.slice(0, 3).map(action => ({ label: action.label, text: action.prompt, icon: action.icon })),
+    ...AI_QUICK_ACTIONS.slice(0, 4).map(action => ({ label: action.label, text: action.prompt, icon: action.icon })),
     { label: contextualText, text: contextualText, icon: 'fa-solid fa-lightbulb' }
   ]
 })
