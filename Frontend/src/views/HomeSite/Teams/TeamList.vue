@@ -104,7 +104,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTeamStore } from '@/store/useTeamStore'
-import { AppEmptyState, AppUserChip } from '@/components/common/Foundation'
+import { AppUserChip } from '@/components/common/Foundation'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
 import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
@@ -122,7 +122,7 @@ const teamOperators = {
   manager: ['is', 'is not']
 }
 
-const customTeamValueMeta = (fieldKey, value) => {
+const customTeamValueMeta = (fieldKey) => {
   if (fieldKey === 'manager') return { icon: 'fa-regular fa-user', color: '#3b82f6' }
   if (fieldKey === 'type') return { icon: 'fa-solid fa-layer-group', color: '#10b981' }
   return null
