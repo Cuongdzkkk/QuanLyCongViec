@@ -22,13 +22,52 @@
             <el-button type="info" plain size="default" @click="handleExportTasks">
               <i class="fa-solid fa-file-export mr-1"></i> Xuất Excel/CSV
             </el-button>
-            <button class="cyber-create-task-btn" @click="openCreateTask('TO DO')" :disabled="!canCurrentUserCreateTask" :title="!canCurrentUserCreateTask ? 'Bạn không có quyền tạo công việc' : ''">
+            <button 
+              class="cyber-create-task-btn" 
+              @click="openCreateTask('TO DO')" 
+              @mouseenter="onSymbioteEnter"
+              @mouseleave="onSymbioteLeave"
+              :disabled="!canCurrentUserCreateTask" 
+              :title="!canCurrentUserCreateTask ? 'Bạn không có quyền tạo công việc' : ''"
+              :style="{ '--sym-p': symbioteProgress }"
+            >
               <span class="cyber-base">
                 <i class="fa-solid fa-plus"></i> {{ t('Add work item') }}
               </span>
-              <span class="cyber-symbiote" aria-hidden="true">
+              <span class="cyber-symbiote" aria-hidden="true" style="clip-path: url(#symbiote-mask);">
                 <i class="fa-solid fa-plus"></i> {{ t('Add work item') }}
               </span>
+              <!-- Embedded SVG for gooey masking -->
+              <svg width="0" height="0" style="position: absolute; pointer-events: none;">
+                <defs>
+                  <filter id="goo">
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+                    <!-- Threshold for sharp liquid edge -->
+                    <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="goo" />
+                    <!-- Organic noise for irregular edges -->
+                    <feTurbulence type="fractalNoise" baseFrequency="0.08" numOctaves="3" result="noise" />
+                    <feDisplacementMap in="goo" in2="noise" scale="12" xChannelSelector="R" yChannelSelector="G" result="displaced" />
+                    <feComposite in="SourceGraphic" in2="displaced" operator="atop" />
+                  </filter>
+                  <clipPath id="symbiote-mask">
+                    <g filter="url(#goo)">
+                      <!-- Liquid blobs crawling from edges -->
+                      <!-- Left tendril -->
+                      <circle cx="10%" cy="110%" :r="(symbioteProgress * 150) + '%'" />
+                      <!-- Right tendril -->
+                      <circle cx="90%" cy="120%" :r="(symbioteProgress * Math.pow(symbioteProgress, 0.5) * 160) + '%'" />
+                      <!-- Top tendril -->
+                      <circle cx="40%" cy="-20%" :r="(symbioteProgress * 140) + '%'" />
+                      <!-- Center micro droplets -->
+                      <circle cx="50%" cy="50%" :r="(symbioteProgress * Math.pow(symbioteProgress, 2) * 120) + '%'" />
+                      <!-- Bottom-right stretch -->
+                      <circle cx="85%" cy="85%" :r="(symbioteProgress * 130) + '%'" />
+                      <!-- Top-left filament -->
+                      <circle cx="-10%" cy="10%" :r="(symbioteProgress * 140) + '%'" />
+                    </g>
+                  </clipPath>
+                </defs>
+              </svg>
             </button>
           </div>
           <TaskDataImportModal
@@ -1807,6 +1846,34 @@ const loadProjectPermissionMatrix = async () => {
     permissionMatrix.value = getDefaultPermissionMatrix()
   }
 }
+const symbioteProgress = ref(0)
+let symbioteRaf = null
+let targetProgress = 0
+
+const onSymbioteEnter = () => {
+  targetProgress = 1
+  animateSymbiote()
+}
+
+const onSymbioteLeave = () => {
+  targetProgress = 0
+  animateSymbiote()
+}
+
+const animateSymbiote = () => {
+  cancelAnimationFrame(symbioteRaf)
+  const step = () => {
+    // Elastic, organic easing toward target
+    symbioteProgress.value += (targetProgress - symbioteProgress.value) * 0.08
+    if (Math.abs(targetProgress - symbioteProgress.value) > 0.001) {
+      symbioteRaf = requestAnimationFrame(step)
+    } else {
+      symbioteProgress.value = targetProgress
+    }
+  }
+  symbioteRaf = requestAnimationFrame(step)
+}
+
 const canCurrentUserCreateTask = computed(() => {
   if (hasSystemAdminAccess(getStoredUserSession())) return true
   return canCreateTask(permissionMatrix.value, currentProjectRole.value)
@@ -3383,8 +3450,9 @@ onUnmounted(() => {
   unsubscribeAdminRealtime?.()
 })
 </script>
+<style scoped>
 /* ==================================
-   SYMBIOTE BUTTON THEME
+   SYMBIOTE BUTTON THEME (ADVANCED GOOEY MASK)
    ================================== */
 .cyber-create-task-btn {
   position: relative;
@@ -3398,8 +3466,7 @@ onUnmounted(() => {
   background: #ffffff; /* Clean default background */
   box-shadow: inset 0 0 8px rgba(15, 23, 42, 0.02), 0 2px 4px rgba(0,0,0,0.02);
   cursor: pointer;
-  overflow: hidden;
-  /* Subtle dark glossy organic texture around the edges in default state */
+  overflow: visible; /* Allow SVG filter to bleed if needed */
   background-image: radial-gradient(ellipse at 50% 120%, rgba(15,23,42,0.05) 0%, transparent 60%);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -3436,36 +3503,15 @@ onUnmounted(() => {
   font-weight: 600;
   font-size: 13px;
   padding: 0 16px;
+  
   /* Deep glossy black material */
   background: linear-gradient(135deg, #090e17 0%, #1a2235 50%, #0f172a 100%);
-  color: #ffffff; /* Infected text color */
+  color: #ffffff;
   z-index: 2;
   pointer-events: none;
   
   /* Specular highlights for wet viscous look */
   box-shadow: inset 0 2px 4px rgba(255,255,255,0.15), inset 0 -4px 8px rgba(0,0,0,0.5);
-
-  /* The magic: Organic CSS Masking using multiple irregular radial gradients (tendrils) */
-  -webkit-mask-image: 
-    radial-gradient(circle at 10% 110%, black 30%, transparent 60%),
-    radial-gradient(circle at 80% 120%, black 20%, transparent 55%),
-    radial-gradient(circle at 40% -20%, black 25%, transparent 60%),
-    radial-gradient(ellipse at 50% 50%, black 10%, transparent 50%),
-    radial-gradient(circle at 90% 10%, black 15%, transparent 45%);
-  -webkit-mask-size: 0% 0%, 0% 0%, 0% 0%, 0% 0%, 0% 0%;
-  -webkit-mask-position: center;
-  -webkit-mask-repeat: no-repeat;
-
-  /* Retraction transition (Unhover) - Elastically pulls away */
-  transition: -webkit-mask-size 0.7s cubic-bezier(0.55, 0.085, 0.68, 0.53);
-}
-
-/* Hover - The Takeover */
-.cyber-create-task-btn:hover:not(:disabled) .cyber-symbiote {
-  /* Tendrils crawl organically from edges to fully cover the button */
-  -webkit-mask-size: 300% 300%, 350% 350%, 250% 250%, 200% 200%, 250% 250%;
-  /* Easing with subtle acceleration and deceleration */
-  transition: -webkit-mask-size 1.2s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 /* ==================================
