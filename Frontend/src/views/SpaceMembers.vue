@@ -77,6 +77,9 @@
           <h3>Không tìm thấy thành viên nào phù hợp.</h3>
           <p>Thử điều chỉnh bộ lọc hoặc từ khóa tìm kiếm.</p>
         </div>
+        <button class="empty-state-action-btn" type="button" @click="showAddMemberModal = true">
+          <i class="fa-solid fa-plus"></i> Thêm thành viên
+        </button>
       </div>
       <div v-else class="table-container">
         <el-table border v-resizable :data="filteredMembers" style="width: 100%" class="nexus-table">

@@ -3380,9 +3380,10 @@ onUnmounted(() => {
 </script>
 <style scoped>
 .cyber-create-task-btn {
-  background: linear-gradient(135deg, var(--color-accent) 0%, #3b82f6 100%);
+  /* Final state when hovered (absorbed) */
+  background: white;
   color: white;
-  border: none;
+  border: 1px solid rgba(59, 130, 246, 0.5);
   padding: 0 16px;
   height: 32px;
   border-radius: 8px;
@@ -3392,41 +3393,58 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+  transition: color 0.6s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.6s ease;
   position: relative;
   overflow: hidden;
+  z-index: 1; /* Keep text above the liquid */
 }
 
+/* The Venom liquid / blob that fills the button initially */
 .cyber-create-task-btn::before {
   content: '';
   position: absolute;
-  top: 0; left: -100%; width: 50%; height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-  transform: skewX(-20deg);
-  transition: all 0.5s ease;
+  top: 50%;
+  left: 50%;
+  width: 140%;
+  height: 400%;
+  background: linear-gradient(135deg, var(--color-accent) 0%, #3b82f6 100%);
+  /* Organic, imperfect blob shape */
+  border-radius: 40% 60% 60% 40% / 50% 50% 50% 50%;
+  /* It is fully expanded, covering the whole button */
+  transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  transition: transform 0.6s cubic-bezier(0.6, -0.28, 0.735, 0.045), border-radius 0.6s ease, opacity 0.6s ease;
+  z-index: -1;
 }
 
+/* Hover state: text absorbs the color */
 .cyber-create-task-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.3);
-  background: linear-gradient(135deg, #3b82f6 0%, var(--color-accent) 100%);
+  color: var(--color-accent);
+  border-color: rgba(59, 130, 246, 0.8);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.2);
 }
 
+/* On hover, the blob shrinks and twists rapidly, simulating being sucked into the center text */
 .cyber-create-task-btn:hover:not(:disabled)::before {
-  left: 150%;
+  transform: translate(-50%, -50%) scale(0) rotate(180deg);
+  border-radius: 50%;
+  opacity: 0;
 }
 
 .cyber-create-task-btn:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  transform: translateY(1px);
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
 }
 
 .cyber-create-task-btn:disabled {
   background: #e2e8f0;
   color: #94a3b8;
+  border-color: #cbd5e1;
   box-shadow: none;
   cursor: not-allowed;
+}
+.cyber-create-task-btn:disabled::before {
+  display: none;
 }
 
 /* ==================================

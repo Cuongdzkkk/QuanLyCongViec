@@ -652,7 +652,7 @@ function pageMenuItems(page) {
          :title="activeTab === 'Archived' ? t('No archived pages yet') : t('No pages yet')"
          :description="activeTab === 'Archived' ? t('Archive pages not on your radar. Access them here when needed.') : t('Create your first page to get started and keep your work organized.')"
       >
-        <template #action v-if="activeTab !== 'Archived'">
+        <template #action>
           <button class="empty-state-action-btn" type="button" @click="createPage">
             <i class="fa-solid fa-plus"></i> {{ t('Add page') }}
           </button>
