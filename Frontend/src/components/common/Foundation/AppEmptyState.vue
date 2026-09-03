@@ -89,14 +89,14 @@ defineProps({
 }
 
 .empty-actions :deep(button:hover) {
-  background: #0ea5e9;
-  border-color: #0ea5e9;
-  color: #fff;
+  background: #eaf8ff;
+  border-color: #8bd5f7;
+  color: #0795d3;
 }
 
 .empty-actions :deep(button:active) {
-  background: #0284c7;
-  border-color: #0284c7;
-  color: #fff;
+  background: #eaf8ff;
+  border-color: #8bd5f7;
+  color: #0795d3;
 }
 </style>

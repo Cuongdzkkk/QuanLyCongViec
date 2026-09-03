@@ -3791,22 +3791,23 @@ body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-none > i 
   padding: 0 16px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
+  background: #fff;
+  color: var(--color-text-primary);
   font-size: 13px;
   font-weight: 550;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 .empty-state-action-btn:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
+  background: #eaf8ff;
+  border-color: #8bd5f7;
+  color: #0795d3;
 }
 .empty-state-action-btn:active,
 .empty-state-action-btn.active {
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)) !important;
-  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)) !important;
-  color: var(--color-accent) !important;
+  background: #eaf8ff !important;
+  border-color: #8bd5f7 !important;
+  color: #0795d3 !important;
 }
 .empty-state-action-btn:disabled {
   opacity: 0.5;

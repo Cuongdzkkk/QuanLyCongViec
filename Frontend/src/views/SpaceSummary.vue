@@ -23,7 +23,12 @@
               <i class="fa-solid fa-file-export mr-1"></i> Xuất Excel/CSV
             </el-button>
             <button class="cyber-create-task-btn" @click="openCreateTask('TO DO')" :disabled="!canCurrentUserCreateTask" :title="!canCurrentUserCreateTask ? 'Bạn không có quyền tạo công việc' : ''">
-              <i class="fa-solid fa-plus"></i> {{ t('Add work item') }}
+              <span class="cyber-base">
+                <i class="fa-solid fa-plus"></i> {{ t('Add work item') }}
+              </span>
+              <span class="cyber-symbiote" aria-hidden="true">
+                <i class="fa-solid fa-plus"></i> {{ t('Add work item') }}
+              </span>
             </button>
           </div>
           <TaskDataImportModal
@@ -3378,117 +3383,89 @@ onUnmounted(() => {
   unsubscribeAdminRealtime?.()
 })
 </script>
-<style scoped>
+/* ==================================
+   SYMBIOTE BUTTON THEME
+   ================================== */
 .cyber-create-task-btn {
-  /* Final state when hovered (absorbed) */
-  background: white;
-  color: white;
-  border: 1px solid rgba(59, 130, 246, 0.5);
-  padding: 0 16px;
-  height: 32px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 13px;
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #ffffff; /* Clean default background */
+  box-shadow: inset 0 0 8px rgba(15, 23, 42, 0.02), 0 2px 4px rgba(0,0,0,0.02);
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-  transition: color 0.8s ease-in-out, border-color 0.8s ease-in-out;
-  position: relative;
   overflow: hidden;
-  z-index: 1; /* Keep text above the liquid */
-}
-
-/* Venom layer 1 */
-.cyber-create-task-btn::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 150%;
-  height: 450%;
-  background: var(--color-accent);
-  border-radius: 45% 55% 40% 60% / 55% 45% 60% 40%;
-  transform: translate(-50%, -50%) rotate(0deg);
-  /* Unhover: Symbiote oozes out organically like slime */
-  transition: width 0.8s cubic-bezier(0.25, 1, 0.5, 1), 
-              height 0.8s cubic-bezier(0.25, 1, 0.5, 1), 
-              border-radius 0.8s ease, 
-              transform 1s ease-out, 
-              opacity 0.2s;
-  z-index: -1;
-}
-
-/* Venom layer 2 for depth */
-.cyber-create-task-btn::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 140%;
-  height: 400%;
-  background: #2563eb;
-  border-radius: 60% 40% 55% 45% / 40% 60% 45% 55%;
-  transform: translate(-50%, -50%) rotate(0deg);
-  /* Unhover: Secondary layer oozes slightly differently */
-  transition: width 0.9s cubic-bezier(0.25, 1, 0.5, 1), 
-              height 0.9s cubic-bezier(0.25, 1, 0.5, 1), 
-              border-radius 0.9s ease, 
-              transform 1.1s ease-out, 
-              opacity 0.2s;
-  z-index: -2;
-}
-
-/* Hover state: text absorbs the color */
-.cyber-create-task-btn:hover:not(:disabled) {
-  color: var(--color-accent);
-  border-color: rgba(59, 130, 246, 0.8);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.2);
-}
-
-/* Hover: Symbiote shrinks and melts into the center like slime */
-.cyber-create-task-btn:hover:not(:disabled)::before {
-  width: 10%;
-  height: 2%;
-  transform: translate(-50%, -50%) rotate(90deg);
-  border-radius: 50%;
-  opacity: 0;
-  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1), 
-              height 0.8s cubic-bezier(0.6, -0.28, 0.735, 0.045), 
-              border-radius 0.8s ease, 
-              transform 0.8s ease-in, 
-              opacity 0.4s 0.4s;
-}
-
-.cyber-create-task-btn:hover:not(:disabled)::after {
-  width: 5%;
-  height: 1%;
-  transform: translate(-50%, -50%) rotate(-90deg);
-  border-radius: 50%;
-  opacity: 0;
-  transition: width 0.9s cubic-bezier(0.4, 0, 0.2, 1), 
-              height 0.9s cubic-bezier(0.6, -0.28, 0.735, 0.045), 
-              border-radius 0.9s ease, 
-              transform 0.9s ease-in, 
-              opacity 0.4s 0.5s;
+  /* Subtle dark glossy organic texture around the edges in default state */
+  background-image: radial-gradient(ellipse at 50% 120%, rgba(15,23,42,0.05) 0%, transparent 60%);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .cyber-create-task-btn:active:not(:disabled) {
   transform: translateY(1px);
-  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .cyber-create-task-btn:disabled {
-  background: #e2e8f0;
-  color: #94a3b8;
-  border-color: #cbd5e1;
-  box-shadow: none;
+  opacity: 0.6;
   cursor: not-allowed;
 }
-.cyber-create-task-btn:disabled::before,
-.cyber-create-task-btn:disabled::after {
-  display: none;
+
+/* BASE LAYER (Default State) */
+.cyber-base {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-accent);
+  z-index: 1;
+}
+
+/* SYMBIOTE LAYER (Hover State - The Infestation) */
+.cyber-symbiote {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 0 16px;
+  /* Deep glossy black material */
+  background: linear-gradient(135deg, #090e17 0%, #1a2235 50%, #0f172a 100%);
+  color: #ffffff; /* Infected text color */
+  z-index: 2;
+  pointer-events: none;
+  
+  /* Specular highlights for wet viscous look */
+  box-shadow: inset 0 2px 4px rgba(255,255,255,0.15), inset 0 -4px 8px rgba(0,0,0,0.5);
+
+  /* The magic: Organic CSS Masking using multiple irregular radial gradients (tendrils) */
+  -webkit-mask-image: 
+    radial-gradient(circle at 10% 110%, black 30%, transparent 60%),
+    radial-gradient(circle at 80% 120%, black 20%, transparent 55%),
+    radial-gradient(circle at 40% -20%, black 25%, transparent 60%),
+    radial-gradient(ellipse at 50% 50%, black 10%, transparent 50%),
+    radial-gradient(circle at 90% 10%, black 15%, transparent 45%);
+  -webkit-mask-size: 0% 0%, 0% 0%, 0% 0%, 0% 0%, 0% 0%;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+
+  /* Retraction transition (Unhover) - Elastically pulls away */
+  transition: -webkit-mask-size 0.7s cubic-bezier(0.55, 0.085, 0.68, 0.53);
+}
+
+/* Hover - The Takeover */
+.cyber-create-task-btn:hover:not(:disabled) .cyber-symbiote {
+  /* Tendrils crawl organically from edges to fully cover the button */
+  -webkit-mask-size: 300% 300%, 350% 350%, 250% 250%, 200% 200%, 250% 250%;
+  /* Easing with subtle acceleration and deceleration */
+  transition: -webkit-mask-size 1.2s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 /* ==================================

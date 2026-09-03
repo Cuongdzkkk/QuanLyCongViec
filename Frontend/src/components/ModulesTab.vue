@@ -1342,9 +1342,9 @@ onUnmounted(() => {
 
 .empty-state-action-btn:hover,
 .empty-state-action-btn:focus-visible {
-  background: #0ea5e9;
-  border-color: #0ea5e9;
-  color: #fff;
+  background: #eaf8ff;
+  border-color: #8bd5f7;
+  color: #0795d3;
 }
 
 /* Modal Redesigns */
