@@ -28,6 +28,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<SystemSetting> SystemSettings { get; set; }
         public DbSet<SystemAuditLog> SystemAuditLogs { get; set; }
         public DbSet<TenantConfig> TenantConfigs { get; set; }
+        public DbSet<EnterpriseLead> EnterpriseLeads { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
 
         // Group 2: Organization
@@ -236,6 +237,27 @@ namespace TaskManagement.Infrastructure.Data
             // =============================================
             modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
             modelBuilder.Entity<Permission>().HasIndex(p => p.Code).IsUnique();
+
+            modelBuilder.Entity<EnterpriseLead>(entity =>
+            {
+                entity.Property(item => item.ContactName).HasMaxLength(120).IsRequired();
+                entity.Property(item => item.WorkEmail).HasMaxLength(320).IsRequired();
+                entity.Property(item => item.PhoneOrZalo).HasMaxLength(50);
+                entity.Property(item => item.Company).HasMaxLength(200).IsRequired();
+                entity.Property(item => item.TeamSize).HasMaxLength(20).IsRequired();
+                entity.Property(item => item.Need).HasMaxLength(80);
+                entity.Property(item => item.Notes).HasMaxLength(2000);
+                entity.Property(item => item.PreferredContactTime).HasMaxLength(100);
+                entity.Property(item => item.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+                entity.Property(item => item.InternalNote).HasMaxLength(2000);
+                entity.Property(item => item.Source).HasMaxLength(100).IsRequired();
+                entity.HasIndex(item => new { item.Status, item.CreatedAt });
+                entity.HasIndex(item => item.WorkEmail);
+                entity.HasOne(item => item.AssignedToUser)
+                    .WithMany()
+                    .HasForeignKey(item => item.AssignedToUserId)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
 
             // Workspace Indexes
             modelBuilder.Entity<Workspace>().HasIndex(w => w.Slug).IsUnique();

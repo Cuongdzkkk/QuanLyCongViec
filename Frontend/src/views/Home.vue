@@ -28,6 +28,7 @@ import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 import { billingApi, unwrapBillingData } from '@/api/billingApi'
 import ProductVideoSection from '@/components/landing/ProductVideoSection.vue'
+import EnterpriseLeadModal from '@/components/landing/EnterpriseLeadModal.vue'
 import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { currentTheme, toggleTheme } from '@/utils/theme'
@@ -49,6 +50,7 @@ const landingRoot = ref(null)
 const scrollProgress = ref(0)
 const showPlanBenefits = ref(true)
 const checkoutPlanCode = ref('')
+const enterpriseLeadOpen = ref(false)
 const checkoutOrderGate = createCheckoutOrderGate(async (code) => unwrapBillingData(await billingApi.createOrder(code)))
 let revealObserver = null
 let revealFallbackTimer = null
@@ -140,6 +142,7 @@ const copy = computed(() => isVi.value ? {
   includedUsers: 'người dùng bao gồm',
   includedCredits: 'AI credits bao gồm',
   pending: 'Liên hệ',
+  enterpriseContact: 'Liên hệ tư vấn',
   monthly: 'Theo tháng',
   serverPricing: 'Quyền lợi theo gói',
   popular: 'Được đề xuất',
@@ -177,6 +180,7 @@ const copy = computed(() => isVi.value ? {
   includedUsers: 'included users',
   includedCredits: 'included AI credits',
   pending: 'Contact us',
+  enterpriseContact: 'Contact sales',
   monthly: 'Monthly',
   serverPricing: 'Plan benefits',
   popular: 'Recommended',
@@ -320,7 +324,10 @@ const planFeatures = (plan) => {
 
 const handlePlan = async (plan) => {
   const code = planCode(plan)
-  if (code === 'enterprise' || plan.monthlyPriceVnd == null) return
+  if (code === 'enterprise' || plan.monthlyPriceVnd == null) {
+    if (code === 'enterprise') enterpriseLeadOpen.value = true
+    return
+  }
   const checkoutPath = `/billing/checkout/${encodeURIComponent(code)}`
   if (!authenticated.value) {
     router.push({ path: '/login', query: { redirect: checkoutPath } })
@@ -706,8 +713,8 @@ onBeforeUnmount(() => {
                 <span v-if="plan.monthlyPriceVnd != null">{{ copy.perMonth }}<template v-if="plan.perUser"> {{ copy.perUser }}</template></span>
               </div>
               <p class="price-status"><i></i>{{ plan.monthlyPriceVnd == null ? copy.pending : copy.transparentPricing }}</p>
-              <button class="plan-cta" type="button" :disabled="plan.monthlyPriceVnd == null || Boolean(checkoutPlanCode)" @click="handlePlan(plan)">
-                {{ plan.monthlyPriceVnd == null ? copy.pending : purchaseLabel(plan) }} <ArrowRight v-if="plan.monthlyPriceVnd != null && !isCheckoutPlanLoading(plan)" :size="15" />
+              <button class="plan-cta" type="button" :disabled="(plan.monthlyPriceVnd == null && planCode(plan) !== 'enterprise') || Boolean(checkoutPlanCode)" @click="handlePlan(plan)">
+                {{ plan.monthlyPriceVnd == null ? (planCode(plan) === 'enterprise' ? copy.enterpriseContact : copy.pending) : purchaseLabel(plan) }} <ArrowRight v-if="plan.monthlyPriceVnd != null && !isCheckoutPlanLoading(plan)" :size="15" />
               </button>
               <div v-show="showPlanBenefits" class="feature-list">
                 <div v-for="feature in planFeatures(plan)" :key="feature" class="price-line"><span><Check :size="13" /></span>{{ feature }}</div>
@@ -809,6 +816,7 @@ onBeforeUnmount(() => {
         <div class="footer-bottom"><span>© 2026 SprintA</span><span>{{ isVi ? 'Quản lý công việc rõ ràng hơn.' : 'Make work visible.' }}</span></div>
       </div>
     </footer>
+    <EnterpriseLeadModal v-if="enterpriseLeadOpen" @close="enterpriseLeadOpen = false" />
   </div>
 </template>
 
