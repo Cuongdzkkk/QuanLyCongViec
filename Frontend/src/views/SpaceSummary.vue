@@ -3391,7 +3391,7 @@ onUnmounted(() => {
    HI-TECH MODERN BUTTON THEME
    ================================== */
 /* ==============================================================
-   ULTIMATE CYBER-GLASS BUTTON (Beating Codex's Cycles Button)
+   ULTIMATE LINEAR/VERCEL STYLE MODERN BUTTON
    ============================================================== */
 .cyber-create-task-btn {
   position: relative;
@@ -3399,58 +3399,71 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 32px;
-  padding: 8px 15px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px; /* matches el-button */
+  padding: 0 15px; /* match el-button */
+  border: 1px solid #dcdfe6; /* default standard border */
+  border-radius: 4px;
   background: #ffffff;
   cursor: pointer;
-  overflow: hidden; /* Clips the glass reflection */
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* standard el-button shadow */
+  z-index: 1;
 }
 
-/* Premium Glass Reflection Sweep (Tilted Apple-style shine) */
+/* The spinning laser disk (strictly masked to 1px) */
 .cyber-create-task-btn::before {
   content: '';
   position: absolute;
-  inset: -100% -50%;
-  width: 50%;
-  transform: rotate(25deg) translateX(-300%);
-  background: linear-gradient(
-    90deg, 
-    transparent, 
-    rgba(255, 255, 255, 0.9), 
-    rgba(125, 211, 252, 0.35), 
-    transparent
+  top: -150%;
+  left: -50%;
+  width: 200%;
+  height: 400%;
+  background: conic-gradient(
+    from 90deg,
+    transparent 0%,
+    transparent 70%,
+    rgba(14, 165, 233, 1) 95%,
+    rgba(56, 189, 248, 1) 100%
   );
-  transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
-  pointer-events: none;
-  z-index: 0;
+  animation: cyber-spin-laser 2s linear infinite;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: -2;
 }
 
-@keyframes cyber-breathe {
-  0% { box-shadow: 0 8px 20px rgba(14, 165, 233, 0.2), 0 0 0 2px rgba(56, 189, 248, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6); }
-  100% { box-shadow: 0 12px 28px rgba(14, 165, 233, 0.35), 0 0 0 4px rgba(56, 189, 248, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.9); }
+/* The inner mask that leaves only a 1px gap for the laser */
+.cyber-create-task-btn::after {
+  content: '';
+  position: absolute;
+  inset: 1px; /* 1px gap forms the animated border */
+  background: #ffffff;
+  border-radius: 3px; /* inner radius */
+  z-index: -1;
+  transition: background-color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes cyber-spin-laser {
+  to { transform: rotate(360deg); }
 }
 
 /* Hover States */
 .cyber-create-task-btn:hover:not(:disabled) {
-  border-color: rgba(56, 189, 248, 0.4);
-  background: radial-gradient(circle at 10% 0%, rgba(255, 255, 255, 0.95), rgba(240, 249, 255, 1) 100%);
+  border-color: transparent; /* hide static border to reveal laser */
   transform: translateY(-1px);
-  /* The ultimate cyber glow breathing */
-  box-shadow: 0 8px 20px rgba(14, 165, 233, 0.2), 0 0 0 2px rgba(56, 189, 248, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  animation: cyber-breathe 2.5s ease-in-out infinite alternate;
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.15), 0 0 0 1px rgba(56, 189, 248, 0.05); /* elegant modern glow */
 }
 
 .cyber-create-task-btn:hover:not(:disabled)::before {
-  transform: rotate(25deg) translateX(400%);
+  opacity: 1; /* Turn on laser */
+}
+
+.cyber-create-task-btn:hover:not(:disabled)::after {
+  background-color: rgba(240, 249, 255, 0.85); /* faint modern blue background */
 }
 
 .cyber-create-task-btn:active:not(:disabled) {
   transform: translateY(1px) scale(0.98);
-  animation: none;
-  box-shadow: 0 3px 8px rgba(14, 165, 233, 0.15), 0 0 0 2px rgba(56, 189, 248, 0.2) !important;
+  box-shadow: 0 2px 6px rgba(14, 165, 233, 0.1) !important;
 }
 
 .cyber-create-task-btn:disabled {
@@ -3460,12 +3473,13 @@ onUnmounted(() => {
   border-color: #e2e8f0;
 }
 
-/* Button Content (True Freeze Effect) */
+/* Button Content */
 .cyber-btn-content {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  z-index: 1; 
 }
 
 .cyber-base-text,
@@ -3477,12 +3491,24 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
+/* Modern Icon Pop Animation */
+.cyber-base-text i,
+.cyber-freeze-text i {
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.4s ease;
+}
+
+.cyber-create-task-btn:hover:not(:disabled) .cyber-base-text i,
+.cyber-create-task-btn:hover:not(:disabled) .cyber-freeze-text i {
+  transform: scale(1.1) translateY(-1px);
+  filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.6));
+}
+
 /* Default gray text */
 .cyber-base-text {
   color: #606266;
 }
 
-/* The frozen blue text that expands from top right */
+/* The frozen blue text that expands from the core */
 .cyber-freeze-text {
   position: absolute;
   top: 0;
@@ -3490,16 +3516,16 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   color: var(--color-accent);
-  text-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
-  /* Circle size 0% means it's completely invisible, located at top right */
-  clip-path: circle(0% at 100% 0%);
-  transition: clip-path 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+  /* Freeze expands from the exact center */
+  clip-path: circle(0% at 50% 50%);
+  transition: clip-path 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
 }
 
 /* On hover, expand the circle to cover the whole text */
 .cyber-create-task-btn:hover:not(:disabled) .cyber-freeze-text {
-  clip-path: circle(150% at 100% 0%);
+  clip-path: circle(150% at 50% 50%);
 }
 
 /* ==================================
