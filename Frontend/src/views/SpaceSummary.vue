@@ -24,51 +24,13 @@
             </el-button>
             <button 
               class="cyber-create-task-btn" 
-              @click="handleSymbioteClick(() => openCreateTask('TO DO'))" 
-              @mouseenter="onSymbioteEnter"
-              @mouseleave="onSymbioteLeave"
+              @click="openCreateTask('TO DO')" 
               :disabled="!canCurrentUserCreateTask" 
               :title="!canCurrentUserCreateTask ? 'Bạn không có quyền tạo công việc' : ''"
-              :style="{ '--sym-p': symbioteProgress }"
             >
-              <span class="cyber-base">
+              <span class="cyber-btn-content">
                 <i class="fa-solid fa-plus"></i> {{ t('Add work item') }}
               </span>
-              <span class="cyber-symbiote" aria-hidden="true" style="-webkit-mask-image: url(#symbiote-mask); mask: url(#symbiote-mask);">
-                <i class="fa-solid fa-plus"></i> {{ t('Add work item') }}
-              </span>
-              <!-- Embedded SVG for gooey masking -->
-              <svg width="0" height="0" style="position: absolute; pointer-events: none;">
-                <defs>
-                  <filter id="goo" x="-50%" y="-50%" width="200%" height="200%">
-                    <feGaussianBlur in="SourceGraphic" stdDeviation="0.03" result="blur" />
-                    <!-- Threshold for sharp liquid edge -->
-                    <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="goo" />
-                    <!-- Organic noise for irregular edges -->
-                    <feTurbulence type="fractalNoise" baseFrequency="5" numOctaves="3" result="noise" />
-                    <feDisplacementMap in="goo" in2="noise" scale="0.1" xChannelSelector="R" yChannelSelector="G" result="displaced" />
-                    <feComposite in="SourceGraphic" in2="displaced" operator="atop" />
-                  </filter>
-                  <mask id="symbiote-mask" maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox">
-                    <rect x="-0.5" y="-0.5" width="2" height="2" fill="black" />
-                    <g filter="url(#goo)">
-                      <!-- Liquid blobs crawling from edges -->
-                      <!-- Left tendril -->
-                      <circle cx="0.1" cy="1.1" :r="symbioteProgress * 1.5" fill="white" />
-                      <!-- Right tendril -->
-                      <circle cx="0.9" cy="1.2" :r="symbioteProgress * Math.pow(symbioteProgress, 0.5) * 1.6" fill="white" />
-                      <!-- Top tendril -->
-                      <circle cx="0.4" cy="-0.2" :r="symbioteProgress * 1.4" fill="white" />
-                      <!-- Center micro droplets -->
-                      <circle cx="0.5" cy="0.5" :r="symbioteProgress * Math.pow(symbioteProgress, 2) * 1.2" fill="white" />
-                      <!-- Bottom-right stretch -->
-                      <circle cx="0.85" cy="0.85" :r="symbioteProgress * 1.3" fill="white" />
-                      <!-- Top-left filament -->
-                      <circle cx="-0.1" cy="0.1" :r="symbioteProgress * 1.4" fill="white" />
-                    </g>
-                  </mask>
-                </defs>
-              </svg>
             </button>
           </div>
           <TaskDataImportModal
@@ -1847,79 +1809,6 @@ const loadProjectPermissionMatrix = async () => {
     permissionMatrix.value = getDefaultPermissionMatrix()
   }
 }
-const symbioteProgress = ref(0)
-let symbioteRaf = null
-let animationStartTime = 0
-let startProgress = 0
-let targetProgress = 0
-let duration = 0
-let isClicking = false
-let clickActionCallback = null
-
-// Organic Easing: hesitant start (x^3), steady middle, decisive end (like an easeInOut)
-const easeOrganic = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-// Fast forward easing for click: decisive and accelerating
-const easeClick = (t) => t * t;
-
-const startSymbioteAnimation = (target, timeMs) => {
-  cancelAnimationFrame(symbioteRaf)
-  startProgress = symbioteProgress.value
-  targetProgress = target
-  duration = timeMs
-  animationStartTime = performance.now()
-  
-  const step = (timestamp) => {
-    const elapsed = Math.max(0, timestamp - animationStartTime)
-    let t = duration > 0 ? Math.min(elapsed / duration, 1) : 1
-    
-    // Apply appropriate easing
-    let easedT = t
-    if (isClicking) {
-      easedT = easeClick(t)
-    } else {
-      easedT = easeOrganic(t)
-    }
-    
-    symbioteProgress.value = startProgress + (targetProgress - startProgress) * easedT
-    
-    if (t < 1) {
-      symbioteRaf = requestAnimationFrame(step)
-    } else {
-      symbioteProgress.value = targetProgress
-      if (isClicking && clickActionCallback) {
-        clickActionCallback()
-        isClicking = false
-        clickActionCallback = null
-      }
-    }
-  }
-  symbioteRaf = requestAnimationFrame(step)
-}
-
-const onSymbioteEnter = () => {
-  if (isClicking) return
-  // Hover infection: slow spread approx 3000ms
-  const remaining = 1 - symbioteProgress.value
-  startSymbioteAnimation(1, remaining * 3000)
-}
-
-const onSymbioteLeave = () => {
-  if (isClicking) return
-  // Leave retraction: approx 2000ms
-  const remaining = symbioteProgress.value
-  startSymbioteAnimation(0, remaining * 2000)
-}
-
-const handleSymbioteClick = (callback) => {
-  if (isClicking) return
-  isClicking = true
-  clickActionCallback = callback
-  
-  // Fast forward: 350ms, at least 150ms if very close
-  const remaining = 1 - symbioteProgress.value
-  startSymbioteAnimation(1, Math.max(remaining * 350, 150))
-}
-
 const canCurrentUserCreateTask = computed(() => {
   if (hasSystemAdminAccess(getStoredUserSession())) return true
   return canCreateTask(permissionMatrix.value, currentProjectRole.value)
@@ -3498,7 +3387,7 @@ onUnmounted(() => {
 </script>
 <style scoped>
 /* ==================================
-   SYMBIOTE BUTTON THEME (ADVANCED GOOEY MASK)
+   HI-TECH MODERN BUTTON THEME
    ================================== */
 .cyber-create-task-btn {
   position: relative;
@@ -3508,56 +3397,112 @@ onUnmounted(() => {
   height: 32px;
   padding: 0 16px;
   border-radius: 8px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: #ffffff; /* Clean default background */
-  box-shadow: inset 0 0 8px rgba(15, 23, 42, 0.02), 0 2px 4px rgba(0,0,0,0.02);
+  background: white;
+  border: 1px solid rgba(59, 130, 246, 0.3);
   cursor: pointer;
-  overflow: visible; /* Allow SVG filter to bleed if needed */
-  background-image: radial-gradient(ellipse at 50% 120%, rgba(15,23,42,0.05) 0%, transparent 60%);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1;
+}
+
+/* The spinning glowing laser border */
+.cyber-create-task-btn::before {
+  content: '';
+  position: absolute;
+  top: -150%;
+  left: -150%;
+  width: 400%;
+  height: 400%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 60%,
+    rgba(59, 130, 246, 0.1) 75%,
+    rgba(59, 130, 246, 0.9) 95%,
+    transparent 100%
+  );
+  animation: cyber-spin 3s linear infinite;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  z-index: -2;
+}
+
+/* The inner mask to make the laser only visible on the border */
+.cyber-create-task-btn::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  background: #ffffff;
+  border-radius: 7px;
+  z-index: -1;
+  transition: background 0.3s ease;
+}
+
+@keyframes cyber-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Hover Effects */
+.cyber-create-task-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2), 0 0 10px rgba(59, 130, 246, 0.3);
+}
+
+.cyber-create-task-btn:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+.cyber-create-task-btn:hover:not(:disabled)::after {
+  background: rgba(255, 255, 255, 0.95);
 }
 
 .cyber-create-task-btn:active:not(:disabled) {
   transform: translateY(1px);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
 }
 
 .cyber-create-task-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  background: #f1f5f9;
+  border-color: #e2e8f0;
 }
 
-/* BASE LAYER (Default State) */
-.cyber-base {
+/* Button Content (Shimmering Text) */
+.cyber-btn-content {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-weight: 600;
   font-size: 13px;
+  /* Shimmer gradient */
+  background: linear-gradient(
+    90deg, 
+    var(--color-accent) 0%, 
+    var(--color-accent) 40%, 
+    #60a5fa 50%, 
+    var(--color-accent) 60%, 
+    var(--color-accent) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
   color: var(--color-accent);
-  z-index: 1;
+  transition: background-position 0.3s ease;
 }
 
-/* SYMBIOTE LAYER (Hover State - The Infestation) */
-.cyber-symbiote {
-  position: absolute;
-  inset: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 13px;
-  padding: 0 16px;
-  
-  /* Deep glossy black material */
-  background: linear-gradient(135deg, #090e17 0%, #1a2235 50%, #0f172a 100%);
-  color: #ffffff;
-  z-index: 2;
-  pointer-events: none;
-  
-  /* Specular highlights for wet viscous look */
-  box-shadow: inset 0 2px 4px rgba(255,255,255,0.15), inset 0 -4px 8px rgba(0,0,0,0.5);
+.cyber-create-task-btn:hover:not(:disabled) .cyber-btn-content {
+  animation: cyber-shimmer 2s linear infinite;
+}
+
+@keyframes cyber-shimmer {
+  0% { background-position: 200% center; }
+  100% { background-position: 0% center; }
 }
 
 /* ==================================
