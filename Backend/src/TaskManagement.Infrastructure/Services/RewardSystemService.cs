@@ -665,35 +665,38 @@ public sealed class RewardSystemService : IRewardSystemService
 
                     if (deductLeaderboard)
                     {
-                        var validWorkTaskId = await _context.RewardPointEvents
-                            .Where(e => e.UserId == userId && e.SeasonId == reward.SeasonId)
-                            .Select(e => e.WorkTaskId)
+                        var usedTaskIds = _context.RewardPointEvents
+                            .Where(e => e.UserId == userId)
+                            .Select(e => e.WorkTaskId);
+                        var validWorkTaskId = await _context.WorkTasks
+                            .Where(t => t.ProjectId == projectId && !usedTaskIds.Contains(t.Id))
+                            .Select(t => t.Id)
                             .FirstOrDefaultAsync();
 
-                        if (validWorkTaskId == Guid.Empty)
+                        // A redemption can happen before the project has any task.
+                        // Do not insert an invalid event with an empty WorkTaskId.
+                        if (validWorkTaskId != Guid.Empty)
                         {
-                            validWorkTaskId = await _context.WorkTasks
-                                .Where(t => t.ProjectId == projectId)
-                                .Select(t => t.Id)
-                                .FirstOrDefaultAsync();
+                            var pointEvent = new RewardPointEvent
+                            {
+                                Id = Guid.NewGuid(),
+                                WorkTaskId = validWorkTaskId,
+                                UserId = userId,
+                                SeasonId = reward.SeasonId,
+                                ProjectId = projectId,
+                                Points = -pointCost,
+                                Xp = 0,
+                                ScoreSource = "Redeem",
+                                EventType = "RewardRedemption",
+                                DifficultySnapshot = "M",
+                                IdempotencyKey = $"redeem:{Guid.NewGuid():N}",
+                                Status = "Finalized",
+                                CompletedAt = now,
+                                FinalizedAt = now,
+                                CancellationReason = $"Redeemed reward: {reward.Name}"
+                            };
+                            _context.RewardPointEvents.Add(pointEvent);
                         }
-
-                        var pointEvent = new RewardPointEvent
-                        {
-                            Id = Guid.NewGuid(),
-                            WorkTaskId = validWorkTaskId,
-                        UserId = userId,
-                        SeasonId = reward.SeasonId,
-                        ProjectId = projectId,
-                        Points = -pointCost,
-                        Xp = 0,
-                        ScoreSource = "Redeem",
-                        Status = "Finalized",
-                        CompletedAt = now,
-                        FinalizedAt = now,
-                        CancellationReason = $"Redeemed reward: {reward.Name}"
-                    };
-                        _context.RewardPointEvents.Add(pointEvent);
                     }
                 }
 

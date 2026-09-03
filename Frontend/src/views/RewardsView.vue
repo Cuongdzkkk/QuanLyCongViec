@@ -761,6 +761,7 @@
                       <div style="padding: 12px; display: flex; flex-direction: column; flex: 1; box-sizing: border-box;">
                         <input v-model="editRewardForm.name" placeholder="Tên quà (vd: Discord Nitro)" required class="reward-nexus-input" style="margin-bottom: 6px; font-weight: 600;" />
                         <textarea v-model="editRewardForm.description" placeholder="Mô tả..." rows="1" class="reward-nexus-input" style="margin-bottom: 8px; flex: 1;"></textarea>
+                        <input v-model.number="editRewardForm.pointCost" type="number" min="0" step="1" placeholder="Giá đổi bằng điểm" class="reward-nexus-input" style="margin-bottom: 8px;" />
                         <div style="display: flex; justify-content: space-between; gap: 8px; margin-top: auto;">
                           <button type="button" @click="cancelEditReward" class="secondary-btn" style="flex: 1; padding: 4px 0; background: transparent; color: #ef4444; border: 1px solid #ef4444; border-radius: 6px; font-weight: 600; font-size: 11px; cursor: pointer;">Hủy</button>
                           <button type="submit" class="secondary-btn" style="flex: 1; padding: 4px 0; background: transparent; color: #3b82f6; border: 1px solid #3b82f6; border-radius: 6px; font-weight: 600; font-size: 11px; cursor: pointer;">Lưu</button>
@@ -1295,7 +1296,8 @@ const startEditReward = (reward) => {
   editingRewardId.value = reward.id
   editRewardForm.value = {
     name: reward.name,
-    description: parseDescription(reward.description).text
+    description: parseDescription(reward.description).text,
+    pointCost: Number(parseDescription(reward.description).pointCost ?? reward.pointCost ?? 0)
   }
 }
 
@@ -1317,6 +1319,10 @@ const saveEditReward = async (reward) => {
       if (editRewardForm.value && editRewardForm.value.name) {
         currentConfig.text = editRewardForm.value.description
       }
+      if (editRewardForm.value?.pointCost !== undefined) {
+        currentConfig.pointCost = Math.max(0, Number(editRewardForm.value.pointCost) || 0)
+        currentConfig.usePoints = true
+      }
       
       const payloadName = (editRewardForm.value && editRewardForm.value.name) ? editRewardForm.value.name : r.name
       
@@ -1329,7 +1335,7 @@ const saveEditReward = async (reward) => {
         threshold: r.threshold || 0,
         rankTo: r.rankTo || 1,
         method: currentConfig.usePoints ? 'Redeem' : 'Gift',
-        pointCost: currentConfig.pointCost || 0,
+        pointCost: Number(currentConfig.pointCost) || 0,
         quantity: r.quantity || null,
         claimLimit: r.claimLimit || null,
         requireActiveMemberAtSettlement: r.requireActiveMemberAtSettlement ?? false
@@ -1338,7 +1344,7 @@ const saveEditReward = async (reward) => {
       r.name = payloadName
       r.description = JSON.stringify(currentConfig)
       r.method = currentConfig.usePoints ? 'Redeem' : 'Gift'
-      r.pointCost = currentConfig.pointCost || 0
+      r.pointCost = Number(currentConfig.pointCost) || 0
       ElMessage.success('Đã lưu cấu hình phần thưởng vào CSDL thành công!')
     } catch (err) {
       ElMessage.error('Không thể lưu phần thưởng.')
