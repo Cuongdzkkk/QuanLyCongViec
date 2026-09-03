@@ -37,25 +37,34 @@ defineProps({
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 48px 24px;
+  padding: 56px 24px;
+  min-height: 260px;
 }
 
 .empty-icon {
-  font-size: 48px;
-  color: var(--sp-text-secondary, #A5ADBA);
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border: 1px solid #bde7fb;
+  border-radius: 14px;
+  background: #eaf8ff;
+  color: #0ea5e9;
+  font-size: 25px;
   margin-bottom: 16px;
+  box-shadow: 0 4px 12px rgba(14, 165, 233, .08);
 }
 
 .empty-title {
   margin: 0 0 8px 0;
-  font-size: 18px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--sp-text-primary, #172B4D);
 }
 
 .empty-description {
   margin: 0 0 24px 0;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--sp-text-secondary, #5E6C84);
   max-width: 400px;
 }
@@ -63,5 +72,24 @@ defineProps({
 .empty-actions {
   display: flex;
   gap: 12px;
+}
+
+.empty-actions :deep(button) {
+  min-height: 36px;
+  padding: 7px 16px;
+  border: 1px solid #8bd5f7;
+  border-radius: 8px;
+  background: #f5fcff;
+  color: #0795d3;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: .15s ease;
+}
+
+.empty-actions :deep(button:hover) {
+  background: #e0f5ff;
+  border-color: #38bdf8;
 }
 </style>

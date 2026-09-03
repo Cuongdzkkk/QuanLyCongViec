@@ -11,42 +11,28 @@ namespace TaskManagement.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.CreateTable(
-                name: "LevelConfigs",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    ProjectId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Level = table.Column<int>(type: "int", nullable: false),
-                    Title = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    RequiredXpPerLevel = table.Column<int>(type: "int", nullable: false),
-                    RewardId = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_LevelConfigs", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_LevelConfigs_Projects_ProjectId",
-                        column: x => x.ProjectId,
-                        principalTable: "Projects",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_LevelConfigs_RewardDefinitions_RewardId",
-                        column: x => x.RewardId,
-                        principalTable: "RewardDefinitions",
-                        principalColumn: "Id");
-                });
+            migrationBuilder.Sql(@"
+IF OBJECT_ID(N'[dbo].[LevelConfigs]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[LevelConfigs] (
+        [Id] uniqueidentifier NOT NULL,
+        [ProjectId] uniqueidentifier NOT NULL,
+        [Level] int NOT NULL,
+        [Title] nvarchar(100) NOT NULL,
+        [RequiredXpPerLevel] int NOT NULL,
+        [RewardId] uniqueidentifier NULL,
+        CONSTRAINT [PK_LevelConfigs] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_LevelConfigs_Projects_ProjectId] FOREIGN KEY ([ProjectId]) REFERENCES [dbo].[Projects] ([Id]) ON DELETE CASCADE,
+        CONSTRAINT [FK_LevelConfigs_RewardDefinitions_RewardId] FOREIGN KEY ([RewardId]) REFERENCES [dbo].[RewardDefinitions] ([Id])
+    );
+END
 
-            migrationBuilder.CreateIndex(
-                name: "IX_LevelConfigs_ProjectId",
-                table: "LevelConfigs",
-                column: "ProjectId");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LevelConfigs_ProjectId' AND object_id = OBJECT_ID(N'[dbo].[LevelConfigs]'))
+    CREATE INDEX [IX_LevelConfigs_ProjectId] ON [dbo].[LevelConfigs] ([ProjectId]);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_LevelConfigs_RewardId",
-                table: "LevelConfigs",
-                column: "RewardId");
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LevelConfigs_RewardId' AND object_id = OBJECT_ID(N'[dbo].[LevelConfigs]'))
+    CREATE INDEX [IX_LevelConfigs_RewardId] ON [dbo].[LevelConfigs] ([RewardId]);
+");
         }
 
         /// <inheritdoc />

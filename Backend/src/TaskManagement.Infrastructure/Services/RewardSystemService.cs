@@ -608,9 +608,11 @@ public sealed class RewardSystemService : IRewardSystemService
                 if (reward.EndAt.HasValue && now > reward.EndAt.Value) throw new InvalidOperationException("This reward has expired.");
                 var pointCost = reward.PointCost ?? 0;
                 if (pointCost < 0) throw new InvalidOperationException("Invalid point cost.");
-                
+                var seasonPoints = await _context.RewardPointEvents
+                    .Where(e => e.UserId == userId && e.SeasonId == reward.SeasonId && e.Status == "Finalized")
+                    .SumAsync(e => (int?)e.Points) ?? 0;
                 var wallet = await _context.UserWallets.FirstOrDefaultAsync(w => w.UserId == userId);
-                if ((wallet == null && pointCost > 0) || (wallet != null && wallet.TotalPoints < pointCost))
+                if (seasonPoints < pointCost)
                     throw new InvalidOperationException("Insufficient balance.");
 
                 if (reward.Quantity.HasValue && reward.Quantity.Value <= 0)
@@ -624,14 +626,15 @@ public sealed class RewardSystemService : IRewardSystemService
                 }
 
                 // Deduct balance
-                if (wallet != null)
+                if (wallet == null)
                 {
-                    wallet.TotalPoints -= pointCost;
-                }
-                else if (pointCost == 0)
-                {
-                    wallet = new UserWallet { UserId = userId, TotalPoints = 0, Level = 1 };
+                    wallet = new UserWallet { UserId = userId, TotalPoints = Math.Max(0, seasonPoints - pointCost), Level = 1 };
                     _context.UserWallets.Add(wallet);
+                }
+                else
+                {
+                    // Keep the wallet projection aligned with the spendable season score.
+                    wallet.TotalPoints = Math.Max(0, seasonPoints - pointCost);
                 }
 
                 // Create PointTransaction
@@ -669,7 +672,7 @@ public sealed class RewardSystemService : IRewardSystemService
                             .Where(e => e.UserId == userId)
                             .Select(e => e.WorkTaskId);
                         var validWorkTaskId = await _context.WorkTasks
-                            .Where(t => t.ProjectId == projectId && !usedTaskIds.Contains(t.Id))
+                            .Where(t => workspaceProjectIds.Contains(t.ProjectId) && !usedTaskIds.Contains(t.Id))
                             .Select(t => t.Id)
                             .FirstOrDefaultAsync();
 

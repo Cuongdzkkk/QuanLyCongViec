@@ -471,7 +471,7 @@
         <div style="display: flex; justify-content: space-between; align-items: center; padding-right: 24px;">
           <span style="font-size: 18px; font-weight: 700; color: #0f172a;">Reward Shop</span>
           <div style="font-size: 14px; font-weight: 700; background: #fef08a; padding: 6px 16px; border-radius: 20px; color: #a16207; display: flex; align-items: center; gap: 8px;">
-            <i class="fa-solid fa-coins"></i> {{ wallet.totalPoints }} pts
+            <i class="fa-solid fa-coins"></i> {{ shopPoints }} pts
           </div>
         </div>
       </template>
@@ -500,7 +500,7 @@
                 <strong style="font-size: 15px; color: #0f172a; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; letter-spacing: -0.3px;">{{ item.name }}</strong>
                 <p v-if="getRewardConfig(item).text" style="margin: 6px 0 12px; color: #475569; font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; flex: 1;">{{ getRewardConfig(item).text }}</p>
                 <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: center;">
-                  <button class="reward-redeem-btn" :disabled="wallet.totalPoints < (getRewardConfig(item).pointCost ?? item.pointCost) || shopBusy" @click="redeemReward(item)">
+                  <button class="reward-redeem-btn" :disabled="shopPoints < (getRewardConfig(item).pointCost ?? item.pointCost) || shopBusy" @click="redeemReward(item)">
                     <i class="fa-solid fa-spinner fa-spin" v-if="shopBusy"></i>
                     <template v-else>
                       <i class="fa-solid fa-cart-shopping" style="font-size: 14px;"></i>
@@ -1210,6 +1210,12 @@ const getFirstActiveProjectId = () => {
   }
   return null
 }
+
+// Reward Shop must use the same points shown on the current season leaderboard.
+// Fall back to the wallet only when no season is active.
+const shopPoints = computed(() => seasonDashboard.value?.currentSeason
+  ? Number(seasonDashboard.value.mySeasonPoints || 0)
+  : Number(wallet.value?.totalPoints || 0))
 
 const ensureActiveProjects = async () => {
   if (!homeProjectStore.projects || homeProjectStore.projects.length === 0) {

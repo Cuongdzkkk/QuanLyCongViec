@@ -22,7 +22,7 @@
             <el-button type="info" plain size="default" @click="handleExportTasks">
               <i class="fa-solid fa-file-export mr-1"></i> Xuất Excel/CSV
             </el-button>
-            <button class="nexus-btn-primary" @click="openCreateTask('TO DO')" :disabled="!canCurrentUserCreateTask" :title="!canCurrentUserCreateTask ? 'Bạn không có quyền tạo công việc' : ''">
+            <button class="cyber-create-task-btn" @click="openCreateTask('TO DO')" :disabled="!canCurrentUserCreateTask" :title="!canCurrentUserCreateTask ? 'Bạn không có quyền tạo công việc' : ''">
               <i class="fa-solid fa-plus"></i> {{ t('Add work item') }}
             </button>
           </div>
@@ -767,11 +767,11 @@
                       </button>
                       <el-popover v-if="displayProperties.assignee" :disabled="!canAssignTaskMember()" placement="bottom" trigger="click" width="260" popper-class="plane-popover assignee-plane-popover">
                         <template #reference>
-                          <button type="button" class="card-assignee-trigger" v-if="getTaskAssigneeSummary(element).label" :title="getTaskAssigneeSummary(element).label">
+                          <button type="button" class="card-assignee-trigger" v-if="getTaskAssigneeSummary(element).label" :title="getTaskAssigneeSummary(element).label" @click.stop>
                             <UserAvatar v-if="getTaskAssigneeIds(element).length === 1" :user="getAssigneeUser(element)" :size="32" :fontSize="12" />
                             <span v-else class="card-assignee-count">+{{ getTaskAssigneeIds(element).length }}</span>
                           </button>
-                          <button type="button" class="card-assignee-trigger is-empty" v-else :title="tr('No assignee', 'Chưa có người thực hiện')">
+                          <button type="button" class="card-assignee-trigger is-empty" v-else :title="tr('No assignee', 'Chưa có người thực hiện')" @click.stop>
                             <i class="fa-solid fa-question"></i>
                           </button>
                         </template>
@@ -3379,6 +3379,56 @@ onUnmounted(() => {
 })
 </script>
 <style scoped>
+.cyber-create-task-btn {
+  background: linear-gradient(135deg, var(--color-accent) 0%, #3b82f6 100%);
+  color: white;
+  border: none;
+  padding: 0 16px;
+  height: 32px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.cyber-create-task-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%; width: 50%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transform: skewX(-20deg);
+  transition: all 0.5s ease;
+}
+
+.cyber-create-task-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  background: linear-gradient(135deg, #3b82f6 0%, var(--color-accent) 100%);
+}
+
+.cyber-create-task-btn:hover:not(:disabled)::before {
+  left: 150%;
+}
+
+.cyber-create-task-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.cyber-create-task-btn:disabled {
+  background: #e2e8f0;
+  color: #94a3b8;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 /* ==================================
    PLANE.SO PROJECT KANBAN THEME
    ================================== */
