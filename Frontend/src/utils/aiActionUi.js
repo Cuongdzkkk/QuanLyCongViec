@@ -7,6 +7,17 @@ const readOnlyActionTypes = new Set([
   'refresh_report', 'export_report_csv', 'summarize_report'
 ])
 
+// Keep quick tools aligned with actions the backend already exposes as read-only.
+// Prompts remain human-readable because the AI endpoint is intent based.
+export const AI_QUICK_ACTIONS = [
+  { type: 'summarize_project', label: 'Tóm tắt dự án', icon: 'fa-solid fa-chart-simple', prompt: 'Tóm tắt dự án hiện tại và nêu 3 điểm cần chú ý.' },
+  { type: 'get_workload', label: 'Xem tải công việc', icon: 'fa-solid fa-users-viewfinder', prompt: 'Cho tôi biết tải công việc hiện tại của team.' },
+  { type: 'list_overdue_tasks', label: 'Task quá hạn', icon: 'fa-solid fa-calendar-xmark', prompt: 'Liệt kê các task đang quá hạn và đề xuất thứ tự xử lý.' },
+  { type: 'summarize_page', label: 'Tóm tắt trang', icon: 'fa-regular fa-file-lines', prompt: 'Tóm tắt trang hiện tại và nêu 3 điểm cần chú ý.' },
+  { type: 'explain_report', label: 'Giải thích báo cáo', icon: 'fa-solid fa-magnifying-glass-chart', prompt: 'Giải thích các điểm chính trong báo cáo hiện tại.' },
+  { type: 'suggest_view_filter', label: 'Gợi ý bộ lọc', icon: 'fa-solid fa-filter-circle-dollar', prompt: 'Gợi ý bộ lọc hữu ích cho dữ liệu hiện tại.' }
+]
+
 export const isReadOnlyAiAction = (type, requiresConfirmation) =>
   requiresConfirmation === false || readOnlyActionTypes.has(String(type || '').toLowerCase())
 

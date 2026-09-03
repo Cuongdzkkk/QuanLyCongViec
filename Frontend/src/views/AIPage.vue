@@ -20,6 +20,10 @@
           <div class="header-left">
             <h2 class="page-title">Trợ lý AI</h2>
             <span class="header-pill">Workspace assistant</span>
+            <span class="workspace-context-pill" :title="currentWorkspaceId ? `Workspace ${currentWorkspaceId}` : 'Chưa chọn workspace'">
+              <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+              {{ activeProjectName }} · {{ currentWorkspaceId ? 'Workspace hiện tại' : 'Chưa chọn workspace' }}
+            </span>
             <span v-if="aiUsage" class="credit-pill">
               {{ aiUsage.usedCredits }}/{{ aiUsage.includedCredits }} credits · còn {{ aiUsage.remainingCredits }}
             </span>
@@ -273,19 +277,18 @@
           <div class="section-label">Trợ lý AI</div>
           <div class="section-title">HÀNH ĐỘNG NHANH</div>
           <div class="quick-links">
-            <button class="q-link" type="button" @click="useQuickPrompt('Tạo lộ trình cho dự án hiện tại')">
-              <i class="fa-solid fa-map-location-dot"></i> Tạo lộ trình
-            </button>
-            <button class="q-link" type="button" @click="useQuickPrompt('Tóm tắt các công việc quan trọng')">
-              <i class="fa-regular fa-file-lines"></i> Tóm tắt công việc
-            </button>
-            <button class="q-link" type="button" @click="useQuickPrompt('Soạn bản cập nhật tiến độ ngắn gọn')">
-              <i class="fa-solid fa-pen-nib"></i> Soạn bản cập nhật
-            </button>
-            <button class="q-link" type="button" @click="prepareBreakdownPrompt()">
-              <i class="fa-solid fa-list-check"></i> Breakdown task
+            <button v-for="action in quickActions.slice(0, 4)" :key="action.type" class="q-link" type="button" @click="useQuickPrompt(action.prompt)">
+              <i :class="action.icon" aria-hidden="true"></i> {{ action.label }}
             </button>
           </div>
+          <details v-if="quickActions.slice(4).length" class="quick-more">
+            <summary>Xem thêm công cụ</summary>
+            <div class="quick-links quick-links-more">
+              <button v-for="action in quickActions.slice(4)" :key="`more-${action.type}`" class="q-link" type="button" @click="useQuickPrompt(action.prompt)">
+                <i :class="action.icon" aria-hidden="true"></i> {{ action.label }}
+              </button>
+            </div>
+          </details>
         </div>
 
         <div class="panel-section mt-30">
@@ -294,16 +297,21 @@
         </div>
 
         <div class="upgrade-card-wrapper">
-          <div class="upgrade-card">
-            <div class="plan-label">AI CREDITS</div>
-            <div class="plan-desc">Xem các gói và luồng mua credits thật của SprintA.</div>
-            <button class="btn-upgrade" type="button" @click="openAiCreditPurchase">Mua thêm AI credits</button>
+          <div class="upgrade-card" aria-label="Tình trạng AI Credits">
+            <div class="plan-label">AI CREDITS · {{ aiPlanLabel }}</div>
+            <strong class="credit-balance">{{ aiRemainingCredits }} còn lại</strong>
+            <div class="credit-meter" role="progressbar" :aria-valuenow="aiCreditPercent" aria-valuemin="0" aria-valuemax="100" aria-label="Tỷ lệ AI credits còn lại">
+              <span :style="{ width: `${aiCreditPercent}%` }"></span>
+            </div>
+            <p class="plan-desc">{{ aiUsage ? `${aiUsage.usedCredits || 0} đã dùng · ${aiUsage.includedCredits || 0} được cấp trong kỳ này.` : 'Đang tải trạng thái credits...' }}</p>
+            <button class="btn-upgrade" type="button" @click="openAiCreditPurchase">Quản lý AI Credits</button>
           </div>
         </div>
       </aside>
     </div>
 
     <CustomizeSidebarModal :visible="showCustomizeModal" @update:visible="showCustomizeModal = $event" @saved="handleSidebarSaved" />
+    <AiCreditsPurchaseModal v-model="aiCreditsModalVisible" />
   </div>
 </template>
 
@@ -314,6 +322,7 @@ import { ElMessage } from 'element-plus'
 import CustomizeSidebarModal from '../components/CustomizeSidebarModal.vue'
 import AiComposer from '@/components/ai/AiComposer.vue'
 import AiMessage from '@/components/ai/AiMessage.vue'
+import AiCreditsPurchaseModal from '@/components/ai/AiCreditsPurchaseModal.vue'
 
 import axiosClient from '@/api/axiosClient'
 import { useProjectStore } from '@/store/useProjectStore'
@@ -329,6 +338,7 @@ import { useAiConversationStore } from '@/store/useAiConversationStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
 import { isComposerSendKey } from '@/utils/aiWorkspace'
 import { useAiComposer } from '@/composables/useAiComposer'
+import { AI_QUICK_ACTIONS } from '@/utils/aiActionUi'
 
 const router = useRouter()
 const aiComposerRef = ref(null)
@@ -349,11 +359,26 @@ const repoStatus = ref('')
 const repoAnalysis = ref(null)
 const createBacklogLoading = ref('')
 const aiUsage = ref(null)
+const aiCreditsModalVisible = ref(false)
 const aiCreditsExhausted = computed(() => Boolean(
   aiUsage.value
   && Number(aiUsage.value.includedCredits || 0) > 0
   && Number(aiUsage.value.remainingCredits ?? aiUsage.value.remainingIncludedCredits ?? (aiUsage.value.includedCredits - Number(aiUsage.value.usedCredits || 0))) <= 0
 ))
+const aiRemainingCredits = computed(() => Math.max(0, Number(
+  aiUsage.value?.remainingCredits
+  ?? aiUsage.value?.remainingIncludedCredits
+  ?? (Number(aiUsage.value?.includedCredits || 0) - Number(aiUsage.value?.usedCredits || 0))
+)))
+const aiCreditPercent = computed(() => {
+  const included = Number(aiUsage.value?.includedCredits || 0)
+  return included > 0 ? Math.max(0, Math.min(100, Math.round((aiRemainingCredits.value / included) * 100))) : 0
+})
+const aiPlanLabel = computed(() => {
+  const plan = String(aiUsage.value?.planCode || 'free').trim()
+  return plan ? plan.charAt(0).toUpperCase() + plan.slice(1) : 'Free'
+})
+const quickActions = computed(() => AI_QUICK_ACTIONS)
 const selectedBacklogKeys = ref([])
 const reviewTargetSprintId = ref('')
 const repoForm = ref({
@@ -533,7 +558,9 @@ const returnToFloating = async () => {
   aiPetStore.setPanelOpen(true)
   await router.back()
 }
-const openAiCreditPurchase = () => router.push('/#pricing')
+const openAiCreditPurchase = () => {
+  aiCreditsModalVisible.value = true
+}
 const actionPayload = action => action?.payload || {}
 
 const confirmPageAction = async action => {
@@ -1012,7 +1039,7 @@ const handleSidebarSaved = (prefs) => {
   width: 100%;
   max-width: 1440px;
   margin: 0 auto;
-  background: var(--bg-primary);
+  background: var(--color-bg);
 }
 
 .ai-container {
@@ -1042,20 +1069,20 @@ const handleSidebarSaved = (prefs) => {
 .header-pill {
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--bg-tertiary);
-  color: var(--accent-color);
+  background: var(--color-surface-hover);
+  color: var(--color-accent);
   font-size: 12px;
   font-weight: 600;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
 }
 
 .credit-pill {
   margin-left: auto;
   padding: 5px 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -1063,9 +1090,9 @@ const handleSidebarSaved = (prefs) => {
 .repo-panel {
   margin: 0 32px 12px;
   padding: 16px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: var(--bg-secondary);
+  background: var(--color-surface);
 }
 
 .repo-analysis-preview {
@@ -1093,8 +1120,8 @@ const handleSidebarSaved = (prefs) => {
   margin-bottom: 14px;
   padding: 12px;
   border-radius: 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
 }
 
 .analysis-project {
@@ -1237,7 +1264,7 @@ const handleSidebarSaved = (prefs) => {
 .analysis-col {
   padding: 12px;
   border-radius: 8px;
-  background: var(--bg-tertiary);
+  background: var(--color-surface-hover);
 }
 
 .analysis-col-title {
@@ -1300,15 +1327,15 @@ const handleSidebarSaved = (prefs) => {
 .repo-input {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
   padding: 10px 12px;
   outline: none;
 }
 .repo-input:focus {
-  border-color: var(--accent-color);
+  border-color: var(--color-accent);
 }
 
 .repo-actions {
@@ -1354,13 +1381,13 @@ const handleSidebarSaved = (prefs) => {
 }
 
 .bot-icon-circle {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  color: var(--accent-color);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-accent);
 }
 
 .user-avatar-circle {
-  background: var(--accent-color);
+  background: var(--color-accent);
   color: var(--color-text-inverse);
   font-weight: 700;
 }
@@ -1370,17 +1397,17 @@ const handleSidebarSaved = (prefs) => {
   max-width: 100%;
   padding: 10px 14px;
   border-radius: 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
   line-height: 1.5;
   font-size: 14px;
 }
 
 .bubble.primary {
-  background: var(--accent-color);
+  background: var(--color-accent);
   color: var(--color-text-inverse);
-  border-color: var(--accent-color);
+  border-color: var(--color-accent);
 }
 
 .thinking-steps {
@@ -1406,14 +1433,14 @@ const handleSidebarSaved = (prefs) => {
 .input-box {
   align-items: center;
   gap: 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
-  background: var(--bg-tertiary);
+  background: var(--color-surface-hover);
   padding: 0 14px;
   transition: all 0.2s;
 }
 .input-box:focus-within {
-  border-color: var(--accent-color);
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
@@ -1421,7 +1448,7 @@ const handleSidebarSaved = (prefs) => {
   flex: 1;
   border: 0;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   padding: 12px 0;
   outline: none;
   font-size: 14px;
@@ -1453,8 +1480,8 @@ const handleSidebarSaved = (prefs) => {
 .ai-details-panel {
   width: 300px;
   padding: 24px 20px;
-  border-left: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  border-left: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
 .section-label {
@@ -1475,20 +1502,24 @@ const handleSidebarSaved = (prefs) => {
   gap: 10px;
 }
 
+.quick-more { margin-top: 10px; border-top: 1px solid var(--color-border); padding-top: 10px; }
+.quick-more summary { color: var(--color-accent); font-size: 12px; font-weight: 750; cursor: pointer; }
+.quick-links-more { margin-top: 10px; }
+
 .q-link {
   width: 100%;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
   padding: 10px 12px;
   text-align: left;
   cursor: pointer;
   transition: all 0.2s;
 }
 .q-link:hover {
-  background: var(--hover-bg);
-  border-color: var(--accent-color);
+  background: var(--color-surface-hover);
+  border-color: var(--color-accent);
 }
 
 .mt-30 {
@@ -1504,11 +1535,15 @@ const handleSidebarSaved = (prefs) => {
 }
 
 .upgrade-card {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: var(--bg-tertiary);
+  background: var(--color-surface-hover);
   padding: 18px;
 }
+
+.credit-balance { display: block; margin-bottom: 10px; color: var(--color-text-primary); font-size: 22px; }
+.credit-meter { height: 7px; margin-bottom: 10px; overflow: hidden; border-radius: 999px; background: var(--color-border); }
+.credit-meter span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); }
 
 .plan-label {
   color: var(--color-accent);
@@ -1598,6 +1633,8 @@ const handleSidebarSaved = (prefs) => {
 .ai-container { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; max-width: none; padding: 24px clamp(18px, 4vw, 58px) 0; background: var(--color-bg); }
 .ai-page-header { flex: 0 0 auto; align-items: center; min-height: 52px; margin-bottom: 16px; }
 .header-left { min-width: 0; }
+.workspace-context-pill { display: inline-flex; align-items: center; gap: 6px; max-width: 280px; padding: 6px 9px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-context-pill i { color: var(--color-accent); }
 .credit-buy-inline { min-height: 30px; padding: 0 9px; border: 1px solid var(--color-border); border-radius: 8px; background: transparent; color: var(--color-accent); font-size: 11px; font-weight: 800; cursor: pointer; }
 .credit-buy-inline:hover, .credit-buy-inline:focus-visible { border-color: var(--color-accent); background: var(--sa-primary-soft); outline: none; }
 .header-actions { gap: 7px; }

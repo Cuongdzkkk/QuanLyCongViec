@@ -289,6 +289,7 @@
 
     <CreateSpaceModal v-model:visible="createSpaceVisible" @created="handleSpaceCreated" />
     <CreateProjectModal v-model:visible="createVisible" @created="handleProjectCreated" />
+    <AiCreditsPurchaseModal v-model="aiCreditsModalVisible" />
 
     <transition name="fade">
       <div v-if="isOffline" class="offline-warning-banner" role="alert">
@@ -371,6 +372,7 @@ import GlobalStickiesDrawer from '@/components/stickies/GlobalStickiesDrawer.vue
 import FloatingStickiesLayer from '@/components/stickies/FloatingStickiesLayer.vue'
 import AiComposer from '@/components/ai/AiComposer.vue'
 import AiMessage from '@/components/ai/AiMessage.vue'
+import AiCreditsPurchaseModal from '@/components/ai/AiCreditsPurchaseModal.vue'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
 import { useAiConversationStore } from '@/store/useAiConversationStore'
@@ -393,6 +395,7 @@ import {
   readAiPanelSize,
   writeAiPanelSize,
 } from '@/utils/aiWorkspace'
+import { AI_QUICK_ACTIONS } from '@/utils/aiActionUi'
 
 const voiceCallStore = useVoiceCallStore()
 const goToChatCall = () => {
@@ -438,6 +441,7 @@ const isMobile = ref(window.innerWidth <= 1024)
 const aiInput = ref('')
 const aiSending = ref(false)
 const aiUsage = ref(null)
+const aiCreditsModalVisible = ref(false)
 const aiContentRef = ref(null)
 const aiPanelSize = ref(readAiPanelSize(window.localStorage, {
   width: window.innerWidth,
@@ -1252,12 +1256,13 @@ const localizedPageSuggestions = {
   dashboard: ['Tóm tắt dashboard hiện tại', 'Rủi ro nào cần xử lý trước?', 'Gợi ý ưu tiên hôm nay'],
   unknown: ['Tôi có thể giúp gì cho bạn trong SprintA?', 'Tóm tắt trang hiện tại', 'Giải thích đoạn đã chọn']
 }
-const quickPrompts = computed(() => (localizedPageSuggestions[pageType.value] || localizedPageSuggestions.unknown)
-  .map((text, index) => ({
-    label: text,
-    text,
-    icon: ['fa-regular fa-file-lines', 'fa-solid fa-arrow-up-wide-short', 'fa-solid fa-lightbulb'][index % 3]
-  })))
+const quickPrompts = computed(() => {
+  const contextualText = (localizedPageSuggestions[pageType.value] || localizedPageSuggestions.unknown)[0]
+  return [
+    ...AI_QUICK_ACTIONS.slice(0, 3).map(action => ({ label: action.label, text: action.prompt, icon: action.icon })),
+    { label: contextualText, text: contextualText, icon: 'fa-solid fa-lightbulb' }
+  ]
+})
 
 const chatHistory = computed({
   get: () => aiConversationStore.messages,
@@ -1444,7 +1449,9 @@ const openAiFullChat = async () => {
   await router.push({ name: 'AIPage' })
 }
 
-const openAiCreditPurchase = () => router.push('/#pricing')
+const openAiCreditPurchase = () => {
+  aiCreditsModalVisible.value = true
+}
 
 const handleAiComposerKeydown = (event) => {
   if (!isComposerSendKey(event)) return
