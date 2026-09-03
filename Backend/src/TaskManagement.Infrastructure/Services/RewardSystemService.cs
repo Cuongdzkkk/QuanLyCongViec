@@ -79,7 +79,7 @@ public sealed class RewardSystemService : IRewardSystemService
         var leaderboard = uniqueMembers.Select(member =>
             {
                 var userEvents = events.Where(item => item.UserId == member.UserId && item.Status == "Finalized").ToList();
-                return new { member.UserId, Name = member.User.FullName ?? member.User.Email, Points = userEvents.Sum(item => item.Points), Tasks = userEvents.Count };
+                return new { member.UserId, Name = member.User.FullName ?? member.User.Email, Points = userEvents.Sum(item => item.Points), Tasks = userEvents.Count(item => item.ScoreSource != "Redeem") };
             })
             .Where(item => item.Points >= 1)
             .OrderByDescending(item => item.Points).ThenBy(item => item.Name)
@@ -634,6 +634,26 @@ public sealed class RewardSystemService : IRewardSystemService
                     CreatedAt = now.UtcDateTime
                 };
                 _context.PointTransactions.Add(pointTx);
+
+                // Create negative RewardPointEvent to drop leaderboard score
+                if (pointCost > 0)
+                {
+                    var pointEvent = new RewardPointEvent
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = userId,
+                        SeasonId = reward.SeasonId,
+                        ProjectId = projectId,
+                        Points = -pointCost,
+                        Xp = 0,
+                        ScoreSource = "Redeem",
+                        Status = "Finalized",
+                        CompletedAt = now,
+                        FinalizedAt = now,
+                        CancellationReason = $"Redeemed reward: {reward.Name}"
+                    };
+                    _context.RewardPointEvents.Add(pointEvent);
+                }
 
                 // Reduce Quantity
                 if (reward.Quantity.HasValue)

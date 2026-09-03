@@ -108,7 +108,7 @@ namespace TaskManagement.API.Controllers
 
             var goals = await _context.Goals
                 .Where(g => (g.DepartmentId == id || linkedGoalIds.Contains(g.Id)) && !g.IsArchived)
-                .Select(g => new { id = g.Id, title = g.Title, status = g.Status, progress = g.Progress, updatedAt = g.UpdatedAt })
+                .Select(g => new { id = g.Id, title = g.Title, status = g.Status, progress = g.Progress, updatedAt = g.UpdatedAt, ownerId = g.OwnerId, ownerName = g.Owner.FullName ?? g.Owner.Email, ownerAvatarUrl = g.Owner.AvatarUrl })
                 .ToListAsync();
 
             var projects = await _context.ProjectDepartmentRoles
@@ -586,6 +586,39 @@ namespace TaskManagement.API.Controllers
             if (links.Count > 0)
             {
                 _context.ProjectDepartmentRoles.RemoveRange(links);
+            }
+
+            // A team link grants its members access to the project. Removing the
+            // link must also revoke that access and clear their task assignments.
+            var teamMemberIds = await _context.DepartmentMembers
+                .Where(member => member.DepartmentId == id)
+                .Select(member => member.UserId)
+                .ToListAsync();
+            var projectMembers = await _context.ProjectMembers
+                .Where(member => member.ProjectId == projectId && teamMemberIds.Contains(member.UserId))
+                .ToListAsync();
+            foreach (var member in projectMembers)
+            {
+                member.Status = false;
+                member.LeftAt = DateTime.UtcNow;
+            }
+
+            var assignedTasks = await _context.WorkTasks
+                .Include(task => task.TaskAssignments)
+                .Where(task => task.ProjectId == projectId && !task.IsDeleted)
+                .ToListAsync();
+            foreach (var task in assignedTasks)
+            {
+                foreach (var assignment in task.TaskAssignments.Where(assignment => teamMemberIds.Contains(assignment.UserId)))
+                {
+                    assignment.Status = false;
+                    assignment.RemovedAt = DateTime.UtcNow;
+                }
+                if (task.AssignedUserId.HasValue && teamMemberIds.Contains(task.AssignedUserId.Value))
+                {
+                    task.AssignedUserId = null;
+                    task.UpdatedAt = DateTime.UtcNow;
+                }
             }
 
             await AddSiteAuditAsync(id, "UnlinkProject", projectId.ToString());

@@ -274,6 +274,18 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapFallbackToFile("index.html");
+
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<TaskManagement.Infrastructure.Data.ApplicationDbContext>();
+    try
+    {
+        context.Database.ExecuteSqlRaw("DROP INDEX IX_RewardGrants_RewardDefinitionId_SeasonId_RecipientUserId ON RewardGrants");
+        context.Database.ExecuteSqlRaw("CREATE INDEX IX_RewardGrants_RewardDefinitionId_SeasonId_RecipientUserId ON RewardGrants (RewardDefinitionId, SeasonId, RecipientUserId)");
+    }
+    catch { }
+}
+
 app.Run();
 
 void MapPublicUploadDirectory(string directoryName)

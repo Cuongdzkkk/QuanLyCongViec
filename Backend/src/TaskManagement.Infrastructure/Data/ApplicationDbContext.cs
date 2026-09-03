@@ -762,7 +762,7 @@ namespace TaskManagement.Infrastructure.Data
             {
                 entity.Property(item => item.Status).HasMaxLength(32).IsRequired();
                 entity.Property(item => item.ManagerNote).HasMaxLength(1000);
-                entity.HasIndex(item => new { item.RewardDefinitionId, item.SeasonId, item.RecipientUserId }).IsUnique();
+                entity.HasIndex(item => new { item.RewardDefinitionId, item.SeasonId, item.RecipientUserId });
                 entity.HasIndex(item => new { item.RecipientUserId, item.Status });
                 entity.HasOne(item => item.Season).WithMany(season => season.RewardGrants).HasForeignKey(item => item.SeasonId).OnDelete(DeleteBehavior.Restrict);
                 entity.HasOne(item => item.RewardDefinition).WithMany().HasForeignKey(item => item.RewardDefinitionId).OnDelete(DeleteBehavior.Cascade);
