@@ -1355,8 +1355,9 @@ const handleQuickImageSelect = (event) => {
 
 const getRewardImage = (id) => {
   const r = seasonDashboard.value.availableRewards.find(x => x.id === id)
-  if (r && r.displayValue && r.displayValue.startsWith('data:image')) {
-    return r.displayValue
+  if (r) {
+    if (r.displayValue && r.displayValue.startsWith('data:image')) return r.displayValue
+    if (r.imageUrl && r.imageUrl.startsWith('data:image')) return r.imageUrl
   }
   return ''
 }
@@ -1636,9 +1637,7 @@ const shopItems = computed(() => {
   }
 
   return (seasonDashboard.value.availableRewards || []).filter(item => {
-    const conf = getRewardConfig(item)
-    const isRedeemable = !item.method || item.method === 'Redeem'
-    return isRedeemable && conf.usePoints === true && (activeRewardsIds || []).some(id => id == item.id)
+    return (activeRewardsIds || []).some(id => id == item.id)
   })
 })
 
@@ -2092,7 +2091,8 @@ const createReward = async () => {
       pointCost: rewardForm.value.pointCost || 0,
       quantity: rewardForm.value.quantity || null,
       claimLimit: rewardForm.value.claimLimit || null,
-      requireActiveMemberAtSettlement: false
+      requireActiveMemberAtSettlement: false,
+      displayValue: croppedImage
     })
 
     const responseData = res.data?.data || res.data
