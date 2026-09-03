@@ -30,8 +30,11 @@ namespace TaskManagement.API.Controllers
         private readonly ILogger<AuthController> _logger;
 
         private const string GoogleLoginStateCookieName = "sprinta_google_login_state";
+        private const string GitHubLoginStateCookieName = "sprinta_github_login_state";
         private const string ExternalLinkStateCookieName = "sprinta_external_link_state";
-        private const int GoogleLoginStateLifetimeMinutes = 5;
+        private const int OAuthStateLifetimeMinutes = 5;
+        private const string GitHubLoginStatePrefix = "login.";
+        private const string GitHubLinkStatePrefix = "link.";
 
         public AuthController(
             IAuthService authService,
@@ -549,7 +552,7 @@ namespace TaskManagement.API.Controllers
             }
 
             var state = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
-            _googleLoginOAuthStateStore.Store(state, DateTime.UtcNow.AddMinutes(GoogleLoginStateLifetimeMinutes));
+            _googleLoginOAuthStateStore.Store(state, DateTime.UtcNow.AddMinutes(OAuthStateLifetimeMinutes));
             SetGoogleLoginStateCookie(state);
 
             return Ok(new { statusCode = 200, data = new { state } });
@@ -635,7 +638,7 @@ namespace TaskManagement.API.Controllers
                 userId,
                 "GoogleLink",
                 string.Empty,
-                DateTime.UtcNow.AddMinutes(GoogleLoginStateLifetimeMinutes));
+                DateTime.UtcNow.AddMinutes(OAuthStateLifetimeMinutes));
             SetExternalLinkStateCookie(state);
             return Ok(new { statusCode = 200, data = new { state } });
         }
@@ -706,14 +709,48 @@ namespace TaskManagement.API.Controllers
             if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(redirectUri))
                 return StatusCode(503, new { statusCode = 503, message = "GitHub authentication is temporarily unavailable." });
 
-            var state = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
+            var state = GitHubLinkStatePrefix + WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
             _oauthStateStore.Store(
                 state,
                 userId,
                 "GitHubLink",
                 string.Empty,
-                DateTime.UtcNow.AddMinutes(GoogleLoginStateLifetimeMinutes));
+                DateTime.UtcNow.AddMinutes(OAuthStateLifetimeMinutes));
             SetExternalLinkStateCookie(state);
+            var url = "https://github.com/login/oauth/authorize" +
+                $"?client_id={Uri.EscapeDataString(clientId)}" +
+                $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
+                "&scope=user%3Aemail" +
+                $"&state={Uri.EscapeDataString(state)}";
+            return Ok(new { statusCode = 200, data = new { url } });
+        }
+
+        [HttpGet("github-login/start")]
+        public IActionResult StartGitHubLogin()
+        {
+            var gitHubConfig = _configuration.GetSection("GitHub");
+            var clientId = gitHubConfig["ClientId"]?.Trim();
+            var redirectUri = gitHubConfig["RedirectUri"]?.Trim();
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(redirectUri))
+                return StatusCode(503, new { statusCode = 503, message = "GitHub authentication is temporarily unavailable." });
+
+            var state = GitHubLoginStatePrefix + WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
+            _oauthStateStore.Store(
+                state,
+                Guid.Empty,
+                "GitHubLogin",
+                string.Empty,
+                DateTime.UtcNow.AddMinutes(OAuthStateLifetimeMinutes));
+            Response.Cookies.Append(GitHubLoginStateCookieName, state, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                IsEssential = true,
+                MaxAge = TimeSpan.FromMinutes(OAuthStateLifetimeMinutes),
+                Path = "/api/auth"
+            });
+
             var url = "https://github.com/login/oauth/authorize" +
                 $"?client_id={Uri.EscapeDataString(clientId)}" +
                 $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
@@ -792,6 +829,9 @@ namespace TaskManagement.API.Controllers
         [HttpPost("github-login")]
         public async Task<IActionResult> GitHubLogin([FromBody] GitHubLoginRequestDto request)
         {
+            if (!TryConsumeGitHubLoginState(request.State ?? string.Empty))
+                return Unauthorized(new { statusCode = 401, message = "GitHub sign-in state is invalid or expired." });
+
             try
             {
                 var (response, refreshToken) = await _authService.GitHubLoginAsync(request);
@@ -858,6 +898,23 @@ namespace TaskManagement.API.Controllers
             return true;
         }
 
+        private bool TryConsumeGitHubLoginState(string state)
+        {
+            if (string.IsNullOrWhiteSpace(state) ||
+                !Request.Cookies.TryGetValue(GitHubLoginStateCookieName, out var cookieState) ||
+                !CryptographicOperations.FixedTimeEquals(
+                    System.Text.Encoding.UTF8.GetBytes(state),
+                    System.Text.Encoding.UTF8.GetBytes(cookieState ?? string.Empty)) ||
+                !_oauthStateStore.TryConsume(state, Guid.Empty, "GitHubLogin", out _))
+            {
+                Response.Cookies.Delete(GitHubLoginStateCookieName, new CookieOptions { Path = "/api/auth" });
+                return false;
+            }
+
+            Response.Cookies.Delete(GitHubLoginStateCookieName, new CookieOptions { Path = "/api/auth" });
+            return true;
+        }
+
         private void SetExternalLinkStateCookie(string state)
         {
             Response.Cookies.Append(ExternalLinkStateCookieName, state, new CookieOptions
@@ -866,7 +923,7 @@ namespace TaskManagement.API.Controllers
                 Secure = Request.IsHttps,
                 SameSite = SameSiteMode.Lax,
                 IsEssential = true,
-                MaxAge = TimeSpan.FromMinutes(GoogleLoginStateLifetimeMinutes),
+                MaxAge = TimeSpan.FromMinutes(OAuthStateLifetimeMinutes),
                 Path = "/api/auth"
             });
         }
@@ -917,7 +974,7 @@ namespace TaskManagement.API.Controllers
                 Secure = Request.IsHttps,
                 SameSite = SameSiteMode.Lax,
                 IsEssential = true,
-                MaxAge = TimeSpan.FromMinutes(GoogleLoginStateLifetimeMinutes),
+                MaxAge = TimeSpan.FromMinutes(OAuthStateLifetimeMinutes),
                 Path = "/api/auth/google-code"
             });
         }

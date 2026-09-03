@@ -205,7 +205,8 @@ import {
 import axiosClient from '../api/axiosClient'
 import {
   loginWithGoogleAuthorizationCode,
-  startGoogleAuthorizationCodeLogin
+  startGoogleAuthorizationCodeLogin,
+  startGitHubLogin
 } from '@/api/authApi'
 import { saveAuthSession } from '@/utils/authSession'
 import SprintaBrand from '@/components/branding/SprintaBrand.vue'
@@ -498,15 +499,17 @@ onBeforeUnmount(() => {
   googleAuthorizationClient = null
 })
 
-const handleGitHubLogin = () => {
+const handleGitHubLogin = async () => {
   const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID
   if (!clientId || clientId === 'CHANGE_ME_USE_LOCAL_ENV') {
     ElMessage.error('GitHub OAuth chưa được cấu hình.')
     return
   }
-  const redirectUri = import.meta.env.VITE_GITHUB_REDIRECT_URI || `${window.location.origin}/auth/github/callback`
-  const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=user:email`
-  window.location.href = githubAuthUrl
+  try {
+    window.location.href = await startGitHubLogin()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || error.message || 'Không thể bắt đầu đăng nhập GitHub.')
+  }
 }
 </script>
 

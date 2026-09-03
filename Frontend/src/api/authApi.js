@@ -100,6 +100,24 @@ export async function startGitHubAccountLink() {
   return url
 }
 
+export async function startGitHubLogin() {
+  const response = await axiosClient.get('/auth/github-login/start')
+  const url = response?.data?.data?.url
+  if (typeof url !== 'string' || !url.trim()) {
+    throw new Error('GitHub login URL was not issued.')
+  }
+  return url
+}
+
+export async function loginWithGitHub(code, state) {
+  if (typeof code !== 'string' || !code.trim() || typeof state !== 'string' || !state.trim()) {
+    const error = new Error('GitHub authorization response is incomplete.')
+    error.status = 400
+    throw error
+  }
+  return axiosClient.post('/auth/github-login', { code: code.trim(), state: state.trim() })
+}
+
 export async function linkGitHubAccount(code, state) {
   if (typeof code !== 'string' || !code.trim() || typeof state !== 'string' || !state.trim()) {
     const error = new Error('GitHub account link response is incomplete.')

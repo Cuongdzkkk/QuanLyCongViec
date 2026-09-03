@@ -17,6 +17,7 @@ test('connected accounts use explicit authenticated provider-link flows', () => 
   assert.match(api, /\/auth\/external-logins/)
   assert.match(sidebar, /value: 'connected'/)
   assert.match(profile, /ConnectedAccountsCard/)
-  assert.match(callback, /if \(state\)/)
+  assert.match(callback, /state\.startsWith\('link\.'\)/)
   assert.match(callback, /linkGitHubAccount\(code, state\)/)
+  assert.match(callback, /loginWithGitHub\(code, state\)/)
 })

@@ -145,6 +145,50 @@ public sealed class GoogleAuthorizationCodeFlowTests
     }
 
     [Fact]
+    public void GitHubLoginStart_EmitsServerBoundState()
+    {
+        var stateStore = new CapturingExternalLinkStateStore();
+        var controller = CreateController(
+            Configuration(),
+            Mock.Of<IAuthService>(),
+            Mock.Of<IGoogleAuthorizationCodeExchange>(),
+            new CapturingStateStore(),
+            stateStore);
+
+        var result = controller.StartGitHubLogin();
+
+        result.Should().BeOfType<OkObjectResult>();
+        stateStore.Provider.Should().Be("GitHubLogin");
+        stateStore.UserId.Should().Be(Guid.Empty);
+        stateStore.StoredState.Should().StartWith("login.");
+        controller.Response.Headers.SetCookie.ToString().Should().Contain("sprinta_github_login_state=");
+    }
+
+    [Fact]
+    public async Task GitHubLogin_RejectsMissingOrMismatchedStateBeforeService()
+    {
+        var auth = new Mock<IAuthService>(MockBehavior.Strict);
+        var stateStore = new CapturingExternalLinkStateStore();
+        var controller = CreateController(
+            Configuration(),
+            auth.Object,
+            Mock.Of<IGoogleAuthorizationCodeExchange>(),
+            new CapturingStateStore(),
+            stateStore);
+        controller.HttpContext.Request.Headers.Cookie = "sprinta_github_login_state=other-state";
+
+        var result = await controller.GitHubLogin(new GitHubLoginRequestDto
+        {
+            Code = "authorization-code",
+            State = "login.state"
+        });
+
+        result.Should().BeOfType<UnauthorizedObjectResult>();
+        stateStore.ConsumeCalled.Should().BeFalse();
+        auth.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task CodeExchange_SendsSecretOnlyToGoogleTokenEndpointAndReturnsIdToken()
     {
         var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
@@ -205,7 +249,10 @@ public sealed class GoogleAuthorizationCodeFlowTests
             ["Google:ClientSecret"] = "server-client-secret",
             ["Google:RedirectUri"] = Origin,
             ["Frontend:BaseUrl"] = Origin,
-            ["Cors:AllowedOrigins:0"] = Origin
+            ["Cors:AllowedOrigins:0"] = Origin,
+            ["GitHub:ClientId"] = "github-client-id",
+            ["GitHub:ClientSecret"] = "github-client-secret",
+            ["GitHub:RedirectUri"] = $"{Origin}/auth/github/callback"
         })
         .Build();
 
@@ -231,6 +278,7 @@ public sealed class GoogleAuthorizationCodeFlowTests
         public Guid UserId { get; private set; }
         public string? Provider { get; private set; }
         public bool ConsumeCalled { get; private set; }
+        public bool ConsumeResult { get; set; }
 
         public void Store(string nonce, Guid userId, string provider, string codeVerifier, DateTime expiresAt)
         {
@@ -243,7 +291,7 @@ public sealed class GoogleAuthorizationCodeFlowTests
         {
             ConsumeCalled = true;
             codeVerifier = string.Empty;
-            return false;
+            return ConsumeResult;
         }
     }
 

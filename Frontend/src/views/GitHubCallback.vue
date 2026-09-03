@@ -17,8 +17,7 @@
   <script setup>
   import { ref, onMounted } from 'vue'
   import { useRouter, useRoute } from 'vue-router'
-  import axiosClient from '../api/axiosClient'
-  import { linkGitHubAccount } from '@/api/authApi'
+  import { linkGitHubAccount, loginWithGitHub } from '@/api/authApi'
   import { saveAuthSession } from '@/utils/authSession'
   import { clearLegacyGitHubCredentialStorage } from '@/utils/githubCredentials'
   import { Loading, CircleCloseFilled } from '@element-plus/icons-vue'
@@ -41,14 +40,14 @@ onMounted(async () => {
   }
 
   try {
-    if (state) {
+    if (state.startsWith('link.')) {
       await linkGitHubAccount(code, state)
       ElMessage.success('Đã liên kết tài khoản GitHub thành công!')
       router.push('/profile?tab=connected')
       return
     }
 
-    const res = await axiosClient.post('/auth/github-login', { code })
+    const res = await loginWithGitHub(code, state)
 
     saveAuthSession(res.data.data)
 
@@ -94,4 +93,3 @@ onMounted(async () => {
   font-size: 16px;
 }
 </style>
-
