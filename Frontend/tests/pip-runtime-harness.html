@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Adaptive meeting PiP runtime harness</title>
+<style>body{font:14px system-ui;margin:20px}iframe{width:480px;height:320px;border:1px solid #64748b}pre{white-space:pre-wrap}</style>
+<button id="run">Run adaptive PiP checks</button>
+<iframe id="pip" title="Simulated Document PiP window"></iframe>
+<pre id="result">Idle</pre>
+<script type="module">
+  import { createMeetingPictureInPictureController } from '/src/services/meetingPictureInPicture.js'
+
+  const frame = document.querySelector('#pip')
+  const output = document.querySelector('#result')
+  const assert = (condition, message) => { if (!condition) throw new Error(message) }
+  const canvasStream = () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 64
+    canvas.height = 36
+    canvas.getContext('2d').fillRect(0, 0, 64, 36)
+    return canvas.captureStream(10)
+  }
+  const participant = (connectionId, name, options = {}) => ({
+    connectionId,
+    displayName: name,
+    cameraEnabled: options.cameraEnabled ?? false,
+    cameraStream: options.cameraStream || null,
+    isSpeaking: options.isSpeaking === true,
+    isLocal: options.isLocal === true
+  })
+  const layout = () => frame.contentDocument.querySelector('.meeting-pip')?.dataset.layout
+  const tileCount = () => frame.contentDocument.querySelectorAll('.meeting-pip-tile').length
+  const controller = createMeetingPictureInPictureController({ requestWindow: async () => frame.contentWindow })
+
+  document.querySelector('#run').addEventListener('click', async () => {
+    try {
+      const camera = canvasStream()
+      const screen = canvasStream()
+      const a = participant('a', 'An', { isLocal: true })
+      const b = participant('b', 'Bình')
+      const c = participant('c', 'Chi')
+      const d = participant('d', 'Dung')
+      const e = participant('e', 'Em')
+
+      await controller.open({ meetingName: 'P0 meeting', participants: [a], presentation: null })
+      assert(layout() === 'SINGLE' && tileCount() === 1, 'single layout failed')
+      controller.update({ participants: [a, b], presentation: null })
+      assert(layout() === 'TWO_UP' && tileCount() === 2, 'two-up layout failed')
+      controller.update({ participants: [a, b, c, d, e], presentation: null })
+      assert(layout() === 'GRID' && tileCount() === 4, 'bounded grid failed')
+      assert(frame.contentDocument.querySelector('.meeting-pip-overflow')?.textContent === '+1', 'overflow count failed')
+
+      controller.update({ participants: [{ ...a, cameraEnabled: true, cameraStream: camera }, b], presentation: null })
+      assert(frame.contentDocument.querySelector('[data-connection-id="a"] video[data-media-role="camera"]'), 'camera start update failed')
+      controller.update({ participants: [{ ...a, cameraEnabled: false, cameraStream: camera }, b], presentation: null })
+      assert(!frame.contentDocument.querySelector('[data-connection-id="a"] video'), 'camera stop update failed')
+
+      controller.update({ participants: [a, b], presentation: { displayName: 'Bình', stream: screen } })
+      assert(layout() === 'PRESENTATION', 'presentation layout failed')
+      assert(frame.contentDocument.querySelector('video[data-media-role="screen"]'), 'presentation stream failed')
+      assert(tileCount() === 2, 'participants missing beside presentation')
+      controller.update({ participants: [a, b], presentation: null })
+      assert(layout() === 'TWO_UP' && !frame.contentDocument.querySelector('.meeting-pip-presentation'), 'screen stop update failed')
+
+      controller.update({ participants: [a, b, c], presentation: null })
+      assert(tileCount() === 3, 'participant join update failed')
+      controller.update({ participants: [a, b], presentation: null })
+      assert(tileCount() === 2, 'participant leave update failed')
+      controller.update({ participants: [{ ...a, connectionId: 'a-reconnected' }, b], presentation: null })
+      assert(frame.contentDocument.querySelector('[data-connection-id="a-reconnected"]'), 'reconnect update failed')
+      assert(!frame.contentDocument.querySelector('audio'), 'PiP duplicated audio playback')
+
+      camera.getTracks().forEach(track => track.stop())
+      screen.getTracks().forEach(track => track.stop())
+      output.textContent = 'PASS\nPIP_SINGLE=PASS\nPIP_TWO_PARTICIPANT=PASS\nPIP_GRID=PASS\nPIP_PRESENTATION=PASS\nPIP_PRESENTATION_PLUS_PARTICIPANTS=PASS\nPIP_CAMERA_TOGGLE_WHILE_OPEN=PASS\nPIP_SCREEN_START_WHILE_OPEN=PASS\nPIP_SCREEN_STOP_WHILE_OPEN=PASS\nPIP_PARTICIPANT_JOIN_WHILE_OPEN=PASS\nPIP_PARTICIPANT_LEAVE_WHILE_OPEN=PASS\nPIP_RECONNECT_UPDATE=PASS\nDUPLICATE_AUDIO=NO'
+    } catch (error) {
+      output.textContent = `FAIL\n${error.stack || error.message}`
+    }
+  }, { once: true })
+</script>
+</html>

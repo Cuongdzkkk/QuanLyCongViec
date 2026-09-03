@@ -7,19 +7,18 @@ const getState = () => {
   if (!root[GOOGLE_IDENTITY_STATE]) {
     root[GOOGLE_IDENTITY_STATE] = {
       loadPromise: null,
-      initializedClientId: '',
       callback: null,
       callbackOwner: null,
-      renderedContainers: new WeakSet()
+      errorCallback: null
     }
   }
   return root[GOOGLE_IDENTITY_STATE]
 }
 
-const getGoogleIdentityApi = () => globalThis.google?.accounts?.id || null
+const getGoogleAuthorizationCodeApi = () => globalThis.google?.accounts?.oauth2 || null
 
 export const loadGoogleIdentityScript = () => {
-  const readyApi = getGoogleIdentityApi()
+  const readyApi = getGoogleAuthorizationCodeApi()
   if (readyApi) return Promise.resolve(readyApi)
 
   const state = getState()
@@ -31,7 +30,7 @@ export const loadGoogleIdentityScript = () => {
     const createdHere = !script
 
     const finish = () => {
-      const api = getGoogleIdentityApi()
+      const api = getGoogleAuthorizationCodeApi()
       if (api) {
         script?.setAttribute('data-sprinta-google-identity-ready', 'true')
         resolve(api)
@@ -68,58 +67,51 @@ export const loadGoogleIdentityScript = () => {
   return state.loadPromise
 }
 
-export const registerGoogleIdentity = async ({ clientId, callback }) => {
-  if (!clientId || typeof callback !== 'function') {
-    throw new Error('Google Identity Services configuration is incomplete.')
+export const registerGoogleAuthorizationCodeClient = async ({
+  clientId,
+  state: oauthState,
+  callback,
+  errorCallback
+}) => {
+  if (!clientId || !oauthState || typeof callback !== 'function') {
+    throw new Error('Google authorization configuration is incomplete.')
   }
 
   const api = await loadGoogleIdentityScript()
-  const state = getState()
-
-  if (state.initializedClientId && state.initializedClientId !== clientId) {
-    throw new Error('Google Identity Services was initialized with a different client.')
+  if (typeof api.initCodeClient !== 'function') {
+    throw new Error('Google authorization code flow is unavailable.')
   }
 
-  if (!state.initializedClientId) {
-    api.initialize({
-      client_id: clientId,
-      callback: response => state.callback?.(response),
-      auto_select: false,
-      cancel_on_tap_outside: true
-    })
-    state.initializedClientId = clientId
-  }
+  const sharedState = getState()
+  const owner = Symbol('google-authorization-code-callback-owner')
+  sharedState.callbackOwner = owner
+  sharedState.callback = callback
+  sharedState.errorCallback = errorCallback
 
-  const owner = Symbol('google-identity-callback-owner')
-  state.callbackOwner = owner
-  state.callback = callback
-
-  return () => {
-    if (state.callbackOwner !== owner) return
-    state.callback = null
-    state.callbackOwner = null
-  }
-}
-
-export const renderGoogleIdentityButton = (container, options = {}) => {
-  const api = getGoogleIdentityApi()
-  if (!api || !container) {
-    throw new Error('Google Identity Services is not ready.')
-  }
-
-  const state = getState()
-  if (state.renderedContainers.has(container)) return
-
-  container.replaceChildren()
-  api.renderButton(container, {
-    type: 'standard',
-    theme: 'outline',
-    size: 'large',
-    text: 'continue_with',
-    shape: 'rectangular',
-    logo_alignment: 'left',
-    width: Math.min(400, Math.max(180, Math.floor(container.clientWidth || 200))),
-    ...options
+  const client = api.initCodeClient({
+    client_id: clientId,
+    scope: 'openid email profile',
+    include_granted_scopes: false,
+    ux_mode: 'popup',
+    state: oauthState,
+    callback: response => sharedState.callback?.(response),
+    error_callback: response => sharedState.errorCallback?.(response)
   })
-  state.renderedContainers.add(container)
+
+  if (!client || typeof client.requestCode !== 'function') {
+    sharedState.callback = null
+    sharedState.errorCallback = null
+    sharedState.callbackOwner = null
+    throw new Error('Google authorization code client is unavailable.')
+  }
+
+  return {
+    requestCode: () => client.requestCode(),
+    release: () => {
+      if (sharedState.callbackOwner !== owner) return
+      sharedState.callback = null
+      sharedState.errorCallback = null
+      sharedState.callbackOwner = null
+    }
+  }
 }

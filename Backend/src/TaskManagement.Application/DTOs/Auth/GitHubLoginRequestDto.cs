@@ -6,5 +6,7 @@ namespace TaskManagement.Application.DTOs.Auth
     {
         [Required]
         public string Code { get; set; } = string.Empty;
+
+        public string? State { get; set; }
     }
 }

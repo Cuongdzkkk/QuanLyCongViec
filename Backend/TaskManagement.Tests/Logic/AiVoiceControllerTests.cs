@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using TaskManagement.API.Controllers;
+using TaskManagement.Application.Common;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
 using TaskManagement.Infrastructure.Services;
@@ -82,6 +83,36 @@ namespace TaskManagement.Tests.Logic
             _aiService.Verify(service => service.TranscribeAudioAsync(
                 It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
                 Times.Never);
+        }
+
+        [Fact]
+        public async Task TranscribeAudio_ProviderRejectsRequest_Returns400()
+        {
+            _aiService
+                .Setup(service => service.TranscribeAudioAsync(
+                    It.IsAny<Guid>(), "auto", "audio/wav", It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new AiTranscriptionProviderException(AiTranscriptionProviderErrorKind.InvalidRequest));
+            var controller = CreateController();
+
+            var result = await controller.TranscribeAudio(CreateWaveFile(), "auto", CancellationToken.None);
+
+            var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+            objectResult.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+        }
+
+        [Fact]
+        public async Task TranscribeAudio_ProviderAuthenticationFails_Returns503()
+        {
+            _aiService
+                .Setup(service => service.TranscribeAudioAsync(
+                    It.IsAny<Guid>(), "auto", "audio/wav", It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new AiTranscriptionProviderException(AiTranscriptionProviderErrorKind.Authentication));
+            var controller = CreateController();
+
+            var result = await controller.TranscribeAudio(CreateWaveFile(), "auto", CancellationToken.None);
+
+            var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+            objectResult.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
         }
 
         private AiController CreateController()

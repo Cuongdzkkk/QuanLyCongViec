@@ -99,6 +99,7 @@ namespace TaskManagement.API.Controllers
                     id = user.Id,
                     email = user.Email,
                     fullName = user.FullName,
+                    systemRoles = user.UserRoles.Select(ur => ur.Role.Name).ToArray(),
                     avatarUrl = user.AvatarUrl,
                     coverUrl = user.CoverUrl,
                     publicName = string.IsNullOrEmpty(extra.PublicName) ? user.FullName : extra.PublicName,

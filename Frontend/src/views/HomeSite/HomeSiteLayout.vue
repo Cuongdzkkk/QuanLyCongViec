@@ -1,13 +1,33 @@
 <template>
-  <div class="home-site-container sprinta-layout-container">
-    <AppTopBar @toggle-create="showCreateModal = true" />
+  <div ref="homeSiteRef" class="home-site-container sprinta-layout-container">
+    <AppTopBar
+      :sidebar-visible="isSidebarOpen"
+      @toggle-sidebar="toggleSidebar"
+      @toggle-create="showCreateModal = true"
+    />
 
     <div class="home-content-wrapper">
+      <div
+        v-if="isSidebarOpen"
+        class="sidebar-overlay"
+        aria-hidden="true"
+        @click="closeSidebar"
+      ></div>
+
       <!-- Sidebar Jira Style -->
-      <aside class="sidebar">
+      <aside
+        id="app-sidebar"
+        ref="sidebarRef"
+        class="sidebar"
+        :class="{ 'sidebar--open': isSidebarOpen }"
+        :role="isCompactViewport ? 'dialog' : undefined"
+        :aria-modal="isCompactViewport && isSidebarOpen ? 'true' : undefined"
+        :aria-hidden="isCompactViewport && !isSidebarOpen ? 'true' : undefined"
+        @keydown="handleSidebarKeydown"
+      >
         <div class="sidebar-header">
           <div class="site-switcher" @click="goToSiteSelection">
-            <div class="site-icon">S</div>
+            <SprintaBrand class="site-icon" size="compact" :show-name="false" />
             <div class="site-info">
               <span class="site-name">SprintA Home</span>
               <span class="site-subtitle">{{ t('Site Management') }}</span>
@@ -60,7 +80,11 @@
       </aside>
 
       <!-- Main Content Area -->
-      <main class="main-content" :class="{ 'teams-main-content': isModule('teams') }">
+      <main
+        class="main-content"
+        :class="{ 'teams-main-content': isModule('teams') }"
+        :inert="isCompactViewport && isSidebarOpen"
+      >
         <slot>
           <router-view></router-view>
         </slot>
@@ -70,10 +94,10 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getStoredUser } from '@/utils/permissions'
 import AppTopBar from '@/components/layout/AppTopBar.vue'
+import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 import { useI18nStore } from '@/store/useI18nStore'
 
 const router = useRouter()
@@ -82,10 +106,79 @@ const i18nStore = useI18nStore()
 const t = i18nStore.t
 
 const showCreateModal = ref(false)
+const homeSiteRef = ref(null)
+const sidebarRef = ref(null)
+const isCompactViewport = ref(false)
+const isSidebarOpen = ref(false)
+let compactViewportQuery = null
 
-const currentUser = getStoredUser()
-const userName = currentUser?.fullName || currentUser?.username || currentUser?.email || 'bạn'
-const userInitials = userName.substring(0, 2).toUpperCase()
+const focusMenuToggle = () => {
+  homeSiteRef.value?.querySelector('.menu-toggle')?.focus()
+}
+
+const closeSidebar = (restoreFocus = true) => {
+  const wasOpen = isSidebarOpen.value
+  isSidebarOpen.value = false
+
+  if (restoreFocus && wasOpen) {
+    nextTick(focusMenuToggle)
+  }
+}
+
+const openSidebar = () => {
+  isSidebarOpen.value = true
+  nextTick(() => sidebarRef.value?.querySelector('.nav-item')?.focus())
+}
+
+const toggleSidebar = () => {
+  if (isSidebarOpen.value) {
+    closeSidebar()
+    return
+  }
+
+  openSidebar()
+}
+
+const syncCompactViewport = (event) => {
+  isCompactViewport.value = event.matches
+  if (!event.matches) closeSidebar(false)
+}
+
+const handleSidebarKeydown = (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeSidebar()
+    return
+  }
+
+  if (event.key !== 'Tab' || !isCompactViewport.value || !isSidebarOpen.value) return
+
+  const focusableItems = [...sidebarRef.value.querySelectorAll('a[href], button:not([disabled])')]
+  const firstItem = focusableItems[0]
+  const lastItem = focusableItems.at(-1)
+
+  if (event.shiftKey && document.activeElement === firstItem) {
+    event.preventDefault()
+    lastItem?.focus()
+  } else if (!event.shiftKey && document.activeElement === lastItem) {
+    event.preventDefault()
+    firstItem?.focus()
+  }
+}
+
+watch(() => route.fullPath, () => {
+  if (isCompactViewport.value) closeSidebar(false)
+})
+
+onMounted(() => {
+  compactViewportQuery = window.matchMedia('(max-width: 1024px)')
+  syncCompactViewport(compactViewportQuery)
+  compactViewportQuery.addEventListener('change', syncCompactViewport)
+})
+
+onBeforeUnmount(() => {
+  compactViewportQuery?.removeEventListener('change', syncCompactViewport)
+})
 
 const isModule = (moduleName) => {
   if (moduleName === 'people') {
@@ -107,10 +200,12 @@ const goToSiteSelection = () => {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
+  min-width: 0;
+  min-height: 0;
   background-color: #ffffff;
   color: #172b4d;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  overflow: hidden;
 }
 
 /* Topbar */
@@ -283,7 +378,9 @@ const goToSiteSelection = () => {
 .home-content-wrapper {
   display: flex;
   flex: 1;
-  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
 }
 
 /* Sidebar */
@@ -316,16 +413,6 @@ const goToSiteSelection = () => {
 }
 
 .site-icon {
-  width: 32px;
-  height: 32px;
-  background-color: #0052cc;
-  color: white;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  font-weight: bold;
   flex-shrink: 0;
 }
 
@@ -422,6 +509,8 @@ const goToSiteSelection = () => {
 /* Main Content */
 .main-content {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   background-color: #FAFBFC;
   position: relative;
@@ -429,5 +518,73 @@ const goToSiteSelection = () => {
 
 .main-content.teams-main-content {
   background-color: #ffffff;
+}
+
+.sidebar-overlay {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .home-site-container {
+    --home-site-topbar-height: var(--sa-topbar-height, 52px);
+  }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: var(--home-site-topbar-height) 0 0;
+    z-index: 998;
+    background: rgb(2 8 23 / 0.48);
+    backdrop-filter: blur(2px);
+  }
+
+  .sidebar {
+    position: fixed !important;
+    top: var(--home-site-topbar-height) !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    z-index: 1000 !important;
+    width: min(280px, calc(100vw - 48px)) !important;
+    padding-bottom: env(safe-area-inset-bottom);
+    box-sizing: border-box;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(-100%) !important;
+    transition: transform 0.24s ease, visibility 0s linear 0.24s;
+  }
+
+  .sidebar.sidebar--open {
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(0) !important;
+    transition-delay: 0s;
+    box-shadow: var(--home-shadow, 0 18px 48px rgb(15 23 42 / 0.18)) !important;
+  }
+
+  .main-content {
+    flex-basis: 100%;
+    width: 100%;
+    min-width: 0;
+  }
+
+  :deep(.menu-toggle) {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 680px) {
+  .home-site-container {
+    --home-site-topbar-height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
 }
 </style>

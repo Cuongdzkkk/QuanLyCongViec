@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading.Channels;
@@ -116,7 +117,112 @@ public sealed class DeepgramSessionLifecycleTests
         socketFactory.Socket.State.Should().Be(WebSocketState.Open);
     }
 
-    private static DeepgramCallTranscriptionProvider CreateProvider(IDeepgramWebSocketFactory socketFactory) =>
+    [Fact]
+    public async Task ResultDeliveryFailure_DoesNotKillTheDeepgramReceiveLoop()
+    {
+        var socketFactory = new FakeDeepgramWebSocketFactory();
+        await using var provider = CreateProvider(socketFactory);
+        var sessionId = Guid.NewGuid();
+        var speakerId = Guid.NewGuid();
+        var firstAttempt = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondResult = new TaskCompletionSource<CallTranscriptionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var deliveries = 0;
+
+        await provider.SubmitAsync(
+            Chunk(sessionId, speakerId, 1),
+            (_, result) =>
+            {
+                if (Interlocked.Increment(ref deliveries) == 1)
+                {
+                    firstAttempt.TrySetResult();
+                    throw new ObjectDisposedException("transient caption subscriber");
+                }
+                secondResult.TrySetResult(result);
+                return Task.CompletedTask;
+            },
+            () => true);
+
+        socketFactory.Socket.QueueText(Transcript("kết quả đầu tiên", isFinal: false, speechFinal: false));
+        await firstAttempt.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        socketFactory.Socket.QueueText(Transcript("kết quả tiếp theo", isFinal: false, speechFinal: false));
+
+        (await secondResult.Task.WaitAsync(TimeSpan.FromSeconds(2))).Text.Should().Be("kết quả tiếp theo");
+        deliveries.Should().Be(2);
+        socketFactory.ConnectionCount.Should().Be(1);
+        socketFactory.Socket.State.Should().Be(WebSocketState.Open);
+        socketFactory.Socket.ReceiveCancellationCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task IdlePause_SendsKeepAliveAndResumesWithoutRestartingTheActiveSession()
+    {
+        var socketFactory = new FakeDeepgramWebSocketFactory();
+        await using var provider = CreateProvider(socketFactory, keepAliveIntervalMilliseconds: 200);
+        var sessionId = Guid.NewGuid();
+        var speakerId = Guid.NewGuid();
+
+        await provider.SubmitAsync(Chunk(sessionId, speakerId, 1), (_, _) => Task.CompletedTask, () => true);
+        socketFactory.Socket.TextMessages.Should().BeEmpty();
+        await WaitForKeepAliveAsync(socketFactory.Socket);
+        await WaitForKeepAliveCountAsync(socketFactory.Socket, 2);
+        await provider.SubmitAsync(Chunk(sessionId, speakerId, 2), (_, _) => Task.CompletedTask, () => true);
+
+        socketFactory.ConnectionCount.Should().Be(1);
+        socketFactory.Socket.BinaryMessages.Should().HaveCount(2);
+        socketFactory.Socket.TextMessages.Count(item => item == "{\"type\":\"KeepAlive\"}").Should().BeGreaterThanOrEqualTo(2);
+        socketFactory.Socket.State.Should().Be(WebSocketState.Open);
+    }
+
+    [Fact]
+    public async Task KeepAliveDeadline_IsRelativeToLastOutboundAudio_NotTimerPhase()
+    {
+        var socketFactory = new FakeDeepgramWebSocketFactory();
+        await using var provider = CreateProvider(socketFactory, keepAliveIntervalMilliseconds: 200);
+        var sessionId = Guid.NewGuid();
+        var speakerId = Guid.NewGuid();
+
+        await provider.SubmitAsync(Chunk(sessionId, speakerId, 1), (_, _) => Task.CompletedTask, () => true);
+        var firstAudioCompletedAt = Stopwatch.GetTimestamp();
+        await Task.Delay(80);
+        await provider.SubmitAsync(Chunk(sessionId, speakerId, 2), (_, _) => Task.CompletedTask, () => true);
+
+        await WaitForKeepAliveByDeadlineAsync(socketFactory.Socket, firstAudioCompletedAt, TimeSpan.FromMilliseconds(350));
+        socketFactory.Socket.BinaryMessages.Should().HaveCount(2);
+        socketFactory.ConnectionCount.Should().Be(1);
+    }
+
+    private static async Task WaitForKeepAliveAsync(FakeDeepgramWebSocket socket, TimeSpan? timeout = null)
+    {
+        await WaitForKeepAliveByDeadlineAsync(socket, Stopwatch.GetTimestamp(), timeout ?? TimeSpan.FromSeconds(2));
+    }
+
+    private static async Task WaitForKeepAliveCountAsync(FakeDeepgramWebSocket socket, int count, TimeSpan? timeout = null)
+    {
+        var deadline = Stopwatch.GetTimestamp();
+        var wait = timeout ?? TimeSpan.FromSeconds(2);
+        while (Stopwatch.GetElapsedTime(deadline) < wait)
+        {
+            if (socket.TextMessages.Count(item => item == "{\"type\":\"KeepAlive\"}") >= count) return;
+            await Task.Delay(10);
+        }
+
+        socket.TextMessages.Count(item => item == "{\"type\":\"KeepAlive\"}").Should().BeGreaterThanOrEqualTo(count);
+    }
+
+    private static async Task WaitForKeepAliveByDeadlineAsync(FakeDeepgramWebSocket socket, long startTimestamp, TimeSpan timeout)
+    {
+        while (Stopwatch.GetElapsedTime(startTimestamp) < timeout)
+        {
+            if (socket.TextMessages.Contains("{\"type\":\"KeepAlive\"}")) return;
+            await Task.Delay(10);
+        }
+
+        socket.TextMessages.Should().Contain("{\"type\":\"KeepAlive\"}");
+    }
+
+    private static DeepgramCallTranscriptionProvider CreateProvider(
+        IDeepgramWebSocketFactory socketFactory,
+        int keepAliveIntervalMilliseconds = 4000) =>
         new(
             new CallTranscriptionOptions
             {
@@ -125,6 +231,7 @@ public sealed class DeepgramSessionLifecycleTests
                 Language = "vi",
                 SupportedLanguages = ["vi", "en"],
                 SampleRate = 16000,
+                KeepAliveIntervalMilliseconds = keepAliveIntervalMilliseconds,
                 Deepgram = new DeepgramCallTranscriptionOptions
                 {
                     ApiKey = "test-only",
@@ -213,6 +320,7 @@ internal sealed class FakeDeepgramWebSocket : WebSocket
     private int _receiveCancellationCount;
 
     public ConcurrentQueue<byte[]> BinaryMessages { get; } = new();
+    public ConcurrentQueue<string> TextMessages { get; } = new();
     public int ReceiveCancellationCount => Volatile.Read(ref _receiveCancellationCount);
     public override WebSocketCloseStatus? CloseStatus => _closeStatus;
     public override string? CloseStatusDescription => _closeStatusDescription;
@@ -263,6 +371,7 @@ internal sealed class FakeDeepgramWebSocket : WebSocket
         cancellationToken.ThrowIfCancellationRequested();
         if (_state != WebSocketState.Open) throw new WebSocketException("Socket is not open.");
         if (messageType == WebSocketMessageType.Binary) BinaryMessages.Enqueue(buffer.ToArray());
+        if (messageType == WebSocketMessageType.Text) TextMessages.Enqueue(Encoding.UTF8.GetString(buffer.Array!, buffer.Offset, buffer.Count));
         return Task.CompletedTask;
     }
 

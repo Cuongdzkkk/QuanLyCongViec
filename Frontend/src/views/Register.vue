@@ -3,8 +3,7 @@
     <header class="auth-navbar">
       <div class="container nav-content">
         <router-link to="/" class="logo">
-          <span role="img" aria-label="SprintA logo" class="custom-logo"></span>
-          <span>SprintA</span>
+          <SprintaBrand size="compact" />
         </router-link>
         <div class="nav-actions">
           <button class="theme-toggle" type="button" aria-label="Toggle theme" @click="toggleTheme()">
@@ -90,9 +89,21 @@
             <el-input v-model.trim="form.email" :placeholder="t('auth.register.emailPlaceholder')" size="large" />
           </el-form-item>
           
-          <el-button type="primary" native-type="submit" class="auth-btn" size="large" :loading="isLoading">
+          <el-button type="primary" native-type="submit" class="auth-btn" size="large" :loading="isLoading" :disabled="isLoading || hasActiveResendCooldown()">
             {{ t('auth.register.sendOtpBtn') }}
           </el-button>
+
+          <div v-if="registrationConflict" class="registration-alert" role="alert">
+            <span>{{ t('auth.register.messages.emailAlreadyUsed') }}</span>
+            <span class="registration-alert-actions">
+              <router-link to="/login">{{ t('auth.nav.login') }}</router-link>
+              <router-link to="/forgot-password">{{ t('auth.forgotPassword.title') }}</router-link>
+            </span>
+          </div>
+
+          <p v-if="hasActiveResendCooldown()" class="otp-cooldown" role="status" aria-live="polite">
+            {{ t('auth.register.resendCountdown', { seconds: resendCooldown }) }}
+          </p>
           
           <p class="auth-footer-text">
             {{ t('auth.register.hasAccount') }} <router-link to="/login">{{ t('auth.nav.login') }}</router-link>
@@ -112,9 +123,14 @@
           
           <p class="auth-footer-text">
             {{ t('auth.register.noOtpCode') }}
-            <a href="#" @click.prevent="step = 1">{{ t('auth.register.changeEmail') }}</a>
+            <a href="#" @click.prevent="resetVerificationState">{{ t('auth.register.changeEmail') }}</a>
             {{ t('auth.register.or') }}
-            <a href="#" @click.prevent="handleSendOtp">{{ t('auth.register.resendOtp') }}</a>
+            <template v-if="hasActiveResendCooldown()">
+              <span class="otp-cooldown" role="status" aria-live="polite">
+                {{ t('auth.register.resendCountdown', { seconds: resendCooldown }) }}
+              </span>
+            </template>
+            <a v-else href="#" @click.prevent="handleSendOtp">{{ t('auth.register.resendOtp') }}</a>
           </p>
         </el-form>
 
@@ -128,11 +144,11 @@
           @submit.prevent="handleRegister"
         >
           <el-form-item :label="t('auth.register.fullNameLabel')" prop="fullName">
-            <el-input v-model="form.fullName" :placeholder="t('auth.register.fullNamePlaceholder')" size="large" />
+            <el-input v-model="form.fullName" :placeholder="t('auth.register.fullNamePlaceholder')" size="large" maxlength="100" />
           </el-form-item>
 
           <el-form-item :label="t('auth.register.passwordLabel')" prop="password">
-            <el-input v-model="form.password" type="password" :placeholder="t('auth.register.passwordPlaceholder')" size="large" show-password />
+            <el-input v-model="form.password" type="password" :placeholder="t('auth.register.passwordPlaceholder')" size="large" maxlength="100" show-password />
           </el-form-item>
           
           <el-button type="primary" native-type="submit" class="auth-btn" size="large" :loading="isLoading">
@@ -151,7 +167,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -166,6 +182,7 @@ import {
 import axiosClient from '../api/axiosClient'
 import { useI18n } from '@/composables/useI18n'
 import { currentTheme, toggleTheme } from '@/utils/theme'
+import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -177,10 +194,15 @@ const journey = [
 ]
 
 const isLoading = ref(false)
+const resendCooldown = ref(0)
+const resendCooldownEmail = ref('')
+let resendCooldownTimer = null
+let sendOtpInFlight = false
+const registrationConflict = ref(false)
 const emailFormRef = ref(null)
 const profileFormRef = ref(null)
 const step = ref(1)
-const verifiedOtpToken = ref('')
+const otpToken = ref('')
 
 const form = reactive({
   email: '',
@@ -196,11 +218,13 @@ const rules = computed(() => ({
   ],
   fullName: [
     { required: true, message: t('auth.register.rules.nameRequired'), trigger: 'blur' },
-    { min: 2, message: t('auth.register.rules.nameMin'), trigger: 'blur' }
+    { min: 2, message: t('auth.register.rules.nameMin'), trigger: 'blur' },
+    { max: 100, message: t('auth.register.rules.nameMax'), trigger: 'blur' }
   ],
   password: [
     { required: true, message: t('auth.register.rules.passwordRequired'), trigger: 'blur' },
     { min: 6, message: t('auth.register.rules.passwordMin'), trigger: 'blur' },
+    { max: 100, message: t('auth.register.rules.passwordMax'), trigger: 'blur' },
     { 
       pattern: /^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/, 
       message: t('auth.register.rules.passwordComplexity'),
@@ -209,8 +233,71 @@ const rules = computed(() => ({
   ]
 }))
 
+const getApiErrorMessage = (error, fallbackKey) => {
+  if (error.response?.data?.message) {
+    return error.response.data.message
+  }
+  if (error.response?.data?.errors && typeof error.response.data.errors === 'object') {
+    const messages = Object.values(error.response.data.errors).flat()
+    if (messages.length > 0) {
+      return messages.join(', ')
+    }
+  }
+  return t(fallbackKey)
+}
+
+const normalizeEmail = email => String(email || '').trim().toLowerCase()
+
+const hasActiveResendCooldown = () => resendCooldown.value > 0
+  && resendCooldownEmail.value === normalizeEmail(form.email)
+
+const startResendCooldown = (seconds, email = form.email) => {
+  if (resendCooldownTimer) clearInterval(resendCooldownTimer)
+  const duration = Number(seconds)
+  resendCooldownEmail.value = normalizeEmail(email)
+  resendCooldown.value = Number.isFinite(duration) && duration > 0 ? Math.ceil(duration) : 0
+  if (resendCooldown.value <= 0) return
+
+  resendCooldownTimer = setInterval(() => {
+    resendCooldown.value -= 1
+    if (resendCooldown.value <= 0) {
+      clearInterval(resendCooldownTimer)
+      resendCooldownTimer = null
+    }
+  }, 1000)
+}
+
+const resetVerificationState = () => {
+  if (resendCooldownTimer) clearInterval(resendCooldownTimer)
+  resendCooldownTimer = null
+  resendCooldown.value = 0
+  resendCooldownEmail.value = ''
+  form.otp = ''
+  otpToken.value = ''
+  step.value = 1
+  registrationConflict.value = false
+}
+
+watch(() => form.email, (nextEmail, previousEmail) => {
+  if (previousEmail && normalizeEmail(nextEmail) !== normalizeEmail(previousEmail)) {
+    resetVerificationState()
+  }
+})
+
+const readRetryAfterSeconds = error => {
+  const headerValue = error.response?.headers?.get?.('Retry-After')
+    ?? error.response?.headers?.['retry-after']
+    ?? error.response?.data?.retryAfterSeconds
+  const seconds = Number(headerValue)
+  return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : 60
+}
+
 const handleSendOtp = async () => {
+  if (sendOtpInFlight || hasActiveResendCooldown()) return
   if (step.value === 1 && !emailFormRef.value) return
+
+  registrationConflict.value = false
+  sendOtpInFlight = true
   
   const validatePromise = step.value === 1 
     ? emailFormRef.value.validate() 
@@ -225,20 +312,39 @@ const handleSendOtp = async () => {
           email: form.email,
           purpose: 'register'
         })
-        ElMessage.success(response.data.message || t('auth.forgotPassword.otpSentMessage'))
+        startResendCooldown(response.data?.resendCooldownSeconds || 60)
+        ElMessage.success(t('auth.forgotPassword.otpSentMessage'))
         form.otp = ''
         step.value = 2
       } catch (error) {
-        console.error('Send OTP error:', error)
-        ElMessage.error(error.response?.data?.message || t('auth.register.messages.sendOtpFailed'))
+        if (error.response?.status === 409) {
+          resetVerificationState()
+          registrationConflict.value = true
+          ElMessage.error(t('auth.register.messages.emailAlreadyUsed'))
+        } else if (error.response?.status === 429) {
+          const seconds = readRetryAfterSeconds(error)
+          startResendCooldown(seconds, form.email)
+          ElMessage.error(t('auth.register.messages.sendOtpRateLimited', { seconds }))
+        } else if (error.response?.status === 503) {
+          ElMessage.error(t('auth.register.messages.sendOtpUnavailable'))
+        } else {
+          console.error('Send OTP error:', error)
+          ElMessage.error(getApiErrorMessage(error, 'auth.register.messages.sendOtpFailed'))
+        }
       } finally {
         isLoading.value = false
       }
     }
   } catch (err) {
     // validation failed
+  } finally {
+    sendOtpInFlight = false
   }
 }
+
+onUnmounted(() => {
+  if (resendCooldownTimer) clearInterval(resendCooldownTimer)
+})
 
 const handleVerifyOtp = async () => {
   if (!form.otp || form.otp.length !== 6) {
@@ -254,13 +360,19 @@ const handleVerifyOtp = async () => {
     })
     
     if (response.data.verified) {
+      const nextOtpToken = String(response.data?.otpToken || '').trim()
+      if (!nextOtpToken) {
+        resetVerificationState()
+        ElMessage.error(t('auth.register.messages.verificationTokenMissing'))
+        return
+      }
       ElMessage.success(t('auth.register.messages.otpVerified'))
-      verifiedOtpToken.value = response.data.otpToken
+      otpToken.value = nextOtpToken
       step.value = 3
     }
   } catch (error) {
     console.error('Verify OTP error:', error)
-    ElMessage.error(error.response?.data?.message || t('auth.messages.otpInvalid'))
+    ElMessage.error(getApiErrorMessage(error, 'auth.messages.otpInvalid'))
   } finally {
     isLoading.value = false
   }
@@ -268,6 +380,11 @@ const handleVerifyOtp = async () => {
 
 const handleRegister = async () => {
   if (!profileFormRef.value) return
+  if (!otpToken.value) {
+    resetVerificationState()
+    ElMessage.error(t('auth.register.messages.verificationTokenMissing'))
+    return
+  }
   
   await profileFormRef.value.validate(async (valid) => {
     if (valid) {
@@ -277,14 +394,14 @@ const handleRegister = async () => {
           email: form.email,
           fullName: form.fullName,
           password: form.password,
-          otpCode: verifiedOtpToken.value
+          otpToken: otpToken.value
         })
         
         ElMessage.success(t('auth.register.messages.registerSuccess'))
         router.push('/login')
       } catch (error) {
         console.error('Register error:', error)
-        ElMessage.error(error.response?.data?.message || t('auth.register.messages.registerFailed'))
+        ElMessage.error(getApiErrorMessage(error, 'auth.register.messages.registerFailed'))
       } finally {
         isLoading.value = false
       }
@@ -303,6 +420,7 @@ const handleRegister = async () => {
   --auth-border: rgba(40, 65, 105, 0.14);
   --auth-shadow: 0 28px 70px rgba(23, 47, 91, 0.14);
   min-height: 100vh;
+  overflow-x: hidden;
   color: var(--auth-text);
   background:
     linear-gradient(180deg, #ffffff 0%, var(--auth-bg) 100%);
@@ -353,16 +471,6 @@ const handleRegister = async () => {
   font-weight: 900;
   text-decoration: none;
 }
-
-.custom-logo {
-  display: block;
-  width: 12px;
-  height: 11px;
-  flex: 0 0 12px;
-  background: center / contain no-repeat url('/sprinta-mark-light.png');
-}
-
-:global([data-theme='dark'] .custom-logo) { background-image: url('/sprinta-mark-dark.png'); filter: none; }
 
 .nav-actions {
   gap: 10px;
@@ -651,6 +759,35 @@ const handleRegister = async () => {
   color: var(--auth-muted);
   background: color-mix(in srgb, var(--auth-surface-strong) 78%, transparent);
   line-height: 1.6;
+}
+
+.otp-cooldown {
+  margin: 12px 0 0;
+  color: var(--auth-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.registration-alert {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 8px;
+  margin-top: 12px;
+  color: #b42318;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+:global([data-theme='dark'] .registration-alert) {
+  color: #fda29b;
+}
+
+.registration-alert a {
+  color: #0ea5e9;
+  font-weight: 850;
+  text-decoration: none;
 }
 
 .otp-input :deep(input) {

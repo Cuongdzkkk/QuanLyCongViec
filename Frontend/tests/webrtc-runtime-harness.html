@@ -1,79 +1,194 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8">
-<title>WebRTC media runtime harness</title>
+<title>WebRTC two-page media runtime harness</title>
 <style>body{font:14px system-ui;margin:24px;background:#0b1220;color:#e5edf5}button{padding:8px 12px}pre{white-space:pre-wrap;background:#111c2d;padding:12px;border-radius:8px}</style>
-<button id="run">Run camera, screen, and late-join checks</button>
+<button id="run">Run independent participant</button>
 <pre id="result">Idle</pre>
 <script type="module">
   import { classifyRemoteMediaRole } from '/src/services/callMediaService.js'
 
+  const parameters = new URLSearchParams(location.search)
+  const role = parameters.get('role') === 'B' ? 'B' : 'A'
+  const peerRole = role === 'A' ? 'B' : 'A'
+  const channelName = `sprinta-webrtc-${parameters.get('channel') || 'default'}`
   const result = document.querySelector('#result')
-  const waitForIce = pc => new Promise(resolve => {
-    if (pc.iceGatheringState === 'complete') return resolve()
-    const timeout = setTimeout(resolve, 1500)
-    pc.addEventListener('icegatheringstatechange', () => {
-      if (pc.iceGatheringState === 'complete') { clearTimeout(timeout); resolve() }
-    })
-  })
-  const canvasTrack = label => {
+  document.querySelector('#run').textContent = `Run participant ${role}`
+
+  const canvasStream = mediaRole => {
     const canvas = document.createElement('canvas')
-    canvas.width = 32; canvas.height = 18
+    canvas.width = 64
+    canvas.height = 36
     const context = canvas.getContext('2d')
-    context.fillStyle = label === 'screen' ? '#2563eb' : '#16a34a'
-    context.fillRect(0, 0, canvas.width, canvas.height)
-    return canvas.captureStream(10)
-  }
-  const createPeer = () => {
-    const pc = new RTCPeerConnection({ iceServers: [] })
-    return { pc, audioTransceiver: pc.addTransceiver('audio', { direction: 'recvonly' }), cameraTransceiver: pc.addTransceiver('video', { direction: 'recvonly' }), screenTransceiver: pc.addTransceiver('video', { direction: 'recvonly' }), remoteMediaSources: new Map(), remoteMediaSourcesByTrackId: new Map() }
-  }
-  const attach = (entry, camera, screen) => {
-    entry.cameraTransceiver.sender.replaceTrack(camera.getVideoTracks()[0])
-    entry.cameraTransceiver.sender.setStreams?.(camera)
-    entry.cameraTransceiver.direction = 'sendrecv'
-    entry.screenTransceiver.sender.replaceTrack(screen.getVideoTracks()[0])
-    entry.screenTransceiver.sender.setStreams?.(screen)
-    entry.screenTransceiver.direction = 'sendrecv'
-  }
-  const negotiate = async (sender, receiver) => {
-    const offer = await sender.pc.createOffer()
-    await sender.pc.setLocalDescription(offer); await waitForIce(sender.pc)
-    receiver.remoteMediaSourcesByMid = new Map([
-      [sender.cameraTransceiver.mid, 'camera'],
-      [sender.screenTransceiver.mid, 'screen']
-    ])
-    await receiver.pc.setRemoteDescription(sender.pc.localDescription)
-    const answer = await receiver.pc.createAnswer()
-    await receiver.pc.setLocalDescription(answer); await waitForIce(receiver.pc)
-    await sender.pc.setRemoteDescription(receiver.pc.localDescription)
-  }
-  const receiveRoles = entry => new Promise(resolve => {
-    const roles = []
-    entry.pc.ontrack = event => {
-      roles.push({ role: classifyRemoteMediaRole(entry, event.transceiver, event.track, event.streams), readyState: event.track.readyState, trackId: event.track.id, eventMid: event.transceiver.mid, cameraMid: entry.cameraTransceiver.mid, screenMid: entry.screenTransceiver.mid, transceiverIndex: entry.pc.getTransceivers().indexOf(event.transceiver) })
-      if (roles.some(item => item.role === 'camera') && roles.some(item => item.role === 'screen')) resolve(roles)
+    let frame = 0
+    const draw = () => {
+      context.fillStyle = mediaRole === 'screen' ? '#2563eb' : '#16a34a'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      context.fillStyle = '#ffffff'
+      context.fillRect(frame++ % canvas.width, 0, 2, canvas.height)
+      canvas.animationFrame = requestAnimationFrame(draw)
     }
-    setTimeout(() => resolve(roles), 4000)
-  })
-  const runPair = async () => {
-    const sender = createPeer(); const receiver = createPeer()
-    const received = receiveRoles(receiver)
-    attach(sender, canvasTrack('camera'), canvasTrack('screen'))
-    await negotiate(sender, receiver)
-    const roles = await received
-    sender.pc.close(); receiver.pc.close()
-    return roles
+    draw()
+    const stream = canvas.captureStream(15)
+    stream.canvas = canvas
+    return stream
   }
-  document.querySelector('#run').addEventListener('click', async () => {
-    result.textContent = 'Running…'
-    try {
-      const concurrent = await runPair()
-      const lateJoin = await runPair()
-      const live = values => values.some(item => item.role === 'camera' && item.readyState === 'live') && values.some(item => item.role === 'screen' && item.readyState === 'live')
-      if (!live(concurrent) || !live(lateJoin)) throw new Error(`Missing live role: ${JSON.stringify({ concurrent, lateJoin })}`)
-      result.textContent = `PASS\nCAMERA_AND_SCREEN=${JSON.stringify(concurrent)}\nLATE_JOIN_SCREEN=${JSON.stringify(lateJoin)}`
-    } catch (error) { result.textContent = `FAIL\n${error.message}` }
-  })
+
+  const audioStream = () => {
+    const context = new AudioContext()
+    const oscillator = context.createOscillator()
+    const destination = context.createMediaStreamDestination()
+    oscillator.frequency.value = role === 'A' ? 440 : 554
+    oscillator.connect(destination)
+    oscillator.start()
+    void context.resume()
+    return { context, oscillator, stream: destination.stream }
+  }
+
+  const mapMediaTransceivers = entry => {
+    const transceivers = entry.pc.getTransceivers()
+    entry.audioTransceiver ||= transceivers.find(item => item.receiver.track.kind === 'audio') || null
+    const videos = transceivers.filter(item => item.receiver.track.kind === 'video')
+    entry.cameraTransceiver ||= videos[0] || null
+    entry.screenTransceiver ||= videos[1] || null
+  }
+
+  const attachFixture = async entry => {
+    const tracks = [
+      [entry.audioTransceiver, entry.fixture.audio.stream],
+      [entry.cameraTransceiver, entry.fixture.camera],
+      [entry.screenTransceiver, entry.fixture.screen]
+    ]
+    for (const [transceiver, stream] of tracks) {
+      const track = stream.getTracks()[0]
+      await transceiver.sender.replaceTrack(track)
+      transceiver.sender.setStreams?.(stream)
+      transceiver.direction = 'sendrecv'
+    }
+  }
+
+  const closeFixture = fixture => {
+    fixture.audio.context.close()
+    for (const stream of [fixture.camera, fixture.screen]) {
+      cancelAnimationFrame(stream.canvas.animationFrame)
+      stream.getTracks().forEach(track => track.stop())
+    }
+  }
+
+  const runIndependentPeer = async () => {
+    const channel = new BroadcastChannel(channelName)
+    const fixture = { audio: audioStream(), camera: canvasStream('camera'), screen: canvasStream('screen') }
+    const pc = new RTCPeerConnection({ iceServers: [] })
+    const entry = {
+      pc,
+      fixture,
+      audioTransceiver: null,
+      cameraTransceiver: null,
+      screenTransceiver: null,
+      remoteMediaSources: new Map(),
+      remoteMediaSourcesByTrackId: new Map(),
+      remoteMediaSourcesByMid: new Map()
+    }
+    const signaling = { sent: { offer: 0, answer: 0, ice: 0 }, received: { offer: 0, answer: 0, ice: 0 } }
+    const pendingIce = []
+    const received = []
+    let negotiationStarted = false
+    let completed = false
+
+    const send = (type, payload = {}) => {
+      if (type in signaling.sent) signaling.sent[type] += 1
+      channel.postMessage({ from: role, to: peerRole, type, ...payload })
+    }
+    const flushIce = async () => {
+      while (pendingIce.length) await pc.addIceCandidate(pendingIce.shift())
+    }
+    const publishResultWhenReady = () => {
+      const roles = new Set(received.filter(item => item.readyState === 'live').map(item => item.role))
+      if (completed || !['audio', 'camera', 'screen'].every(item => roles.has(item))) return
+      if (pc.connectionState !== 'connected' && pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') return
+      completed = true
+      clearInterval(readyTimer)
+      const directions = pc.getTransceivers().map(item => item.currentDirection || item.direction)
+      const details = { role, received, signaling, connectionState: pc.connectionState, iceConnectionState: pc.iceConnectionState, directions }
+      result.textContent = `PASS\nROLE=${role}\nREMOTE_AUDIO=live\nREMOTE_CAMERA=live\nREMOTE_SCREEN=live\nSIGNALING=${JSON.stringify(signaling)}\nDETAILS=${JSON.stringify(details)}`
+    }
+
+    pc.ontrack = event => {
+      const mediaRole = event.track.kind === 'audio'
+        ? 'audio'
+        : classifyRemoteMediaRole(entry, event.transceiver, event.track, event.streams)
+      received.push({ role: mediaRole, readyState: event.track.readyState, mid: event.transceiver.mid })
+      event.track.addEventListener('unmute', publishResultWhenReady)
+      publishResultWhenReady()
+    }
+    pc.onicecandidate = event => {
+      if (event.candidate) send('ice', { candidate: event.candidate.toJSON() })
+    }
+    pc.onconnectionstatechange = publishResultWhenReady
+    pc.oniceconnectionstatechange = publishResultWhenReady
+
+    channel.onmessage = async event => {
+      const message = event.data
+      if (message?.to !== role || message.from !== peerRole) return
+      try {
+        if (message.type === 'ready' && role === 'A' && !negotiationStarted) {
+          negotiationStarted = true
+          pc.addTrack(fixture.audio.stream.getAudioTracks()[0], fixture.audio.stream)
+          pc.addTrack(fixture.camera.getVideoTracks()[0], fixture.camera)
+          pc.addTrack(fixture.screen.getVideoTracks()[0], fixture.screen)
+          mapMediaTransceivers(entry)
+          const offer = await pc.createOffer()
+          await pc.setLocalDescription(offer)
+          send('offer', {
+            description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp },
+            cameraMid: entry.cameraTransceiver.mid,
+            screenMid: entry.screenTransceiver.mid
+          })
+        } else if (message.type === 'offer' && role === 'B' && !negotiationStarted) {
+          negotiationStarted = true
+          signaling.received.offer += 1
+          entry.remoteMediaSourcesByMid = new Map([
+            [message.cameraMid, 'camera'],
+            [message.screenMid, 'screen']
+          ])
+          await pc.setRemoteDescription(message.description)
+          await flushIce()
+          mapMediaTransceivers(entry)
+          await attachFixture(entry)
+          const answer = await pc.createAnswer()
+          await pc.setLocalDescription(answer)
+          send('answer', { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } })
+        } else if (message.type === 'answer' && role === 'A') {
+          signaling.received.answer += 1
+          await pc.setRemoteDescription(message.description)
+          await flushIce()
+        } else if (message.type === 'ice') {
+          signaling.received.ice += 1
+          if (pc.remoteDescription) await pc.addIceCandidate(message.candidate)
+          else pendingIce.push(message.candidate)
+        }
+      } catch (error) {
+        result.textContent = `FAIL\nROLE=${role}\n${error.stack || error.message}`
+      }
+    }
+
+    const readyTimer = setInterval(() => send('ready'), 250)
+    send('ready')
+    result.textContent = `WAITING\nROLE=${role}\nCHANNEL=${channelName}`
+    setTimeout(() => {
+      if (!completed) result.textContent = `FAIL\nROLE=${role}\nTimed out: ${JSON.stringify({ received, signaling, connectionState: pc.connectionState, iceConnectionState: pc.iceConnectionState })}`
+    }, 10000)
+    addEventListener('beforeunload', () => {
+      clearInterval(readyTimer)
+      channel.close()
+      pc.close()
+      closeFixture(fixture)
+    }, { once: true })
+  }
+
+  document.querySelector('#run').addEventListener('click', () => {
+    document.querySelector('#run').disabled = true
+    void runIndependentPeer()
+  }, { once: true })
 </script>
 </html>

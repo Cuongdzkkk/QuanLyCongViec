@@ -94,7 +94,8 @@ import axiosClient from '@/api/axiosClient'
 import { signalRService } from '@/api/signalrService'
 import * as signalR from '@microsoft/signalr'
 import { isExpectedNetworkError } from '@/utils/errorTelemetry'
-import { getStoredAccessToken } from '@/utils/authSession'
+import { getCurrentAccessToken, waitForAuthReady } from '@/utils/authSession'
+import { createCurrentAccessTokenFactory } from '@/utils/authTransport'
 import { useAuthStore } from '@/store/useAuthStore'
 import { collaborationRealtime } from '@/services/collaborationRealtime'
 import { configureRealtimeHub } from '@/services/realtimeHubConfig'
@@ -297,8 +298,8 @@ const declineInvitation = async (notification) => {
 }
 
 const initSignalR = async () => {
-  const token = getStoredAccessToken()
-  if (!token) return
+  await waitForAuthReady()
+  if (!getCurrentAccessToken()) return
   if ([signalR.HubConnectionState.Connected, signalR.HubConnectionState.Connecting, signalR.HubConnectionState.Reconnecting]
     .includes(connection.value?.state)) return notificationStartPromise
   if (notificationStartPromise) return notificationStartPromise
@@ -312,9 +313,9 @@ const initSignalR = async () => {
   hubUrl.search = ''
   hubUrl.hash = ''
 
-  const nextConnection = configureRealtimeHub(new signalR.HubConnectionBuilder())
+  const nextConnection = configureRealtimeHub(new signalR.HubConnectionBuilder(), getCurrentAccessToken)
     .withUrl(hubUrl.toString(), {
-        accessTokenFactory: () => getStoredAccessToken() || token
+        accessTokenFactory: createCurrentAccessTokenFactory(getCurrentAccessToken)
     })
     .configureLogging(signalR.LogLevel.None)
     .build()
@@ -381,6 +382,7 @@ watch(onlyUnread, () => {
 
 watch(() => authStore.token, (token, previousToken) => {
   if (token === previousToken) return
+  if (token && previousToken) return
   notificationAbortController?.abort()
   notificationRequestId += 1
   notifications.value = []

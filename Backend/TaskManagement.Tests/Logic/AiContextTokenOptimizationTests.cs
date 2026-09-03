@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using TaskManagement.Application.DTOs.AI;
+using TaskManagement.Application.AI;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.AI;
 using TaskManagement.Infrastructure.Data;
@@ -73,6 +74,84 @@ public sealed class AiContextTokenOptimizationTests
         handler.RequestBody.Should().NotContain("Task count in context");
         handler.RequestBody.Should().NotContain("create_task {projectId");
         handler.RequestBody.Should().Contain("\"max_completion_tokens\":800");
+    }
+
+    [Theory]
+    [InlineData("Bạn là ai?")]
+    [InlineData("Bạn có thể làm được những gì trong dự án?")]
+    [InlineData("Bạn có chức năng gì?")]
+    public async Task CapabilityQuestions_ReturnGroundedVietnameseDescription(string message)
+    {
+        await using var context = CreateContext();
+        var service = CreateService(context, new RecordingResponseHandler(ShouldNotBeCalledResponse()));
+
+        var result = await service.ContextChatAsync(Guid.NewGuid(), new AiContextChatRequestDto { Message = message });
+
+        result.Answer.Should().Contain("Tạo công việc");
+        result.Answer.Should().Contain("Cập nhật trạng thái công việc");
+        result.Answer.Should().Contain("Tóm tắt dự án");
+        result.Answer.Should().Contain("xác nhận");
+    }
+
+    [Fact]
+    public async Task DashboardCapabilityPrompt_UsesOnlyContextRelevantCanonicalActions()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Route = "/dashboard",
+            PageContext = new AiContextPageDto { PageType = "dashboard", CurrentView = "Dashboard" },
+            Message = "Hãy mô tả chính xác capability của SprintA AI."
+        });
+
+        handler.RequestBody.Should().Contain("summarize_dashboard");
+        handler.RequestBody.Should().Contain("get_personal_work_summary");
+        handler.RequestBody.Should().NotContain("list_task_comments");
+        handler.RequestBody.Should().NotContain("get_task_details");
+        handler.RequestBody.Should().Contain("READ");
+        handler.RequestBody.Should().Contain("ANALYZE");
+        handler.RequestBody.Should().Contain("WRITE");
+        handler.RequestBody.Should().Contain("capability");
+        handler.RequestBody.Should().NotContain("unsupported_action");
+    }
+
+    [Fact]
+    public async Task CapabilityCatalog_ContainsOnlyExecutableHandlers()
+    {
+        AiActionCatalog.Definitions.Should().HaveCount(37);
+        AiActionCatalog.Definitions.Select(action => action.Key)
+            .Should().NotContain("unsupported_action");
+        AiActionCatalog.Definitions
+            .Where(action => action.Value.CapabilityKind == AiCapabilityKind.Write)
+            .Should().AllSatisfy(action => action.Value.RequiresConfirmation.Should().BeTrue());
+        AiActionCatalog.Definitions
+            .Where(action => action.Value.CapabilityKind != AiCapabilityKind.Write)
+            .Should().AllSatisfy(action => action.Value.RequiresConfirmation.Should().BeFalse());
+    }
+
+    [Fact]
+    public async Task ProjectPrompt_IncludesProjectReadActionsAndExcludesGlobalPersonalSummary()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(SuccessResponse());
+        var service = CreateService(context, handler);
+
+        await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Route = "/projects/example/work-items",
+            ProjectId = Guid.NewGuid(),
+            PageContext = new AiContextPageDto { PageType = "project", CurrentView = "Work items" },
+            Message = "Phân tích dữ liệu dự án hiện tại."
+        });
+
+        handler.RequestBody.Should().Contain("get_task_details");
+        handler.RequestBody.Should().Contain("search_tasks");
+        handler.RequestBody.Should().Contain("get_planning_summary");
+        handler.RequestBody.Should().NotContain("get_personal_work_summary");
+        handler.RequestBody.Should().NotContain("summarize_dashboard");
     }
 
     [Theory]
@@ -516,6 +595,25 @@ public sealed class AiContextTokenOptimizationTests
         result.Actions.Should().ContainSingle().Which.RequiresConfirmation.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task ReadAction_IsAlwaysMarkedAsNotRequiringConfirmation()
+    {
+        await using var context = CreateContextWithUser(out var userId);
+        var handler = new RecordingResponseHandler(ReadActionResponse());
+        var service = CreateService(context, handler);
+
+        var result = await service.ContextChatAsync(userId, new AiContextChatRequestDto
+        {
+            Route = "/projects/example/work-items",
+            ProjectId = Guid.NewGuid(),
+            PageContext = new AiContextPageDto { PageType = "project", CurrentView = "Work items" },
+            Message = "Xem chi tiết task hiện tại"
+        });
+
+        result.Actions.Should().ContainSingle().Which.RequiresConfirmation.Should().BeFalse();
+        result.Actions.Should().ContainSingle().Which.DirectExecution.Should().BeTrue();
+    }
+
     private static GeminiAiService CreateService(ApplicationDbContext context, RecordingResponseHandler handler)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -583,6 +681,14 @@ public sealed class AiContextTokenOptimizationTests
     {
         Content = new StringContent(
             "{\"choices\":[{\"message\":{\"content\":\"{\\\"answer\\\":\\\"ok\\\",\\\"suggestions\\\":[],\\\"warnings\\\":[],\\\"actions\\\":[{\\\"type\\\":\\\"create_task\\\",\\\"requiresConfirmation\\\":false}]}\"}}],\"usage\":{\"total_tokens\":1}}",
+            Encoding.UTF8,
+            "application/json")
+    };
+
+    private static HttpResponseMessage ReadActionResponse() => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(
+            "{\"choices\":[{\"message\":{\"content\":\"{\\\"answer\\\":\\\"ok\\\",\\\"suggestions\\\":[],\\\"warnings\\\":[],\\\"actions\\\":[{\\\"type\\\":\\\"get_task_details\\\",\\\"requiresConfirmation\\\":true}]}\"}}],\"usage\":{\"total_tokens\":1}}",
             Encoding.UTF8,
             "application/json")
     };

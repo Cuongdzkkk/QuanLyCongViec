@@ -1,5 +1,5 @@
 <template>
-  <aside class="plane-sidebar" :class="{ 'collapsed': !isVisible }">
+  <aside id="app-sidebar" class="plane-sidebar" :class="{ 'collapsed': !isVisible }">
     <div class="sidebar-scrollable">
       <div class="sidebar-top-action">
         <button class="new-work-btn" type="button" @click="triggerCreateTask">
@@ -205,36 +205,6 @@
       </ul>
     </div>
 
-    <!-- Bottom Actions -->
-    <div class="sidebar-bottom">
-      <div
-        class="user-status-card"
-        role="button"
-        tabindex="0"
-        aria-label="Cập nhật trạng thái"
-        @click="statusModalOpen = true"
-        @keydown.enter="statusModalOpen = true"
-        @keydown.space.prevent="statusModalOpen = true"
-      >
-        <span class="status-card-icon" aria-hidden="true">
-          <i class="bi bi-laptop"></i>
-        </span>
-        <span class="status-card-copy">
-          <span class="status-card-title">{{ userStatusText || 'Đang làm việc' }}</span>
-          <span class="status-card-subtitle">Active now</span>
-        </span>
-        <span class="status-card-badge" aria-label="Đang hoạt động"></span>
-      </div>
-    </div>
-
-    <!-- Status Modal Dialog -->
-    <StatusUpdateModal 
-      v-model="statusModalOpen"
-      :initial-emoji="userEmoji"
-      :initial-text="userStatusText"
-      @save="onStatusSave"
-      @clear="onStatusClear"
-    />
   </aside>
 </template>
 
@@ -252,7 +222,6 @@ import { useI18n } from '@/composables/useI18n'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import RecentDropdown from '@/components/RecentDropdown.vue'
 import StarredDropdown from '@/components/StarredDropdown.vue'
-import StatusUpdateModal from '@/components/collaboration/StatusUpdateModal.vue'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import { projectAccessRestrictionsEnabled } from '@/config/projectAccess'
 import { buildSpacePath } from '@/utils/spaceRoute'
@@ -266,21 +235,6 @@ const showProjects = ref(true)
 const projectStore = useProjectStore()
 const authStore = useAuthStore()
 const pendingProjectId = ref(null)
-
-// User status state
-const statusModalOpen = ref(false)
-const userEmoji = ref('💻')
-const userStatusText = ref('Đang làm việc')
-
-const onStatusSave = (status) => {
-  userEmoji.value = status.emoji
-  userStatusText.value = status.text
-}
-
-const onStatusClear = () => {
-  userEmoji.value = ''
-  userStatusText.value = ''
-}
 
 // Popover control variables
 const recentVisible = ref(false)
@@ -681,8 +635,9 @@ const triggerRewardSettings = () => {
 }
 
 .workspace-more-button {
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
   margin-left: auto;
   display: inline-flex;
   align-items: center;
@@ -909,7 +864,7 @@ const triggerRewardSettings = () => {
   }
 
   .nav-link {
-    min-height: 30px;
+    min-height: 44px;
     font-size: 12px;
   }
 }

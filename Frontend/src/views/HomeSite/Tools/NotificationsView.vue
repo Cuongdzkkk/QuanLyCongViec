@@ -219,23 +219,100 @@ onBeforeUnmount(() => {
 .filters-sidebar { width: 220px; display: flex; flex-direction: column; gap: 4px; }
 .filter-btn { display: flex; align-items: center; gap: 12px; border: 0; background: transparent; padding: 8px 12px; border-radius: 3px; color: #42526E; cursor: pointer; text-align: left; }
 .filter-btn.active { background: #E6FCFF; color: #0052CC; font-weight: 600; }
-.notifications-main { flex: 1; max-width: 900px; }
+.notifications-main { flex: 1; min-width: 0; max-width: 900px; }
 .main-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid #DFE1E6; margin-bottom: 16px; }
 .main-header h2 { font-size: 16px; margin: 0; }
 .header-actions { display: flex; gap: 24px; align-items: center; }
 .text-action-btn { background: transparent; border: 0; color: #0052CC; cursor: pointer; }
 .toggle-wrapper { display: flex; gap: 8px; align-items: center; font-size: 13px; color: #5E6C84; }
 .time-group-title { font-size: 12px; color: #5E6C84; margin-bottom: 8px; }
-.notification-item { width: 100%; display: flex; gap: 16px; padding: 16px 0; border: 0; border-bottom: 1px solid #DFE1E6; background: transparent; text-align: left; cursor: pointer; }
+.notification-item { width: 100%; min-width: 0; box-sizing: border-box; display: flex; gap: 16px; padding: 16px 0; border: 0; border-bottom: 1px solid #DFE1E6; background: transparent; text-align: left; cursor: pointer; }
 .notification-item:hover { background: #FAFBFC; }
+.notification-item:focus-visible { outline: 2px solid var(--home-accent, #0052CC); outline-offset: 2px; }
 .notif-avatar { width: 32px; height: 32px; border-radius: 50%; background: #172B4D; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
 .notif-avatar.read { background: #6B778C; }
-.notif-content { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.notif-header { font-size: 14px; }
+.notif-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.notif-header { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 14px; }
 .notif-time { color: #5E6C84; margin-left: 8px; }
 .notif-link { color: #172B4D; font-size: 14px; }
 .notif-meta { color: #5E6C84; font-size: 12px; }
-.notif-status { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; }
+.notif-status { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; margin-top: 6px; }
 .notif-status.unread { background: #0052CC; }
 .empty-state { padding: 48px 0; color: #5E6C84; text-align: center; }
+
+.notif-header strong,
+.notif-link,
+.notif-meta,
+.invitation-resolved {
+  overflow-wrap: anywhere;
+}
+
+.invitation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .page-header {
+    padding: 20px 14px 12px;
+  }
+
+  .notifications-layout {
+    flex-direction: column;
+    gap: 16px;
+    padding: 0 14px 28px;
+  }
+
+  .filters-sidebar {
+    width: 100%;
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .filter-btn {
+    flex: 1 1 0;
+    justify-content: center;
+    min-width: 0;
+    min-height: 44px;
+  }
+
+  .notifications-main {
+    width: 100%;
+    max-width: none;
+  }
+
+  .main-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px 12px;
+  }
+
+  .text-action-btn,
+  .toggle-wrapper,
+  .invitation-actions button {
+    min-height: 44px;
+  }
+
+  .toggle-wrapper input {
+    width: 20px;
+    height: 20px;
+  }
+
+  .notification-item {
+    gap: 10px;
+    padding: 14px 0;
+  }
+
+  .notif-time {
+    margin-left: 0;
+  }
+}
 </style>

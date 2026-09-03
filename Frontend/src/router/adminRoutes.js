@@ -30,6 +30,12 @@ export default [
     meta: adminMeta
   },
   {
+    path: '/admin/enterprise-leads',
+    name: 'AdminEnterpriseLeads',
+    component: () => import('../views/admin/EnterpriseLeads.vue'),
+    meta: adminMeta
+  },
+  {
     path: '/admin/users',
     name: 'AdminUserManagement',
     component: () => import('../views/admin/UserManagement.vue'),

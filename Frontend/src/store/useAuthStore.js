@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
-import { getStoredUserSession, getStoredAccessToken, saveAuthSession, clearAuthSession, AUTH_SESSION_CHANGED } from '@/utils/authSession'
+import { getStoredUserSession, getStoredAccessToken, restoreAuthSession, saveAuthSession, clearAuthSession, AUTH_SESSION_CHANGED, AUTH_STORAGE_EVENT_KEY } from '@/utils/authSession'
+import { restoreAuthSessionFromCookie } from '@/api/authApi'
+import { createAuthRestoreFlow } from '@/utils/authTransport'
 import { useProjectStore } from '@/store/useProjectStore'
 
 export const useAuthStore = defineStore('auth', {
@@ -19,14 +21,22 @@ export const useAuthStore = defineStore('auth', {
   },
   
   actions: {
-    initialize() {
+    async initialize() {
+      restoreAuthSession()
+      const restoreFromCookie = createAuthRestoreFlow({
+        getCurrentAccessToken: getStoredAccessToken,
+        restoreSession: restoreAuthSessionFromCookie,
+        saveAuthSession,
+        clearAuthSession: () => clearAuthSession({ broadcast: false })
+      })
+      await restoreFromCookie()
       // Sync initial state
       this.user = getStoredUserSession() || {}
       this.token = getStoredAccessToken() || ''
       this.isAuthenticated = !!this.token
 
       // Listen for cross-tab login/logout/update
-      window.addEventListener('storage', (event) => this.handleStorageEvent(event))
+      window.addEventListener('storage', (event) => this.handleStorageEvent(event, restoreFromCookie))
       window.addEventListener(AUTH_SESSION_CHANGED, () => this.handleAuthSessionChanged())
     },
     
@@ -74,23 +84,30 @@ export const useAuthStore = defineStore('auth', {
       this.isAuthenticated = !!storedToken
     },
     
-    handleStorageEvent(event) {
-      if (event.key === 'user' || event.key === 'accessToken') {
-        const storedUser = getStoredUserSession()
-        const storedToken = getStoredAccessToken()
-        
-        if (!storedToken && this.isAuthenticated) {
-          // Cross-tab logout detected
-          this.user = {}
-          this.token = ''
-          this.isAuthenticated = false
-          // Có thể kích hoạt reload hoặc redirect tới login ở router thay vì reload cả app
-        } else if (storedUser) {
-          // Cross-tab update or login
-          this.user = storedUser
-          this.token = storedToken
-          this.isAuthenticated = !!storedToken
-        }
+    async handleStorageEvent(event, restoreFromCookie) {
+      if (event.key !== AUTH_STORAGE_EVENT_KEY || !event.newValue) return
+
+      let authEvent
+      try {
+        authEvent = JSON.parse(event.newValue)
+      } catch {
+        return
+      }
+
+      if (authEvent.type === 'logout') {
+        useProjectStore().clearWorkspaceData()
+        clearAuthSession({ broadcast: false })
+        this.user = {}
+        this.token = ''
+        this.isAuthenticated = false
+        return
+      }
+
+      if ((authEvent.type === 'login' || authEvent.type === 'token-updated') && !getStoredAccessToken()) {
+        await restoreFromCookie()
+        this.user = getStoredUserSession() || {}
+        this.token = getStoredAccessToken() || ''
+        this.isAuthenticated = !!this.token
       }
     }
   }

@@ -84,6 +84,7 @@ export default {
       changeEmail: 'Change email',
       or: 'or',
       resendOtp: 'Resend OTP',
+      resendCountdown: 'Resend OTP in {seconds} seconds',
       fullNameLabel: 'Full Name',
       fullNamePlaceholder: 'Enter full name',
       passwordLabel: 'Password',
@@ -96,14 +97,20 @@ export default {
         emailInvalid: 'Invalid email address format',
         nameRequired: 'Please enter full name',
         nameMin: 'Full name must be at least 2 characters',
+        nameMax: 'Full name must be 100 characters or fewer',
         passwordRequired: 'Please create password',
         passwordMin: 'Password must be at least 6 characters',
+        passwordMax: 'Password must be 100 characters or fewer',
         passwordComplexity: 'Password must contain at least 1 uppercase letter, 1 number, and 1 special character'
       },
       messages: {
         sendOtpFailed: 'Error occurred while sending OTP',
+        sendOtpRateLimited: 'You requested an OTP too quickly. Try again in {seconds} seconds.',
+        emailAlreadyUsed: 'This email already has an account.',
+        sendOtpUnavailable: 'We could not send the verification email right now. Please try again later.',
         invalidOtpFormat: 'Please enter 6-digit OTP code',
         otpVerified: 'Email verified successfully',
+        verificationTokenMissing: 'The email verification session is invalid or expired. Please verify your email again.',
         registerSuccess: 'Account created successfully! Start your session by logging in.',
         registerFailed: 'Error occurred while creating account'
       }
@@ -258,6 +265,12 @@ export default {
   landing: {
     login: 'Log in',
     register: 'Sign up',
+    aiConfirmation: {
+      title: 'Awaiting confirmation',
+      supportingCopy: 'AI only makes changes after you confirm.',
+      cancel: 'Cancel',
+      apply: 'Apply changes'
+    },
     badge: 'SprintA Agile Workspace',
     heroTitle: 'Sign up or log in to enter the main dashboard.',
     heroSubtitle: 'System entry is protected: users must sign up or log in before using the dashboard, projects, and internal features.',

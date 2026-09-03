@@ -1195,7 +1195,7 @@ onUnmounted(() => {
 
     <Teleport to="body">
     <div class="modal-overlay sa-data-modal-overlay" v-if="showCreateModal && canManageSprint" @click.self="showCreateModal = false; showCalendar = false">
-      <div class="create-cycle-modal sa-modal--form">
+      <div class="create-cycle-modal sa-modal--form" :class="{ 'with-horizontal-calendar': showCalendar }">
         <div class="cm-header">
           <DataModalHeader
             icon="bi bi-arrow-repeat"
@@ -1206,45 +1206,51 @@ onUnmounted(() => {
           />
         </div>
 
-        <div class="cm-body" :style="{ paddingBottom: showCalendar ? '300px' : '24px' }">
-          <div class="cm-field">
-            <label for="new-cycle-title">Title</label>
-            <input id="new-cycle-title" v-model="newCycle.name" type="text" class="cm-input" placeholder="Enter a cycle title" autofocus />
-          </div>
-          <div class="cm-field">
-            <label for="new-cycle-description">Description</label>
-            <textarea id="new-cycle-description" v-model="newCycle.description" class="cm-textarea" placeholder="Add a description" rows="4"></textarea>
-          </div>
-
-          <div class="dp-wrapper mt-4">
-            <button class="dp-btn" @click="toggleCalendar">
-              <i class="fa-regular fa-calendar"></i> {{ btnDateText }}
-            </button>
-
-            <div class="dp-popover" v-if="showCalendar" @click.stop>
-
-              <div class="dp-header">
-                <div class="dp-month-year">
-                  <span>{{ monthNames[currentMonth] }}</span>
-                  <span>{{ currentYear }}</span>
-                </div>
-                <div class="dp-nav">
-                  <button @click="moveMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
-                  <button @click="moveMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
-                </div>
+        <div class="cm-body">
+          <div class="cm-layout-grid" :class="{ 'has-side-calendar': showCalendar }">
+            <div class="cm-form-col">
+              <div class="cm-field">
+                <label for="new-cycle-title">Title</label>
+                <input id="new-cycle-title" v-model="newCycle.name" type="text" class="cm-input" placeholder="Enter a cycle title" autofocus />
+              </div>
+              <div class="cm-field">
+                <label for="new-cycle-description">Description</label>
+                <textarea id="new-cycle-description" v-model="newCycle.description" class="cm-textarea" placeholder="Add a description" rows="4"></textarea>
               </div>
 
-              <div class="dp-grid">
-                <div class="dp-day-num headday" v-for="dayName in dayNames" :key="dayName">{{ dayName }}</div>
+              <div class="dp-wrapper mt-4">
+                <button class="dp-btn" @click="toggleCalendar" type="button">
+                  <i class="fa-regular fa-calendar"></i> {{ btnDateText }}
+                  <i class="fa-solid fa-chevron-right ml-auto text-xs toggle-icon" :class="{ 'rotate-90': showCalendar }"></i>
+                </button>
+              </div>
+            </div>
 
-                <div class="dp-day-wrapper" v-for="(day, index) in daysInMonth" :key="index">
-                  <div
-                    class="dp-bg-range"
-                    v-if="isInRange(day) || (isSelectedStart(day.date) && tempEnd) || isSelectedEnd(day.date)"
-                    :class="{ 'range-start': isSelectedStart(day.date) && tempEnd, 'range-end': isSelectedEnd(day.date), 'range-mid': isInRange(day) }"
-                  ></div>
-                  <div class="dp-day-num" :class="{ 'current-month': day.isCurrent, selected: isSelectedStart(day.date) || isSelectedEnd(day.date), disabled: !day.isCurrent || isPastDate(day.date) }" @click="selectDate(day)">
-                    {{ day.day }}
+            <div class="cm-calendar-col" v-if="showCalendar">
+              <div class="dp-popover-inline" @click.stop>
+                <div class="dp-header">
+                  <div class="dp-month-year">
+                    <span>{{ monthNames[currentMonth] }}</span>
+                    <span>{{ currentYear }}</span>
+                  </div>
+                  <div class="dp-nav">
+                    <button type="button" @click="moveMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+                    <button type="button" @click="moveMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+                  </div>
+                </div>
+
+                <div class="dp-grid">
+                  <div class="dp-day-num headday" v-for="dayName in dayNames" :key="dayName">{{ dayName }}</div>
+
+                  <div class="dp-day-wrapper" v-for="(day, index) in daysInMonth" :key="index">
+                    <div
+                      class="dp-bg-range"
+                      v-if="isInRange(day) || (isSelectedStart(day.date) && tempEnd) || isSelectedEnd(day.date)"
+                      :class="{ 'range-start': isSelectedStart(day.date) && tempEnd, 'range-end': isSelectedEnd(day.date), 'range-mid': isInRange(day) }"
+                    ></div>
+                    <div class="dp-day-num" :class="{ 'current-month': day.isCurrent, selected: isSelectedStart(day.date) || isSelectedEnd(day.date), disabled: !day.isCurrent || isPastDate(day.date) }" @click="selectDate(day)">
+                      {{ day.day }}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1531,11 +1537,17 @@ onUnmounted(() => {
 }
 
 .create-cycle-modal {
-  width: 600px;
+  width: 580px;
+  max-width: calc(100vw - 32px);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: 16px;
   box-shadow: var(--shadow-xl);
+  transition: width 0.24s ease;
+}
+
+.create-cycle-modal.with-horizontal-calendar {
+  width: 880px;
 }
 
 [data-theme='dark'] .plane-cycles-wrapper {
@@ -1602,6 +1614,10 @@ onUnmounted(() => {
 .cm-badge { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--color-border); background: var(--color-bg-secondary); padding: 4px 10px; border-radius: 6px; font-size: 12px; color: var(--color-text-primary); font-weight: 500; margin-bottom: 16px; }
 .cm-title { font-size: 20px; font-weight: 600; color: var(--color-text-primary); margin: 0; }
 .cm-body { padding: 0 24px 24px; display: flex; flex-direction: column; }
+.cm-layout-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+.cm-layout-grid.has-side-calendar { grid-template-columns: minmax(0, 1fr) minmax(290px, 310px); align-items: start; }
+.cm-form-col { display: flex; flex-direction: column; }
+.cm-calendar-col { height: 100%; }
 .cm-input, .cm-textarea { width: 100%; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px 16px; color: var(--color-text-primary); outline: none; transition: border-color 0.2s; }
 .cm-input:focus, .cm-textarea:focus { border-color: var(--color-accent); }
 .cm-input { font-size: 15px; }
@@ -1615,9 +1631,13 @@ onUnmounted(() => {
 .cm-btn-create:hover { opacity: 0.9; }
 
 .dp-wrapper { position: relative; }
-.dp-btn { background: var(--color-bg-secondary); border: 1px solid var(--color-border); color: var(--color-text-primary); padding: 8px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: border-color 0.2s; }
+.dp-btn { width: 100%; background: var(--color-bg-secondary); border: 1px solid var(--color-border); color: var(--color-text-primary); padding: 10px 14px; border-radius: 10px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: border-color 0.2s; font-weight: 600; }
 .dp-btn:hover { border-color: var(--color-accent); }
-.dp-popover { position: absolute; top: 100%; left: 0; margin-top: 8px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; width: 280px; padding: 16px; box-shadow: var(--shadow-lg); z-index: 1001; }
+.toggle-icon { transition: transform 0.2s ease; color: var(--color-text-muted); }
+.rotate-90 { transform: rotate(90deg); }
+.dp-popover, .dp-popover-inline { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 14px; width: 100%; padding: 16px; box-shadow: var(--shadow-sm); }
+.dp-popover { position: absolute; top: 100%; left: 0; margin-top: 8px; z-index: 1001; }
+.dp-popover-inline { position: relative; }
 .dp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .dp-month-year { display: flex; gap: 12px; font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
 .dp-nav { display: flex; gap: 8px; }

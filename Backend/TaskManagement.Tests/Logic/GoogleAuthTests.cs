@@ -85,6 +85,380 @@ public sealed class GoogleAuthTests
     }
 
     [Fact]
+    public async Task AuthenticatedUser_CanLinkGoogle_AndLoginResolvesSameUser()
+    {
+        await using var context = CreateContext();
+        var user = User("hybrid-link@example.com", passwordHash: "password-hash");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context, Identity(SubjectA, user.Email));
+
+        await service.LinkGoogleAsync(user.Id, new GoogleLoginRequestDto { Credential = "valid-id-token" });
+        var result = await service.GoogleLoginAsync(new GoogleLoginRequestDto { Credential = "valid-id-token" });
+
+        result.response.Id.Should().Be(user.Id);
+        (await context.Users.CountAsync()).Should().Be(1);
+        (await context.ExternalLogins.SingleAsync()).UserId.Should().Be(user.Id);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_WithExistingEmailWithoutLink_ReturnsConflictWithoutCreatingLink()
+    {
+        await using var context = CreateContext();
+        var user = User("github-existing@example.com", passwordHash: "password-hash");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        using var githubClient = new HttpClient(new GitHubHandler("github-existing@example.com"));
+        var service = CreateService(
+            context,
+            Identity(SubjectA, "unused@example.com"),
+            httpClient: githubClient,
+            configuration: Configuration(new Dictionary<string, string?>
+            {
+                ["GitHub:ClientId"] = "client",
+                ["GitHub:ClientSecret"] = "secret",
+                ["GitHub:RedirectUri"] = "https://sprinta.example/auth/github/callback"
+            }));
+
+        var action = () => service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        await action.Should().ThrowAsync<GitHubAccountConflictException>();
+        (await context.ExternalLogins.CountAsync()).Should().Be(0);
+        (await context.Users.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_RecoversEligibleLegacyUserWithoutCreatingUser()
+    {
+        await using var context = CreateContext();
+        var role = new Role { Id = Guid.NewGuid(), Name = "Legacy Manager" };
+        var user = User("legacy@example.com", passwordHash: " \t");
+        var workspaceId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        context.AddRange(
+            role,
+            user,
+            new UserRole { UserId = user.Id, RoleId = role.Id },
+            new Workspace
+            {
+                Id = workspaceId,
+                Name = "Legacy Workspace",
+                Slug = $"legacy-{Guid.NewGuid():N}",
+                OwnerId = user.Id,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            },
+            new WorkspaceMember
+            {
+                WorkspaceId = workspaceId,
+                UserId = user.Id,
+                WorkspaceRole = "OWNER",
+                JoinedAt = DateTime.UtcNow,
+                IsActive = true
+            },
+            new Project
+            {
+                Id = projectId,
+                Name = "Legacy Project",
+                Identifier = "LEGACY",
+                WorkspaceId = workspaceId,
+                CreatorId = user.Id,
+                StartDate = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+                IsDeleted = false
+            },
+            new ProjectMember
+            {
+                ProjectId = projectId,
+                UserId = user.Id,
+                ProjectRole = "PROJECT_MANAGER",
+                JoinedAt = DateTime.UtcNow,
+                Status = true
+            },
+            LegacyHistory(user));
+        await context.SaveChangesAsync();
+        using var githubClient = new HttpClient(new GitHubHandler(user.Email));
+        var service = CreateGitHubService(context, githubClient);
+
+        var result = await service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        result.response.Id.Should().Be(user.Id);
+        (await context.Users.CountAsync()).Should().Be(1);
+        var login = await context.ExternalLogins.SingleAsync();
+        login.UserId.Should().Be(user.Id);
+        login.ProviderSubject.Should().Be("123");
+        login.ProviderEmail.Should().Be(user.Email);
+        (await context.UserRoles.SingleAsync()).RoleId.Should().Be(role.Id);
+        (await context.WorkspaceMembers.SingleAsync()).WorkspaceRole.Should().Be("OWNER");
+        (await context.ProjectMembers.SingleAsync()).ProjectRole.Should().Be("PROJECT_MANAGER");
+    }
+
+    [Fact]
+    public async Task GitHubLogin_RecoveredUserCanLoginRepeatedlyWithoutDuplicateLink()
+    {
+        await using var context = CreateContext();
+        var user = User("legacy-repeat@example.com");
+        context.AddRange(user, LegacyHistory(user));
+        await context.SaveChangesAsync();
+        using var githubClient = new HttpClient(new GitHubHandler(user.Email));
+        var service = CreateGitHubService(context, githubClient);
+
+        var first = await service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+        var second = await service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        second.response.Id.Should().Be(first.response.Id);
+        (await context.Users.CountAsync()).Should().Be(1);
+        (await context.ExternalLogins.CountAsync()).Should().Be(1);
+        (await context.RefreshTokens.CountAsync()).Should().Be(3);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_ConcurrentRecoveryAcceptsOnlySameUserWinner()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+        var user = User("legacy-concurrent@example.com");
+        await using (var seedContext = new ApplicationDbContext(options))
+        {
+            seedContext.AddRange(user, LegacyHistory(user));
+            await seedContext.SaveChangesAsync();
+        }
+
+        await using var context = new ConcurrentRecoveryContext(options, user.Id);
+        using var githubClient = new HttpClient(new GitHubHandler(user.Email));
+        var service = CreateGitHubService(context, githubClient);
+
+        var result = await service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        result.response.Id.Should().Be(user.Id);
+        (await context.ExternalLogins.CountAsync()).Should().Be(1);
+        (await context.ExternalLogins.SingleAsync()).UserId.Should().Be(user.Id);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_InactiveInviteOnlyUserIsNotRecovered()
+    {
+        await using var context = CreateContext();
+        var user = User("inactive-invite@example.com", active: false);
+        context.AddRange(user, LegacyHistory(user, "Invite:project-1"));
+        await context.SaveChangesAsync();
+        using var githubClient = new HttpClient(new GitHubHandler(user.Email));
+        var service = CreateGitHubService(context, githubClient);
+
+        var action = () => service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        await action.Should().ThrowAsync<GitHubAccountForbiddenException>();
+        (await context.ExternalLogins.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_ActiveInviteOnlyUserIsNotRecovered()
+    {
+        await using var context = CreateContext();
+        var user = User("active-invite@example.com");
+        context.AddRange(user, LegacyHistory(user, "Invite:project-1"));
+        await context.SaveChangesAsync();
+        using var githubClient = new HttpClient(new GitHubHandler(user.Email));
+        var service = CreateGitHubService(context, githubClient);
+
+        var action = () => service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        await action.Should().ThrowAsync<GitHubAccountConflictException>();
+        (await context.ExternalLogins.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_ActivePasswordlessUserWithoutHistoryIsNotRecovered()
+    {
+        await using var context = CreateContext();
+        var user = User("no-history@example.com");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        using var githubClient = new HttpClient(new GitHubHandler(user.Email));
+        var service = CreateGitHubService(context, githubClient);
+
+        var action = () => service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        await action.Should().ThrowAsync<GitHubAccountConflictException>();
+        (await context.ExternalLogins.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_PasswordAccountWithLegacyHistoryIsNotRecovered()
+    {
+        await using var context = CreateContext();
+        var user = User("password-history@example.com", passwordHash: "existing-password");
+        context.AddRange(user, LegacyHistory(user));
+        await context.SaveChangesAsync();
+        using var githubClient = new HttpClient(new GitHubHandler(user.Email));
+        var service = CreateGitHubService(context, githubClient);
+
+        var action = () => service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        await action.Should().ThrowAsync<GitHubAccountConflictException>();
+        (await context.ExternalLogins.CountAsync()).Should().Be(0);
+        (await context.Users.SingleAsync()).PasswordHash.Should().Be("existing-password");
+    }
+
+    [Fact]
+    public async Task GitHubLogin_GoogleLinkedUserWithoutGitHubLinkIsNotRecovered()
+    {
+        await using var context = CreateContext();
+        var user = User("google-linked@example.com");
+        context.AddRange(user, Login(user, SubjectA), LegacyHistory(user));
+        await context.SaveChangesAsync();
+        using var githubClient = new HttpClient(new GitHubHandler(user.Email));
+        var service = CreateGitHubService(context, githubClient);
+
+        var action = () => service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        await action.Should().ThrowAsync<GitHubAccountConflictException>();
+        (await context.ExternalLogins.SingleAsync()).Provider.Should().Be("Google");
+    }
+
+    [Fact]
+    public async Task GitHubLogin_NonPrimaryVerifiedEmailIsRejected()
+    {
+        await using var context = CreateContext();
+        using var githubClient = new HttpClient(new GitHubHandler("nonprimary@example.com", primary: false));
+        var service = CreateGitHubService(context, githubClient);
+
+        var action = () => service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        await action.Should().ThrowAsync<UnauthorizedAccessException>();
+        (await context.Users.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_ExistingSubjectIsNeverReassignedToLegacyEmailOwner()
+    {
+        await using var context = CreateContext();
+        var legacyUser = User("legacy-subject-conflict@example.com");
+        var linkedUser = User("linked-subject@example.com", passwordHash: "password");
+        context.AddRange(
+            legacyUser,
+            linkedUser,
+            LegacyHistory(legacyUser),
+            new ExternalLogin
+            {
+                Id = Guid.NewGuid(),
+                UserId = linkedUser.Id,
+                User = linkedUser,
+                Provider = "GitHub",
+                ProviderSubject = "123",
+                ProviderEmail = linkedUser.Email
+            });
+        await context.SaveChangesAsync();
+        using var githubClient = new HttpClient(new GitHubHandler(legacyUser.Email));
+        var service = CreateGitHubService(context, githubClient);
+
+        var action = () => service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        await action.Should().ThrowAsync<GitHubAccountConflictException>();
+        (await context.ExternalLogins.CountAsync()).Should().Be(1);
+        (await context.ExternalLogins.SingleAsync()).UserId.Should().Be(linkedUser.Id);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_NewUserStoresProviderSubject()
+    {
+        await using var context = CreateContext();
+        using var githubClient = new HttpClient(new GitHubHandler("github-new@example.com"));
+        var service = CreateService(
+            context,
+            Identity(SubjectA, "unused@example.com"),
+            httpClient: githubClient,
+            configuration: Configuration(new Dictionary<string, string?>
+            {
+                ["GitHub:ClientId"] = "client",
+                ["GitHub:ClientSecret"] = "secret",
+                ["GitHub:RedirectUri"] = "https://sprinta.example/auth/github/callback"
+            }));
+
+        var result = await service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        result.response.Email.Should().Be("github-new@example.com");
+        var login = await context.ExternalLogins.SingleAsync();
+        login.Provider.Should().Be("GitHub");
+        login.ProviderSubject.Should().Be("123");
+        login.UserId.Should().Be(result.response.Id);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_RejectsUnverifiedPrimaryEmail()
+    {
+        await using var context = CreateContext();
+        using var githubClient = new HttpClient(new GitHubHandler("unverified@example.com", verified: false));
+        var service = CreateService(
+            context,
+            Identity(SubjectA, "unused@example.com"),
+            httpClient: githubClient,
+            configuration: Configuration(new Dictionary<string, string?>
+            {
+                ["GitHub:ClientId"] = "client",
+                ["GitHub:ClientSecret"] = "secret",
+                ["GitHub:RedirectUri"] = "https://sprinta.example/auth/github/callback"
+            }));
+
+        var action = () => service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        await action.Should().ThrowAsync<UnauthorizedAccessException>();
+        (await context.Users.CountAsync()).Should().Be(0);
+        (await context.ExternalLogins.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_LinkedSubjectResolvesOriginalUser()
+    {
+        await using var context = CreateContext();
+        var user = User("original@example.com", passwordHash: "password-hash");
+        context.AddRange(user, new ExternalLogin
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            User = user,
+            Provider = "GitHub",
+            ProviderSubject = "123",
+            ProviderEmail = user.Email
+        });
+        await context.SaveChangesAsync();
+        using var githubClient = new HttpClient(new GitHubHandler("renamed@example.com"));
+        var service = CreateService(
+            context,
+            Identity(SubjectA, "unused@example.com"),
+            httpClient: githubClient,
+            configuration: Configuration(new Dictionary<string, string?>
+            {
+                ["GitHub:ClientId"] = "client",
+                ["GitHub:ClientSecret"] = "secret",
+                ["GitHub:RedirectUri"] = "https://sprinta.example/auth/github/callback"
+            }));
+
+        var result = await service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        result.response.Id.Should().Be(user.Id);
+        (await context.Users.CountAsync()).Should().Be(1);
+        (await context.ExternalLogins.SingleAsync()).ProviderEmail.Should().Be("renamed@example.com");
+    }
+
+    [Fact]
+    public async Task UnlinkExternalLogin_RejectsRemovingFinalUsableMethod()
+    {
+        await using var context = CreateContext();
+        var user = User("google-only@example.com");
+        context.AddRange(user, Login(user, SubjectA));
+        await context.SaveChangesAsync();
+        var service = CreateService(context, Identity(SubjectA, user.Email));
+
+        var action = () => service.UnlinkExternalLoginAsync(user.Id, "Google");
+
+        await action.Should().ThrowAsync<LastLoginMethodException>();
+        (await context.ExternalLogins.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
     public async Task DeletedEmailWithoutLink_IsNotRecreated()
     {
         await using var context = CreateContext();
@@ -362,22 +736,27 @@ public sealed class GoogleAuthTests
     private static AuthService CreateService(
         ApplicationDbContext context,
         GoogleIdentity identity,
-        Mock<IJwtService>? jwt = null) =>
-        CreateService(context, new MutableGoogleValidator(identity), jwt);
+        Mock<IJwtService>? jwt = null,
+        HttpClient? httpClient = null,
+        IConfiguration? configuration = null) =>
+        CreateService(context, new MutableGoogleValidator(identity), jwt, httpClient, configuration);
 
     private static AuthService CreateService(
         ApplicationDbContext context,
         IGoogleIdentityValidator validator,
-        Mock<IJwtService>? jwt = null)
+        Mock<IJwtService>? jwt = null,
+        HttpClient? httpClient = null,
+        IConfiguration? configuration = null)
     {
         jwt ??= JwtMock();
         return new AuthService(
             context,
             jwt.Object,
-            Configuration(new Dictionary<string, string?>()),
+            configuration ?? Configuration(new Dictionary<string, string?>()),
             Mock.Of<IOtpService>(),
             Mock.Of<IEmailService>(),
-            validator);
+            validator,
+            githubHttpClient: httpClient);
     }
 
     private static Mock<IJwtService> JwtMock()
@@ -426,6 +805,81 @@ public sealed class GoogleAuthTests
             LastLoginAt = DateTime.UtcNow
         };
 
+    private static AuthService CreateGitHubService(ApplicationDbContext context, HttpClient githubClient) =>
+        CreateService(
+            context,
+            Identity(SubjectA, "unused@example.com"),
+            httpClient: githubClient,
+            configuration: Configuration(new Dictionary<string, string?>
+            {
+                ["GitHub:ClientId"] = "client",
+                ["GitHub:ClientSecret"] = "secret",
+                ["GitHub:RedirectUri"] = "https://sprinta.example/auth/github/callback"
+            }));
+
+    private static RefreshToken LegacyHistory(User user, string deviceId = "GitHub-App-SSO") =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            User = user,
+            DeviceId = deviceId,
+            Token = $"legacy-{Guid.NewGuid():N}",
+            ExpiryTime = DateTime.UtcNow.AddDays(1)
+        };
+
+    private sealed class GitHubHandler(string email, bool verified = true, bool primary = true) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.RequestUri?.AbsoluteUri.Contains("access_token", StringComparison.Ordinal) == true
+                ? "{\"access_token\":\"github-access\"}"
+                : request.RequestUri?.AbsoluteUri.EndsWith("/user", StringComparison.Ordinal) == true
+                    ? $"{{\"id\":123,\"login\":\"octo\",\"name\":\"Octo\",\"email\":\"{email}\"}}"
+                    : $"[{{\"email\":\"{email}\",\"primary\":{primary.ToString().ToLowerInvariant()},\"verified\":{verified.ToString().ToLowerInvariant()}}}]";
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+            });
+        }
+    }
+
+    private sealed class ConcurrentRecoveryContext : ApplicationDbContext
+    {
+        private readonly DbContextOptions<ApplicationDbContext> _options;
+        private readonly Guid _concurrentUserId;
+        private bool _simulatedConflict;
+
+        public ConcurrentRecoveryContext(
+            DbContextOptions<ApplicationDbContext> options,
+            Guid concurrentUserId) : base(options)
+        {
+            _options = options;
+            _concurrentUserId = concurrentUserId;
+        }
+
+        public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (!_simulatedConflict && ChangeTracker.Entries<ExternalLogin>().Any(entry => entry.State == EntityState.Added))
+            {
+                _simulatedConflict = true;
+                await using var concurrentContext = new ApplicationDbContext(_options);
+                concurrentContext.ExternalLogins.Add(new ExternalLogin
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = _concurrentUserId,
+                    Provider = "GitHub",
+                    ProviderSubject = "123",
+                    ProviderEmail = "legacy-concurrent@example.com"
+                });
+                await concurrentContext.SaveChangesAsync(cancellationToken);
+                throw new DbUpdateException("simulated concurrent unique-index conflict");
+            }
+
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+    }
+
     private static AuthController Controller(
         ApplicationDbContext context,
         IAuthService auth,
@@ -435,6 +889,9 @@ public sealed class GoogleAuthTests
             Mock.Of<IOtpService>(),
             Mock.Of<IEmailService>(),
             context,
+            Configuration(new Dictionary<string, string?>()),
+            Mock.Of<IGoogleAuthorizationCodeExchange>(),
+            Mock.Of<IGoogleLoginOAuthStateStore>(),
             logger)
         {
             ControllerContext = new ControllerContext

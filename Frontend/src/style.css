@@ -2554,6 +2554,231 @@ textarea {
   display: none !important;
 }
 
+/* SprintA responsive consistency layer: keep dense workspace screens inside the shared theme. */
+.rewards-page,
+.teams-wrapper,
+.team-list-page,
+.team-kudos-container,
+.integration-page,
+.goals-dashboard-layout {
+  min-width: 0;
+  color: var(--color-text-primary) !important;
+}
+
+.rewards-page {
+  background: var(--color-bg) !important;
+}
+
+.rewards-page .page-header,
+.rewards-page .panel,
+.rewards-page .season-v1-panel,
+.rewards-page .reward-manager-panel {
+  background: var(--color-surface) !important;
+  border-color: var(--color-border) !important;
+}
+
+.team-card,
+.people-card,
+.kudo-card,
+.goals-dashboard-layout .empty-state-banner {
+  background: var(--color-surface) !important;
+  border-color: var(--color-border) !important;
+}
+
+.team-card-cover {
+  background: var(--color-surface-soft) !important;
+  border-color: var(--color-border) !important;
+}
+
+.team-name-card,
+.team-meta,
+.people-card,
+.kudo-card,
+.kudo-sender,
+.kudo-date,
+.kudo-message,
+.section-header h2,
+.goals-dashboard-layout .empty-banner-text h2,
+.goals-dashboard-layout .empty-banner-text p,
+.goals-dashboard-layout .search-input {
+  color: var(--color-text-primary) !important;
+}
+
+.team-meta,
+.kudo-date,
+.goals-dashboard-layout .empty-banner-text p {
+  color: var(--color-text-secondary) !important;
+}
+
+.teams-wrapper .module-header,
+.team-list-page,
+.team-kudos-container,
+.goals-dashboard-layout .module-content,
+.integration-page .page-content {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.team-list-page .table-container,
+.people-directory-layout .table-container,
+.goals-dashboard-layout .table-container {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.team-list-page .teams-table,
+.people-directory-layout .jira-table,
+.goals-dashboard-layout .goals-table {
+  min-width: 680px;
+}
+
+.rewards-page .rankings-table {
+  min-width: 560px;
+}
+
+.give-kudos-overlay {
+  background: var(--color-bg) !important;
+  color: var(--color-text-primary) !important;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.give-kudos-overlay > div {
+  min-width: 0;
+  padding-inline: 12px;
+}
+
+.give-kudos-overlay > div > div {
+  min-width: 0;
+}
+
+.give-kudos-overlay .dropdown-menu {
+  width: min(340px, calc(100vw - 24px)) !important;
+  max-width: calc(100vw - 24px) !important;
+  background: var(--color-surface) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+  box-sizing: border-box;
+}
+
+.global-utility-rail .sticky-launcher-main,
+.global-utility-rail .sticky-launcher-add,
+.global-utility-rail .sticky-launcher-handle {
+  min-height: 44px;
+}
+
+@media (max-width: 900px) {
+  .teams-wrapper .header-content,
+  .rewards-page .page-header,
+  .rewards-page .season-v1-heading,
+  .rewards-page .manager-panel-heading {
+    flex-wrap: wrap;
+  }
+
+  .teams-wrapper .header-actions,
+  .rewards-page .page-header > *:last-child {
+    margin-left: auto;
+  }
+
+  .rewards-dashboard-container {
+    padding: 16px 14px 24px !important;
+  }
+
+  .rewards-page .season-v1-panel,
+  .rewards-page .reward-manager-panel {
+    margin-inline: 14px;
+    padding: 16px !important;
+  }
+
+  .goals-dashboard-layout .sprinta-layout-content > div {
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .goals-dashboard-layout .sprinta-layout-content > div {
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+
+  .goals-dashboard-layout .sprinta-layout-content > div > * {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .goals-dashboard-layout .empty-banner-content {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 24px;
+    padding: 24px 18px;
+  }
+
+  .goals-dashboard-layout .empty-banner-text,
+  .goals-dashboard-layout .empty-banner-illustration {
+    max-width: none;
+  }
+
+  .goals-dashboard-layout .empty-banner-actions {
+    flex-wrap: wrap;
+  }
+
+  .rewards-page .manager-columns {
+    grid-template-columns: 1fr !important;
+  }
+
+  .teams-wrapper .module-header {
+    padding-inline: 14px;
+  }
+
+  .teams-wrapper .module-content {
+    padding-inline: 14px !important;
+  }
+
+  .team-cards-grid,
+  .people-cards-grid,
+  .kudos-feed {
+    gap: 14px !important;
+  }
+
+  .give-kudos-overlay > div {
+    padding-top: 24px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .rewards-page .top-three-section {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+    margin-bottom: 16px;
+  }
+
+  .rewards-page .top-three-col {
+    min-height: 128px;
+    padding-inline: 2px;
+  }
+
+  .rewards-page .top-three-col .user-name,
+  .rewards-page .top-three-col .level-text {
+    font-size: 11px;
+  }
+
+  .rewards-page .season-v1-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rewards-page .season-v1-xp {
+    justify-items: start;
+  }
+
+  .integration-page .page-content {
+    padding-inline: 0;
+  }
+
+  .global-utility-rail {
+    right: max(8px, env(safe-area-inset-right)) !important;
+    bottom: calc(10px + env(safe-area-inset-bottom)) !important;
+  }
+}
+
 .teams-wrapper > .module-header,
 .goals-wrapper > .module-header {
   padding: 18px 18px 0 !important;

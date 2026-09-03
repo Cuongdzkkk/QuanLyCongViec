@@ -1,17 +1,39 @@
 <template>
   <div>
     <div class="ai-page-flex-wrapper">
+      <aside class="ai-page-history" :class="{ 'is-open': aiConversationStore.historyVisible }" aria-label="Lịch sử trò chuyện">
+        <div class="ai-page-history-head">
+          <div><span class="eyebrow">SPRINTA AI</span><strong>Lịch sử trò chuyện</strong></div>
+          <button type="button" aria-label="Đóng lịch sử" title="Đóng lịch sử" @click="aiConversationStore.historyVisible = false">×</button>
+        </div>
+        <input v-model="conversationSearch" type="search" placeholder="Tìm cuộc trò chuyện" aria-label="Tìm cuộc trò chuyện" />
+        <p v-if="conversationLoading" class="history-empty">Đang tải...</p>
+        <p v-else-if="!conversations.length" class="history-empty">Chưa có cuộc trò chuyện đã lưu.</p>
+        <button v-for="conversation in filteredConversations" :key="conversation.id" type="button" class="ai-page-history-item" :class="{ active: conversation.id === currentConversationId }" @click="openConversation(conversation.id)">
+          <strong>{{ conversation.title }}</strong>
+          <small>{{ formatConversationDate(conversation.updatedAt) }}</small>
+        </button>
+        <button v-if="conversationHasMore" class="history-more" type="button" @click="loadConversations(false)">Tải thêm</button>
+      </aside>
       <div class="ai-container">
         <div class="ai-page-header">
           <div class="header-left">
             <h2 class="page-title">Trợ lý AI</h2>
-            <span class="header-pill">Chat, breakdown, repo analysis</span>
+            <span class="header-pill">Workspace assistant</span>
             <span v-if="aiUsage" class="credit-pill">
               {{ aiUsage.usedCredits }}/{{ aiUsage.includedCredits }} credits · còn {{ aiUsage.remainingCredits }}
             </span>
+            <button v-if="aiUsage" class="credit-buy-inline" type="button" @click="openAiCreditPurchase">Mua thêm</button>
+          </div>
+          <div class="header-actions">
+            <button class="header-icon-btn" type="button" title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới" @click="startNewConversation"><i class="fa-solid fa-plus"></i></button>
+            <button class="header-icon-btn mobile-history-toggle" type="button" title="Mở lịch sử" aria-label="Mở lịch sử" @click="toggleConversationHistory"><i class="fa-solid fa-clock-rotate-left"></i></button>
+            <button class="return-floating-btn" type="button" @click="returnToFloating"><i class="fa-solid fa-arrow-left"></i> Về bảng AI</button>
           </div>
         </div>
 
+        <details class="workspace-tools">
+          <summary><span>Workspace tools</span><small>GitHub analysis và backlog review</small></summary>
         <div class="repo-panel">
           <div class="repo-head">
             <div>
@@ -187,6 +209,7 @@
             </div>
           </div>
         </div>
+        </details>
 
         <div class="chat-history">
           <div v-for="(msg, idx) in chatHistory" :key="idx" class="chat-row" :class="msg.role">
@@ -207,6 +230,20 @@
                 </div>
               </div>
               <i v-if="msg.isTyping" class="fa-solid fa-ellipsis fa-fade"></i>
+              <div v-if="msg.actions?.length" class="page-action-list" aria-label="AI action previews">
+                <article v-for="(action, actionIndex) in writeActions(msg.actions)" :key="`${action.type}-${actionIndex}`" class="page-action-card">
+                  <div class="page-action-head"><div><span>CẦN BẠN XÁC NHẬN</span><strong>{{ actionLabel(action.type) }}</strong></div><em>{{ actionStatusLabel(action) }}</em></div>
+                  <p>{{ action.description || 'AI đề xuất một thay đổi dựa trên yêu cầu của bạn.' }}</p>
+                  <dl><template v-for="detail in actionDetails(action)" :key="detail.label"><dt>{{ detail.label }}</dt><dd>{{ detail.value }}</dd></template></dl>
+                  <p v-if="action.error" class="page-action-error" role="alert">{{ action.error }}</p>
+                  <p v-if="action.result?.message" class="page-action-success" role="status">{{ action.result.message }}</p>
+                  <div class="page-action-controls">
+                    <button type="button" class="cancel-action" :disabled="action.loading || action.uiStatus === 'success'" @click="cancelPageAction(action)">Hủy</button>
+                    <button type="button" class="confirm-action" :disabled="action.loading || action.uiStatus === 'success'" @click="confirmPageAction(action)">{{ action.loading ? 'Đang xử lý...' : action.uiStatus === 'success' ? 'Đã thực hiện' : 'Xác nhận' }}</button>
+                  </div>
+                </article>
+                <small v-if="msg.actions.some(action => isReadOnlyAction(action.type, action.requiresConfirmation))" class="page-read-note">Đã đọc dữ liệu hiện tại để bổ sung kết quả.</small>
+              </div>
             </div>
             <div v-if="msg.role === 'user'" class="user-avatar-circle">{{ userInitials }}</div>
           </div>
@@ -214,14 +251,17 @@
 
         <div class="ai-chat-input-wrapper">
           <div class="input-box">
-            <i class="fa-solid fa-paperclip attach-btn"></i>
-            <input
+            <button class="full-composer-icon" type="button" title="Mở công cụ attachment" aria-label="Mở công cụ attachment" @click="returnToFloating"><i class="fa-solid fa-plus"></i></button>
+            <textarea
+              ref="fullComposerRef"
               v-model="userMessage"
-              type="text"
+              rows="1"
               placeholder="Hoi SprintA AI bat cu dieu gi..."
               :disabled="isLoading"
-              @keyup.enter="sendMessage()"
-            />
+              @input="resizeFullComposer"
+              @keydown="handleComposerKeydown"
+            ></textarea>
+            <button class="full-composer-icon" type="button" title="Mở nhập bằng giọng nói" aria-label="Mở nhập bằng giọng nói" @click="returnToFloating"><i class="fa-solid fa-microphone"></i></button>
             <button class="send-btn" type="button" :disabled="isLoading || !userMessage.trim()" @click="sendMessage()">
               <span class="fa fa-paper-plane"></span>
             </button>
@@ -252,14 +292,14 @@
 
         <div class="panel-section mt-30">
           <div class="section-title">NHAC NHO</div>
-          <p class="text-muted sidebar-copy">Retry Gemini da bat 3 lan o backend. Neu AI tre, bong loading se hien cac buoc dang xu ly.</p>
+          <p class="text-muted sidebar-copy">Credits và trạng thái xử lý được cập nhật theo tài khoản của bạn. Nếu AI chậm, tiến trình sẽ hiển thị ngay trong cuộc trò chuyện.</p>
         </div>
 
         <div class="upgrade-card-wrapper">
           <div class="upgrade-card">
-            <div class="plan-label">GOI PRO</div>
-            <div class="plan-desc">Mo khoa cac truy van AI khong gioi han va quy trinh lam viec tuy chinh.</div>
-            <button class="btn-upgrade" type="button" @click="router.push('/rewards')">Nang cap ngay</button>
+            <div class="plan-label">AI CREDITS</div>
+            <div class="plan-desc">Xem các gói và luồng mua credits thật của SprintA.</div>
+            <button class="btn-upgrade" type="button" @click="openAiCreditPurchase">Mua thêm AI credits</button>
           </div>
         </div>
       </aside>
@@ -270,7 +310,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import CustomizeSidebarModal from '../components/CustomizeSidebarModal.vue'
@@ -285,8 +325,13 @@ import { signalRService } from '@/api/signalrService'
 import { hasProjectWritePermission, normalizeProjectRole } from '@/utils/permissions'
 import { getScopedCurrentProjectId } from '@/utils/projectContext'
 import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
+import { useAiConversationStore } from '@/store/useAiConversationStore'
+import { useAiPetStore } from '@/store/useAiPetStore'
+import { isComposerSendKey, writeActionsOnly } from '@/utils/aiWorkspace'
 
 const router = useRouter()
+const aiConversationStore = useAiConversationStore()
+const aiPetStore = useAiPetStore()
 const projectStore = useProjectStore()
 const workTaskStore = useWorkTaskStore()
 const sprintStore = useSprintStore()
@@ -296,6 +341,7 @@ const showCustomizeModal = ref(false)
 const sidebarPreferences = ref({ audit: true, users: true })
 
 const userMessage = ref('')
+const fullComposerRef = ref(null)
 const isLoading = ref(false)
 const repoLoading = ref(false)
 const repoStatus = ref('')
@@ -309,16 +355,25 @@ const repoForm = ref({
   token: ''
 })
 
-const chatHistory = ref([
-  {
-    role: 'bot',
-    content: 'Xin chào! Tôi là trợ lý AI của SprintA. Tôi có thể tạo task thật, thống kê dự án, tóm tắt công việc, breakdown task và phân tích repo GitHub để gợi ý backlog.'
-  }
-])
+const chatHistory = computed({
+  get: () => aiConversationStore.messages,
+  set: value => { aiConversationStore.messages = value }
+})
+const conversations = computed(() => aiConversationStore.conversations)
+const filteredConversations = computed(() => aiConversationStore.filteredConversations)
+const currentConversationId = computed(() => aiConversationStore.currentConversationId)
+const conversationLoading = computed(() => aiConversationStore.loading)
+const conversationHasMore = computed(() => aiConversationStore.hasMore)
+const conversationSearch = computed({
+  get: () => aiConversationStore.search,
+  set: value => { aiConversationStore.search = value }
+})
+const currentWorkspaceId = computed(() => currentProjectRecord.value?.workspaceId || currentProjectRecord.value?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null)
+const formatConversationDate = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : ''
 
 const breakdownProgressSteps = [
   'Dang phan tich task',
-  'Dang goi Gemini',
+  'Dang truy van dich vu AI',
   'Dang thu lai neu can',
   'Dang tong hop ket qua'
 ]
@@ -422,6 +477,137 @@ const clearProgressTimer = () => {
   }
 }
 
+const loadConversations = async (reset = true) => {
+  try {
+    await aiConversationStore.loadConversations({ workspaceId: currentWorkspaceId.value, reset })
+  } catch {
+    ElMessage.warning('Không thể tải lịch sử trò chuyện.')
+  }
+}
+
+const toggleConversationHistory = () => {
+  aiConversationStore.historyVisible = !aiConversationStore.historyVisible
+  if (aiConversationStore.historyVisible) loadConversations(true)
+}
+
+const startNewConversation = () => aiConversationStore.startNewConversation()
+const openConversation = async id => {
+  try {
+    await aiConversationStore.openConversation(id)
+  } catch {
+    ElMessage.error('Không thể mở cuộc trò chuyện.')
+  }
+}
+const returnToFloating = async () => {
+  aiPetStore.setPanelOpen(true)
+  await router.back()
+}
+const openAiCreditPurchase = () => router.push('/#pricing')
+
+const readOnlyActionTypes = new Set([
+  'summarize_dashboard', 'summarize_project', 'list_overdue_tasks', 'get_workload',
+  'explain_report', 'summarize_page', 'summarize_intakes', 'suggest_view_filter',
+  'list_work_items', 'list_cycles', 'list_modules', 'list_pages', 'list_views',
+  'list_intakes', 'list_pending_intakes', 'analyze_priority_distribution',
+  'analyze_status_distribution', 'analyze_workload', 'identify_project_risks',
+  'refresh_report', 'export_report_csv', 'summarize_report'
+])
+const isReadOnlyAction = (type, requiresConfirmation) => requiresConfirmation === false || readOnlyActionTypes.has(String(type || '').toLowerCase())
+const writeActions = actions => writeActionsOnly(actions, isReadOnlyAction)
+const actionPayload = action => action?.payload || {}
+const payloadValue = (action, ...keys) => {
+  const payload = actionPayload(action)
+  const key = keys.find(item => payload[item] !== undefined && payload[item] !== null && `${payload[item]}`.trim() !== '')
+  return key ? payload[key] : ''
+}
+const actionLabel = type => ({
+  create_task: 'Tạo task mới', create_project: 'Tạo project mới', create_goal: 'Tạo mục tiêu mới',
+  update_task_status: 'Cập nhật trạng thái task', update_task_priority: 'Cập nhật độ ưu tiên',
+  update_task_due_date: 'Cập nhật hạn task', assign_task: 'Giao task cho thành viên',
+  add_comment: 'Thêm bình luận', create_cycle: 'Tạo chu kỳ mới', create_module: 'Tạo mô-đun mới',
+  create_page: 'Tạo tài liệu mới', create_view: 'Tạo bộ lọc đã lưu', create_intake_request: 'Tạo yêu cầu mới'
+}[String(type || '').toLowerCase()] || 'Thực hiện thay đổi')
+const actionDetails = action => {
+  const type = String(action?.type || '').toLowerCase()
+  const details = []
+  const add = (label, value) => { if (value !== '' && value !== null && value !== undefined) details.push({ label, value: `${value}` }) }
+  if (type === 'create_task') {
+    add('Tiêu đề', payloadValue(action, 'title', 'taskTitle'))
+    add('Hạn', payloadValue(action, 'dueDate', 'plannedEndDate'))
+    add('Ưu tiên', payloadValue(action, 'priority'))
+  } else if (type === 'create_project' || type === 'create_goal') {
+    add('Tên', payloadValue(action, 'name', 'projectName', 'title'))
+    add('Mô tả', payloadValue(action, 'description'))
+  } else if (type === 'update_task_status') {
+    add('Task', payloadValue(action, 'taskTitle', 'title'))
+    add('Trạng thái mới', payloadValue(action, 'statusName', 'status'))
+  } else if (type === 'assign_task') {
+    add('Task', payloadValue(action, 'taskTitle', 'title'))
+    add('Người nhận', payloadValue(action, 'assigneeName', 'assigneeEmail', 'assignee'))
+  } else if (type === 'update_task_priority' || type === 'update_task_due_date') {
+    add('Task', payloadValue(action, 'taskTitle', 'title'))
+    add(type === 'update_task_priority' ? 'Độ ưu tiên mới' : 'Hạn mới', payloadValue(action, type === 'update_task_priority' ? 'priority' : 'dueDate'))
+  } else if (type === 'add_comment') {
+    add('Đối tượng', payloadValue(action, 'entityType'))
+    add('Nội dung', payloadValue(action, 'content'))
+  } else {
+    add('Tên', payloadValue(action, 'name', 'title'))
+    add('Dự án', payloadValue(action, 'projectName'))
+  }
+  return details
+}
+const actionStatusLabel = action => ({ pending: 'Chờ xác nhận', loading: 'Đang xử lý', success: 'Thành công', cancelled: 'Đã hủy', error: 'Thất bại' }[action.uiStatus || 'pending'] || 'Chờ xác nhận')
+
+const confirmPageAction = async action => {
+  if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
+  action.loading = true
+  action.uiStatus = 'loading'
+  try {
+    action.idempotencyKey ||= `${action.type}-${crypto.randomUUID()}`
+    if (!action.serverActionId) {
+      const preview = await axiosClient.post('/ai/actions/preview', {
+        type: action.type, idempotencyKey: action.idempotencyKey,
+        workspaceId: currentWorkspaceId.value || null, projectId: currentProjectId.value || actionPayload(action).projectId || null,
+        payload: actionPayload(action)
+      })
+      action.serverActionId = preview.data?.data?.actionId
+    }
+    if (!action.serverActionId) throw new Error('Không thể tạo action preview.')
+    const response = await axiosClient.post(`/ai/actions/${action.serverActionId}/confirm`)
+    const payload = response.data?.data ?? response.data
+    action.result = payload?.result ?? payload
+    action.uiStatus = 'success'
+    ElMessage.success('AI đã thực hiện thay đổi thành công.')
+    await aiConversationStore.persistConversation()
+  } catch (error) {
+    action.uiStatus = 'error'
+    action.error = error.response?.data?.message || error.message || 'Không thể thực hiện action.'
+    ElMessage.error(action.error)
+  } finally {
+    action.loading = false
+  }
+}
+
+const cancelPageAction = async action => {
+  if (!action || action.loading || action.uiStatus === 'success') return
+  if (action.serverActionId) await axiosClient.post(`/ai/actions/${action.serverActionId}/cancel`).catch(() => {})
+  action.uiStatus = 'cancelled'
+  await aiConversationStore.persistConversation()
+}
+
+const handleComposerKeydown = event => {
+  if (!isComposerSendKey(event)) return
+  event.preventDefault()
+  sendMessage()
+}
+
+const resizeFullComposer = () => {
+  const textarea = fullComposerRef.value
+  if (!textarea) return
+  textarea.style.height = 'auto'
+  textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`
+}
+
 const isBreakdownPrompt = (message) => {
   const text = `${message || ''}`.toLowerCase()
   return text.includes('phan ra') || text.includes('breakdown') || text.includes('subtask') || text.includes('sub-work item')
@@ -465,34 +651,46 @@ const sendMessage = async (overrideMessage = null) => {
   startThinkingMessage(outgoing)
 
   try {
+    const conversationId = await aiConversationStore.ensureConversation({
+      workspaceId: currentWorkspaceId.value,
+      firstMessage: outgoing
+    })
     const history = chatHistory.value
       .filter(item => !item.isTyping)
       .slice(-10)
       .map(item => ({ role: item.role === 'bot' ? 'assistant' : 'user', content: item.content }))
 
-    const response = await axiosClient.post('/ai/command', {
-      prompt: outgoing,
+    const response = await axiosClient.post('/ai/context-chat', {
+      conversationId,
+      route: '/ai-assistant',
       projectId: currentProjectId.value || null,
-      locale: i18nStore.locale,
-      history
+      workspaceId: currentWorkspaceId.value || null,
+      message: outgoing,
+      pageContext: { pageType: 'ai-assistant', currentView: 'conversation', visibleTaskIds: [], visibleStatuses: [], filters: {}, extra: { history } }
     })
 
     clearProgressTimer()
     chatHistory.value.pop()
     const payload = response.data?.data ?? response.data
-    const message = payload?.message || response.data?.message || (i18nStore.locale === 'en'
+    const message = payload?.answer || payload?.message || response.data?.message || (i18nStore.locale === 'en'
       ? 'Sorry, AI did not return content. Please try another request.'
       : 'R\u1ea5t ti\u1ebfc, AI kh\u00f4ng ph\u1ea3n h\u1ed3i n\u1ed9i dung. B\u1ea1n c\u00f3 th\u1ec3 th\u1eed l\u1ea1i v\u1edbi c\u00e2u h\u1ecfi kh\u00e1c.')
-    chatHistory.value.push({ role: 'bot', content: message })
+    chatHistory.value.push({
+      role: 'bot',
+      content: message,
+      warnings: payload?.warnings || [],
+      actions: (payload?.actions || []).map(action => ({
+        ...action,
+        type: String(action.type || '').toLowerCase(),
+        payload: action.payload || {},
+        uiStatus: 'pending',
+        loading: false,
+        error: '',
+        result: null
+      }))
+    })
+    await aiConversationStore.persistConversation()
 
-    if (payload?.action === 'create-task' && currentProjectId.value) {
-      await Promise.all([
-        workTaskStore.fetchTasks(currentProjectId.value, { reset: false }).catch(() => []),
-        projectStore.fetchProjectDetails(currentProjectId.value, { force: true }).catch(() => null)
-      ])
-      notifyProjectRealtime('work-item-created', { taskId: payload.createdTask?.id, source: 'ai-command' })
-      ElMessage.success(i18nStore.locale === 'en' ? 'AI created a real task.' : 'AI \u0111\u00e3 t\u1ea1o task th\u1eadt.')
-    }
   } catch (error) {
     clearProgressTimer()
     chatHistory.value.pop()
@@ -710,6 +908,8 @@ onMounted(() => {
   clearLegacyGitHubCredentialStorage()
   projectStore.fetchAllProjects().catch(() => [])
   loadAiUsage()
+  loadConversations(true)
+  nextTick(resizeFullComposer)
   if (currentProjectId.value) {
     sprintStore.fetchSprints(currentProjectId.value).catch(() => [])
     signalRService.startConnection(`${currentProjectId.value}`)
@@ -1331,5 +1531,102 @@ const handleSidebarSaved = (prefs) => {
   .analysis-action-buttons {
     justify-content: flex-start;
   }
+}
+
+.ai-page-flex-wrapper {
+  max-width: none;
+  height: calc(100dvh - 64px);
+  gap: 0;
+  background: var(--color-bg);
+}
+
+.ai-page-history {
+  display: flex;
+  flex: 0 0 250px;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 22px 14px;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.ai-page-history-head,
+.header-actions,
+.ai-page-history-head > div { display: flex; align-items: center; }
+.ai-page-history-head { justify-content: space-between; gap: 8px; }
+.ai-page-history-head > div { align-items: flex-start; flex-direction: column; gap: 3px; min-width: 0; }
+.ai-page-history-head strong { font-size: 13px; }
+.ai-page-history-head button { width: 32px; height: 32px; display: none; border: 1px solid var(--color-border); border-radius: 8px; background: transparent; color: var(--color-text-muted); font-size: 20px; cursor: pointer; }
+.eyebrow { color: var(--color-accent); font-size: 10px; font-weight: 850; letter-spacing: .08em; }
+.ai-page-history > input { min-height: 38px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg); color: var(--color-text-primary); }
+.history-empty { margin: 12px 4px; color: var(--color-text-muted); font-size: 12px; line-height: 1.5; }
+.ai-page-history-item { display: grid; gap: 4px; width: 100%; min-height: 50px; padding: 9px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--color-text-primary); text-align: left; cursor: pointer; }
+.ai-page-history-item:hover, .ai-page-history-item.active { border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border)); background: var(--sa-primary-soft); }
+.ai-page-history-item strong, .ai-page-history-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-page-history-item strong { font-size: 12px; }
+.ai-page-history-item small { color: var(--color-text-muted); font-size: 10px; }
+.history-more { min-height: 34px; border: 1px solid var(--color-border); border-radius: 8px; background: transparent; color: var(--color-text-secondary); cursor: pointer; }
+
+.ai-container { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; max-width: none; padding: 24px clamp(18px, 4vw, 58px) 0; background: var(--color-bg); }
+.ai-page-header { flex: 0 0 auto; align-items: center; min-height: 52px; margin-bottom: 16px; }
+.header-left { min-width: 0; }
+.credit-buy-inline { min-height: 30px; padding: 0 9px; border: 1px solid var(--color-border); border-radius: 8px; background: transparent; color: var(--color-accent); font-size: 11px; font-weight: 800; cursor: pointer; }
+.credit-buy-inline:hover, .credit-buy-inline:focus-visible { border-color: var(--color-accent); background: var(--sa-primary-soft); outline: none; }
+.header-actions { gap: 7px; }
+.header-icon-btn, .full-composer-icon { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); color: var(--color-text-secondary); cursor: pointer; }
+.header-icon-btn:hover, .header-icon-btn:focus-visible, .full-composer-icon:hover, .full-composer-icon:focus-visible { border-color: var(--color-accent); color: var(--color-accent); outline: none; }
+.return-floating-btn { min-height: 40px; padding: 0 12px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); color: var(--color-text-primary); font-weight: 750; cursor: pointer; }
+.return-floating-btn:hover, .return-floating-btn:focus-visible { border-color: var(--color-accent); color: var(--color-accent); outline: none; }
+.workspace-tools { flex: 0 0 auto; margin-bottom: 14px; }
+.workspace-tools > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 10px; color: var(--color-text-primary); cursor: pointer; }
+.workspace-tools > summary small { color: var(--color-text-muted); }
+.workspace-tools[open] > summary { border-radius: 10px 10px 0 0; }
+.workspace-tools .repo-panel { border-top: 0; border-radius: 0 0 10px 10px; }
+.chat-history { flex: 1 1 auto; min-height: 0; max-width: 900px; width: 100%; margin: 0 auto; padding: 4px 0 18px; overflow-y: auto; }
+.chat-row { align-items: flex-start; gap: 10px; margin: 0 0 14px; }
+.chat-row.user { justify-content: flex-end; }
+.chat-row .bubble { max-width: min(760px, 88%); padding: 12px 14px; border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-surface); color: var(--color-text-primary); line-height: 1.6; overflow-wrap: anywhere; }
+.chat-row.user .bubble { border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border)); background: var(--sa-primary-soft); }
+.ai-chat-input-wrapper { position: sticky; bottom: 0; width: min(900px, 100%); margin: 0 auto; padding: 12px 0 18px; background: linear-gradient(var(--color-bg), var(--color-bg) 40%); }
+.input-box { display: flex; align-items: center; gap: 7px; min-height: 58px; padding: 6px 7px 6px 10px; border: 1px solid var(--color-border); border-radius: 15px; background: var(--color-surface); box-shadow: 0 10px 28px rgb(15 35 60 / 0.08); }
+.input-box textarea { flex: 1; min-width: 0; max-height: 150px; min-height: 44px; padding: 10px 6px; resize: none; border: 0; outline: none; background: transparent; color: var(--color-text-primary); font: inherit; line-height: 1.45; }
+.input-box:focus-within { border-color: var(--color-accent); }
+.input-box .send-btn { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 12px; }
+.ai-disclaimer { margin: 7px 4px 0; color: var(--color-text-muted); font-size: 11px; }
+.page-action-list { display: grid; gap: 10px; margin-top: 12px; }
+.page-action-card { padding: 12px; border: 1px solid color-mix(in srgb, var(--color-accent) 38%, var(--color-border)); border-radius: 12px; background: color-mix(in srgb, var(--color-surface-hover) 55%, var(--color-surface)); }
+.page-action-head, .page-action-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.page-action-head span { display: block; margin-bottom: 3px; color: var(--color-accent); font-size: 9px; font-weight: 850; letter-spacing: .08em; }
+.page-action-head strong { font-size: 13px; }
+.page-action-head em { color: var(--color-text-muted); font-size: 10px; font-style: normal; font-weight: 750; }
+.page-action-card > p { margin: 9px 0; color: var(--color-text-secondary); font-size: 12px; }
+.page-action-card dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 10px; margin: 0 0 10px; font-size: 11px; }
+.page-action-card dt { color: var(--color-text-muted); }
+.page-action-card dd { margin: 0; overflow-wrap: anywhere; }
+.cancel-action, .confirm-action { min-height: 36px; padding: 0 12px; border-radius: 8px; font-size: 11px; font-weight: 800; cursor: pointer; }
+.cancel-action { border: 1px solid var(--color-border); background: transparent; color: var(--color-text-secondary); }
+.confirm-action { border: 1px solid var(--color-accent); background: var(--color-accent); color: #fff; }
+.cancel-action:disabled, .confirm-action:disabled { cursor: not-allowed; opacity: .55; }
+.page-action-error { color: var(--color-danger, #dc2626) !important; }
+.page-action-success, .page-read-note { color: var(--color-success, #16803c) !important; }
+
+@media (max-width: 1100px) {
+  .ai-page-flex-wrapper { height: calc(100dvh - 56px); }
+  .ai-page-history { display: none; position: fixed; inset: 0 auto 0 0; z-index: 20; width: min(300px, 86vw); box-shadow: 16px 0 40px rgb(15 35 60 / 0.2); }
+  .ai-page-history.is-open { display: flex; }
+  .ai-page-history-head button { display: grid; place-items: center; }
+  .ai-container { padding: 16px 16px 0; }
+  .ai-details-panel { display: none; }
+}
+
+@media (max-width: 520px) {
+  .ai-page-header { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .header-actions { width: 100%; }
+  .return-floating-btn { margin-left: auto; }
+  .chat-row .bubble { max-width: 92%; }
+  .ai-chat-input-wrapper { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .input-box { gap: 4px; }
+  .full-composer-icon, .input-box .send-btn { width: 40px; height: 40px; flex-basis: 40px; }
 }
 </style>

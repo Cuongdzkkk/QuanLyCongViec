@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -130,6 +131,111 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
     public static DeepgramTranscript? ParseTranscript(string json) =>
         JsonSerializer.Deserialize<DeepgramTranscript>(json, JsonOptions.Default);
 
+    internal static PcmDiagnostics AnalyzePcm(byte[] bytes)
+    {
+        var sampleCount = bytes.Length / 2;
+        if (sampleCount == 0)
+            return new PcmDiagnostics(bytes.Length, 0, 0, 0, 0, 0, 0, 100, "SILENCE");
+
+        var min = short.MaxValue;
+        var max = short.MinValue;
+        var nonZero = 0;
+        var sumSquares = 0d;
+        var peakAbs = 0;
+        for (var index = 0; index < sampleCount; index++)
+        {
+            var sample = BitConverter.ToInt16(bytes, index * 2);
+            min = Math.Min(min, sample);
+            max = Math.Max(max, sample);
+            if (sample != 0) nonZero++;
+            var absolute = Math.Abs((long)sample);
+            peakAbs = Math.Max(peakAbs, (int)absolute);
+            var normalized = sample / 32768d;
+            sumSquares += normalized * normalized;
+        }
+
+        var rms = Math.Sqrt(sumSquares / sampleCount);
+        var signalClass = rms < 0.001 ? "SILENCE" : rms < 0.012 ? "VERY_LOW" : "ACTIVE";
+        return new PcmDiagnostics(
+            bytes.Length,
+            sampleCount,
+            min,
+            max,
+            peakAbs / 32768d,
+            rms,
+            nonZero,
+            (sampleCount - nonZero) * 100d / sampleCount,
+            signalClass);
+    }
+
+    internal static ResponseDiagnostics ClassifyResponse(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                return ResponseDiagnostics.ParseFailure;
+
+            var root = document.RootElement;
+            var messageType = root.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String
+                ? type.GetString() ?? "unknown"
+                : "unknown";
+            var hasChannel = root.TryGetProperty("channel", out var channel) && channel.ValueKind == JsonValueKind.Object;
+            var alternativesCount = 0;
+            var hasTranscript = false;
+            var transcriptLength = 0;
+            if (hasChannel && channel.TryGetProperty("alternatives", out var alternatives) && alternatives.ValueKind == JsonValueKind.Array)
+            {
+                alternativesCount = alternatives.GetArrayLength();
+                if (alternativesCount > 0 && alternatives[0].ValueKind == JsonValueKind.Object && alternatives[0].TryGetProperty("transcript", out var transcript))
+                {
+                    hasTranscript = transcript.ValueKind == JsonValueKind.String;
+                    transcriptLength = hasTranscript ? transcript.GetString()?.Length ?? 0 : 0;
+                }
+            }
+
+            return new ResponseDiagnostics(
+                messageType,
+                hasChannel,
+                alternativesCount,
+                hasTranscript,
+                transcriptLength,
+                root.TryGetProperty("is_final", out var isFinal) && isFinal.ValueKind == JsonValueKind.True,
+                root.TryGetProperty("speech_final", out var speechFinal) && speechFinal.ValueKind == JsonValueKind.True,
+                root.TryGetProperty("error", out _),
+                true);
+        }
+        catch (JsonException)
+        {
+            return ResponseDiagnostics.ParseFailure;
+        }
+    }
+
+    internal readonly record struct PcmDiagnostics(
+        int PayloadBytes,
+        int SampleCount,
+        short MinSample,
+        short MaxSample,
+        double PeakAbs,
+        double Rms,
+        int NonZeroSampleCount,
+        double ZeroSamplePercent,
+        string SignalClass);
+
+    internal readonly record struct ResponseDiagnostics(
+        string MessageType,
+        bool HasChannel,
+        int AlternativesCount,
+        bool HasTranscript,
+        int TranscriptLength,
+        bool IsFinal,
+        bool SpeechFinal,
+        bool HasError,
+        bool ParseSucceeded)
+    {
+        public static ResponseDiagnostics ParseFailure => new("unknown", false, 0, false, 0, false, false, false, false);
+    }
+
     private async Task<(SessionEntry Entry, DeepgramSession Session)> GetOrCreateSessionAsync(
         SessionKey key,
         CallAudioChunk chunk,
@@ -228,9 +334,19 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
         private readonly string _roomId;
         private SessionCallbacks _callbacks;
         private readonly List<string> _finalSegments = [];
+        private long _audioChunkCount;
+        private double _audioRmsTotal;
+        private double _audioMaxPeak;
+        private long _activeAudioChunkCount;
+        private long _silentAudioChunkCount;
+        private long _submittedAudioMilliseconds;
+        private long _resultCount;
+        private long _lastOutboundTimestamp;
+        private int _hasSentAudio;
         private DateTimeOffset _lastAudioEndedAt;
         private CallAudioChunk _latestSource;
         private Task? _receiveTask;
+        private Task? _keepAliveTask;
 
         private DeepgramSession(
             WebSocket socket,
@@ -247,6 +363,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
             _logger = logger;
             _callbacks = new SessionCallbacks(onResult, canContinue);
             _streamStartedAt = firstChunk.StartedAt;
+            _lastOutboundTimestamp = Stopwatch.GetTimestamp();
             _lastAudioEndedAt = firstChunk.EndedAt;
             _sessionId = firstChunk.CallSessionId;
             _speakerId = firstChunk.SpeakerUserId;
@@ -281,6 +398,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
                 firstChunk.SpeakerUserId,
                 firstChunk.ConsentGeneration);
             session._receiveTask = session.ReceiveLoopAsync(session._lifetime.Token);
+            session._keepAliveTask = session.KeepAliveLoopAsync(session._lifetime.Token);
             logger.LogInformation(
                 "[CAPTION_PROVIDER] event=WS_OPEN roomId={RoomId} callSessionId={CallSessionId} speakerUserId={SpeakerUserId} consentGeneration={ConsentGeneration} receiveLoopStarted=YES",
                 firstChunk.RoomId,
@@ -304,9 +422,60 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
             try
             {
                 if (_socket.State != WebSocketState.Open) throw new WebSocketException("Deepgram stream is not open.");
+                LogAudioDiagnostics(audioBytes, source);
                 await _socket.SendAsync(new ArraySegment<byte>(audioBytes), WebSocketMessageType.Binary, true, cancellationToken);
+                Volatile.Write(ref _hasSentAudio, 1);
+                Volatile.Write(ref _lastOutboundTimestamp, Stopwatch.GetTimestamp());
+                _submittedAudioMilliseconds += audioBytes.Length * 1000L / (_options.SampleRate * 2L);
             }
             finally { _sendGate.Release(); }
+        }
+
+        private async Task KeepAliveLoopAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    var interval = TimeSpan.FromMilliseconds(_options.KeepAliveIntervalMilliseconds);
+                    var elapsed = Stopwatch.GetElapsedTime(Volatile.Read(ref _lastOutboundTimestamp));
+                    var remaining = interval - elapsed;
+                    if (remaining > TimeSpan.Zero)
+                    {
+                        await Task.Delay(remaining, cancellationToken);
+                        continue;
+                    }
+                    if (Volatile.Read(ref _hasSentAudio) == 0 || !Volatile.Read(ref _callbacks).CanContinue()) continue;
+
+                    await _sendGate.WaitAsync(cancellationToken);
+                    try
+                    {
+                        if (cancellationToken.IsCancellationRequested ||
+                            Volatile.Read(ref _hasSentAudio) == 0 ||
+                            !Volatile.Read(ref _callbacks).CanContinue() ||
+                            _socket.State != WebSocketState.Open ||
+                            Stopwatch.GetElapsedTime(Volatile.Read(ref _lastOutboundTimestamp)) < interval)
+                            continue;
+
+                        var keepAlive = Encoding.UTF8.GetBytes("{\"type\":\"KeepAlive\"}");
+                        await _socket.SendAsync(new ArraySegment<byte>(keepAlive), WebSocketMessageType.Text, true, cancellationToken);
+                        Volatile.Write(ref _lastOutboundTimestamp, Stopwatch.GetTimestamp());
+                        _logger.LogInformation(
+                            "[CAPTION_PROVIDER] event=KEEPALIVE_SENT callSessionId={CallSessionId} intervalMs={IntervalMs}",
+                            _sessionId,
+                            _options.KeepAliveIntervalMilliseconds);
+                    }
+                    finally { _sendGate.Release(); }
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // The session lifetime owns this loop.
+            }
+            catch (Exception exception)
+            {
+                LogError(exception);
+            }
         }
 
         private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
@@ -336,29 +505,43 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
                         _sessionId,
                         result.MessageType,
                         message.Length);
-                    var parsed = ParseTranscript(Encoding.UTF8.GetString(message.GetBuffer(), 0, checked((int)message.Length)));
+                    var json = Encoding.UTF8.GetString(message.GetBuffer(), 0, checked((int)message.Length));
+                    var response = ClassifyResponse(json);
+                    LogResponseClassification(response, message.Length);
+
+                    DeepgramTranscript? parsed;
+                    try
+                    {
+                        parsed = ParseTranscript(json);
+                    }
+                    catch (JsonException exception)
+                    {
+                        _logger.LogInformation(
+                            "[CAPTION_PROVIDER] event=EMPTY_RESULT reason=PARSE_FAILURE callSessionId={CallSessionId} messageType={MessageType} payloadLength={PayloadLength} exceptionType={ExceptionType}",
+                            _sessionId,
+                            response.MessageType,
+                            message.Length,
+                            exception.GetType().Name);
+                        throw;
+                    }
 
                     if (parsed is null || parsed.Channel?.Alternatives is not { Count: > 0 })
                     {
-                        _logger.LogInformation(
-                            "[CAPTION_PROVIDER] event=EMPTY_RESULT callSessionId={CallSessionId} messageType={MessageType} payloadLength={PayloadLength}",
-                            _sessionId,
-                            result.MessageType,
-                            message.Length);
+                        var reason = response.MessageType is not ("Results" or "unknown")
+                            ? "NON_RESULTS_MESSAGE"
+                            : parsed is null || !response.HasChannel ? "NO_CHANNEL" : "NO_ALTERNATIVES";
+                        LogEmptyResult(reason, response, message.Length);
                         continue;
                     }
                     var text = parsed.Channel.Alternatives[0].Transcript?.Trim();
                     if (string.IsNullOrWhiteSpace(text))
                     {
-                        _logger.LogInformation(
-                            "[CAPTION_PROVIDER] event=EMPTY_RESULT callSessionId={CallSessionId} messageType={MessageType} payloadLength={PayloadLength}",
-                            _sessionId,
-                            result.MessageType,
-                            message.Length);
+                        LogEmptyResult("BLANK_TRANSCRIPT", response, message.Length);
                         continue;
                     }
                     var isFinal = parsed.IsFinal;
                     var isUtteranceFinal = parsed.SpeechFinal || parsed.FromFinalize;
+                    LogLatencyDiagnostics(parsed, isFinal, isUtteranceFinal);
                     if (isFinal) _finalSegments.Add(text);
 
                     var displayText = isUtteranceFinal || isFinal
@@ -382,7 +565,19 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
                         isUtteranceFinal,
                         "Deepgram",
                         parsed.Duration);
-                    await Volatile.Read(ref _callbacks).OnResult(_latestSource, resultValue);
+                    try
+                    {
+                        await Volatile.Read(ref _callbacks).OnResult(_latestSource, resultValue);
+                    }
+                    catch (Exception exception)
+                    {
+                        _logger.LogError(
+                            "[CAPTION_PROVIDER] event=RESULT_DELIVERY_FAIL callSessionId={CallSessionId} speakerUserId={SpeakerUserId} isFinal={IsFinal} exceptionType={ExceptionType}",
+                            _sessionId,
+                            _speakerId,
+                            resultValue.IsFinal,
+                            exception.GetType().FullName);
+                    }
                     if (isUtteranceFinal && parsed.Duration is > 0)
                     {
                         await _usageSink.RecordAsync(
@@ -409,6 +604,73 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
                 }
             }
         }
+
+        private void LogAudioDiagnostics(byte[] audioBytes, CallAudioChunk source)
+        {
+            var diagnostics = AnalyzePcm(audioBytes);
+            _audioChunkCount++;
+            _audioRmsTotal += diagnostics.Rms;
+            _audioMaxPeak = Math.Max(_audioMaxPeak, diagnostics.PeakAbs);
+            if (diagnostics.SignalClass == "SILENCE") _silentAudioChunkCount++;
+            else _activeAudioChunkCount++;
+
+            if (_audioChunkCount != 1 && _audioChunkCount % 20 != 0) return;
+            _logger.LogInformation(
+                "[CAPTION_AUDIO_DIAG] callSessionId={CallSessionId} speakerUserId={SpeakerUserId} consentGeneration={ConsentGeneration} payloadBytes={PayloadBytes} sampleCount={SampleCount} minSample={MinSample} maxSample={MaxSample} peakAbs={PeakAbs} rms={Rms} nonZeroSampleCount={NonZeroSampleCount} zeroSamplePercent={ZeroSamplePercent} signalClass={SignalClass}",
+                _sessionId,
+                _speakerId,
+                source.ConsentGeneration,
+                diagnostics.PayloadBytes,
+                diagnostics.SampleCount,
+                diagnostics.MinSample,
+                diagnostics.MaxSample,
+                diagnostics.PeakAbs,
+                diagnostics.Rms,
+                diagnostics.NonZeroSampleCount,
+                diagnostics.ZeroSamplePercent,
+                diagnostics.SignalClass);
+        }
+
+        private void LogLatencyDiagnostics(DeepgramTranscript parsed, bool isFinal, bool speechFinal)
+        {
+            var resultIndex = Interlocked.Increment(ref _resultCount);
+            if (!isFinal && resultIndex != 1 && resultIndex % 20 != 0) return;
+
+            var submittedAudioMs = Volatile.Read(ref _submittedAudioMilliseconds);
+            var transcriptCursorMs = Math.Max(0, ((parsed.Start ?? 0d) + (parsed.Duration ?? 0d)) * 1000d);
+            _logger.LogInformation(
+                "[CAPTION_LATENCY_DIAG] callSessionId={CallSessionId} resultType={ResultType} submittedAudioMs={SubmittedAudioMs} transcriptCursorMs={TranscriptCursorMs} providerLagMs={ProviderLagMs} isFinal={IsFinal} speechFinal={SpeechFinal}",
+                _sessionId,
+                isFinal ? "final" : "interim",
+                submittedAudioMs,
+                Math.Round(transcriptCursorMs),
+                Math.Max(0, submittedAudioMs - Math.Round(transcriptCursorMs)),
+                isFinal,
+                speechFinal);
+        }
+
+        private void LogResponseClassification(ResponseDiagnostics response, long payloadLength) =>
+            _logger.LogInformation(
+                "[CAPTION_PROVIDER] event=RESPONSE_CLASSIFIED callSessionId={CallSessionId} payloadLength={PayloadLength} messageType={MessageType} hasChannel={HasChannel} alternativesCount={AlternativesCount} hasTranscript={HasTranscript} transcriptLength={TranscriptLength} isFinal={IsFinal} speechFinal={SpeechFinal} hasError={HasError} parseSucceeded={ParseSucceeded}",
+                _sessionId,
+                payloadLength,
+                response.MessageType,
+                response.HasChannel,
+                response.AlternativesCount,
+                response.HasTranscript,
+                response.TranscriptLength,
+                response.IsFinal,
+                response.SpeechFinal,
+                response.HasError,
+                response.ParseSucceeded);
+
+        private void LogEmptyResult(string reason, ResponseDiagnostics response, long payloadLength) =>
+            _logger.LogInformation(
+                "[CAPTION_PROVIDER] event=EMPTY_RESULT reason={Reason} callSessionId={CallSessionId} messageType={MessageType} payloadLength={PayloadLength}",
+                reason,
+                _sessionId,
+                response.MessageType,
+                payloadLength);
 
         private void LogClosed(WebSocketCloseStatus? closeStatus, string? closeDescription)
         {
@@ -449,21 +711,44 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
 
         public async ValueTask DisposeAsync(string reason)
         {
+            if (_audioChunkCount > 0)
+            {
+                _logger.LogInformation(
+                    "[CAPTION_AUDIO_DIAG] event=SUMMARY callSessionId={CallSessionId} speakerUserId={SpeakerUserId} consentGeneration={ConsentGeneration} chunkCount={ChunkCount} averageRms={AverageRms} maxPeak={MaxPeak} activeChunkCount={ActiveChunkCount} silentChunkCount={SilentChunkCount}",
+                    _sessionId,
+                    _speakerId,
+                    _latestSource.ConsentGeneration,
+                    _audioChunkCount,
+                    _audioRmsTotal / _audioChunkCount,
+                    _audioMaxPeak,
+                    _activeAudioChunkCount,
+                    _silentAudioChunkCount);
+            }
             _logger.LogInformation(
                 "[CAPTION_PROVIDER] event=LIFETIME_CANCEL callSessionId={CallSessionId} reason={Reason}",
                 _sessionId,
                 reason);
             _lifetime.Cancel();
+            if (_keepAliveTask is not null)
+            {
+                try { await _keepAliveTask.WaitAsync(TimeSpan.FromSeconds(1)); } catch { }
+            }
             try
             {
-                await _sendGate.WaitAsync(TimeSpan.FromMilliseconds(200));
-                if (_socket.State == WebSocketState.Open)
+                var sendGateAcquired = await _sendGate.WaitAsync(TimeSpan.FromMilliseconds(200));
+                if (sendGateAcquired)
                 {
-                    var finalize = Encoding.UTF8.GetBytes("{\"type\":\"Finalize\"}");
-                    await _socket.SendAsync(new ArraySegment<byte>(finalize), WebSocketMessageType.Text, true, CancellationToken.None);
-                    await _socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "call ended", CancellationToken.None);
+                    try
+                    {
+                        if (_socket.State == WebSocketState.Open)
+                        {
+                            var finalize = Encoding.UTF8.GetBytes("{\"type\":\"Finalize\"}");
+                            await _socket.SendAsync(new ArraySegment<byte>(finalize), WebSocketMessageType.Text, true, CancellationToken.None);
+                            await _socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "call ended", CancellationToken.None);
+                        }
+                    }
+                    finally { _sendGate.Release(); }
                 }
-                _sendGate.Release();
             }
             catch { }
             if (_receiveTask is not null)
@@ -488,6 +773,7 @@ public sealed class DeepgramCallTranscriptionProvider : ICallStreamingTranscript
 
 public sealed class DeepgramTranscript
 {
+    [JsonPropertyName("start")] public double? Start { get; set; }
     [JsonPropertyName("is_final")] public bool IsFinal { get; set; }
     [JsonPropertyName("speech_final")] public bool SpeechFinal { get; set; }
     [JsonPropertyName("from_finalize")] public bool FromFinalize { get; set; }

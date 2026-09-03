@@ -27,6 +27,26 @@ namespace TaskManagement.Tests.Logic;
 public sealed class CallCaptionSignalRJsonBindingTests
 {
     [Fact]
+    public void SubmitCallAudioChunk_keeps_the_original_eight_argument_contract()
+    {
+        var parameters = typeof(CallHub)
+            .GetMethod(nameof(CallHub.SubmitCallAudioChunk))!
+            .GetParameters();
+
+        parameters.Length.Should().Be(8);
+        parameters[0].ParameterType.Should().Be(typeof(string));
+        parameters[1].ParameterType.Should().Be(typeof(string));
+        parameters[2].ParameterType.Should().Be(typeof(long));
+        parameters[3].ParameterType.Should().Be(typeof(string));
+        parameters[4].ParameterType.Should().Be(typeof(byte[]));
+        parameters[5].ParameterType.Should().Be(typeof(DateTimeOffset));
+        parameters[6].ParameterType.Should().Be(typeof(DateTimeOffset));
+        parameters[7].ParameterType.Should().Be(typeof(string));
+        parameters[7].IsOptional.Should().BeTrue();
+        parameters[7].DefaultValue.Should().BeNull();
+    }
+
+    [Fact]
     public async Task BrowserJsonProtocolBase64BindsToByteArrayAndNumericArrayDoesNot()
     {
         await using var factory = new CaptionSignalRApplicationFactory();
@@ -68,8 +88,10 @@ public sealed class CallCaptionSignalRJsonBindingTests
             endedAt);
         using (var base64Json = JsonDocument.Parse(base64Frame.TrimEnd('\u001e')))
         {
-            base64Json.RootElement.GetProperty("arguments")[4].ValueKind
-                .Should().Be(JsonValueKind.String);
+            var arguments = base64Json.RootElement.GetProperty("arguments");
+            arguments.GetArrayLength().Should().Be(8);
+            arguments[4].ValueKind.Should().Be(JsonValueKind.String);
+            arguments[7].ValueKind.Should().Be(JsonValueKind.String);
         }
 
         await connection.SendAsync(base64Frame);

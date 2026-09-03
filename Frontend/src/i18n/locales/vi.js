@@ -84,6 +84,7 @@ export default {
       changeEmail: 'Đổi email',
       or: 'hoặc',
       resendOtp: 'Gửi lại OTP',
+      resendCountdown: 'Gửi lại OTP sau {seconds} giây',
       fullNameLabel: 'Họ và Tên',
       fullNamePlaceholder: 'Nhập họ và tên',
       passwordLabel: 'Mật khẩu',
@@ -96,14 +97,20 @@ export default {
         emailInvalid: 'Email không hợp lệ',
         nameRequired: 'Vui lòng nhập họ và tên',
         nameMin: 'Tên phải có ít nhất 2 ký tự',
+        nameMax: 'Họ và tên không được vượt quá 100 ký tự',
         passwordRequired: 'Vui lòng tạo mật khẩu',
         passwordMin: 'Mật khẩu phải có ít nhất 6 ký tự',
+        passwordMax: 'Mật khẩu không được vượt quá 100 ký tự',
         passwordComplexity: 'Mật khẩu phải có ít nhất 1 chữ hoa, 1 số và 1 ký tự đặc biệt'
       },
       messages: {
         sendOtpFailed: 'Có lỗi xảy ra khi gửi OTP',
+        sendOtpRateLimited: 'Bạn đã yêu cầu OTP quá nhanh. Vui lòng thử lại sau {seconds} giây.',
+        emailAlreadyUsed: 'Email này đã có tài khoản.',
+        sendOtpUnavailable: 'Không thể gửi email xác thực lúc này. Vui lòng thử lại sau.',
         invalidOtpFormat: 'Vui lòng nhập mã OTP 6 ký tự',
         otpVerified: 'Xác thực email thành công',
+        verificationTokenMissing: 'Phiên xác thực email không hợp lệ hoặc đã hết hạn. Vui lòng xác thực email lại.',
         registerSuccess: 'Tạo tài khoản thành công! Khởi tạo phiên làm việc bằng cách đăng nhập.',
         registerFailed: 'Có lỗi xảy ra khi tạo tài khoản'
       }
@@ -258,6 +265,12 @@ export default {
   landing: {
     login: 'Đăng nhập',
     register: 'Đăng ký',
+    aiConfirmation: {
+      title: 'Chờ xác nhận',
+      supportingCopy: 'AI chỉ thực hiện thay đổi sau khi bạn xác nhận.',
+      cancel: 'Hủy',
+      apply: 'Áp dụng thay đổi'
+    },
     badge: 'SprintA Agile Workspace',
     heroTitle: 'Đăng ký hoặc đăng nhập để vào bảng điều khiển chính.',
     heroSubtitle: 'Luồng vào hệ thống đã được khóa lại: người dùng phải đăng ký hoặc đăng nhập trước khi sử dụng bảng điều khiển, dự án và các chức năng nội bộ.',

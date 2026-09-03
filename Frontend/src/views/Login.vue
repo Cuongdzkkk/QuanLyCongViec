@@ -3,15 +3,13 @@
     <header class="auth-navbar">
       <div class="container nav-content">
         <router-link to="/" class="logo">
-          <span role="img" aria-label="SprintA logo" class="custom-logo"></span>
-          <span>SprintA</span>
+          <SprintaBrand size="compact" />
         </router-link>
         <div class="nav-actions">
           <button class="theme-toggle" type="button" aria-label="Toggle theme" @click="toggleTheme()">
             <Moon v-if="currentTheme === 'dark'" :size="18" />
             <Sun v-else :size="18" />
           </button>
-          <router-link class="nav-link" to="/login">{{ t('auth.nav.login') }}</router-link>
           <router-link class="nav-primary" to="/register">{{ t('auth.nav.register') }}</router-link>
         </div>
       </div>
@@ -109,7 +107,6 @@
           </el-form-item>
 
           <div class="remember-action">
-            <el-checkbox v-model="form.remember">{{ t('auth.login.remember') }}</el-checkbox>
             <router-link to="/forgot-password" class="forgot-link">{{ t('auth.forgotPassword.title') }}?</router-link>
           </div>
 
@@ -135,39 +132,38 @@
               :class="{ 'is-busy': googleVerifying || isLoading }"
               :aria-busy="googleVerifying || isLoading"
             >
-              <div
-                ref="googleButtonContainer"
-                class="google-identity-button"
-                :class="{ 'is-hidden': !isGoogleConfigured }"
-              ></div>
-              <el-button
-                v-if="googleSdkState === 'loading'"
-                native-type="button"
-                class="social-btn google-btn google-placeholder"
-                loading
-                disabled
+              <button
+                type="button"
+                class="social-btn google-btn"
+                aria-label="Đăng nhập bằng Google"
+                :disabled="googleSdkState !== 'ready' || googleVerifying || isLoading"
+                @click="startGoogleAuthorization"
               >
-                Google
-              </el-button>
-              <el-button
-                v-else-if="googleSdkState === 'error'"
-                native-type="button"
-                class="social-btn google-btn google-placeholder"
-                @click="retryGoogleSetup"
-              >
-                <img :src="googleIcon" alt="" class="social-icon" /> {{ tr('Retry Google', 'Thử lại Google') }}
-              </el-button>
+                <img :src="googleIcon" alt="" class="social-icon" />
+                <span>Google</span>
+              </button>
               <div v-if="googleVerifying" class="google-verifying-overlay" aria-live="polite">
                 <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
                 <span>{{ tr('Verifying...', 'Đang xác minh...') }}</span>
               </div>
             </div>
-            <el-button v-else native-type="button" class="social-btn google-btn" @click="handleGoogleLoginNotConfigured">
-              <img :src="googleIcon" alt="Google" class="social-icon" /> Google
+            <el-button
+              v-else
+              native-type="button"
+              class="social-btn google-btn"
+              aria-label="Đăng nhập bằng Google"
+              @click="handleGoogleLoginNotConfigured"
+            >
+              <img :src="googleIcon" alt="" class="social-icon" /> Google
             </el-button>
 
-            <el-button native-type="button" class="social-btn github-btn" @click="handleGitHubLogin">
-              <img :src="githubIcon" alt="GitHub" class="social-icon" /> GitHub
+            <el-button
+              native-type="button"
+              class="social-btn github-btn"
+              aria-label="Đăng nhập bằng GitHub"
+              @click="handleGitHubLogin"
+            >
+              <img :src="githubIcon" alt="" class="social-icon" /> GitHub
             </el-button>
           </div>
 
@@ -193,7 +189,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -207,14 +203,16 @@ import {
   Zap
 } from 'lucide-vue-next'
 import axiosClient from '../api/axiosClient'
-import { loginWithGoogleCredential } from '@/api/authApi'
+import {
+  loginWithGoogleAuthorizationCode,
+  startGoogleAuthorizationCodeLogin,
+  startGitHubLogin
+} from '@/api/authApi'
 import { saveAuthSession } from '@/utils/authSession'
+import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 import { useI18n } from '@/composables/useI18n'
 import { currentTheme, toggleTheme } from '@/utils/theme'
-import {
-  registerGoogleIdentity,
-  renderGoogleIdentityButton
-} from '@/services/googleIdentityService'
+import { registerGoogleAuthorizationCodeClient } from '@/services/googleIdentityService'
 import googleIcon from '../assets/Icongoogle.png'
 import githubIcon from '../assets/Icongithub.png'
 
@@ -229,23 +227,19 @@ const tr = (en, vi) => {
 
 const form = reactive({
   email: '',
-  password: '',
-  remember: false
+  password: ''
 })
 
 const isLoading = ref(false)
 const requires2FA = ref(false)
 const otpCode = ref('')
-const googleButtonContainer = ref(null)
 const googleSdkState = ref('idle')
 const googleVerifying = ref(false)
 const googleError = ref(null)
-let releaseGoogleIdentity = null
+let googleAuthorizationClient = null
 let googleLoginAbortController = null
 let googleRequestId = 0
 let componentActive = true
-let lastCredentialFingerprint = ''
-let lastCredentialHandledAt = 0
 
 const getSafeRedirect = () => {
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
@@ -309,20 +303,10 @@ const handleLogin2FA = async () => {
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const hasGoogleClientId = Boolean(googleClientId && googleClientId !== 'CHANGE_ME_USE_LOCAL_ENV')
-const isGoogleConfigured = computed(() => hasGoogleClientId && googleSdkState.value === 'ready')
 const shouldShowGoogleIdentityShell = computed(() => hasGoogleClientId)
 
 const handleGoogleLoginNotConfigured = () => {
   ElMessage.error(tr('Google sign-in is not configured.', 'Google Sign-In chưa được cấu hình.'))
-}
-
-const fingerprintCredential = (credential) => {
-  let hash = 2166136261
-  for (let index = 0; index < credential.length; index += 1) {
-    hash ^= credential.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-  return `${credential.length}:${hash >>> 0}`
 }
 
 const getGoogleError = (error) => {
@@ -388,30 +372,22 @@ const getGoogleError = (error) => {
 }
 
 const handleGoogleLogin = async (response) => {
-  if (!componentActive || isLoading.value || googleVerifying.value) return
+  if (!componentActive || isLoading.value) return
 
-  const credential = typeof response?.credential === 'string'
-    ? response.credential.trim()
+  const code = typeof response?.code === 'string'
+    ? response.code.trim()
     : ''
-  if (!credential) {
+  const state = typeof response?.state === 'string'
+    ? response.state.trim()
+    : ''
+  if (!code || !state) {
     googleError.value = getGoogleError({ status: 400 })
     ElMessage.error(googleError.value.message)
     return
   }
 
-  const now = Date.now()
-  const fingerprint = fingerprintCredential(credential)
-  if (
-    googleVerifying.value ||
-    (fingerprint === lastCredentialFingerprint && now - lastCredentialHandledAt < 2000)
-  ) {
-    return
-  }
-
   googleVerifying.value = true
   googleError.value = null
-  lastCredentialFingerprint = fingerprint
-  lastCredentialHandledAt = now
   googleLoginAbortController?.abort()
   const controller = new AbortController()
   googleLoginAbortController = controller
@@ -419,7 +395,7 @@ const handleGoogleLogin = async (response) => {
   let succeeded = false
 
   try {
-    const authData = await loginWithGoogleCredential(credential, {
+    const authData = await loginWithGoogleAuthorizationCode(code, state, {
       signal: controller.signal
     })
     if (!componentActive || requestId !== googleRequestId) return
@@ -443,7 +419,29 @@ const handleGoogleLogin = async (response) => {
   } finally {
     if (requestId === googleRequestId && !succeeded) {
       googleVerifying.value = false
+      setupGoogleIdentity()
     }
+  }
+}
+
+const handleGoogleAuthorizationError = () => {
+  googleVerifying.value = false
+  googleError.value = getGoogleError({ status: 400 })
+}
+
+const startGoogleAuthorization = () => {
+  if (googleSdkState.value !== 'ready' || !googleAuthorizationClient || googleVerifying.value || isLoading.value) {
+    return
+  }
+
+  googleVerifying.value = true
+  googleError.value = null
+  try {
+    googleAuthorizationClient.requestCode()
+  } catch (error) {
+    googleVerifying.value = false
+    googleError.value = getGoogleError(error)
+    setupGoogleIdentity()
   }
 }
 
@@ -453,24 +451,26 @@ const setupGoogleIdentity = async () => {
   googleError.value = null
 
   try {
-    releaseGoogleIdentity?.()
-    releaseGoogleIdentity = await registerGoogleIdentity({
+    googleAuthorizationClient?.release()
+    googleAuthorizationClient = null
+    const state = await startGoogleAuthorizationCodeLogin()
+    googleAuthorizationClient = await registerGoogleAuthorizationCodeClient({
       clientId: googleClientId,
-      callback: handleGoogleLogin
+      state,
+      callback: handleGoogleLogin,
+      errorCallback: handleGoogleAuthorizationError
     })
     if (!componentActive) {
-      releaseGoogleIdentity?.()
-      releaseGoogleIdentity = null
+      googleAuthorizationClient?.release()
+      googleAuthorizationClient = null
       return
     }
 
     googleSdkState.value = 'ready'
-    await nextTick()
-    renderGoogleIdentityButton(googleButtonContainer.value)
   } catch {
     if (!componentActive) return
-    releaseGoogleIdentity?.()
-    releaseGoogleIdentity = null
+    googleAuthorizationClient?.release()
+    googleAuthorizationClient = null
     googleSdkState.value = 'error'
     googleError.value = {
       status: 0,
@@ -495,20 +495,21 @@ onBeforeUnmount(() => {
   componentActive = false
   googleRequestId += 1
   googleLoginAbortController?.abort()
-  releaseGoogleIdentity?.()
-  releaseGoogleIdentity = null
-  lastCredentialFingerprint = ''
+  googleAuthorizationClient?.release()
+  googleAuthorizationClient = null
 })
 
-const handleGitHubLogin = () => {
+const handleGitHubLogin = async () => {
   const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID
   if (!clientId || clientId === 'CHANGE_ME_USE_LOCAL_ENV') {
     ElMessage.error('GitHub OAuth chưa được cấu hình.')
     return
   }
-  const redirectUri = import.meta.env.VITE_GITHUB_REDIRECT_URI || `${window.location.origin}/auth/github/callback`
-  const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=user:email`
-  window.location.href = githubAuthUrl
+  try {
+    window.location.href = await startGitHubLogin()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || error.message || 'Không thể bắt đầu đăng nhập GitHub.')
+  }
 }
 </script>
 
@@ -524,6 +525,7 @@ const handleGitHubLogin = () => {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
   color: var(--auth-text);
   background:
     linear-gradient(180deg, #ffffff 0%, var(--auth-bg) 100%);
@@ -575,16 +577,6 @@ const handleGitHubLogin = () => {
   font-weight: 900;
   text-decoration: none;
 }
-
-.custom-logo {
-  display: block;
-  width: 12px;
-  height: 11px;
-  flex: 0 0 12px;
-  background: center / contain no-repeat url('/sprinta-mark-light.png');
-}
-
-:global([data-theme='dark'] .custom-logo) { background-image: url('/sprinta-mark-dark.png'); filter: none; }
 
 .nav-actions {
   gap: 10px;
@@ -912,7 +904,10 @@ const handleGitHubLogin = () => {
 }
 
 .social-login {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  align-items: stretch;
 }
 
 .social-btn-wrapper,
@@ -924,31 +919,13 @@ const handleGitHubLogin = () => {
   position: relative;
   min-width: 0;
   flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: stretch;
 }
 
 .google-identity-shell.is-busy {
   pointer-events: none;
-}
-
-.google-identity-button {
-  width: 100%;
-  min-height: 42px;
-  overflow: hidden;
-  border-radius: 10px;
-}
-
-.google-identity-button.is-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  min-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.google-placeholder {
-  width: 100%;
 }
 
 .google-verifying-overlay {
@@ -1004,13 +981,31 @@ const handleGitHubLogin = () => {
 
 .social-btn {
   width: 100%;
+  height: 44px;
   min-height: 44px;
   border-radius: 14px;
+}
+
+button.social-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+button.social-btn:disabled {
+  cursor: not-allowed;
+  opacity: .72;
+  transform: none;
 }
 
 .social-icon {
   width: 18px;
   height: 18px;
+  flex: 0 0 18px;
   margin-right: 8px;
 }
 
@@ -1078,7 +1073,8 @@ const handleGitHubLogin = () => {
 }
 
 .social-btn {
-  min-height: 42px;
+  height: 44px;
+  min-height: 44px;
   border: 1px solid var(--auth-border) !important;
   border-radius: 10px !important;
   color: var(--auth-text) !important;

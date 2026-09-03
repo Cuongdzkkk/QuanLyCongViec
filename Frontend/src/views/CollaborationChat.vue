@@ -133,9 +133,9 @@
                 <span class="item-name" style="white-space: normal; word-break: break-word; line-height: 1.3;">{{ vc.name }}</span>
               </button>
               <!-- Users in this voice channel -->
-              <div class="voice-users-list ml-6 flex flex-col gap-1.5 mt-1" v-if="vc.id === activeVoiceChannel?.id && callParticipants.length">
+              <div class="voice-users-list ml-6 flex flex-col gap-1.5 mt-1" v-if="vc.id === activeVoiceChannel?.id && participantsInCall.length">
                 <div 
-                  v-for="user in callParticipants"
+                  v-for="user in participantsInCall"
                   :key="user.connectionId"
                   class="voice-user flex items-center gap-2 py-0.5 text-xs text-secondary"
                   style="display: flex; align-items: center; gap: 6px; padding-left: 12px; margin-top: 2px;"
@@ -145,41 +145,6 @@
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        <div class="sidebar-section direct-section" v-if="activeProjectId">
-          <div class="section-header">
-            <span class="section-title">DIRECT MESSAGES</span>
-            <button class="add-btn-small" type="button" title="Tìm thành viên" aria-label="Tìm thành viên" @click="toggleContextPanel">
-              <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
-            </button>
-          </div>
-          <div class="section-list">
-            <button
-              v-for="conversation in directConversations"
-              :key="conversation.id"
-              type="button"
-              class="list-item direct-item"
-              :class="{ active: activeChat?.id === conversation.id && activeChat?.type === 'dm' }"
-              @click="selectChat(conversation, 'dm')"
-            >
-              <span class="presence-dot" aria-hidden="true"></span>
-              <el-avatar :size="24" :src="conversation.avatar">{{ conversation.name?.charAt(0) || '?' }}</el-avatar>
-              <span class="item-name truncate">{{ conversation.name }}</span>
-            </button>
-            <button
-              v-for="member in members.slice(0, 5)"
-              :key="`member-${member.id}`"
-              type="button"
-              class="list-item direct-item direct-member-item"
-              @click="selectDirectRecipient(member.id)"
-            >
-              <span class="presence-dot is-idle" aria-hidden="true"></span>
-              <el-avatar :size="24" :src="member.avatar">{{ member.name?.charAt(0) || '?' }}</el-avatar>
-              <span class="item-name truncate">{{ member.name || member.fullName || member.email }}</span>
-            </button>
-            <div v-if="!directConversations.length && !members.length" class="channel-state">Chưa có cuộc trò chuyện riêng.</div>
           </div>
         </div>
       </div>
@@ -283,10 +248,15 @@
             </div>
           </div>
           <div class="header-actions">
-            <button type="button" class="ai-entry-button" :class="{ 'is-open': callAiState.state !== 'OFF' }" :disabled="!callTranscriptionCapabilities.configured" :aria-label="callAiButtonLabel" :title="callAiButtonLabel" @click="requestCallAi">
-              <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+            <button type="button" class="ai-entry-button transcript-entry-button" :class="{ 'is-open': showTranscriptPanel }" :disabled="!callTranscriptionCapabilities.configured" :aria-expanded="showTranscriptPanel" :aria-label="callAiButtonLabel" :title="callAiButtonLabel" @click="toggleTranscriptPanel">
+              <i class="fa-solid fa-closed-captioning" aria-hidden="true"></i>
               <span>Biên bản</span>
-              <span class="ai-off-state">{{ callTranscriptionCapabilities.configured ? callAiStateLabel : 'Chưa cấu hình' }}</span>
+              <span v-if="callAiState.state === 'ACTIVE'" class="call-header-status-dot" aria-label="Đang ghi"></span>
+            </button>
+            <button type="button" class="ai-entry-button meeting-ai-entry-button" :class="{ 'is-open': showTranscriptPanel && callTranscriptionCapabilities.aiConfigured }" :disabled="!callTranscriptionCapabilities.configured" :aria-label="`AI cuộc họp: ${callAiStateLabel}`" :title="`AI cuộc họp: ${callAiStateLabel}`" @click="openMeetingAi">
+              <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+              <span>AI cuộc họp</span>
+              <span class="ai-off-state">{{ callAiStateLabel }}</span>
             </button>
             <button type="button" class="action-btn" aria-label="Mở danh sách người tham gia" title="Người tham gia" @click="openCallParticipants">
               <i class="fa-solid fa-layout-sidebar" aria-hidden="true"></i>
@@ -359,38 +329,31 @@
                   autoplay
                   playsinline
                 ></video>
-                <div v-else class="call-camera-stage-avatar" aria-hidden="true">
-                  <el-avatar :size="72" :src="user.connectionId === callConnectionId ? currentUser.avatar : user.avatarUrl">
+                <div v-else class="call-camera-off-state" role="status" :aria-label="`${user.displayName}: camera đang tắt`">
+                  <span class="call-camera-off-glow" aria-hidden="true"></span>
+                  <el-avatar :size="88" :src="user.connectionId === callConnectionId ? currentUser.avatar : user.avatarUrl">
                     {{ (user.connectionId === callConnectionId ? currentUser.name : user.displayName)?.charAt(0) }}
                   </el-avatar>
+                  <strong>{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</strong>
+                  <span class="call-camera-off-label"><i class="fa-solid fa-video-slash" aria-hidden="true"></i> Camera đang tắt</span>
+                  <small :class="{ 'is-muted': !user.microphoneEnabled }">
+                    <i :class="user.microphoneEnabled ? 'fa-solid fa-microphone' : 'fa-solid fa-microphone-slash'" aria-hidden="true"></i>
+                    {{ user.microphoneEnabled ? 'Microphone đang bật' : 'Microphone đang tắt' }}
+                  </small>
                 </div>
-                <audio
-                  v-if="user.connectionId !== callConnectionId && remoteStreams.has(user.connectionId)"
-                  :ref="el => setRemoteAudioElement(el, user.connectionId, 'stage')"
-                  autoplay
-                ></audio>
-                <span class="call-camera-stage-label">
+                <span v-if="isParticipantVideoVisible(user)" class="call-camera-stage-label">
                   {{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}
                   <span v-if="user.handRaised" class="call-hand-indicator" title="Đang giơ tay"><i class="fa-solid fa-hand" aria-hidden="true"></i><span>Đang giơ tay</span></span>
                 </span>
-                <span v-if="!user.microphoneEnabled" class="call-camera-stage-muted" title="Đang tắt micro" aria-label="Đang tắt micro"><i class="fa-solid fa-microphone-slash" aria-hidden="true"></i></span>
+                <span v-if="isParticipantVideoVisible(user) && !user.microphoneEnabled" class="call-camera-stage-muted" title="Đang tắt micro" aria-label="Đang tắt micro"><i class="fa-solid fa-microphone-slash" aria-hidden="true"></i></span>
               </article>
             </div>
             <div v-else class="call-grid-empty" aria-live="polite">
-              <i class="fa-solid fa-users-viewfinder" aria-hidden="true"></i>
-              <span>Camera của người tham gia sẽ xuất hiện ở đây</span>
+              <span class="call-grid-empty-icon"><i class="fa-solid fa-users-viewfinder" aria-hidden="true"></i></span>
+              <strong>Phòng họp đã sẵn sàng</strong>
+              <span>Người tham gia và nội dung chia sẻ sẽ xuất hiện tại đây.</span>
             </div>
-            <div v-if="captionsEnabled && liveCaptionRows.length" class="call-live-caption-dock" role="group" aria-label="Phụ đề trực tiếp">
-              <div v-for="caption in liveCaptionRows.slice().reverse()" :key="caption.id" class="call-live-caption-row" :class="{ 'is-interim': caption.isInterim }" :aria-live="caption.isInterim ? 'off' : 'polite'" aria-atomic="true">
-                <el-avatar :size="28" :src="caption.avatarUrl || ''" :alt="`${caption.speakerDisplayName} avatar`">
-                  {{ caption.speakerDisplayName?.charAt(0) || '?' }}
-                </el-avatar>
-                <div class="call-live-caption-copy">
-                  <strong>{{ caption.speakerDisplayName }}</strong>
-                  <span>{{ caption.text }}</span>
-                </div>
-              </div>
-            </div>
+            <LiveCaptionOverlay :enabled="captionsEnabled" :captions="liveCaptionRows" />
           </section>
 
           <section v-if="callRailParticipants.length" class="call-participant-rail" aria-label="Call participants">
@@ -424,11 +387,6 @@
                 <el-avatar v-else :size="44" :src="user.connectionId === callConnectionId ? currentUser.avatar : user.avatarUrl">
                   {{ (user.connectionId === callConnectionId ? currentUser.name : user.displayName)?.charAt(0) }}
                 </el-avatar>
-                <audio
-                  v-if="user.connectionId !== callConnectionId && remoteStreams.has(user.connectionId)"
-                  :ref="el => setRemoteAudioElement(el, user.connectionId, 'rail')"
-                  autoplay
-                ></audio>
               </div>
               <div class="call-thumb-caption">
                 <span class="truncate">{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</span>
@@ -439,31 +397,31 @@
             </article>
           </section>
 
-          <aside v-if="callAiState.state !== 'OFF' || callTranscriptChunks.length || callTranscriptInterim.text" class="call-transcript-panel" aria-label="Biên bản cuộc gọi">
+          <audio
+            v-for="user in remoteAudioParticipants"
+            :key="`remote-audio-${user.connectionId}`"
+            :ref="el => setRemoteAudioElement(el, user.connectionId, 'output')"
+            class="call-remote-audio-output"
+            autoplay
+            aria-hidden="true"
+          ></audio>
+
+          <aside v-if="showTranscriptPanel" class="call-transcript-panel" aria-label="Biên bản cuộc gọi">
             <div class="call-transcript-header">
-              <div class="call-transcript-title"><span class="context-kicker">Live transcript</span><strong>Biên bản cuộc gọi</strong><small>{{ callTranscriptionCapabilities.provider }} · {{ callCaptionLanguageLabel }}</small></div>
+              <div class="call-transcript-title"><span class="context-kicker">BIÊN BẢN</span><strong>Biên bản cuộc gọi</strong><small>{{ callTranscriptionCapabilities.provider }} · {{ callCaptionLanguageLabel }}</small></div>
               <span class="call-ai-state-pill" :class="`is-${callAiState.state.toLowerCase()}`">{{ callAiStateLabel }}</span>
             </div>
             <div v-if="callAiState.state === 'OFF'" class="call-transcript-off">
-              <strong>Phụ đề chưa được cấu hình</strong>
-              <p>Quản trị viên chưa cấu hình phiên âm cuộc họp. Bạn vẫn có thể tiếp tục cuộc gọi.</p>
+              <strong>{{ callTranscriptionCapabilities.configured ? 'Phụ đề đang tắt' : 'Phụ đề chưa được cấu hình' }}</strong>
+              <p>{{ callTranscriptionCapabilities.configured ? 'Bật Phụ đề ở thanh điều khiển để xem lời nói trực tiếp trong cuộc gọi.' : 'Quản trị viên chưa cấu hình phiên âm cuộc họp. Bạn vẫn có thể tiếp tục cuộc gọi.' }}</p>
             </div>
             <div v-else-if="callAiState.state === 'WAITING_FOR_CONSENT' || callAiState.state === 'PAUSED_CONSENT'" class="call-transcript-consent">
-              <strong>{{ callAiState.state === 'PAUSED_CONSENT' ? 'AI đã tạm dừng — chờ đồng ý' : 'Đang chờ sự đồng ý' }}</strong>
-              <p>AI sẽ ghi lời nói thành văn bản, không lưu âm thanh gốc.</p>
-              <div class="call-consent-list">
-                <div v-for="participant in callAiState.participants" :key="`consent-${participant.userId}`">
-                  <span>{{ participant.displayName }}</span><span>{{ consentStatusLabel(participant.consentStatus) }}</span>
-                </div>
-              </div>
-              <div v-if="currentCallConsentStatus === 'PENDING'" class="call-consent-actions">
-                <button type="button" class="ai-primary-action" @click="respondCallAiConsent(true)">Đồng ý</button>
-                <button type="button" class="ai-secondary-action" @click="respondCallAiConsent(false)">Từ chối</button>
-              </div>
+              <strong>{{ callAiState.state === 'PAUSED_CONSENT' ? 'Đã tạm dừng' : 'Đang chờ quyền bật phụ đề' }}</strong>
+              <p>Quyền bật phụ đề được xử lý trong hộp thoại xác nhận.</p>
             </div>
             <div v-else-if="callAiState.state === 'ACTIVE'" class="call-transcript-active">
-              <div class="call-transcript-indicator"><span></span> AI đang ghi biên bản</div>
-              <button type="button" class="ai-secondary-action" @click="stopCallAi">Dừng AI</button>
+              <div class="call-transcript-indicator"><span></span> Đang ghi</div>
+              <button type="button" class="ai-secondary-action" @click="toggleCallCaptions">Tắt phụ đề</button>
             </div>
             <div v-else class="call-transcript-paused">
               <strong>{{ callAiState.state === 'ERROR' ? 'Không thể khởi động phiên âm' : 'AI đang tắt' }}</strong>
@@ -489,9 +447,9 @@
                 <div><time>{{ formatTime(chunk.startedAt) }}</time><strong>{{ chunk.speakerDisplayName }}</strong></div>
                 <p>“{{ chunk.text }}”</p>
               </div>
-              <div v-if="callTranscriptInterim.text" class="call-transcript-chunk is-interim">
-                <div><time>{{ formatTime(callTranscriptInterim.startedAt) }}</time><strong>{{ callTranscriptInterim.speakerDisplayName }}</strong></div>
-                <p>“{{ callTranscriptInterim.text }}”</p>
+              <div v-for="interim in callTranscriptInterims" :key="interim.id" class="call-transcript-chunk is-interim">
+                <div><time>{{ formatTime(interim.startedAt) }}</time><strong>{{ interim.speakerDisplayName }}</strong></div>
+                <p>“{{ interim.text }}”</p>
               </div>
               <span v-if="!callTranscriptChunks.length" class="channel-utility-empty">Chưa có nội dung phiên âm.</span>
             </div>
@@ -587,7 +545,7 @@
                       @click="toggleCallPictureInPicture"
                     >Picture-in-picture</button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="togglePresentationFullscreen">{{ presentationIsFullscreen ? 'Thoát toàn màn hình' : 'Toàn màn hình' }}</button>
-                    <button type="button" class="call-more-menu-item" :class="{ 'is-unavailable': !callTranscriptionCapabilities.configured }" role="menuitem" :disabled="!callTranscriptionCapabilities.configured" @click="moreMenuSection = 'captions'"><span>Phụ đề</span><small>{{ callTranscriptionCapabilities.configured ? callCaptionLanguageLabel : 'Chưa cấu hình' }}</small></button>
+                    <button type="button" class="call-more-menu-item" :class="{ 'is-unavailable': !callTranscriptionCapabilities.configured }" role="menuitem" :disabled="!callTranscriptionCapabilities.configured" @click="moreMenuSection = 'captions'"><span>Ngôn ngữ phụ đề</span><small>{{ callTranscriptionCapabilities.configured ? callCaptionLanguageLabel : 'Chưa cấu hình' }}</small></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'shortcuts'"><span>Phím tắt</span><small>Ctrl/Cmd+D · E</small></button>
                   </template>
                   <template v-else>
@@ -616,10 +574,9 @@
                       <span v-if="!callDevices.length" class="call-more-empty">Chưa tìm thấy thiết bị.</span>
                     </div>
                     <div v-else-if="moreMenuSection === 'captions'" class="call-device-panel">
-                      <span class="call-more-section-label">Ngôn ngữ phiên âm</span>
+                      <span class="call-more-section-label">Ngôn ngữ phụ đề</span>
                       <label class="call-device-select">Ngôn ngữ<select v-model="callCaptionLanguage" :disabled="callAiState.state === 'ACTIVE'" @change="setCallCaptionLanguage"><option v-for="language in callTranscriptionCapabilities.supportedLanguages" :key="language" :value="language">{{ language === 'vi' ? 'Tiếng Việt' : 'English' }}</option></select></label>
                       <span v-if="callAiState.state === 'ACTIVE'" class="call-more-empty">Dừng biên bản trước khi đổi ngôn ngữ.</span>
-                      <button type="button" class="call-device-option" :class="{ selected: captionsEnabled }" @click="toggleCallCaptions">{{ captionsEnabled ? 'Tắt phụ đề' : 'Bật phụ đề' }}</button>
                     </div>
                     <div v-else class="call-effects-panel">
                       <span class="call-more-section-label">Hiệu ứng hình ảnh</span>
@@ -713,10 +670,8 @@
           </div>
 
           <div class="header-actions" v-if="activeProjectId">
-            <button type="button" class="ai-entry-button" :class="{ 'is-open': aiAnalysisOpen }" aria-label="AI đang OFF — tính năng sắp ra mắt" title="AI đang OFF — tính năng sắp ra mắt" @click="openAiAnalysis('text')">
+            <button type="button" class="action-btn ai-action-btn" :class="{ 'is-open': aiAnalysisOpen }" aria-label="SprintA AI Assistant" title="SprintA AI Assistant" @click="openAiAnalysis('text')">
               <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-              <span>AI đang OFF</span>
-              <span class="ai-off-state">Sắp ra mắt</span>
             </button>
             <button type="button" class="action-btn" aria-label="Mở panel channel" title="Mở panel channel" @click="toggleContextPanel">
               <i class="fa-solid fa-layout-sidebar" aria-hidden="true"></i>
@@ -1068,10 +1023,10 @@
           <button type="button" class="context-tab" role="tab" @click="openAiAnalysis(showVoiceCallMain ? 'call' : 'text')">AI</button>
         </div>
         <div v-if="showVoiceCallMain && activeVoiceChannel" class="context-call-summary">
-          <span class="context-status-dot"></span><div><strong>{{ activeVoiceChannel.name }}</strong><span>{{ callParticipants.length }} người trong phòng</span></div>
+          <span class="context-status-dot"></span><div><strong>{{ activeVoiceChannel.name }}</strong><span>{{ participantsInCall.length }} người trong phòng</span></div>
         </div>
         <div v-if="showVoiceCallMain && activeVoiceChannel" class="context-member-list">
-          <div v-for="user in callParticipants" :key="`context-${user.connectionId}`" class="context-member-row">
+          <div v-for="user in participantsInCall" :key="`context-${user.connectionId}`" class="context-member-row">
             <el-avatar :size="30" :src="user.avatarUrl">{{ user.displayName?.charAt(0) }}</el-avatar><span>{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</span>
             <i v-if="user.userId === currentUser.id && !user.microphoneEnabled" class="fa-solid fa-microphone-slash" aria-label="Đang tắt micro"></i>
             <i v-if="user.handRaised" class="fa-solid fa-hand call-hand-indicator" aria-label="Đang giơ tay" title="Đang giơ tay"></i>
@@ -1205,10 +1160,46 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="showCaptionConsentModal"
+      width="min(420px, calc(100vw - 32px))"
+      append-to-body
+      class="caption-consent-dialog"
+      :show-close="true"
+      :close-on-click-modal="false"
+      :close-on-press-escape="!captionConsentSubmitting"
+      @close="cancelCaptionConsent"
+    >
+      <template #header>
+        <div class="caption-consent-heading">
+          <span class="caption-consent-icon" aria-hidden="true"><i class="fa-solid fa-closed-captioning"></i></span>
+          <div><span class="context-kicker">PHỤ ĐỀ TRỰC TIẾP</span><h3>Bật phụ đề trực tiếp?</h3></div>
+        </div>
+      </template>
+      <div class="caption-consent-copy">
+        <p>Giọng nói trong cuộc gọi sẽ được gửi để chuyển thành văn bản trực tiếp.</p>
+        <small>Không lưu âm thanh gốc.</small>
+      </div>
+      <template #footer>
+        <div class="caption-consent-actions">
+          <button type="button" class="ai-secondary-action" :disabled="captionConsentSubmitting" @click="cancelCaptionConsent">Hủy</button>
+          <button type="button" class="ai-primary-action" :disabled="captionConsentSubmitting" @click="respondCallAiConsent(true)">
+            {{ captionConsentSubmitting ? 'Đang bật…' : 'Cho phép & bật phụ đề' }}
+          </button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <WebRtcDiagnosticsPanel :call-session="callSession" />
   </main>
 </template>
 
 <script setup>
+defineOptions({
+  name: 'CollaborationChat'
+})
+
 import { ref, onMounted, onBeforeUnmount, nextTick, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -1216,6 +1207,8 @@ import axiosClient from '@/api/axiosClient'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
+import LiveCaptionOverlay from '@/components/collaboration/LiveCaptionOverlay.vue'
+import WebRtcDiagnosticsPanel from '@/components/WebRtcDiagnosticsPanel.vue'
 
 import { useI18n } from '@/composables/useI18n'
 
@@ -1224,30 +1217,81 @@ const { t } = useI18n()
 import { collaborationApi } from '@/api/collaborationApi'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useAuthStore } from '@/store/useAuthStore'
+import { useVoiceCallStore } from '@/store/useVoiceCallStore'
+
+const voiceCallStore = useVoiceCallStore()
 import {
   collaborationRealtime,
   COLLABORATION_REALTIME_STATES,
   getCollaborationHubErrorCode
 } from '@/services/collaborationRealtime'
 import { createCallMediaSession, traceCallHubLifecycle, traceWebRtcMedia } from '@/services/callMediaService'
+import { isWebRtcDebugEnabled, recordMediaElementDiagnostic } from '@/utils/webrtcRuntimeDiagnostics'
 import {
   dedupeParticipantsByUser,
   getMeetingLayoutMode,
   getMeetingRenderCollections
 } from '@/services/meetingLayoutState'
 import {
+  createMeetingPictureInPictureController,
+  isDocumentPictureInPictureSupported
+} from '@/services/meetingPictureInPicture'
+import {
   clearLiveCaptions,
   isLiveCaptionForSession,
   normalizeLiveCaptionEvent,
+  normalizeTranscriptChunkEvent,
+  removeTranscriptInterim,
   removeExpiredLiveCaptions,
   upsertLiveCaptionFinal,
-  upsertLiveCaptionInterim
+  upsertLiveCaptionInterim,
+  upsertTranscriptHistory,
+  upsertTranscriptInterim
 } from '@/services/liveCaptionState'
 import {
   clearScopedCurrentProjectId,
   getScopedCurrentProjectId,
   setScopedCurrentProjectId
 } from '@/utils/projectContext'
+
+let captionRenderDiagnosticCount = 0
+const traceCaptionRender = (resultType, receivedAt) => {
+  try {
+    if (globalThis.localStorage?.getItem('debug_caption_transport') !== '1') return
+    captionRenderDiagnosticCount += 1
+    if (captionRenderDiagnosticCount !== 1 && captionRenderDiagnosticCount % 20 !== 0) return
+    console.info('[CAPTION_RENDER_DIAG]', {
+      timestamp: new Date().toISOString(),
+      resultType,
+      eventToDomMs: Math.max(0, Math.round(performance.now() - receivedAt))
+    })
+  } catch {
+    // Diagnostics remain optional when browser storage is unavailable.
+  }
+}
+
+const meetingLayoutCorrelation = (prefix, value, map) => {
+  const rawValue = `${value || ''}`
+  if (!rawValue) return ''
+  if (!map.has(rawValue)) map.set(rawValue, `${prefix}-${map.size + 1}`)
+  return map.get(rawValue)
+}
+
+const meetingLayoutUserKeys = new Map()
+const meetingLayoutConnectionKeys = new Map()
+let meetingLayoutDiagnosticSignature = ''
+let meetingLayoutDiagnosticQueued = false
+const meetingLayoutTraceEnabled = () => {
+  try { return globalThis.localStorage?.getItem('debug_webrtc_media') === '1' } catch { return false }
+}
+const traceMeetingLayout = (event, detail = {}) => {
+  if (!meetingLayoutTraceEnabled()) return
+  console.info('[MEETING_LAYOUT_DIAG]', {
+    timestamp: new Date().toISOString(),
+    event,
+    ...detail
+  })
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -1597,6 +1641,9 @@ const cameraEffectNotice = ref('')
 const showCameraEffectsMenu = ref(false)
 const showMoreMenu = ref(false)
 const moreMenuSection = ref('')
+const showTranscriptPanel = ref(false)
+const showCaptionConsentModal = ref(false)
+const captionConsentSubmitting = ref(false)
 const callHandRaised = ref(false)
 const callReactions = ref([])
 const callLiveNotice = ref('')
@@ -1618,7 +1665,7 @@ const callSession = ref(null)
 let callJoinPromise = null
 const callAiState = ref({ state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] })
 const callTranscriptChunks = ref([])
-const callTranscriptInterim = ref({ text: '', startedAt: '', speakerDisplayName: '' })
+const callTranscriptInterims = ref([])
 const liveCaptionRows = ref([])
 let liveCaptionExpirySweep = null
 const callTranscriptionCapabilities = ref({ configured: false, provider: 'Unavailable', supportedLanguages: [], defaultLanguage: 'vi', aiConfigured: false, aiProvider: 'Unavailable', aiTranscriptChunkSize: 8 })
@@ -1694,27 +1741,61 @@ const activePresenterStream = () => {
     : remoteStreams.value.get(presenter.connectionId)?.screenStream || null
 }
 
-const hasLiveVideoTrack = stream => stream?.getVideoTracks?.().some(track => track.readyState === 'live') === true
+const hasLiveVideoTrack = stream => stream?.getVideoTracks?.().some(track => track.readyState === 'live' && track.enabled !== false) === true
+const hasLiveAudioTrack = stream => stream?.getAudioTracks?.().some(track => track.readyState === 'live' && track.enabled !== false) === true
 const isParticipantVideoVisible = user => user.connectionId === callConnectionId.value
   ? isCallCameraOn.value && hasLiveVideoTrack(localCallStream.value)
-  : user.cameraEnabled && hasLiveVideoTrack(remoteStreams.value.get(user.connectionId)?.cameraStream)
+  : hasLiveVideoTrack(remoteStreams.value.get(user.connectionId)?.cameraStream)
 const pictureInPictureUnsupportedMessage = 'Trình duyệt của bạn không hỗ trợ Picture-in-Picture.'
 const pictureInPictureNoVideoMessage = 'Hãy bật camera hoặc chia sẻ màn hình để sử dụng Picture-in-Picture.'
+const documentPictureInPictureSupported = () => typeof window !== 'undefined' &&
+  isDocumentPictureInPictureSupported(window)
 const standardPictureInPictureSupported = () => typeof document !== 'undefined' &&
   document.pictureInPictureEnabled === true &&
   typeof HTMLVideoElement !== 'undefined' &&
   typeof HTMLVideoElement.prototype.requestPictureInPicture === 'function'
 const hasEligiblePictureInPictureVideo = computed(() => {
+  if (documentPictureInPictureSupported()) return callParticipants.value.length > 0
   const hasRenderedPresentation = activePresenter.value && callViewMode.value !== 'tiled' && hasLiveVideoTrack(activePresenterStream())
   if (hasRenderedPresentation) return true
   return callParticipants.value.some(isParticipantVideoVisible)
 })
 const pictureInPictureActionLabel = computed(() => {
-  if (!standardPictureInPictureSupported()) return pictureInPictureUnsupportedMessage
+  if (!documentPictureInPictureSupported() && !standardPictureInPictureSupported()) return pictureInPictureUnsupportedMessage
   return hasEligiblePictureInPictureVideo.value ? 'Picture-in-picture' : pictureInPictureNoVideoMessage
 })
 const isParticipantSpeaking = user => user.isSpeaking === true || user.speaking === true || user.activeSpeaker === true
 const participantsInCall = computed(() => dedupeParticipantsByUser(callParticipants.value, callConnectionId.value))
+const remoteAudioParticipants = computed(() => participantsInCall.value.filter(user =>
+  user.connectionId !== callConnectionId.value &&
+  hasLiveAudioTrack(remoteStreams.value.get(user.connectionId)?.audioStream)
+))
+const meetingPictureInPicture = createMeetingPictureInPictureController()
+const getMeetingPictureInPictureSnapshot = () => ({
+  meetingName: activeVoiceChannel.value?.name || 'Cuộc họp đang diễn ra',
+  participants: participantsInCall.value.map(user => ({
+    connectionId: user.connectionId,
+    displayName: user.connectionId === callConnectionId.value ? (currentUser.value.name || 'Bạn') : user.displayName,
+    avatarUrl: user.connectionId === callConnectionId.value ? currentUser.value.avatar : user.avatarUrl,
+    isLocal: user.connectionId === callConnectionId.value,
+    isSpeaking: isParticipantSpeaking(user),
+    cameraEnabled: user.connectionId === callConnectionId.value ? isCallCameraOn.value : user.cameraEnabled,
+    cameraStream: user.connectionId === callConnectionId.value
+      ? localCallStream.value
+      : remoteStreams.value.get(user.connectionId)?.cameraStream || null
+  })),
+  presentation: activePresenter.value && hasLiveVideoTrack(activePresenterStream())
+    ? { displayName: activePresenter.value.displayName, stream: activePresenterStream() }
+    : null
+})
+const syncMeetingPictureInPicture = () => {
+  if (!meetingPictureInPicture.isOpen()) return
+  if (!participantsInCall.value.length) {
+    meetingPictureInPicture.close()
+    return
+  }
+  meetingPictureInPicture.update(getMeetingPictureInPictureSnapshot())
+}
 const focusedCallParticipant = computed(() => participantsInCall.value.find(user =>
   user.connectionId === focusedParticipantConnectionId.value
 ))
@@ -1743,6 +1824,118 @@ const callRailParticipants = computed(() => [
   ...meetingRenderCollections.value.cameraRailParticipants,
   ...meetingRenderCollections.value.presentationRailParticipants
 ])
+const describeMeetingParticipant = participant => {
+  const isSelf = participant.connectionId === callConnectionId.value
+  const remoteEntry = isSelf ? null : remoteStreams.value.get(participant.connectionId)
+  const cameraStream = isSelf ? localCallStream.value : remoteEntry?.cameraStream
+  const audioStream = isSelf ? localCallStream.value : remoteEntry?.audioStream
+  const screenStream = isSelf ? localScreenStream.value : remoteEntry?.screenStream
+  const displayName = `${participant.displayName || ''}`.trim().toLocaleLowerCase()
+  const displayNameCollisionCount = participantsInCall.value.filter(item =>
+    `${item.displayName || ''}`.trim().toLocaleLowerCase() === displayName
+  ).length
+  return {
+    userKey: meetingLayoutCorrelation('user', participant.userId, meetingLayoutUserKeys),
+    connectionKey: meetingLayoutCorrelation('connection', participant.connectionId, meetingLayoutConnectionKeys),
+    isSelf,
+    displayName: participant.displayName || '',
+    displayNameCollisionCount,
+    cameraEnabled: isSelf ? isCallCameraOn.value : participant.cameraEnabled === true,
+    micEnabled: isSelf ? callMicrophoneEnabled.value : participant.microphoneEnabled !== false,
+    remoteEntryExists: Boolean(remoteEntry),
+    selectedRemoteConnectionKey: isSelf ? '' : meetingLayoutCorrelation('connection', participant.connectionId, meetingLayoutConnectionKeys),
+    cameraStreamPresent: Boolean(cameraStream),
+    cameraLiveTrackPresent: hasLiveVideoTrack(cameraStream),
+    audioStreamPresent: Boolean(audioStream),
+    audioLiveTrackPresent: audioStream?.getAudioTracks?.().some(track => track.readyState === 'live') === true,
+    screenStreamPresent: Boolean(screenStream)
+  }
+}
+const traceMeetingLayoutSnapshot = () => {
+  if (!meetingLayoutTraceEnabled() || !meetingShell.value) return
+  const participants = participantsInCall.value.map(describeMeetingParticipant)
+  const renderedParticipants = [
+    ...cameraStageParticipants.value,
+    ...callRailParticipants.value
+  ]
+  const renderedElements = [...meetingShell.value.querySelectorAll('.call-camera-stage-tile, .call-participant-thumb')]
+  const tiles = renderedParticipants.map((participant, index) => {
+    const element = renderedElements[index]
+    const rect = element?.getBoundingClientRect?.()
+    const showingVideo = isParticipantVideoVisible(participant)
+    return {
+      userKey: meetingLayoutCorrelation('user', participant.userId, meetingLayoutUserKeys),
+      connectionKey: meetingLayoutCorrelation('connection', participant.connectionId, meetingLayoutConnectionKeys),
+      tileRole: participant.connectionId === callConnectionId.value ? 'SELF' : 'PARTICIPANT',
+      displayName: participant.displayName || '',
+      cameraEnabled: participant.connectionId === callConnectionId.value ? isCallCameraOn.value : participant.cameraEnabled === true,
+      cameraLiveTrackPresent: participant.connectionId === callConnectionId.value
+        ? hasLiveVideoTrack(localCallStream.value)
+        : hasLiveVideoTrack(remoteStreams.value.get(participant.connectionId)?.cameraStream),
+      showingVideo,
+      showingAvatarFallback: !showingVideo,
+      width: rect ? Math.round(rect.width) : 0,
+      height: rect ? Math.round(rect.height) : 0
+    }
+  })
+  const stage = meetingShell.value.querySelector('.call-camera-stage')
+  const stageStyle = stage ? getComputedStyle(stage) : null
+  const gridColumns = stageStyle?.gridTemplateColumns ? stageStyle.gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length : 0
+  const gridRows = stageStyle?.gridTemplateRows ? stageStyle.gridTemplateRows.trim().split(/\s+/).filter(Boolean).length : 0
+  const uniqueRenderedUserCount = new Set(tiles.map(tile => tile.userKey).filter(Boolean)).size
+  const signature = JSON.stringify({
+    participants,
+    tiles,
+    logicalParticipantCount: participants.length,
+    renderedTileCount: tiles.length,
+    uniqueRenderedUserCount,
+    gridColumns,
+    gridRows,
+    presentationActive: Boolean(activePresenter.value)
+  })
+  if (signature === meetingLayoutDiagnosticSignature) return
+  meetingLayoutDiagnosticSignature = signature
+  traceMeetingLayout('PARTICIPANT_SNAPSHOT', { participants })
+  traceMeetingLayout('TILE_SNAPSHOT', { tiles })
+  traceMeetingLayout('GRID_SNAPSHOT', {
+    logicalParticipantCount: participants.length,
+    renderedTileCount: tiles.length,
+    uniqueRenderedUserCount,
+    viewportWidth: Math.round(globalThis.innerWidth || 0),
+    viewportHeight: Math.round(globalThis.innerHeight || 0),
+    gridColumns,
+    gridRows,
+    presentationActive: Boolean(activePresenter.value),
+    duplicateLogicalUserDetected: uniqueRenderedUserCount !== tiles.length
+  })
+  const ownership = [...remoteStreams.value.entries()]
+    .filter(([, media]) => Boolean(media?.cameraStream))
+    .map(([connectionId, media]) => {
+      const selectedParticipant = participantsInCall.value.find(item => item.connectionId === connectionId)
+      const ownerKey = selectedParticipant
+        ? meetingLayoutCorrelation('user', selectedParticipant.userId, meetingLayoutUserKeys)
+        : ''
+      return {
+        streamOwnerUserKey: ownerKey,
+        streamConnectionKey: meetingLayoutCorrelation('connection', connectionId, meetingLayoutConnectionKeys),
+        selectedParticipantUserKey: ownerKey,
+        selectedParticipantConnectionKey: selectedParticipant
+          ? meetingLayoutCorrelation('connection', selectedParticipant.connectionId, meetingLayoutConnectionKeys)
+          : '',
+        ownershipMatches: Boolean(selectedParticipant && selectedParticipant.userId),
+        cameraLiveTrackPresent: hasLiveVideoTrack(media.cameraStream)
+      }
+    })
+  traceMeetingLayout('STREAM_OWNERSHIP_SNAPSHOT', { ownership })
+}
+const scheduleMeetingLayoutDiagnostics = () => {
+  if (!meetingLayoutTraceEnabled() || meetingLayoutDiagnosticQueued) return
+  meetingLayoutDiagnosticQueued = true
+  void nextTick().then(() => {
+    meetingLayoutDiagnosticQueued = false
+    traceMeetingLayoutSnapshot()
+  })
+}
 const callLayoutClasses = computed(() => ({
   'is-presentation-mode': callLayoutMode.value.startsWith('PRESENTATION'),
   'is-camera-mode': callLayoutMode.value.startsWith('CAMERA'),
@@ -1750,7 +1943,7 @@ const callLayoutClasses = computed(() => ({
   'has-call-side-panel': callChatOpen.value || showMembersSidebar.value
 }))
 const focusParticipant = connectionId => {
-  const participant = callParticipants.value.find(user => user.connectionId === connectionId)
+  const participant = participantsInCall.value.find(user => user.connectionId === connectionId)
   if (!participant) return
   focusedParticipantConnectionId.value = focusedParticipantConnectionId.value === connectionId ? '' : connectionId
 }
@@ -1767,10 +1960,21 @@ const bindMediaElement = (element, stream, muted = false, { peerId = '', mediaRo
     streamId: stream?.id || ''
   })
   element.muted = muted
+  if (mediaRole === 'audio') element.volume = 1
   element.autoplay = true
   element.playsInline = true
+  if (isWebRtcDebugEnabled()) recordMediaElementDiagnostic(element, { mediaRole })
   if (element.srcObject !== stream) {
     element.srcObject = stream || null
+    traceWebRtcMedia('REMOTE_MEDIA_ELEMENT_BOUND', {
+      peerId,
+      trackKind: track?.kind,
+      trackReadyState: track?.readyState,
+      trackEnabled: track ? track.enabled !== false : null,
+      mediaRole,
+      streamTrackCount: stream?.getTracks?.().length || 0,
+      result: stream ? 'srcObject-set' : 'srcObject-cleared'
+    })
     traceWebRtcMedia('VIDEO_SRC_OBJECT_SET', {
       peerId,
       trackKind: track?.kind,
@@ -1779,15 +1983,27 @@ const bindMediaElement = (element, stream, muted = false, { peerId = '', mediaRo
       mediaRole,
       streamId: stream?.id || ''
     })
+    if (isWebRtcDebugEnabled()) recordMediaElementDiagnostic(element, { mediaRole })
   }
   if (stream) {
+    if (mediaRole === 'audio') traceWebRtcMedia('REMOTE_AUDIO_PLAY_BEGIN', {
+      peerId,
+      trackKind: track?.kind,
+      trackReadyState: track?.readyState,
+      mediaRole,
+      streamTrackCount: stream.getTracks?.().length || 0
+    })
     const playback = element.play?.()
     if (playback?.then) {
       void playback.then(() => {
         blockedMediaElements.delete(element)
+        if (isWebRtcDebugEnabled()) recordMediaElementDiagnostic(element, { mediaRole, playResult: 'ok' })
+        if (mediaRole === 'audio') traceWebRtcMedia('REMOTE_AUDIO_PLAY_OK', { peerId, mediaRole, result: 'play-resolved' })
         traceWebRtcMedia('VIDEO_PLAY_OK', { peerId, trackKind: track?.kind, trackId: track?.id, trackReadyState: track?.readyState, mediaRole, streamId: stream.id })
       }).catch(error => {
         if (error?.name === 'NotAllowedError') blockedMediaElements.add(element)
+        if (isWebRtcDebugEnabled()) recordMediaElementDiagnostic(element, { mediaRole, playResult: 'error', errorName: error?.name || 'Error' })
+        if (mediaRole === 'audio') traceWebRtcMedia('REMOTE_AUDIO_PLAY_FAIL', { peerId, mediaRole, errorName: error?.name || 'Error' })
         traceWebRtcMedia('VIDEO_PLAY_FAILED', { peerId, trackKind: track?.kind, trackId: track?.id, trackReadyState: track?.readyState, mediaRole, streamId: stream.id })
       })
     }
@@ -1845,14 +2061,14 @@ const setPresentationVideoElement = (element, connectionId = '') => {
 
 const callAiStateLabel = computed(() => ({
   OFF: 'Đang tắt',
-  WAITING_FOR_CONSENT: 'Đang chờ sự đồng ý',
-  ACTIVE: 'AI đang ghi lời nói thành văn bản',
-  PAUSED_CONSENT: 'AI đã tạm dừng — chờ đồng ý',
-  STOPPING: 'Đang dừng AI',
-  ERROR: 'AI gặp lỗi'
+  WAITING_FOR_CONSENT: 'Chờ quyền',
+  ACTIVE: 'Đang ghi',
+  PAUSED_CONSENT: 'Đã tạm dừng',
+  STOPPING: 'Đang dừng',
+  ERROR: 'Có lỗi'
 }[callAiState.value.state] || 'Đang tắt'))
 const callAiButtonLabel = computed(() => callTranscriptionCapabilities.value.configured
-  ? `Biên bản cuộc họp: ${callAiStateLabel.value}`
+  ? `${showTranscriptPanel.value ? 'Đóng' : 'Mở'} biên bản cuộc gọi`
   : 'Biên bản và AI chưa sẵn sàng vì phiên âm chưa được cấu hình')
 const callCaptionLanguageLabel = computed(() => callCaptionLanguage.value === 'en' ? 'English' : 'Tiếng Việt')
 const callViewModes = [
@@ -1870,12 +2086,6 @@ const setCallViewMode = mode => {
   showMoreMenu.value = false
   moreMenuSection.value = ''
 }
-const currentCallConsentStatus = computed(() => {
-  const currentUserId = currentUser.value?.id
-  return callAiState.value.participants.find(item => `${item.userId}` === `${currentUserId}`)?.consentStatus || 'PENDING'
-})
-const consentStatusLabel = status => ({ PENDING: '…', ACCEPTED: '✓', DECLINED: '✕' }[status] || '…')
-
 const normalizeCallAiState = value => {
   const state = value || {}
   return {
@@ -1897,6 +2107,16 @@ const handleCallAiState = value => {
     clearLiveCaptionRows()
   }
   callAiState.value = nextState
+  if (nextState.state === 'ACTIVE') {
+    captionsEnabled.value = true
+    showCaptionConsentModal.value = false
+  } else if (nextState.state === 'OFF') {
+    captionsEnabled.value = false
+    showCaptionConsentModal.value = false
+    clearLiveCaptionRows()
+  } else if (nextState.state === 'WAITING_FOR_CONSENT' || nextState.state === 'PAUSED_CONSENT') {
+    if (captionsEnabled.value) showCaptionConsentModal.value = true
+  }
 }
 
 const normalizeMeetingAiReport = value => {
@@ -1995,31 +2215,25 @@ const updateLiveCaptionRows = (value, update) => {
 }
 
 const handleTranscriptChunk = (value, { showLive = true } = {}) => {
-  const chunk = {
-    id: value?.id ?? value?.Id,
-    callSessionId: value?.callSessionId ?? value?.CallSessionId ?? '',
-    speakerUserId: value?.speakerUserId ?? value?.SpeakerUserId ?? '',
-    startedAt: value?.startedAt ?? value?.StartedAt,
-    speakerDisplayName: value?.speakerDisplayName ?? value?.SpeakerDisplayName ?? 'Unknown user',
-    text: value?.text ?? value?.Text ?? ''
-  }
+  const receivedAt = performance.now()
+  const chunk = normalizeTranscriptChunkEvent(value)
   if (!chunk.id || !chunk.text) return
   if (showLive && !isCaptionSessionCurrent(chunk)) return
   if (showLive) updateLiveCaptionRows(chunk, upsertLiveCaptionFinal)
-  callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
-  callTranscriptChunks.value = [...callTranscriptChunks.value.filter(item => item.id !== chunk.id), chunk]
-    .sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt))
+  callTranscriptInterims.value = removeTranscriptInterim(callTranscriptInterims.value, chunk)
+  callTranscriptChunks.value = upsertTranscriptHistory(callTranscriptChunks.value, chunk)
   scheduleMeetingAiReportRefresh()
+  void nextTick().then(() => traceCaptionRender('final', receivedAt))
 }
 
 const handleTranscriptInterim = value => {
+  const receivedAt = performance.now()
   if (!isCurrentCaptionEvent(value)) return
-  callTranscriptInterim.value = {
-    text: value?.text ?? value?.Text ?? '',
-    startedAt: value?.startedAt ?? value?.StartedAt ?? '',
-    speakerDisplayName: value?.speakerDisplayName ?? value?.SpeakerDisplayName ?? 'Unknown user'
-  }
+  callTranscriptInterims.value = upsertTranscriptInterim(
+    callTranscriptInterims.value,
+    normalizeCaptionForDisplay(value))
   updateLiveCaptionRows(value, upsertLiveCaptionInterim)
+  void nextTick().then(() => traceCaptionRender('interim', receivedAt))
 }
 
 const handleTranscriptionError = value => {
@@ -2341,8 +2555,27 @@ const toggleCallPictureInPicture = async () => {
     ElMessage.warning(message)
     closeMoreMenu()
   }
-  if (!standardPictureInPictureSupported()) {
+  if (!documentPictureInPictureSupported() && !standardPictureInPictureSupported()) {
     showPictureInPictureMessage(pictureInPictureUnsupportedMessage)
+    return
+  }
+  if (documentPictureInPictureSupported()) {
+    if (meetingPictureInPicture.isOpen()) {
+      meetingPictureInPicture.close()
+      closeMoreMenu()
+      return
+    }
+    if (!participantsInCall.value.length) {
+      showPictureInPictureMessage(pictureInPictureNoVideoMessage)
+      return
+    }
+    try {
+      await meetingPictureInPicture.open(getMeetingPictureInPictureSnapshot())
+    } catch (error) {
+      handleCallError(error)
+    } finally {
+      closeMoreMenu()
+    }
     return
   }
   await nextTick()
@@ -2381,11 +2614,27 @@ const handleCallShortcut = event => {
 
 const requestCallAi = async () => {
   if (!callSession.value || !callTranscriptionCapabilities.value.configured) return
+  if (callAiState.value.state !== 'OFF' && callAiState.value.state !== 'ERROR') return
   try {
     await callSession.value.requestAiTranscription()
   } catch (error) {
     handleCallError(error)
+    showCaptionConsentModal.value = false
+    captionsEnabled.value = false
   }
+}
+
+const openMeetingAi = async () => {
+  showTranscriptPanel.value = true
+  showMoreMenu.value = false
+  moreMenuSection.value = ''
+  if (callAiState.value.state === 'OFF' || callAiState.value.state === 'ERROR') await requestCallAi()
+}
+
+const toggleTranscriptPanel = () => {
+  showTranscriptPanel.value = !showTranscriptPanel.value
+  showMoreMenu.value = false
+  moreMenuSection.value = ''
 }
 
 const setCallCaptionLanguage = () => {
@@ -2398,25 +2647,55 @@ const setCallCaptionLanguage = () => {
 
 const toggleCallCaptions = async () => {
   if (!callSession.value || !callTranscriptionCapabilities.value.configured) return
-  captionsEnabled.value = !captionsEnabled.value
   showMoreMenu.value = false
   moreMenuSection.value = ''
-  if (!captionsEnabled.value) {
+  if (captionsEnabled.value) {
+    captionsEnabled.value = false
     clearLiveCaptionRows()
-    callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
+    callTranscriptInterims.value = []
+    await stopCallAi()
     return
   }
-  if (callAiState.value.state !== 'OFF') return
+  if (callAiState.value.state === 'ACTIVE') {
+    captionsEnabled.value = true
+    return
+  }
+  captionsEnabled.value = true
   setCallCaptionLanguage()
+  showCaptionConsentModal.value = true
   await requestCallAi()
 }
 
 const respondCallAiConsent = async accepted => {
   if (!callSession.value) return
+  if (accepted) captionConsentSubmitting.value = true
   try {
     await callSession.value.respondToAiConsent(accepted, callAiState.value)
+    if (accepted) {
+      captionsEnabled.value = true
+      showCaptionConsentModal.value = false
+    } else {
+      captionsEnabled.value = false
+      clearLiveCaptionRows()
+      callTranscriptInterims.value = []
+      showCaptionConsentModal.value = false
+    }
   } catch (error) {
     handleCallError(error)
+    if (accepted) captionsEnabled.value = false
+  } finally {
+    captionConsentSubmitting.value = false
+  }
+}
+
+const cancelCaptionConsent = () => {
+  if (captionConsentSubmitting.value) return
+  showCaptionConsentModal.value = false
+  if (callAiState.value.state === 'WAITING_FOR_CONSENT' || callAiState.value.state === 'PAUSED_CONSENT') {
+    void respondCallAiConsent(false)
+  } else {
+    captionsEnabled.value = false
+    clearLiveCaptionRows()
   }
 }
 
@@ -2508,6 +2787,15 @@ const joinVoiceChannel = async (vc, options = {}) => {
       await loadCallDevices()
       activeVoiceChannel.value = vc
       showVoiceCallMain.value = true
+      voiceCallStore.setActiveCall({
+        channel: vc,
+        participantsCount: participantsInCall.value.length || 1,
+        isMicEnabled: callMicrophoneEnabled.value,
+        isCameraEnabled: isCallCameraOn.value,
+        leaveHandler: () => leaveVoiceChannel(true),
+        toggleMicHandler: () => toggleCallMicrophone(),
+        toggleCamHandler: () => toggleCallCamera()
+      })
       await loadCallTranscript(vc)
       await syncLocalCallPreview()
       ElMessage.success(`Đã kết nối vào kênh thoại: ${vc.name}`)
@@ -2518,6 +2806,7 @@ const joinVoiceChannel = async (vc, options = {}) => {
       callParticipants.value = []
       remoteStreams.value = new Map()
       callConnectionId.value = ''
+      voiceCallStore.clearCall()
     }
   })().finally(() => {
     callJoinPromise = null
@@ -2526,6 +2815,17 @@ const joinVoiceChannel = async (vc, options = {}) => {
   })
   return callJoinPromise
 }
+
+watch([participantsInCall, callMicrophoneEnabled, isCallCameraOn, isSharingScreen], () => {
+  if (activeVoiceChannel.value) {
+    voiceCallStore.updateCallStatus({
+      participantsCount: participantsInCall.value.length,
+      isMicEnabled: callMicrophoneEnabled.value,
+      isCameraEnabled: isCallCameraOn.value,
+      isScreenSharing: isSharingScreen.value
+    })
+  }
+})
 
 const confirmJoinVoiceChannel = async () => {
   const voiceChannel = preJoinVoiceChannel.value
@@ -2555,8 +2855,11 @@ const leaveVoiceChannel = async (showMessage = true) => {
   callSession.value = null
   callParticipants.value = []
   callAiState.value = { state: 'OFF', callSessionId: '', consentGeneration: 0, participants: [] }
+  showTranscriptPanel.value = false
+  showCaptionConsentModal.value = false
+  captionConsentSubmitting.value = false
   callTranscriptChunks.value = []
-  callTranscriptInterim.value = { text: '', startedAt: '', speakerDisplayName: '' }
+  callTranscriptInterims.value = []
   clearLiveCaptionRows()
   callMeetingAiReport.value = null
   window.clearTimeout(callMeetingAiRefreshTimer)
@@ -2581,6 +2884,7 @@ const leaveVoiceChannel = async (showMessage = true) => {
   callChatOpen.value = false
   callChatDraft.value = ''
   callChatMessages.value = []
+  voiceCallStore.clearCall()
   if (showMessage && current) ElMessage.info(`Đã ngắt kết nối khỏi kênh thoại: ${current.name}`)
 }
 
@@ -2617,6 +2921,18 @@ watch(activePresenter, async presenter => {
   presentationFocused.value = false
   if (document.fullscreenElement === meetingShell.value) await document.exitFullscreen().catch(() => {})
 })
+
+watch(
+  [callParticipants, remoteStreams, localCallStream, localScreenStream, activePresenter, isCallCameraOn, isSharingScreen],
+  syncMeetingPictureInPicture,
+  { deep: true }
+)
+
+watch(
+  [callParticipants, remoteStreams, localCallStream, localScreenStream, activePresenter, isCallCameraOn, callMicrophoneEnabled, callViewMode, presentationFocused, focusedParticipantConnectionId],
+  scheduleMeetingLayoutDiagnostics,
+  { deep: true }
+)
 
 const openVoiceChannelChat = async () => {
   if (!activeVoiceChannel.value || !callSession.value) return
@@ -4037,6 +4353,7 @@ const initializeCollaborationContext = async ({ forceProjects = false } = {}) =>
 onMounted(() => {
   componentMounted = true
   traceCallHubLifecycle('COMPONENT_MOUNT', { reason: 'collaboration-chat-mounted' })
+  scheduleMeetingLayoutDiagnostics()
   window.addEventListener('keydown', handleCallShortcut)
   document.addEventListener('fullscreenchange', syncPresentationFullscreen)
   registerRealtimeHandlers()
@@ -4089,6 +4406,7 @@ watch(projectOptions, (projects) => {
 
 onBeforeUnmount(() => {
   componentMounted = false
+  meetingPictureInPicture.close()
   traceCallHubLifecycle('COMPONENT_UNMOUNT', { reason: 'collaboration-chat-unmounted' })
   window.removeEventListener('keydown', handleCallShortcut)
   document.removeEventListener('fullscreenchange', syncPresentationFullscreen)
@@ -4101,7 +4419,9 @@ onBeforeUnmount(() => {
   cancelPendingMarkRead()
   removeAttachedFile()
   revokeMessageAttachmentUrls()
-  void leaveVoiceChannel(false)
+  if (!activeVoiceChannel.value) {
+    void leaveVoiceChannel(false)
+  }
   void leaveActiveRealtimeGroup()
   createChannelAbortController.value?.abort()
   channelAbortController.value?.abort()
@@ -5588,92 +5908,58 @@ const fetchProjectMembers = async () => {
 .call-grid-empty {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 7px;
   min-height: 260px;
-  color: #64748b;
+  color: #93a7b8;
   font-size: 13px;
+  text-align: center;
 }
 
-.call-grid-empty i {
-  color: #475569;
+.call-grid-empty strong {
+  color: #e7f0f6;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.call-grid-empty-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 4px;
+  place-items: center;
+  border: 1px solid rgba(148, 163, 184, .14);
+  border-radius: 14px;
+  background: rgba(19, 42, 61, .7);
+  color: #a9bdca;
   font-size: 18px;
 }
 
-.call-live-caption-dock {
-  position: absolute;
-  z-index: 3;
-  left: 50%;
-  bottom: clamp(44px, 8%, 68px);
-  display: grid;
-  width: min(680px, calc(100% - 24px));
-  max-height: 192px;
-  gap: 6px;
-  overflow: hidden;
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
-.call-live-caption-row {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  padding: 8px 11px;
-  border: 1px solid rgba(226, 232, 240, 0.18);
-  border-radius: 9px;
-  background: rgba(4, 10, 19, 0.94);
-  color: #f8fafc;
-  font-size: 13px;
-  line-height: 1.35;
-}
-
-.call-live-caption-row.is-interim {
-  border-style: dashed;
-  opacity: .82;
-}
-
-.call-live-caption-copy {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.call-live-caption-copy strong {
-  overflow: hidden;
-  color: #9af0c5;
-  font-size: 11px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.call-live-caption-copy span {
-  min-width: 0;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .call-camera-stage {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
-  align-content: stretch;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  align-content: center;
+  justify-content: center;
   gap: 12px;
-  min-height: 310px;
+  min-height: 0;
+  max-height: 100%;
   padding: 12px;
-  overflow: auto;
+  overflow: hidden;
   background: #080d16;
 }
 
-.call-camera-stage[data-participant-count="1"] {
-  grid-template-columns: minmax(0, min(880px, 100%));
+.call-camera-stage[data-participant-count="1"],
+.call-camera-stage.layout-camera_focus {
+  grid-template-columns: minmax(0, min(840px, 100%));
+  grid-template-rows: minmax(0, 1fr);
   align-content: center;
   justify-content: center;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
 }
 
 .call-camera-stage[data-participant-count="2"],
@@ -5683,11 +5969,29 @@ const fetchProjectMembers = async () => {
   align-content: center;
 }
 
+.call-camera-stage-tile {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  background: #0b1220;
+}
+
 .call-camera-stage[data-participant-count="1"] .call-camera-stage-tile,
-.call-camera-stage[data-participant-count="2"] .call-camera-stage-tile,
-.call-camera-stage[data-participant-count="3"] .call-camera-stage-tile,
-.call-camera-stage[data-participant-count="4"] .call-camera-stage-tile {
+.call-camera-stage.layout-camera_focus .call-camera-stage-tile {
+  max-height: 100%;
+  max-width: 100%;
   aspect-ratio: 16 / 9;
+  height: auto;
+  margin: auto;
 }
 
 .call-camera-stage[data-participant-count="3"] .call-camera-stage-tile:last-child {
@@ -5696,32 +6000,85 @@ const fetchProjectMembers = async () => {
   justify-self: center;
 }
 
-.call-camera-stage-tile {
-  position: relative;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 12px;
-  background: #0b1220;
-}
-
 .call-camera-stage-tile video {
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 260px;
+  min-height: 0;
+  max-height: 100%;
   object-fit: cover;
 }
 
-.call-camera-stage-avatar {
+.call-camera-off-state {
+  position: relative;
+  isolation: isolate;
   display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
-  min-height: 260px;
+  min-height: 0;
+  max-height: 100%;
+  place-content: center;
   align-items: center;
   justify-content: center;
-  background: #0b1220;
+  gap: 8px;
+  padding: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 36%, rgba(48, 96, 122, .28), transparent 34%),
+    linear-gradient(145deg, #0e1c2b, #0a1420 72%);
+  color: #f4f8fb;
+  text-align: center;
+}
+
+.call-camera-off-glow {
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  left: 50%;
+  width: min(54%, 280px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(87, 164, 181, .11);
+  filter: blur(28px);
+  transform: translate(-50%, -58%);
+}
+
+.call-camera-off-state :deep(.el-avatar) {
+  border: 1px solid rgba(216, 239, 244, .2);
+  background: #18364a;
+  box-shadow: 0 16px 36px rgba(1, 8, 17, .24);
+  color: #eef8f7;
+  font-size: 28px;
+  font-weight: 650;
+}
+
+.call-camera-off-state strong {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+.call-camera-off-label,
+.call-camera-off-state small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #a9bdca;
+  font-size: 12px;
+}
+
+.call-camera-off-state small {
+  padding: 5px 8px;
+  border: 1px solid rgba(148, 163, 184, .13);
+  border-radius: 7px;
+  background: rgba(7, 16, 27, .42);
+  color: #a9d9c2;
+}
+
+.call-camera-off-state small.is-muted {
+  color: #c3cbd4;
 }
 
 .call-camera-stage-label {
@@ -6678,7 +7035,7 @@ const fetchProjectMembers = async () => {
 .chat-workspace .call-presentation-stage,
 .chat-workspace .call-camera-stage,
 .chat-workspace .call-camera-stage-tile video,
-.chat-workspace .call-camera-stage-avatar {
+.chat-workspace .call-camera-off-state {
   min-height: 0 !important;
 }
 
@@ -6753,13 +7110,13 @@ const fetchProjectMembers = async () => {
 }
 
 .chat-workspace .call-camera-stage-tile,
-.chat-workspace .call-camera-stage-avatar,
+.chat-workspace .call-camera-off-state,
 .chat-workspace .call-thumb-media {
   background: #0d1b2a;
 }
 
 .chat-workspace .call-camera-stage-tile video,
-.chat-workspace .call-camera-stage-avatar {
+.chat-workspace .call-camera-off-state {
   min-height: 0;
 }
 
@@ -7123,9 +7480,6 @@ const fetchProjectMembers = async () => {
   .call-camera-stage-tile video { min-height: 210px; }
   .call-control-dock { max-width: 100%; overflow-x: auto; }
   .call-control-future-slot span { display: none; }
-  .call-live-caption-dock { bottom: 38px; width: calc(100% - 16px); max-height: 144px; }
-  .call-live-caption-row { padding: 7px 9px; }
-  .call-live-caption-row:nth-child(n + 3) { display: none; }
 }
 .chat-context-panel { position: absolute; z-index: 4; top: 0; right: 0; bottom: 0; display: flex; width: var(--chat-context-width); flex-direction: column; border-left: 1px solid var(--chat-line); background: #0c1828; }
 .context-panel-header, .ai-surface-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 18px 16px 12px; border-bottom: 1px solid var(--chat-line); }
@@ -8066,13 +8420,13 @@ background-color: #111c2d !important;
 <style scoped>
 /* Final chat chrome pass: this sits after legacy call styles so theme tokens win. */
 .chat-workspace {
-  --chat-bg: var(--color-bg, #f4f7fb);
-  --chat-surface: var(--color-surface, #fff);
-  --chat-surface-2: var(--color-surface-hover, #eef4fb);
-  --chat-ink: var(--color-text-primary, #102033);
-  --chat-muted: var(--color-text-secondary, #637083);
-  --chat-faint: var(--color-text-muted, #637083);
-  --chat-line: var(--color-border, #d7e1ee);
+  --chat-bg: var(--color-bg, #f8fafc);
+  --chat-surface: var(--color-surface, #ffffff);
+  --chat-surface-2: var(--color-surface-hover, #f1f5f9);
+  --chat-ink: var(--color-text-primary, #0f172a);
+  --chat-muted: var(--color-text-secondary, #475569);
+  --chat-faint: var(--color-text-muted, #64748b);
+  --chat-line: var(--color-border, rgba(148, 163, 184, 0.24));
   --chat-accent: var(--color-accent, #0ea5e9);
   --chat-accent-hover: var(--color-accent-hover, #0284c7);
   --chat-accent-soft: color-mix(in srgb, var(--chat-accent) 12%, var(--chat-surface));
@@ -8082,71 +8436,105 @@ background-color: #111c2d !important;
   border-color: var(--chat-line) !important;
   box-shadow: 0 18px 48px color-mix(in srgb, var(--chat-ink) 12%, transparent) !important;
 }
-.chat-workspace .server-bar { background: var(--chat-surface-2) !important; border-right-color: var(--chat-line) !important; }
-.chat-workspace .server-icon-wrapper { appearance: none; border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; }
-.chat-workspace .server-icon { border: 1px solid color-mix(in srgb, var(--chat-accent) 24%, var(--chat-line)); background: var(--chat-surface) !important; color: var(--chat-accent) !important; box-shadow: none !important; }
-.chat-workspace .server-icon-wrapper:hover .server-icon,
-.chat-workspace .server-icon-wrapper:focus-visible .server-icon,
-.chat-workspace .server-icon-wrapper.active .server-icon { background: var(--chat-accent) !important; color: var(--color-text-inverse, #fff) !important; transform: translateY(-1px); }
+:global([data-theme='dark'] .chat-workspace) {
+  --chat-bg: #07111e;
+  --chat-surface: #0f172a;
+  --chat-surface-2: #1e293b;
+  --chat-ink: #f8fafc;
+  --chat-muted: #cbd5e1;
+  --chat-faint: #94a3b8;
+  --chat-line: rgba(148, 163, 184, 0.18);
+  --chat-accent: #38bdf8;
+  --chat-accent-hover: #0ea5e9;
+  --chat-accent-soft: color-mix(in srgb, var(--chat-accent) 16%, var(--chat-surface));
+}
+.chat-workspace .server-bar { background: var(--chat-surface) !important; border-right: 1px solid var(--chat-line) !important; padding-block: 14px !important; width: 64px !important; }
+.chat-workspace .rail-caption { color: var(--chat-faint) !important; font-weight: 800 !important; font-size: 10px !important; letter-spacing: .08em !important; text-align: center; }
+.chat-workspace .server-icon-wrapper { position: relative !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 100% !important; height: 48px !important; margin-bottom: 4px !important; appearance: none; border: 0; padding: 0 0 0 6px !important; background: transparent; color: inherit; cursor: pointer; }
+.chat-workspace .server-icon { width: 40px !important; height: 40px !important; min-width: 40px !important; min-height: 40px !important; display: flex !important; align-items: center !important; justify-content: center !important; border: 1px solid var(--chat-line) !important; background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; border-radius: 12px !important; font-weight: 800 !important; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important; margin: 0 auto !important; }
+.chat-workspace .server-icon-wrapper:hover .server-icon { border-color: var(--chat-accent) !important; background: color-mix(in srgb, var(--chat-accent) 14%, var(--chat-surface-2)) !important; color: var(--chat-accent) !important; transform: translateY(-1px); }
+.chat-workspace .server-icon-wrapper.active .server-icon { background: linear-gradient(135deg, #0ea5e9, #3b82f6) !important; color: #ffffff !important; border-color: transparent !important; border-radius: 12px !important; box-shadow: 0 6px 16px color-mix(in srgb, #3b82f6 38%, transparent) !important; }
 .chat-workspace .server-icon-wrapper:focus-visible { outline: 2px solid var(--chat-accent); outline-offset: 3px; }
-.chat-workspace .active-indicator { background: var(--chat-accent) !important; }
+.chat-workspace .active-indicator { position: absolute !important; left: 0 !important; top: 50% !important; transform: translateY(-50%) scaleX(0) !important; width: 4px !important; height: 22px !important; border-radius: 0 4px 4px 0 !important; background: var(--chat-accent) !important; transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important; transform-origin: left center !important; }
+.chat-workspace .server-icon-wrapper.active .active-indicator { transform: translateY(-50%) scaleX(1) !important; }
 .chat-workspace .chat-sidebar { background: var(--chat-surface) !important; border-right-color: var(--chat-line) !important; }
 .chat-workspace .sidebar-header { border-bottom-color: var(--chat-line) !important; }
-.chat-workspace .workspace-mark { background: var(--chat-accent) !important; color: var(--color-text-inverse, #fff) !important; }
+.chat-workspace .workspace-mark { background: linear-gradient(135deg, #0ea5e9, #3b82f6) !important; color: #ffffff !important; border-radius: 8px !important; font-weight: 900 !important; }
 .chat-workspace .workspace-back-button { min-height: 40px; padding: 0 8px; color: var(--chat-muted) !important; }
 .chat-workspace .workspace-back-button:hover { background: var(--chat-surface-2); color: var(--chat-ink) !important; }
 .chat-workspace .sidebar-section { margin-bottom: 18px; padding: 0; border: 0; border-radius: 0; background: transparent !important; }
-.chat-workspace .section-header { min-height: 30px; margin-bottom: 4px !important; }
-.chat-workspace .section-title { color: var(--chat-faint) !important; font-size: 10px; letter-spacing: .08em; }
-.chat-workspace .add-btn-small { width: 36px; height: 36px; color: var(--chat-muted) !important; }
-.chat-workspace .add-btn-small:hover { background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; }
-.chat-workspace .section-list { gap: 2px; }
-.chat-workspace .list-item { min-height: 40px; padding: 8px 10px; border-radius: 8px; color: var(--chat-muted) !important; }
-.chat-workspace .list-item:hover { background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; transform: none; }
-.chat-workspace .list-item.active { background: var(--chat-accent-soft) !important; color: var(--chat-ink) !important; box-shadow: inset 3px 0 var(--chat-accent) !important; font-weight: 700; }
+.chat-workspace .section-header { min-height: 30px; margin-bottom: 6px !important; }
+.chat-workspace .section-title { color: var(--chat-faint) !important; font-size: 10.5px !important; font-weight: 800 !important; letter-spacing: .08em !important; }
+.chat-workspace .add-btn-small { width: 32px; height: 32px; border-radius: 8px !important; border: 1px solid var(--chat-line) !important; background: var(--chat-surface-2) !important; color: var(--chat-muted) !important; }
+.chat-workspace .add-btn-small:hover { border-color: var(--chat-accent) !important; background: color-mix(in srgb, var(--chat-accent) 14%, var(--chat-surface)) !important; color: var(--chat-accent) !important; }
+.chat-workspace .section-list { gap: 3px; }
+.chat-workspace .list-item { min-height: 38px; padding: 8px 12px; border-radius: 10px; color: var(--chat-muted) !important; font-weight: 600; transition: all 0.16s ease !important; border-left: 0 !important; }
+.chat-workspace .list-item:hover { background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; }
+.chat-workspace .list-item.active { background: color-mix(in srgb, var(--chat-accent) 18%, var(--chat-surface-2)) !important; color: var(--chat-accent) !important; box-shadow: none !important; font-weight: 800 !important; border-radius: 10px !important; }
 .chat-workspace .item-icon { width: 18px; margin-right: 0; color: var(--chat-faint) !important; text-align: center; }
 .chat-workspace .voice-item .item-icon { color: var(--color-success) !important; }
 .chat-workspace .direct-item { gap: 7px; }
 .chat-workspace .direct-item .el-avatar { flex: 0 0 auto; }
 .chat-workspace .presence-dot { width: 7px; height: 7px; box-shadow: none !important; border: 2px solid var(--chat-surface); }
-.chat-workspace .connected-voice-panel { border-color: color-mix(in srgb, var(--color-success) 28%, var(--chat-line)) !important; background: color-mix(in srgb, var(--color-success) 8%, var(--chat-surface)) !important; }
+.chat-workspace .connected-voice-panel { border: 1px solid color-mix(in srgb, var(--color-success) 35%, var(--chat-line)) !important; background: color-mix(in srgb, var(--color-success) 10%, var(--chat-surface)) !important; border-radius: 12px !important; margin: 10px !important; padding: 10px 12px !important; }
 .chat-workspace .chat-main { background: var(--chat-bg) !important; }
-.chat-workspace .chat-header { min-height: 64px; padding: 12px 18px !important; border-bottom-color: var(--chat-line) !important; background: var(--chat-surface) !important; }
+.chat-workspace .chat-header { min-height: 64px; padding: 12px 18px !important; border-bottom: 1px solid var(--chat-line) !important; background: var(--chat-surface) !important; }
 .chat-workspace .active-info { gap: 10px; }
 .chat-workspace .active-icon { width: 34px; height: 34px; background: var(--chat-accent-soft) !important; color: var(--chat-accent) !important; border-radius: 8px; }
-.chat-workspace .chat-header h4 { color: var(--chat-ink) !important; font-size: 14px; }
+.chat-workspace .chat-header h4 { color: var(--chat-ink) !important; font-size: 14px; font-weight: 700; }
 .chat-workspace .chat-header p { color: var(--chat-muted) !important; }
-.chat-workspace .header-actions { gap: 4px; }
-.chat-workspace .action-btn { width: 40px; height: 40px; border: 1px solid transparent; border-radius: 8px; color: var(--chat-muted) !important; }
-.chat-workspace .action-btn:hover { background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; }
-.chat-workspace .ai-entry-button { min-height: 40px; border-color: color-mix(in srgb, var(--chat-accent) 28%, var(--chat-line)) !important; border-radius: 8px; background: var(--chat-accent-soft) !important; color: var(--chat-accent) !important; }
+.chat-workspace .header-actions { gap: 6px; display: flex; align-items: center; }
+.chat-workspace .ai-action-btn { background: color-mix(in srgb, var(--chat-accent) 14%, var(--chat-surface-2)) !important; border: 1px solid color-mix(in srgb, var(--chat-accent) 30%, var(--chat-line)) !important; color: var(--chat-accent) !important; font-size: 15px !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; }
+.chat-workspace .ai-action-btn:hover { background: color-mix(in srgb, var(--chat-accent) 24%, var(--chat-surface-2)) !important; border-color: var(--chat-accent) !important; }
+.chat-workspace .action-btn { width: 38px; height: 38px; border: 1px solid var(--chat-line); border-radius: 10px; background: var(--chat-surface-2); color: var(--chat-muted) !important; }
+.chat-workspace .action-btn:hover { border-color: var(--chat-accent); background: var(--chat-accent-soft) !important; color: var(--chat-accent) !important; }
+.chat-workspace .ai-entry-button { min-height: 38px; border-color: color-mix(in srgb, var(--chat-accent) 28%, var(--chat-line)) !important; border-radius: 10px; background: var(--chat-accent-soft) !important; color: var(--chat-accent) !important; font-weight: 700; }
 .chat-workspace .ai-entry-button:hover { background: color-mix(in srgb, var(--chat-accent) 18%, var(--chat-surface)) !important; }
 .mobile-sidebar-trigger { display: none; }
 .chat-content-split { display: flex; flex: 1; min-height: 0; width: 100%; }
 .chat-thread-column { display: flex; flex: 1; min-width: 0; height: 100%; flex-direction: column; }
-.chat-workspace .messages-thread { padding: 18px 20px; gap: 0; background: var(--chat-bg) !important; }
-.chat-workspace .message-card { max-width: 920px; padding: 12px 0; border-bottom-color: color-mix(in srgb, var(--chat-line) 78%, transparent) !important; }
-.chat-workspace .message-card:hover { background: transparent !important; }
-.chat-workspace .sender-name { color: var(--chat-ink) !important; }
-.chat-workspace .message-time, .chat-workspace .send-time { color: var(--chat-faint) !important; }
+.chat-workspace .messages-thread { padding: 18px 24px; gap: 4px; background: var(--chat-bg) !important; }
+.chat-workspace .message-card { max-width: 920px; padding: 12px 14px; border-radius: 12px; border-bottom: 1px solid color-mix(in srgb, var(--chat-line) 40%, transparent) !important; transition: background 0.16s ease; }
+.chat-workspace .message-card:hover { background: color-mix(in srgb, var(--chat-accent) 4%, var(--chat-surface)) !important; }
+.chat-workspace .sender-name { color: var(--chat-ink) !important; font-weight: 700; }
+.chat-workspace .message-time, .chat-workspace .send-time { color: var(--chat-faint) !important; font-weight: 500; }
 .chat-workspace .message-body { color: var(--chat-ink) !important; line-height: 1.55; }
-.chat-workspace .message-action-btn { min-width: 36px; height: 36px; border-color: var(--chat-line) !important; background: var(--chat-surface) !important; color: var(--chat-muted) !important; }
+.chat-workspace .message-action-btn { min-width: 36px; height: 36px; border-color: var(--chat-line) !important; background: var(--chat-surface) !important; color: var(--chat-muted) !important; border-radius: 8px !important; }
 .chat-workspace .message-action-btn:hover, .chat-workspace .message-action-btn:focus-visible { background: var(--chat-accent-soft) !important; border-color: var(--chat-accent) !important; color: var(--chat-accent-hover) !important; }
 .chat-workspace .reaction-chip { min-height: 32px; border-radius: 8px; border-color: var(--chat-line) !important; background: var(--chat-surface) !important; color: var(--chat-muted) !important; }
 .chat-workspace .reaction-chip.active { background: var(--chat-accent-soft) !important; border-color: var(--chat-accent) !important; color: var(--chat-accent-hover) !important; }
-.chat-workspace .chat-input-area { margin: 0; padding: 12px 18px 16px; border-top-color: var(--chat-line) !important; background: var(--chat-surface) !important; box-shadow: none !important; }
+.chat-workspace .chat-input-area { margin: 0; padding: 14px 24px 18px; border-top: 1px solid var(--chat-line) !important; background: var(--chat-surface) !important; box-shadow: none !important; }
 .chat-workspace .input-actions-bar .el-button { min-width: 40px; min-height: 40px; }
-.chat-workspace .chat-input { min-height: 44px !important; border: 1px solid var(--chat-line) !important; border-radius: 9px !important; background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; }
+.chat-workspace .chat-input { min-height: 44px !important; border: 1px solid var(--chat-line) !important; border-radius: 12px !important; background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; font-size: 13.5px !important; }
 .chat-workspace .chat-input::placeholder { color: var(--chat-faint) !important; }
 .chat-workspace .chat-input:focus { border-color: var(--chat-accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--chat-accent) 16%, transparent) !important; }
-.chat-workspace .btn-send { width: 44px; height: 44px; border-radius: 9px; background: var(--chat-accent) !important; color: var(--color-text-inverse, #fff) !important; }
-.chat-workspace .btn-send:hover:not(:disabled) { background: var(--chat-accent-hover) !important; }
+.chat-workspace .btn-send { width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #0ea5e9, #2563eb) !important; color: #ffffff !important; box-shadow: 0 4px 14px color-mix(in srgb, #2563eb 28%, transparent) !important; }
+.chat-workspace .btn-send:hover:not(:disabled) { opacity: 0.92; transform: translateY(-1px); }
 .chat-workspace .chat-context-panel,
 .chat-workspace .channel-utility-drawer,
 .chat-workspace .call-chat-panel,
 .chat-workspace .call-transcript-panel,
-.chat-workspace .call-prejoin-panel,
 .chat-workspace .ai-analysis-surface { background: var(--chat-surface) !important; color: var(--chat-ink) !important; border-color: var(--chat-line) !important; }
+.chat-workspace .call-prejoin-panel {
+  background: var(--chat-surface) !important;
+  color: var(--chat-ink) !important;
+  border: 1px solid var(--chat-line) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 20px 50px color-mix(in srgb, var(--chat-ink) 12%, transparent) !important;
+}
+.chat-workspace .call-prejoin-copy h2 { color: var(--chat-ink) !important; font-weight: 800 !important; }
+.chat-workspace .call-prejoin-copy p,
+.chat-workspace .call-prejoin-camera-off span { color: var(--chat-muted) !important; }
+.chat-workspace .call-prejoin-group-title { color: var(--chat-faint) !important; font-size: 11px !important; font-weight: 800 !important; letter-spacing: .05em !important; text-transform: uppercase !important; }
+.chat-workspace .call-prejoin-toggle { border: 1px solid var(--chat-line) !important; background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; font-weight: 600 !important; border-radius: 10px !important; transition: all 0.18s ease !important; }
+.chat-workspace .call-prejoin-toggle:hover { border-color: var(--chat-accent) !important; background: color-mix(in srgb, var(--chat-accent) 14%, var(--chat-surface)) !important; color: var(--chat-ink) !important; }
+.chat-workspace .call-prejoin-toggle.active { border-color: var(--chat-accent) !important; background: color-mix(in srgb, var(--chat-accent) 16%, var(--chat-surface)) !important; color: var(--chat-accent) !important; font-weight: 700 !important; box-shadow: 0 0 0 1px var(--chat-accent) inset !important; }
+.chat-workspace .call-prejoin-device-grid select { border: 1px solid var(--chat-line) !important; background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; font-weight: 600 !important; border-radius: 10px !important; padding: 10px 14px !important; }
+.chat-workspace .call-prejoin-device-grid label { color: var(--chat-muted) !important; font-weight: 700 !important; font-size: 12px !important; }
+.chat-workspace .call-prejoin-actions .secondary-button { border: 1px solid var(--chat-line) !important; background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; font-weight: 700 !important; border-radius: 10px !important; padding: 0 20px !important; min-height: 42px !important; }
+.chat-workspace .call-prejoin-actions .secondary-button:hover { background: color-mix(in srgb, var(--chat-ink) 8%, var(--chat-surface-2)) !important; border-color: var(--chat-muted) !important; }
+.chat-workspace .call-prejoin-actions .primary-button { border: 0 !important; background: linear-gradient(135deg, #0ea5e9, #2563eb) !important; color: #ffffff !important; font-weight: 800 !important; border-radius: 10px !important; padding: 0 24px !important; min-height: 42px !important; box-shadow: 0 8px 20px color-mix(in srgb, #2563eb 30%, transparent) !important; }
+.chat-workspace .call-prejoin-actions .primary-button:hover { opacity: 0.92; transform: translateY(-1px); }
 .chat-workspace .context-panel-header, .chat-workspace .ai-surface-header, .chat-workspace .channel-utility-header, .chat-workspace .call-chat-panel-header { border-bottom-color: var(--chat-line) !important; }
 .chat-workspace .context-panel-header h3, .chat-workspace .ai-surface-header h3, .chat-workspace .channel-utility-header h3, .chat-workspace .call-chat-panel-header strong, .chat-workspace .call-transcript-header strong { color: var(--chat-ink) !important; }
 .chat-workspace .context-tabs { border-bottom-color: var(--chat-line) !important; }
@@ -8263,6 +8651,26 @@ background-color: #111c2d !important;
 .chat-workspace .call-chat-composer button.call-chat-clear:hover:not(:disabled) { background: var(--chat-line); color: var(--chat-ink); }
 .chat-workspace .call-chat-composer button:disabled { background: var(--chat-line); color: var(--chat-faint); }
 .chat-workspace .call-fullscreen-panel { border-left-color: var(--chat-line); background: var(--chat-surface); color: var(--chat-ink); }
+.chat-workspace .transcript-entry-button { position: relative; }
+.chat-workspace .transcript-entry-button.is-open { border-color: var(--chat-accent) !important; background: var(--chat-accent-soft) !important; }
+.call-header-status-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #36c98b; box-shadow: 0 0 0 3px color-mix(in srgb, #36c98b 16%, transparent); }
+.caption-consent-dialog .el-dialog__header { margin-right: 0; padding: 18px 20px 8px; }
+.caption-consent-dialog .el-dialog__body { padding: 8px 20px 18px; }
+.caption-consent-dialog .el-dialog__footer { padding: 0 20px 18px; }
+.caption-consent-heading { display: flex; align-items: center; gap: 11px; }
+.caption-consent-heading h3 { margin: 4px 0 0; color: var(--chat-ink); font-size: 17px; line-height: 1.2; }
+.caption-consent-icon { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 10px; background: var(--chat-accent-soft); color: var(--chat-accent); font-size: 16px; }
+.caption-consent-copy { display: grid; gap: 7px; }
+.caption-consent-copy p { margin: 0; color: var(--chat-ink); font-size: 13px; line-height: 1.5; }
+.caption-consent-copy small { color: var(--chat-muted); font-size: 11px; }
+.caption-consent-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.caption-consent-actions button { min-height: 38px; }
+.chat-workspace .call-transcript-panel { max-height: 280px; }
+.chat-workspace .call-transcript-consent { border-style: dashed; }
+.chat-workspace .call-transcript-consent p { margin-bottom: 0; }
+.chat-workspace .call-transcript-active { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.chat-workspace .call-transcript-active .call-transcript-indicator { margin-bottom: 0; }
+.chat-workspace .call-transcript-chunk.is-interim { opacity: .84; }
 .chat-workspace :where(button, input, textarea, [tabindex='0']):focus-visible { outline: 3px solid color-mix(in srgb, var(--chat-accent) 52%, transparent); outline-offset: 2px; }
 .chat-sidebar-backdrop { display: none; }
 
@@ -8296,7 +8704,256 @@ background-color: #111c2d !important;
   .chat-workspace .header-actions .action-btn:nth-last-child(-n + 2) { display: none; }
   .chat-workspace .call-control-dock { max-width: 100%; overflow-x: auto; }
 }
+
+/* Responsive meeting composition: preserve the desktop shell and promote secondary navigation to a drawer. */
+.chat-workspace .call-header .active-info > div {
+  min-width: 0;
+}
+
+.chat-workspace .call-header h4 {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-workspace .call-header .active-info > div > p {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .chat-workspace {
+    width: 100% !important;
+    height: min(820px, calc(100dvh - 76px));
+    min-height: 0;
+    margin: 0 auto 12px !important;
+    border-radius: 0;
+    border-inline: 0;
+    grid-template-columns: 52px minmax(0, 1fr) !important;
+  }
+
+  .chat-workspace .chat-sidebar {
+    position: absolute;
+    z-index: 6;
+    top: 0;
+    bottom: 0;
+    left: 52px;
+    width: min(280px, calc(100vw - 52px)) !important;
+    transform: translateX(-105%);
+    box-shadow: 14px 0 32px color-mix(in srgb, var(--chat-ink) 18%, transparent);
+    transition: transform 180ms ease-out;
+  }
+
+  .chat-workspace.is-sidebar-open .chat-sidebar {
+    transform: translateX(0);
+  }
+
+  .chat-workspace:not(.is-sidebar-open) .chat-sidebar {
+    transform: translateX(-105%);
+  }
+
+  .chat-workspace .chat-sidebar-backdrop {
+    display: block;
+    position: absolute;
+    z-index: 5;
+    inset: 0;
+    border: 0;
+    background: color-mix(in srgb, var(--chat-ink) 24%, transparent);
+    cursor: pointer;
+  }
+
+  .chat-workspace .mobile-sidebar-trigger {
+    display: inline-grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 8px;
+    background: var(--chat-surface-2);
+    color: var(--chat-muted);
+  }
+
+  .chat-workspace .chat-main {
+    grid-column: 2;
+  }
+
+  .chat-workspace .chat-header {
+    padding-inline: 12px !important;
+  }
+
+  .chat-workspace .header-actions {
+    max-width: 52%;
+    overflow-x: auto;
+  }
+
+  .chat-workspace .call-workspace-body {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px;
+  }
+
+  .chat-workspace .call-camera-stage,
+  .chat-workspace .call-presentation-stage,
+  .chat-workspace .call-participant-rail,
+  .chat-workspace .call-transcript-panel {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .chat-workspace .call-camera-stage {
+    overflow-x: hidden;
+  }
+
+  .chat-workspace .call-participant-rail {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .chat-workspace .call-header .active-info {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .chat-workspace .call-header .header-actions {
+    flex: 0 0 auto;
+    max-width: 42%;
+  }
+
+  .chat-workspace .call-header h4 {
+    max-width: clamp(7rem, 38vw, 13rem);
+  }
+
+  .chat-workspace .call-control-dock {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(44px, 1fr));
+    grid-auto-flow: row;
+    gap: 8px;
+    overflow: visible;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  }
+
+  .chat-workspace .call-control-dock > * {
+    width: 100%;
+    min-width: 0;
+    order: 4;
+  }
+
+  .chat-workspace .call-control-dock > .call-control-circle-btn:first-child {
+    order: 1;
+  }
+
+  .chat-workspace .call-control-dock > .call-control-circle-btn:nth-child(2) {
+    order: 2;
+  }
+
+  .chat-workspace .call-control-dock > .call-control-circle-btn.hang-up {
+    order: 3;
+  }
+
+  .chat-workspace .call-control-circle-btn {
+    width: 44px;
+    height: 44px;
+    justify-self: center;
+  }
+
+  .chat-workspace .call-control-label-btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    height: 44px;
+    padding-inline: 6px;
+    border-radius: 10px;
+  }
+
+  .chat-workspace .call-control-dock > .call-control-label-btn > span,
+  .chat-workspace .call-control-dock > .camera-effects-control > .call-control-label-btn > span {
+    display: none;
+  }
+
+  .chat-workspace .camera-effects-control {
+    min-width: 0;
+  }
+
+  .chat-workspace .call-camera-stage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: minmax(96px, 1fr);
+    align-content: stretch;
+    gap: 8px;
+    min-height: 0;
+    padding: 8px;
+  }
+
+  .chat-workspace .call-camera-stage[data-participant-count="1"] {
+    grid-template-columns: minmax(0, min(760px, 100%));
+    grid-auto-rows: auto;
+    align-content: center;
+  }
+
+  .chat-workspace .call-camera-stage[data-participant-count="1"] .call-camera-stage-tile {
+    width: 100%;
+    max-width: 100%;
+    max-height: min(54vh, 460px);
+  }
+
+  .chat-workspace .call-camera-stage-tile,
+  .chat-workspace .call-camera-stage-tile video,
+  .chat-workspace .call-camera-off-state {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .chat-workspace .call-camera-off-state {
+    min-height: 0;
+    padding: clamp(12px, 4vw, 28px);
+  }
+
+  .chat-workspace .call-chat-panel,
+  .chat-workspace .call-fullscreen-panel {
+    max-width: calc(100% - 16px);
+  }
+}
+
+@media (min-width: 360px) and (max-width: 560px) {
+  .chat-workspace .call-camera-stage[data-participant-count]:not([data-participant-count="1"]):not([data-participant-count="2"]) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chat-workspace .call-camera-stage[data-participant-count="3"] .call-camera-stage-tile:last-child {
+    grid-column: auto;
+    width: 100%;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .chat-workspace .chat-sidebar { transition: none; }
+}
+</style>
+
+<style>
+@media (max-width: 560px) {
+  .el-overlay-dialog {
+    box-sizing: border-box;
+    padding: 12px !important;
+  }
+
+  .group-call-dialog.video-call-dialog,
+  .add-friend-dialog {
+    width: min(100%, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px) !important;
+    margin: 0 auto !important;
+  }
+
+  .group-call-dialog.video-call-dialog .el-dialog__body,
+  .add-friend-dialog .el-dialog__body {
+    max-height: calc(100dvh - 180px);
+    overflow-y: auto;
+  }
 }
 </style>

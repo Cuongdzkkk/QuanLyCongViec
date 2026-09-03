@@ -1,8 +1,13 @@
 import * as signalR from '@microsoft/signalr'
 import axiosClient from '@/api/axiosClient'
-import { getStoredAccessToken } from '@/utils/authSession'
+import { AUTH_SESSION_CHANGED, getCurrentAccessToken, waitForAuthReady } from '@/utils/authSession'
+import { createCurrentAccessTokenFactory } from '@/utils/authTransport'
 import { createBackgroundBlurProcessor } from '@/services/cameraBackgroundEffect'
 import { configureRealtimeHub } from '@/services/realtimeHubConfig'
+import { launchCaptionTransportClientDiagnostic } from '@/services/captionTransportDiagnostics'
+import { createBoundedAsyncQueue } from '@/services/captionTransportQueue'
+import { createBoundedPeriodicSampler, summarizeRtpReport } from '@/services/webrtcRtpDiagnostics'
+import { collectPeerRuntimeStats, getIceServerDiagnostics, getRecentWebRtcDiagnosticEvents, isWebRtcDebugEnabled, recordIceServerDiagnostics, recordWebRtcDiagnosticEvent, resetWebRtcRuntimeDiagnostics } from '@/utils/webrtcRuntimeDiagnostics'
 
 const HUB_ROUTE = '/hubs/call'
 const MAX_RECOVERY_ATTEMPTS = 2
@@ -10,6 +15,10 @@ let activeCallSession = null
 let nextCallHubInstanceId = 0
 
 const BASE64_CHUNK_SIZE = 0x8000
+export const CAPTION_CHUNK_BYTES = 4000
+export const CAPTION_CHUNK_DURATION_MS = CAPTION_CHUNK_BYTES / 2 / 16
+export const CAPTION_MAX_PENDING_CHUNKS = 3
+export const CAPTION_MAX_QUEUE_AGE_MS = 375
 
 export const encodePcmChunkBase64 = bytes => {
   let binary = ''
@@ -52,6 +61,15 @@ const traceCaptionTransport = (event, detail = {}) => {
   })
 }
 
+const traceCaptionSource = (event, detail = {}) => {
+  if (!captionTransportTraceEnabled()) return
+  console.info('[CAPTION_SOURCE_DIAG]', {
+    timestamp: new Date().toISOString(),
+    event,
+    ...detail
+  })
+}
+
 const safeCaptionErrorMessage = error => {
   const message = `${error?.message || 'Unknown SignalR error'}`
     .replace(/access_token=[^&\s"']+/gi, 'access_token=[redacted]')
@@ -60,6 +78,7 @@ const safeCaptionErrorMessage = error => {
 }
 
 export const traceCallHubLifecycle = (event, detail = {}) => {
+  if (isWebRtcDebugEnabled()) recordWebRtcDiagnosticEvent(event, detail)
   if (!callHubTraceEnabled()) return
   console.info('[CALL_HUB]', {
     timestamp: new Date().toISOString(),
@@ -69,20 +88,95 @@ export const traceCallHubLifecycle = (event, detail = {}) => {
 }
 
 export const traceWebRtcMedia = (event, detail = {}) => {
+  if (isWebRtcDebugEnabled()) recordWebRtcDiagnosticEvent(event, detail)
   if (!webRtcMediaTraceEnabled()) return
-  console.info('[WEBRTC_MEDIA]', {
+  console.info('[WEBRTC_DIAG]', {
     timestamp: new Date().toISOString(),
     event,
     peerId: detail.peerId || '',
+    roomId: detail.roomId || '',
+    callSessionId: detail.callSessionId || '',
     connectionState: detail.connectionState || 'unknown',
     iceConnectionState: detail.iceConnectionState || 'unknown',
     signalingState: detail.signalingState || 'unknown',
     trackKind: detail.trackKind || '',
-    trackId: detail.trackId || '',
     trackReadyState: detail.trackReadyState || '',
+    trackEnabled: typeof detail.trackEnabled === 'boolean' ? detail.trackEnabled : null,
     mediaRole: detail.mediaRole || '',
-    streamId: detail.streamId || ''
+    localAudioTrackCount: detail.localAudioTrackCount ?? null,
+    localVideoTrackCount: detail.localVideoTrackCount ?? null,
+    senderAudioCount: detail.senderAudioCount ?? null,
+    senderVideoCount: detail.senderVideoCount ?? null,
+    audioSenderHasTrack: typeof detail.audioSenderHasTrack === 'boolean' ? detail.audioSenderHasTrack : null,
+    cameraSenderHasTrack: typeof detail.cameraSenderHasTrack === 'boolean' ? detail.cameraSenderHasTrack : null,
+    screenSenderHasTrack: typeof detail.screenSenderHasTrack === 'boolean' ? detail.screenSenderHasTrack : null,
+    senderHasTrack: typeof detail.senderHasTrack === 'boolean' ? detail.senderHasTrack : null,
+    transceiverCount: detail.transceiverCount ?? null,
+    receiverTrackCount: detail.receiverTrackCount ?? null,
+    streamTrackCount: detail.streamTrackCount ?? null,
+    queuedCandidateCount: detail.queuedCandidateCount ?? null,
+    candidateAdded: typeof detail.candidateAdded === 'boolean' ? detail.candidateAdded : null,
+    remoteDescriptionPresent: typeof detail.remoteDescriptionPresent === 'boolean' ? detail.remoteDescriptionPresent : null,
+    result: detail.result || '',
+    reason: detail.reason || '',
+    errorName: detail.errorName || ''
   })
+}
+
+export const traceWebRtcRtp = (event, detail = {}) => {
+  if (isWebRtcDebugEnabled()) recordWebRtcDiagnosticEvent(event, detail)
+  if (!webRtcMediaTraceEnabled()) return
+  console.info('[WEBRTC_RTP_DIAG]', {
+    timestamp: new Date().toISOString(),
+    event,
+    peerId: detail.peerId || '',
+    roomId: detail.roomId || '',
+    callSessionId: detail.callSessionId || '',
+    trigger: detail.trigger || '',
+    kind: detail.kind || '',
+    direction: detail.direction || '',
+    trackPresent: typeof detail.trackPresent === 'boolean' ? detail.trackPresent : null,
+    enabled: typeof detail.enabled === 'boolean' ? detail.enabled : null,
+    muted: typeof detail.muted === 'boolean' ? detail.muted : null,
+    readyState: detail.readyState || '',
+    senderFound: typeof detail.senderFound === 'boolean' ? detail.senderFound : null,
+    receiverFound: typeof detail.receiverFound === 'boolean' ? detail.receiverFound : null,
+    senderTrackPresent: typeof detail.senderTrackPresent === 'boolean' ? detail.senderTrackPresent : null,
+    senderTrackEnabled: typeof detail.senderTrackEnabled === 'boolean' ? detail.senderTrackEnabled : null,
+    senderTrackMuted: typeof detail.senderTrackMuted === 'boolean' ? detail.senderTrackMuted : null,
+    senderTrackReadyState: detail.senderTrackReadyState || '',
+    receiverTrackMuted: typeof detail.receiverTrackMuted === 'boolean' ? detail.receiverTrackMuted : null,
+    receiverTrackReadyState: detail.receiverTrackReadyState || '',
+    transceiverDirection: detail.transceiverDirection || '',
+    currentDirection: detail.currentDirection || '',
+    outboundRtpFound: typeof detail.outboundRtpFound === 'boolean' ? detail.outboundRtpFound : null,
+    inboundRtpFound: typeof detail.inboundRtpFound === 'boolean' ? detail.inboundRtpFound : null,
+    packetsSent: detail.packetsSent ?? null,
+    bytesSent: detail.bytesSent ?? null,
+    packetsReceived: detail.packetsReceived ?? null,
+    bytesReceived: detail.bytesReceived ?? null,
+    packetsLost: detail.packetsLost ?? null,
+    framesEncoded: detail.framesEncoded ?? null,
+    framesDecoded: detail.framesDecoded ?? null,
+    framesReceived: detail.framesReceived ?? null,
+    totalAudioEnergy: detail.totalAudioEnergy ?? null,
+    audioLevel: detail.audioLevel ?? null,
+    result: detail.result || '',
+    errorName: detail.errorName || ''
+  })
+}
+
+const tracePeriodicRtpSnapshot = detail => {
+  console.info('[WEBRTC_RTP_DIAG]', JSON.stringify({
+    event: 'RTP_PERIODIC_SNAPSHOT',
+    timestamp: new Date().toISOString(),
+    peerState: detail.peerState || 'unknown',
+    iceState: detail.iceState || 'unknown',
+    audioInbound: detail.audioInbound,
+    audioOutbound: detail.audioOutbound,
+    videoInbound: detail.videoInbound,
+    videoOutbound: detail.videoOutbound
+  }))
 }
 
 const read = (value, camel, pascal) => value?.[camel] ?? value?.[pascal]
@@ -148,21 +242,32 @@ export const classifyRemoteMediaRole = (entry, transceiver, track, streams = [])
 }
 
 const getIceServers = async () => {
-  const response = await axiosClient.get('/webrtc/ice-servers')
-  const payload = response?.data?.data ?? response?.data ?? {}
-  return (payload.iceServers ?? payload.IceServers ?? []).map(server => ({
-    urls: server.urls ?? server.Urls,
-    ...(server.username || server.Username ? { username: server.username ?? server.Username } : {}),
-    ...(server.credential || server.Credential ? { credential: server.credential ?? server.Credential } : {})
-  }))
+  try {
+    const response = await axiosClient.get('/webrtc/ice-servers')
+    const payload = response?.data?.data ?? response?.data ?? {}
+    const servers = payload.iceServers ?? payload.IceServers ?? []
+    recordIceServerDiagnostics(servers, { httpStatus: response?.status })
+    return servers.map(server => ({
+      urls: server.urls ?? server.Urls,
+      ...(server.username || server.Username ? { username: server.username ?? server.Username } : {}),
+      ...(server.credential || server.Credential ? { credential: server.credential ?? server.Credential } : {})
+    }))
+  } catch (error) {
+    recordIceServerDiagnostics([], { httpStatus: error?.response?.status })
+    throw error
+  }
 }
 
 export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onParticipants, onRemoteStreams, onAiState, onTranscriptChunk, onTranscriptInterim, onTranscriptionError, onTranscriptionCapabilities, onHandChanged, onReaction, onSpeakerChanged, onForceMute, onForceRemoved, onCallMessage, onCallHistory, initialMicrophoneEnabled = true, initialMicrophoneStream = null, initialCameraEnabled = false, initialCameraStream = null, initialMicrophoneDeviceId = '', initialCameraDeviceId = '' }) => {
+  resetWebRtcRuntimeDiagnostics()
   let connection = null
   let startPromise = null
   let leavePromise = null
+  let removeAuthSessionListener = null
+  let reconnectPromise = null
   let roomId = null
   let localStream = null
+  let localMicrophoneGeneration = 0
   let cameraStream = null
   let screenStream = null
   let rawCameraTrack = null
@@ -181,9 +286,22 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const pendingInboundSignals = []
   let participants = new Map()
   const peers = new Map()
+  const previousRuntimeDiagnostics = new Map()
   const remoteStreams = new Map()
+  const rtpDiagnosticTimers = new Set()
   let transcriptionCapture = null
-  let transcriptionQueue = Promise.resolve()
+  const transcriptionQueue = createBoundedAsyncQueue({
+    maxPending: CAPTION_MAX_PENDING_CHUNKS,
+    maxPendingAgeMs: CAPTION_MAX_QUEUE_AGE_MS,
+    onDrop: ({ queueDepth, oldestQueuedAgeMs, droppedChunkCount, maxPending, reason, droppedMetadata }) => traceCaptionTransport('QUEUE_DROP', {
+      chunkIndex: droppedMetadata?.chunkIndex || 0,
+      queueDepth,
+      oldestQueuedAgeMs,
+      droppedChunkCount,
+      maxPending,
+      reason
+    })
+  })
   let transcriptionLanguage = 'vi'
   let selectedMicrophoneDeviceId = initialMicrophoneDeviceId || ''
   let selectedCameraDeviceId = initialCameraDeviceId || ''
@@ -206,6 +324,49 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     onAiState?.(nested && typeof nested === 'object' ? nested : value)
   }
 
+  const getCurrentMicrophoneTrack = () => localStream?.getAudioTracks?.()[0] || null
+  const isLiveEnabledTrack = track => track?.readyState === 'live' && track.enabled !== false
+  const getParticipantMediaState = () => ({
+    microphoneEnabled: microphoneEnabled && isLiveEnabledTrack(getCurrentMicrophoneTrack()),
+    cameraEnabled: cameraEnabled && isLiveEnabledTrack(cameraTrack),
+    screenSharing: screenSharing && isLiveEnabledTrack(screenTrack)
+  })
+
+  const captionSourceMatchesCurrentMicrophone = capture => {
+    if (!capture) return null
+    return capture.localStream === localStream && capture.sourceTrack === getCurrentMicrophoneTrack()
+  }
+
+  const describeCaptionSource = capture => {
+    const track = getCurrentMicrophoneTrack()
+    return {
+      audioContextSampleRate: capture?.context?.sampleRate ?? null,
+      audioTrackReadyState: track?.readyState || 'none',
+      audioTrackEnabled: track ? track.enabled !== false : null,
+      audioTrackMuted: track?.muted === true,
+      localStreamAudioTrackCount: localStream?.getAudioTracks?.().length || 0,
+      sourceBelongsToCurrentLocalStream: captionSourceMatchesCurrentMicrophone(capture),
+      sourceGeneration: capture?.sourceGeneration ?? localMicrophoneGeneration
+    }
+  }
+
+  const setLocalMicrophoneStream = (stream, reason) => {
+    const previous = localStream
+    if (previous === stream) return previous
+    const oldCaptionSourceGeneration = transcriptionCapture?.sourceGeneration ?? null
+    localStream = stream
+    localMicrophoneGeneration += 1
+    traceCaptionSource('SOURCE_CHANGED', {
+      reason,
+      oldCaptionSourceGeneration,
+      newLocalMicrophoneGeneration: localMicrophoneGeneration,
+      activeCaptionAudioNodeRebuilt: false,
+      captionCapturePointsToCurrentLocalMicrophoneSource: captionSourceMatchesCurrentMicrophone(transcriptionCapture),
+      ...describeCaptionSource(transcriptionCapture)
+    })
+    return previous
+  }
+
   const downsampleToPcm16 = (input, inputRate, outputRate = 16000) => {
     const ratio = inputRate / outputRate
     const outputLength = Math.max(1, Math.floor(input.length / ratio))
@@ -222,11 +383,13 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const sendTranscriptionChunk = (capture, bytes, startedAt, endedAt) => {
     if (!capture.active || !connection || connection.state !== signalR.HubConnectionState.Connected || !roomId) return
     const payload = encodePcmChunkBase64(bytes)
-    transcriptionQueue = transcriptionQueue
-      .catch(() => {})
-      .then(async () => {
+    const queuedAt = performance.now()
+    const queuedChunkIndex = capture.nextQueuedChunkIndex = (capture.nextQueuedChunkIndex || 0) + 1
+    void transcriptionQueue.enqueue(async () => {
         if (!capture.active || connection?.state !== signalR.HubConnectionState.Connected || capture !== transcriptionCapture) return
+        const chunkIndex = ++capture.transportChunkIndex
         const started = performance.now()
+        const queueDiagnostics = transcriptionQueue.getDiagnostics()
         traceCaptionTransport('SEND_BEGIN', {
           connectionState: connection.state,
           callSessionIdPresent: capture.callSessionId ? 'YES' : 'NO',
@@ -235,9 +398,22 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
           language: capture.language,
           sampleRate: 16000,
           channelCount: 1,
-          chunkBytes: bytes.byteLength
+          chunkBytes: bytes.byteLength,
+          chunkIndex,
+          queueWaitMs: Math.max(0, Math.round(started - queuedAt)),
+          queueDepth: queueDiagnostics.queueDepth,
+          oldestQueuedAgeMs: queueDiagnostics.oldestQueuedAgeMs,
+          droppedChunkCount: queueDiagnostics.droppedChunkCount
         })
         try {
+          launchCaptionTransportClientDiagnostic({
+            bytes,
+            chunkIndex,
+            callSessionId: capture.callSessionId,
+            projectId,
+            voiceChannelId,
+            enabled: captionTransportTraceEnabled()
+          })
           await connection.invoke(
             'SubmitCallAudioChunk',
             roomId,
@@ -248,24 +424,38 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
             startedAt.toISOString(),
             endedAt.toISOString(),
             capture.language)
-          traceCaptionTransport('SEND_OK', { elapsedMs: Math.round(performance.now() - started) })
+          traceCaptionTransport('SEND_OK', {
+            chunkIndex,
+            queueDepth: transcriptionQueue.getDiagnostics().queueDepth,
+            oldestQueuedAgeMs: transcriptionQueue.getDiagnostics().oldestQueuedAgeMs,
+            sendDurationMs: Math.round(performance.now() - started),
+            droppedChunkCount: transcriptionQueue.getDiagnostics().droppedChunkCount
+          })
         } catch (error) {
           traceCaptionTransport('SEND_FAIL', {
             errorName: error?.name || 'Error',
             errorMessage: safeCaptionErrorMessage(error),
             connectionState: connection?.state || 'unknown',
-            elapsedMs: Math.round(performance.now() - started)
+            sendDurationMs: Math.round(performance.now() - started),
+            droppedChunkCount: transcriptionQueue.getDiagnostics().droppedChunkCount
           })
           if (!['AI_TRANSCRIPTION_NOT_ACTIVE', 'CALL_TRANSCRIPTION_NOT_CONFIGURED'].includes(error?.message)) onTranscriptionError?.({ code: 'INGEST_ERROR', message: 'Không thể gửi âm thanh cho biên bản cuộc gọi.' })
         }
-      })
+      }, { capture, chunkIndex: queuedChunkIndex })
   }
 
   const stopTranscriptionCapture = async ({ notifyServer = true } = {}) => {
     const capture = transcriptionCapture
     transcriptionCapture = null
     if (!capture) return
+    traceCaptionSource('CAPTURE_STOP', {
+      ...describeCaptionSource(capture),
+      sourceGeneration: capture.sourceGeneration,
+      activeCaptionAudioNodeRebuilt: false,
+      captionCapturePointsToCurrentLocalMicrophoneSource: captionSourceMatchesCurrentMicrophone(capture)
+    })
     capture.active = false
+    transcriptionQueue.clear(metadata => metadata.capture === capture)
     capture.processor.onaudioprocess = null
     capture.source.disconnect()
     capture.processor.disconnect()
@@ -289,6 +479,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     }
     const context = new AudioContextCtor()
     const source = context.createMediaStreamSource(localStream)
+    const sourceTrack = getCurrentMicrophoneTrack()
     const processor = context.createScriptProcessor(4096, 1, 1)
     const sink = context.createGain()
     sink.gain.value = 0
@@ -299,21 +490,32 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       language: transcriptionLanguage,
       context,
       source,
+      sourceTrack,
+      localStream,
+      sourceGeneration: localMicrophoneGeneration,
       processor,
       sink,
       pending: [],
       preRoll: [],
       speaking: false,
-      silenceChunks: 0
+      silenceChunks: 0,
+      transportChunkIndex: 0,
+      nextQueuedChunkIndex: 0
     }
     transcriptionCapture = capture
+    traceCaptionSource('CAPTURE_START', {
+      ...describeCaptionSource(capture),
+      sourceGeneration: capture.sourceGeneration,
+      activeCaptionAudioNodeRebuilt: false,
+      captionCapturePointsToCurrentLocalMicrophoneSource: captionSourceMatchesCurrentMicrophone(capture)
+    })
     processor.onaudioprocess = event => {
       if (!capture.active || !microphoneEnabled) return
       const pcm = downsampleToPcm16(event.inputBuffer.getChannelData(0), context.sampleRate)
       capture.pending.push(pcm)
       let pendingLength = capture.pending.reduce((total, item) => total + item.length, 0)
-      while (pendingLength >= 8000 && capture.active) {
-        const chunk = new Uint8Array(8000)
+      while (pendingLength >= CAPTION_CHUNK_BYTES && capture.active) {
+        const chunk = new Uint8Array(CAPTION_CHUNK_BYTES)
         let offset = 0
         while (offset < chunk.length && capture.pending.length) {
           const first = capture.pending[0]
@@ -323,7 +525,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
           if (copyLength === first.length) capture.pending.shift()
           else capture.pending[0] = first.subarray(copyLength)
         }
-        pendingLength -= chunk.length
+        pendingLength -= CAPTION_CHUNK_BYTES
         let energy = 0
         const view = new DataView(chunk.buffer)
         for (let index = 0; index < chunk.length; index += 2) {
@@ -332,7 +534,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         }
         const voiced = Math.sqrt(energy / (chunk.length / 2)) >= 0.012
         const endedAt = new Date()
-        const startedAt = new Date(endedAt.getTime() - 250)
+        const startedAt = new Date(endedAt.getTime() - CAPTION_CHUNK_DURATION_MS)
         capture.preRoll.push({ chunk, startedAt, endedAt })
         if (capture.preRoll.length > 2) capture.preRoll.shift()
         if (voiced) {
@@ -372,11 +574,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
 
   const sendMediaState = async () => {
     if (!connection || !roomId || connection.state !== signalR.HubConnectionState.Connected) return
-    await connection.invoke('PublishParticipantMediaState', roomId, {
-      microphoneEnabled,
-      cameraEnabled,
-      screenSharing
-    })
+    await connection.invoke('PublishParticipantMediaState', roomId, getParticipantMediaState())
   }
 
   const emptyRemoteMedia = () => ({
@@ -387,11 +585,149 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
 
   const peerDiagnostic = (entry, detail = {}) => ({
     peerId: entry?.connectionId || detail.peerId || '',
+    roomId: roomId || '',
+    callSessionId: callSessionId || '',
     connectionState: entry?.pc?.connectionState || detail.connectionState || 'unknown',
     iceConnectionState: entry?.pc?.iceConnectionState || detail.iceConnectionState || 'unknown',
     signalingState: entry?.pc?.signalingState || detail.signalingState || 'unknown',
     ...detail
   })
+
+  const trackDiagnostic = track => ({
+    trackPresent: Boolean(track),
+    enabled: track ? track.enabled !== false : null,
+    muted: track ? track.muted === true : null,
+    readyState: track?.readyState || ''
+  })
+
+  const senderTrackDiagnostic = track => ({
+    senderTrackPresent: Boolean(track),
+    senderTrackEnabled: track ? track.enabled !== false : undefined,
+    senderTrackMuted: track ? track.muted === true : undefined,
+    senderTrackReadyState: track?.readyState || ''
+  })
+
+  const traceCameraSender = (event, entry, transceiver, track = transceiver?.sender?.track, detail = {}) =>
+    traceWebRtcRtp(event, peerDiagnostic(entry, {
+      senderFound: Boolean(transceiver?.sender),
+      ...senderTrackDiagnostic(track),
+      transceiverDirection: transceiver?.direction || '',
+      currentDirection: transceiver?.currentDirection || '',
+      ...detail
+    }))
+
+  const endpointStats = async (endpoint, pc) => typeof endpoint?.getStats === 'function'
+    ? endpoint.getStats()
+    : pc.getStats()
+
+  const rtpEventNames = {
+    outbound: { audio: 'RTP_OUTBOUND_AUDIO', video: 'RTP_OUTBOUND_VIDEO' },
+    inbound: { audio: 'RTP_INBOUND_AUDIO', video: 'RTP_INBOUND_VIDEO' }
+  }
+
+  const sampleRtpDirection = async (entry, trigger, direction, kind, transceiver) => {
+    const endpoint = direction === 'outbound' ? transceiver?.sender : transceiver?.receiver
+    const track = endpoint?.track || null
+    const report = await endpointStats(endpoint, entry.pc)
+    const summary = summarizeRtpReport(report, direction, kind)
+    traceWebRtcRtp(rtpEventNames[direction][kind], peerDiagnostic(entry, {
+      trigger,
+      kind,
+      direction,
+      senderFound: direction === 'outbound' ? Boolean(endpoint) : undefined,
+      receiverFound: direction === 'inbound' ? Boolean(endpoint) : undefined,
+      senderTrackPresent: direction === 'outbound' ? Boolean(track) : undefined,
+      senderTrackEnabled: direction === 'outbound' && track ? track.enabled !== false : undefined,
+      senderTrackMuted: direction === 'outbound' && track ? track.muted === true : undefined,
+      senderTrackReadyState: direction === 'outbound' ? track?.readyState || '' : undefined,
+      receiverTrackMuted: direction === 'inbound' && track ? track.muted === true : undefined,
+      receiverTrackReadyState: direction === 'inbound' ? track?.readyState || '' : undefined,
+      transceiverDirection: transceiver?.direction || '',
+      currentDirection: transceiver?.currentDirection || '',
+      ...summary
+    }))
+  }
+
+  const samplePeerRtpStats = async (entry, trigger) => {
+    if (!webRtcMediaTraceEnabled() || peers.get(entry.connectionId) !== entry) return
+    try {
+      await Promise.all([
+        sampleRtpDirection(entry, trigger, 'outbound', 'audio', entry.audioTransceiver),
+        sampleRtpDirection(entry, trigger, 'inbound', 'audio', entry.audioTransceiver),
+        sampleRtpDirection(entry, trigger, 'outbound', 'video', entry.cameraTransceiver),
+        sampleRtpDirection(entry, trigger, 'inbound', 'video', entry.cameraTransceiver)
+      ])
+    } catch (error) {
+      traceWebRtcRtp('RTP_STATS_FAIL', peerDiagnostic(entry, {
+        trigger,
+        errorName: error?.name || 'Error'
+      }))
+    }
+  }
+
+  const safeRtpCounters = (summary, fields) => Object.fromEntries(
+    fields
+      .filter(field => summary?.[field] !== undefined)
+      .map(field => [field, summary[field]]))
+
+  const summarizeTransceiverRtp = async (entry, direction, kind, transceiver) => {
+    if (!transceiver) return summarizeRtpReport(new Map(), direction, kind)
+    const endpoint = direction === 'outbound' ? transceiver.sender : transceiver.receiver
+    const report = await endpointStats(endpoint, entry.pc)
+    return summarizeRtpReport(report, direction, kind)
+  }
+
+  const samplePeriodicRtpSnapshot = async entry => {
+    try {
+      const [audioInbound, audioOutbound, cameraInbound, cameraOutbound, screenInbound, screenOutbound] = await Promise.all([
+        summarizeTransceiverRtp(entry, 'inbound', 'audio', entry.audioTransceiver),
+        summarizeTransceiverRtp(entry, 'outbound', 'audio', entry.audioTransceiver),
+        summarizeTransceiverRtp(entry, 'inbound', 'video', entry.cameraTransceiver),
+        summarizeTransceiverRtp(entry, 'outbound', 'video', entry.cameraTransceiver),
+        summarizeTransceiverRtp(entry, 'inbound', 'video', entry.screenTransceiver),
+        summarizeTransceiverRtp(entry, 'outbound', 'video', entry.screenTransceiver)
+      ])
+      if (peers.get(entry.connectionId) !== entry || entry.pc.connectionState !== 'connected') return
+      tracePeriodicRtpSnapshot({
+        peerState: entry.pc.connectionState,
+        iceState: entry.pc.iceConnectionState,
+        audioInbound: safeRtpCounters(audioInbound, ['packetsReceived', 'bytesReceived', 'totalAudioEnergy', 'audioLevel']),
+        audioOutbound: safeRtpCounters(audioOutbound, ['packetsSent', 'bytesSent']),
+        videoInbound: {
+          camera: safeRtpCounters(cameraInbound, ['packetsReceived', 'bytesReceived', 'framesReceived', 'framesDecoded']),
+          screen: safeRtpCounters(screenInbound, ['packetsReceived', 'bytesReceived', 'framesReceived', 'framesDecoded'])
+        },
+        videoOutbound: {
+          camera: safeRtpCounters(cameraOutbound, ['packetsSent', 'bytesSent', 'framesEncoded']),
+          screen: safeRtpCounters(screenOutbound, ['packetsSent', 'bytesSent', 'framesEncoded'])
+        }
+      })
+    } catch (error) {
+      traceWebRtcRtp('RTP_STATS_FAIL', peerDiagnostic(entry, { errorName: error?.name || 'Error' }))
+    }
+  }
+
+  const startPeriodicRtpSampling = entry => {
+    entry.rtpPeriodicSampler ||= createBoundedPeriodicSampler({
+      isActive: () => peers.get(entry.connectionId) === entry && entry.pc.connectionState === 'connected',
+      sample: () => samplePeriodicRtpSnapshot(entry)
+    })
+    entry.rtpPeriodicSampler.start()
+  }
+
+  const schedulePeerRtpStats = (entry, trigger, delayMs) => {
+    if (!webRtcMediaTraceEnabled()) return
+    const timer = globalThis.setTimeout(() => {
+      rtpDiagnosticTimers.delete(timer)
+      void samplePeerRtpStats(entry, trigger)
+    }, delayMs)
+    rtpDiagnosticTimers.add(timer)
+  }
+
+  const clearRtpDiagnosticTimers = () => {
+    for (const timer of rtpDiagnosticTimers) globalThis.clearTimeout(timer)
+    rtpDiagnosticTimers.clear()
+  }
 
   const removeRemoteTrack = (connectionId, source, track) => {
     const media = remoteStreams.get(connectionId)
@@ -406,6 +742,10 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       mediaRole: source,
       streamId: stream.id
     })
+    if (source === 'screen') traceWebRtcMedia('SCREEN_SHARE_REMOTE_STOP', peerDiagnostic({ connectionId, pc: null }, {
+      mediaRole: 'screen',
+      result: 'track-ended'
+    }))
     emitRemoteStreams()
   }
 
@@ -419,6 +759,13 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     if (!stream.getTracks().includes(track)) stream.addTrack(track)
     track.onended = () => removeRemoteTrack(connectionId, source, track)
     remoteStreams.set(connectionId, media)
+    traceWebRtcMedia(source === 'audio' ? 'REMOTE_AUDIO_STREAM_UPDATED' : source === 'camera' ? 'REMOTE_CAMERA_STREAM_UPDATED' : 'REMOTE_SCREEN_STREAM_UPDATED', peerDiagnostic(entry, {
+      trackKind: track.kind,
+      trackReadyState: track.readyState,
+      trackEnabled: track.enabled !== false,
+      mediaRole: source,
+      streamTrackCount: stream.getTracks().length
+    }))
     if (isNewPeerMedia) traceWebRtcMedia('REMOTE_STREAM_CREATED', peerDiagnostic(entry, { streamId: stream.id, mediaRole: source }))
     traceWebRtcMedia(source === 'screen' ? 'REMOTE_SCREEN_STREAM_ASSIGNED' : source === 'camera' ? 'REMOTE_CAMERA_STREAM_ASSIGNED' : 'REMOTE_STREAM_CREATED', peerDiagnostic(entry, {
       trackKind: track.kind,
@@ -447,16 +794,26 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       mediaRole: source,
       streamId: incomingStreams[0]?.id || ''
     }))
+    if (source === 'screen') traceWebRtcMedia('SCREEN_SHARE_REMOTE_RECEIVED', peerDiagnostic(entry, {
+      trackKind: track?.kind,
+      trackReadyState: track?.readyState,
+      trackEnabled: track?.enabled !== false,
+      mediaRole: source,
+      streamTrackCount: incomingStreams[0]?.getTracks?.().length || 0
+    }))
     if (track) addRemoteTrack(connectionId, source, track, entry)
   }
 
   const closePeer = (connectionId) => {
     const peer = peers.get(connectionId)
     if (!peer) return
+    peer.rtpPeriodicSampler?.stop()
+    peer.rtpPeriodicSampler = null
     peer.pc.onicecandidate = null
     peer.pc.ontrack = null
     peer.pc.onconnectionstatechange = null
     peer.pc.onnegotiationneeded = null
+    traceWebRtcMedia('PEER_CLOSE', peerDiagnostic(peer, { result: 'closed' }))
     peer.pc.close()
     peers.delete(connectionId)
     remoteStreams.delete(connectionId)
@@ -467,18 +824,50 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
 
   const sendSignal = async (method, targetConnectionId, payload) => {
     if (!joinedAck || !connection || connection.state !== signalR.HubConnectionState.Connected || !roomId) return
+    const eventPrefix = method === 'SendWebRtcOffer' ? 'OFFER' : method === 'SendWebRtcAnswer' ? 'ANSWER' : 'ICE'
+    traceWebRtcMedia(`${eventPrefix}_SEND_BEGIN`, peerDiagnostic({ connectionId: targetConnectionId, pc: null }, {
+      targetConnectionPresent: Boolean(targetConnectionId)
+    }))
     try {
       await connection.invoke(method, roomId, targetConnectionId, payload)
+      traceWebRtcMedia(`${eventPrefix}_SEND_OK`, peerDiagnostic({ connectionId: targetConnectionId, pc: null }, {
+        targetConnectionPresent: Boolean(targetConnectionId),
+        result: 'accepted-by-client-transport'
+      }))
     } catch (error) {
+      traceWebRtcMedia(`${eventPrefix}_SEND_FAIL`, peerDiagnostic({ connectionId: targetConnectionId, pc: null }, {
+        targetConnectionPresent: Boolean(targetConnectionId),
+        errorName: error?.name || 'Error',
+        reason: error?.message === 'NOT_IN_CALL_ROOM' ? 'NOT_IN_CALL_ROOM' : 'SIGNAL_SEND_FAILED'
+      }))
       if (!intentionalLeave && method !== 'SendIceCandidate') emit('error', { error, silent: true })
     }
   }
 
   const negotiate = async (entry) => {
-    if (entry.makingOffer || entry.pc.signalingState !== 'stable') return
+    if (entry.makingOffer) {
+      if (entry.initialNegotiationComplete) entry.negotiationRequested = true
+      return
+    }
+    if (entry.pc.signalingState !== 'stable') {
+      if (entry.initialNegotiationComplete) entry.negotiationRequested = true
+      return
+    }
     try {
       entry.makingOffer = true
+      traceWebRtcMedia('OFFER_CREATE_BEGIN', peerDiagnostic(entry))
       await entry.pc.setLocalDescription()
+      traceWebRtcMedia('OFFER_CREATE_OK', peerDiagnostic(entry, {
+        localAudioTrackCount: localStream?.getAudioTracks?.().length || 0,
+        localVideoTrackCount: (cameraStream?.getVideoTracks?.().length || 0) + (screenStream?.getVideoTracks?.().length || 0),
+        senderAudioCount: entry.pc.getSenders().filter(item => item.track?.kind === 'audio').length,
+        senderVideoCount: entry.pc.getSenders().filter(item => item.track?.kind === 'video').length,
+        audioSenderHasTrack: Boolean(entry.audioTransceiver?.sender?.track),
+        cameraSenderHasTrack: Boolean(entry.cameraTransceiver?.sender?.track),
+        screenSenderHasTrack: Boolean(entry.screenTransceiver?.sender?.track),
+        transceiverCount: entry.pc.getTransceivers().length,
+        result: 'local-description-set'
+      }))
       await sendSignal('SendWebRtcOffer', entry.connectionId, {
         description: entry.pc.localDescription,
         mediaSources: getLocalMediaSources(entry)
@@ -488,6 +877,11 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     }
   }
 
+  const requestPeerNegotiation = async entry => {
+    if (!entry?.initialNegotiationComplete) return
+    await negotiate(entry)
+  }
+
   const getLocalMediaSources = entry => [
     cameraStream && { streamId: cameraStream.id, trackId: cameraTrack?.id, mid: entry?.cameraTransceiver?.mid || null, source: 'camera' },
     screenStream && { streamId: screenStream.id, trackId: screenTrack?.id, mid: entry?.screenTransceiver?.mid || null, source: 'screen' }
@@ -495,10 +889,23 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
 
   const syncVideoSender = async (entry, senderKey, track, stream, mediaRole) => {
     const transceiver = entry[senderKey]
+    if (mediaRole === 'camera') traceCameraSender('CAMERA_SENDER_FOUND', entry, transceiver)
     if (!transceiver) return
-    if (transceiver.sender.track !== track) await transceiver.sender.replaceTrack(track)
+    if (transceiver.sender.track !== track) {
+      if (mediaRole === 'camera') traceCameraSender('CAMERA_REPLACE_TRACK_BEGIN', entry, transceiver, track)
+      try {
+        await transceiver.sender.replaceTrack(track)
+        if (mediaRole === 'camera') traceCameraSender('CAMERA_REPLACE_TRACK_OK', entry, transceiver)
+      } catch (error) {
+        if (mediaRole === 'camera') traceCameraSender('CAMERA_REPLACE_TRACK_FAIL', entry, transceiver, track, {
+          errorName: error?.name || 'Error'
+        })
+        throw error
+      }
+    }
     if (typeof transceiver.sender.setStreams === 'function') transceiver.sender.setStreams(...(track && stream ? [stream] : []))
     transceiver.direction = track ? 'sendrecv' : 'recvonly'
+    if (mediaRole === 'camera') traceCameraSender('CAMERA_SENDER_STATE_AFTER', entry, transceiver)
     traceWebRtcMedia('SENDER_ATTACHED', peerDiagnostic(entry, {
       trackKind: track?.kind,
       trackId: track?.id,
@@ -517,12 +924,22 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
 
   const syncPeerMedia = async entry => {
     const audioTrack = localStream?.getAudioTracks?.()[0] || null
-    if (entry.audioTransceiver?.sender.track !== audioTrack) await entry.audioTransceiver.sender.replaceTrack(audioTrack)
-    if (typeof entry.audioTransceiver?.sender.setStreams === 'function') entry.audioTransceiver.sender.setStreams(...(audioTrack && localStream ? [localStream] : []))
-    if (entry.audioTransceiver) entry.audioTransceiver.direction = audioTrack ? 'sendrecv' : 'recvonly'
-    traceWebRtcMedia('SENDER_ATTACHED', peerDiagnostic(entry, { trackKind: audioTrack?.kind, trackId: audioTrack?.id, trackReadyState: audioTrack?.readyState, mediaRole: 'audio', streamId: localStream?.id || '' }))
+    if (entry.audioTransceiver) {
+      if (entry.audioTransceiver.sender.track !== audioTrack) await entry.audioTransceiver.sender.replaceTrack(audioTrack)
+      if (typeof entry.audioTransceiver.sender.setStreams === 'function') entry.audioTransceiver.sender.setStreams(...(audioTrack && localStream ? [localStream] : []))
+      entry.audioTransceiver.direction = audioTrack ? 'sendrecv' : 'recvonly'
+      traceWebRtcMedia('SENDER_ATTACHED', peerDiagnostic(entry, { trackKind: audioTrack?.kind, trackId: audioTrack?.id, trackReadyState: audioTrack?.readyState, mediaRole: 'audio', streamId: localStream?.id || '' }))
+    }
     await syncVideoSender(entry, 'cameraTransceiver', cameraTrack, cameraStream, 'camera')
     await syncVideoSender(entry, 'screenTransceiver', screenTrack, screenStream, 'screen')
+  }
+
+  const bindOfferTransceivers = entry => {
+    const transceivers = entry.pc.getTransceivers()
+    entry.audioTransceiver ||= transceivers.find(item => item.receiver?.track?.kind === 'audio') || null
+    const videoTransceivers = transceivers.filter(item => item.receiver?.track?.kind === 'video')
+    entry.cameraTransceiver ||= videoTransceivers[0] || null
+    entry.screenTransceiver ||= videoTransceivers[1] || null
   }
 
   const recoverPeer = async (connectionId) => {
@@ -538,14 +955,18 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const createPeer = async (connectionId, { initiate = false } = {}) => {
     if (!connectionId || connectionId === localConnectionId()) return null
     if (!joinedAck) return null
-    if (peers.has(connectionId)) return peers.get(connectionId)
+    const existing = peers.get(connectionId)
+    if (existing && !['closed', 'failed'].includes(existing.pc.connectionState) && existing.pc.signalingState !== 'closed') return existing
+    if (existing) closePeer(connectionId)
     const entry = {
       connectionId,
       pc: new RTCPeerConnection({ iceServers }),
       makingOffer: false,
+      negotiationRequested: false,
       ignoreOffer: false,
       isSettingRemoteAnswerPending: false,
       initialNegotiationComplete: false,
+      rtpPeriodicSampler: null,
       initiateInitialOffer: initiate,
       polite: isPolite(connectionId),
       audioTransceiver: null,
@@ -557,30 +978,74 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       remoteMediaSourcesByMid: new Map()
     }
     peers.set(connectionId, entry)
-    entry.audioTransceiver = entry.pc.addTransceiver('audio', { direction: 'recvonly' })
-    entry.cameraTransceiver = entry.pc.addTransceiver('video', { direction: 'recvonly' })
-    entry.screenTransceiver = entry.pc.addTransceiver('video', { direction: 'recvonly' })
+    traceWebRtcMedia('PEER_CREATE', peerDiagnostic(entry, {
+      localAudioTrackCount: localStream?.getAudioTracks?.().length || 0,
+      localVideoTrackCount: (cameraStream?.getVideoTracks?.().length || 0) + (screenStream?.getVideoTracks?.().length || 0),
+      senderAudioCount: entry.pc.getSenders().filter(item => item.track?.kind === 'audio').length,
+      senderVideoCount: entry.pc.getSenders().filter(item => item.track?.kind === 'video').length,
+      audioSenderHasTrack: Boolean(entry.audioTransceiver?.sender?.track),
+      cameraSenderHasTrack: Boolean(entry.cameraTransceiver?.sender?.track),
+      screenSenderHasTrack: Boolean(entry.screenTransceiver?.sender?.track),
+      transceiverCount: entry.pc.getTransceivers().length,
+      result: initiate ? 'initiator' : 'answerer'
+    }))
+    if (initiate) {
+      const addLocalOrRecvonly = (kind, track, stream) => {
+        if (track) {
+          const sender = entry.pc.addTrack(track, stream)
+          return entry.pc.getTransceivers().find(item => item.sender === sender)
+        }
+        return entry.pc.addTransceiver(kind, { direction: 'recvonly' })
+      }
+      entry.audioTransceiver = addLocalOrRecvonly('audio', localStream?.getAudioTracks?.()[0] || null, localStream)
+      entry.cameraTransceiver = addLocalOrRecvonly('video', cameraTrack, cameraStream)
+      entry.screenTransceiver = addLocalOrRecvonly('video', screenTrack, screenStream)
+    }
 
     entry.pc.onicecandidate = ({ candidate }) => {
-      if (candidate) void sendSignal('SendIceCandidate', connectionId, candidate)
+      if (candidate) {
+        traceWebRtcMedia('ICE_LOCAL_GENERATED', peerDiagnostic(entry))
+        void sendSignal('SendIceCandidate', connectionId, candidate)
+      }
     }
     entry.pc.ontrack = ({ streams, track, transceiver }) => updateRemoteStreams(connectionId, entry, streams, track, transceiver)
     entry.pc.onnegotiationneeded = () => {
       if (entry.initialNegotiationComplete || entry.initiateInitialOffer) void negotiate(entry)
     }
     entry.pc.onconnectionstatechange = () => {
-      traceWebRtcMedia(entry.pc.connectionState === 'connected' ? 'PEER_CONNECTED' : 'TRANSCEIVER_STATE', peerDiagnostic(entry))
-      if (['failed', 'disconnected'].includes(entry.pc.connectionState)) void recoverPeer(connectionId)
+      traceWebRtcMedia('PEER_CONNECTION_STATE_CHANGED', peerDiagnostic(entry))
+      if (entry.pc.connectionState === 'connected') {
+        traceWebRtcMedia('PEER_CONNECTED', peerDiagnostic(entry))
+        startPeriodicRtpSampling(entry)
+      }
+      if (entry.pc.connectionState === 'failed') void recoverPeer(connectionId)
       if (entry.pc.connectionState === 'connected') recoveryAttempts = 0
     }
-    entry.pc.oniceconnectionstatechange = () => traceWebRtcMedia('TRANSCEIVER_STATE', peerDiagnostic(entry))
-    entry.pc.onsignalingstatechange = () => traceWebRtcMedia('TRANSCEIVER_STATE', peerDiagnostic(entry))
+    entry.pc.oniceconnectionstatechange = () => traceWebRtcMedia('ICE_CONNECTION_STATE_CHANGED', peerDiagnostic(entry))
+    entry.pc.onsignalingstatechange = () => traceWebRtcMedia('SIGNALING_STATE_CHANGED', peerDiagnostic(entry))
+    if (entry.pc.connectionState === 'connected') startPeriodicRtpSampling(entry)
     await syncPeerMedia(entry)
+    traceWebRtcMedia('LOCAL_TRACK_STATE', peerDiagnostic(entry, {
+      localAudioTrackCount: localStream?.getAudioTracks?.().length || 0,
+      localVideoTrackCount: (cameraStream?.getVideoTracks?.().length || 0) + (screenStream?.getVideoTracks?.().length || 0),
+      senderAudioCount: entry.pc.getSenders().filter(item => item.track?.kind === 'audio').length,
+      senderVideoCount: entry.pc.getSenders().filter(item => item.track?.kind === 'video').length,
+      transceiverCount: entry.pc.getTransceivers().length
+    }))
     // The existing room member receives ParticipantJoined and creates the
     // pair's single initial offer. The joiner's snapshot-created peer waits
     // for it, avoiding the duplicate offer added after the known-good flow.
     if (entry.initiateInitialOffer) await negotiate(entry)
     return entry
+  }
+
+  const reconcilePeers = async ({ initiateMissing = false } = {}) => {
+    for (const connectionId of peers.keys()) {
+      if (!participants.has(connectionId)) closePeer(connectionId)
+    }
+    for (const participant of participants.values()) {
+      await createPeer(participant.connectionId, { initiate: initiateMissing })
+    }
   }
 
   const applyOffer = async message => {
@@ -590,6 +1055,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     const mediaSources = read(signal, 'mediaSources', 'MediaSources') ?? read(message, 'mediaSources', 'MediaSources') ?? []
     const entry = await createPeer(connectionId)
     if (!entry || !description) return
+    traceWebRtcMedia('OFFER_RECEIVED', peerDiagnostic(entry))
     entry.remoteMediaSources = new Map(mediaSources.map(item => [read(item, 'streamId', 'StreamId'), read(item, 'source', 'Source')]))
     entry.remoteMediaSourcesByTrackId = new Map(mediaSources.map(item => [read(item, 'trackId', 'TrackId'), read(item, 'source', 'Source')]))
     entry.remoteMediaSourcesByMid = new Map(mediaSources.map(item => [read(item, 'mid', 'Mid'), read(item, 'source', 'Source')]).filter(([mid]) => mid !== null && mid !== undefined && mid !== ''))
@@ -599,9 +1065,29 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     entry.isSettingRemoteAnswerPending = entry.pc.signalingState === 'have-local-offer'
     if (offerCollision) await entry.pc.setLocalDescription({ type: 'rollback' })
     await entry.pc.setRemoteDescription(description)
+    traceWebRtcMedia('REMOTE_DESCRIPTION_SET_OFFER', peerDiagnostic(entry, { result: 'ok' }))
+    bindOfferTransceivers(entry)
+    await syncPeerMedia(entry)
     entry.isSettingRemoteAnswerPending = false
-    for (const candidate of entry.pendingCandidates.splice(0)) await entry.pc.addIceCandidate(candidate)
+    for (const candidate of entry.pendingCandidates.splice(0)) {
+      try {
+        await entry.pc.addIceCandidate(candidate)
+        traceWebRtcMedia('ICE_ADD_OK', peerDiagnostic(entry, { candidateAdded: true, result: 'queued-candidate' }))
+      } catch (error) {
+        traceWebRtcMedia('ICE_ADD_FAIL', peerDiagnostic(entry, { candidateAdded: false, errorName: error?.name || 'Error' }))
+        throw error
+      }
+    }
+    traceWebRtcMedia('ANSWER_CREATE_BEGIN', peerDiagnostic(entry))
     await entry.pc.setLocalDescription()
+    traceWebRtcMedia('ANSWER_CREATE_OK', peerDiagnostic(entry, {
+      localAudioTrackCount: localStream?.getAudioTracks?.().length || 0,
+      localVideoTrackCount: (cameraStream?.getVideoTracks?.().length || 0) + (screenStream?.getVideoTracks?.().length || 0),
+      senderAudioCount: entry.pc.getSenders().filter(item => item.track?.kind === 'audio').length,
+      senderVideoCount: entry.pc.getSenders().filter(item => item.track?.kind === 'video').length,
+      transceiverCount: entry.pc.getTransceivers().length,
+      result: 'local-description-set'
+    }))
     await sendSignal('SendWebRtcAnswer', connectionId, {
       description: entry.pc.localDescription,
       mediaSources: getLocalMediaSources(entry)
@@ -621,9 +1107,23 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       entry.remoteMediaSourcesByMid = new Map(mediaSources.map(item => [read(item, 'mid', 'Mid'), read(item, 'source', 'Source')]).filter(([mid]) => mid !== null && mid !== undefined && mid !== ''))
     }
     if (entry && description) {
+      traceWebRtcMedia('ANSWER_RECEIVED', peerDiagnostic(entry))
       await entry.pc.setRemoteDescription(description)
-      for (const candidate of entry.pendingCandidates.splice(0)) await entry.pc.addIceCandidate(candidate)
+      traceWebRtcMedia('REMOTE_DESCRIPTION_SET_ANSWER', peerDiagnostic(entry, { result: 'ok' }))
+      for (const candidate of entry.pendingCandidates.splice(0)) {
+        try {
+          await entry.pc.addIceCandidate(candidate)
+          traceWebRtcMedia('ICE_ADD_OK', peerDiagnostic(entry, { candidateAdded: true, result: 'queued-candidate' }))
+        } catch (error) {
+          traceWebRtcMedia('ICE_ADD_FAIL', peerDiagnostic(entry, { candidateAdded: false, errorName: error?.name || 'Error' }))
+          throw error
+        }
+      }
       entry.initialNegotiationComplete = true
+      if (entry.negotiationRequested) {
+        entry.negotiationRequested = false
+        await negotiate(entry)
+      }
     }
   }
 
@@ -631,9 +1131,24 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     const connectionId = read(message, 'fromConnectionId', 'FromConnectionId')
     const candidate = read(message, 'candidate', 'Candidate')
     const entry = getPeer(connectionId)
+    if (entry) traceWebRtcMedia('ICE_RECEIVED', peerDiagnostic(entry, {
+      queuedCandidateCount: entry.pendingCandidates.length,
+      remoteDescriptionPresent: Boolean(entry.pc.remoteDescription)
+    }))
     if (entry && candidate && !entry.ignoreOffer) {
       if (!entry.pc.remoteDescription) entry.pendingCandidates.push(candidate)
-      else await entry.pc.addIceCandidate(candidate)
+      else {
+        try {
+          await entry.pc.addIceCandidate(candidate)
+          traceWebRtcMedia('ICE_ADD_OK', peerDiagnostic(entry, { candidateAdded: true }))
+        } catch (error) {
+          traceWebRtcMedia('ICE_ADD_FAIL', peerDiagnostic(entry, {
+            candidateAdded: false,
+            errorName: error?.name || 'Error'
+          }))
+          throw error
+        }
+      }
     }
   }
 
@@ -648,7 +1163,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     return connection.invoke('SendCallMessage', roomId, content, clientMessageId)
   }
 
-  const refreshSnapshot = async snapshot => {
+  const refreshSnapshot = async (snapshot, options) => {
     joinedAck = true
     roomId = read(snapshot, 'roomId', 'RoomId')
     const aiState = read(snapshot, 'aiState', 'AiState')
@@ -669,11 +1184,22 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     trace('JOIN_ACK', 'join-voice-room-ack')
     participants = new Map((read(snapshot, 'participants', 'Participants') ?? []).map(item => {
       const participant = normalizeParticipant(item)
+      traceWebRtcMedia('PARTICIPANT_DISCOVERED', {
+        peerId: participant.connectionId,
+        roomId: roomId || '',
+        callSessionId: callSessionId || '',
+        result: 'snapshot'
+      })
       return [participant.connectionId, participant]
     }))
+    traceWebRtcMedia('JOIN_CONFIRMED', {
+      roomId: roomId || '',
+      callSessionId: callSessionId || '',
+      result: 'snapshot-accepted'
+    })
     handleAiState(aiState)
     emitParticipants()
-    for (const participant of participants.values()) await createPeer(participant.connectionId)
+    await reconcilePeers(options)
     const queuedSignals = pendingInboundSignals.splice(0)
     for (const signal of queuedSignals) {
       if (signal.type === 'offer') await applyOffer(signal.value)
@@ -689,6 +1215,12 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       participants.set(participant.connectionId, participant)
       emitParticipants()
       await createPeer(participant.connectionId, { initiate: true })
+      traceWebRtcMedia('PARTICIPANT_DISCOVERED', {
+        peerId: participant.connectionId,
+        roomId: roomId || '',
+        callSessionId: callSessionId || '',
+        result: 'participant-joined'
+      })
     })
     connection.on('ParticipantLeft', event => {
       const connectionId = read(event, 'connectionId', 'ConnectionId')
@@ -763,22 +1295,35 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       trace('ON_RECONNECTING', 'signalr-automatic-reconnect')
       emit('reconnecting')
     })
-    connection.onreconnected(async () => {
+    connection.onreconnected(() => {
       if (intentionalLeave) return
-      trace('ON_RECONNECTED', 'signalr-automatic-reconnect-complete')
-      joinedAck = false
-      roomId = null
-      pendingInboundSignals.splice(0)
-      closeAllPeers()
-      emit('reconnecting')
-      try {
-        trace('JOIN_BEGIN', 'reconnect-rejoin')
-        const snapshot = await connection.invoke('JoinVoiceRoom', projectId, voiceChannelId)
-        await refreshSnapshot(snapshot)
-        emit('connected')
-      } catch (error) {
-        emit('error', { error, silent: true })
-      }
+      if (reconnectPromise) return reconnectPromise
+      reconnectPromise = (async () => {
+        trace('ON_RECONNECTED', 'signalr-automatic-reconnect-complete')
+        joinedAck = false
+        roomId = null
+        pendingInboundSignals.splice(0)
+        emit('reconnecting')
+        try {
+          trace('JOIN_BEGIN', 'reconnect-rejoin')
+          const snapshot = await connection.invoke('JoinVoiceRoom', projectId, voiceChannelId)
+          if (intentionalLeave) return
+          await refreshSnapshot(snapshot, { initiateMissing: true })
+          if (intentionalLeave) return
+          await sendMediaState()
+          traceCaptionSource('RECONNECT_REJOIN', {
+            oldCaptionSourceGeneration: transcriptionCapture?.sourceGeneration ?? null,
+            newLocalMicrophoneGeneration: localMicrophoneGeneration,
+            activeCaptionAudioNodeRebuilt: false,
+            captionCapturePointsToCurrentLocalMicrophoneSource: captionSourceMatchesCurrentMicrophone(transcriptionCapture),
+            ...describeCaptionSource(transcriptionCapture)
+          })
+          emit('connected')
+        } catch (error) {
+          emit('error', { error, silent: true })
+        }
+      })().finally(() => { reconnectPromise = null })
+      return reconnectPromise
     })
     connection.onclose(error => {
       trace('ON_CLOSE', error?.message || 'signalr-closed')
@@ -786,7 +1331,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     })
   }
 
-  const acquireMicrophoneWithDevice = async (deviceId, enabled = microphoneEnabled) => {
+  const acquireMicrophoneWithDevice = async (deviceId, enabled = microphoneEnabled, reason = 'microphone-acquisition') => {
     if (!navigator.mediaDevices?.getUserMedia) throw mediaError(null, 'UNSUPPORTED_BROWSER')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -798,7 +1343,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         },
         video: false
       })
-      localStream = stream
+      setLocalMicrophoneStream(stream, reason)
       localStream.getAudioTracks().forEach(track => { track.enabled = Boolean(enabled) })
       for (const track of localStream.getAudioTracks()) traceWebRtcMedia('LOCAL_TRACK_READY', {
         trackKind: track.kind,
@@ -843,6 +1388,10 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     cameraTrack = await getCameraOutputTrack()
     cameraStream = new MediaStream([cameraTrack])
     cameraEnabled = true
+    traceWebRtcRtp('CAMERA_TRACK_ACQUIRED', {
+      kind: 'video',
+      ...senderTrackDiagnostic(cameraTrack)
+    })
     traceWebRtcMedia('LOCAL_TRACK_READY', {
       trackKind: cameraTrack.kind,
       trackId: cameraTrack.id,
@@ -855,6 +1404,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
   const setCameraEnabled = async enabled => {
     if (enabled === cameraEnabled) return
     if (!enabled) {
+      traceWebRtcRtp('CAMERA_DISABLE_BEGIN', { kind: 'video', ...trackDiagnostic(cameraTrack) })
       await disposeBackgroundProcessor()
       cameraTrack?.stop()
       rawCameraTrack?.stop()
@@ -862,8 +1412,18 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       rawCameraTrack = null
       cameraStream = null
       cameraEnabled = false
+      traceWebRtcRtp('CAMERA_REPLACE_WITH_NULL_OR_DISABLE', { kind: 'video', senderTrackPresent: false })
       for (const entry of peers.values()) await syncPeerMedia(entry)
+      for (const entry of peers.values()) {
+        await requestPeerNegotiation(entry)
+        traceCameraSender('NEGOTIATION_NEEDED_AFTER_CAMERA', entry, entry.cameraTransceiver, undefined, {
+          kind: 'video',
+          result: 'requested-if-initialized'
+        })
+      }
+      traceWebRtcRtp('CAMERA_DISABLE_OK', { kind: 'video', senderTrackPresent: false })
     } else {
+      traceWebRtcRtp('CAMERA_ENABLE_BEGIN', { kind: 'video', senderTrackPresent: Boolean(cameraTrack) })
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -876,6 +1436,14 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         })
         await adoptCameraStream(stream)
         for (const entry of peers.values()) await syncPeerMedia(entry)
+        for (const entry of peers.values()) {
+          await requestPeerNegotiation(entry)
+          traceCameraSender('NEGOTIATION_NEEDED_AFTER_CAMERA', entry, entry.cameraTransceiver, undefined, {
+            kind: 'video',
+            result: 'requested-if-initialized'
+          })
+          schedulePeerRtpStats(entry, 'camera-enable-settled', 2000)
+        }
       } catch (error) {
         rawCameraTrack?.stop()
         rawCameraTrack = null
@@ -891,14 +1459,34 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     let audioTrack = localStream?.getAudioTracks?.()[0] || null
     let senderNeedsSync = false
     if (nextEnabled && (!audioTrack || audioTrack.readyState !== 'live')) {
-      await acquireMicrophoneWithDevice(selectedMicrophoneDeviceId, true)
+      await acquireMicrophoneWithDevice(selectedMicrophoneDeviceId, true, 'track-recovery')
       audioTrack = localStream?.getAudioTracks?.()[0] || null
       senderNeedsSync = true
     }
     if (audioTrack) audioTrack.enabled = nextEnabled
     microphoneEnabled = nextEnabled
+    traceWebRtcRtp('MIC_STATE_CHANGED', {
+      kind: 'audio',
+      senderTrackPresent: Boolean(audioTrack),
+      senderTrackEnabled: audioTrack ? audioTrack.enabled !== false : undefined,
+      senderTrackMuted: audioTrack ? audioTrack.muted === true : undefined,
+      senderTrackReadyState: audioTrack?.readyState || '',
+      result: nextEnabled ? 'enabled' : 'disabled'
+    })
     if (senderNeedsSync) {
       for (const entry of peers.values()) await syncPeerMedia(entry)
+      for (const entry of peers.values()) await requestPeerNegotiation(entry)
+    }
+    for (const entry of peers.values()) {
+      const senderTrack = entry.audioTransceiver?.sender?.track || null
+      traceWebRtcRtp('MIC_SENDER_STATE', peerDiagnostic(entry, {
+        kind: 'audio',
+        senderFound: Boolean(entry.audioTransceiver?.sender),
+        ...senderTrackDiagnostic(senderTrack),
+        transceiverDirection: entry.audioTransceiver?.direction || '',
+        currentDirection: entry.audioTransceiver?.currentDirection || ''
+      }))
+      if (nextEnabled) schedulePeerRtpStats(entry, 'microphone-enable-settled', 2000)
     }
     await sendMediaState()
     emit('media')
@@ -911,9 +1499,9 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     if (!localStream) return
     const next = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false })
     next.getAudioTracks().forEach(track => { track.enabled = microphoneEnabled })
-    const previous = localStream
-    localStream = next
+    const previous = setLocalMicrophoneStream(next, 'microphone-device-switch')
     for (const entry of peers.values()) await syncPeerMedia(entry)
+    for (const entry of peers.values()) await requestPeerNegotiation(entry)
     previous?.getTracks().forEach(track => track.stop())
     emit('media')
   }
@@ -928,6 +1516,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     previousOutput?.stop()
     previousRaw?.stop()
     for (const entry of peers.values()) await syncPeerMedia(entry)
+    for (const entry of peers.values()) await requestPeerNegotiation(entry)
     emit('media')
   }
 
@@ -954,6 +1543,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       cameraStream.addTrack(cameraTrack)
     }
     for (const entry of peers.values()) await syncPeerMedia(entry)
+    for (const entry of peers.values()) await requestPeerNegotiation(entry)
     await sendMediaState()
     emit('media')
   }
@@ -964,7 +1554,9 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     screenTrack = null
     screenStream = null
     screenSharing = false
+    traceWebRtcMedia('SCREEN_SHARE_LOCAL_STOP', { mediaRole: 'screen', result: 'stopped' })
     for (const entry of peers.values()) await syncPeerMedia(entry)
+    for (const entry of peers.values()) await requestPeerNegotiation(entry)
     await sendMediaState()
     emit('media')
   }
@@ -977,6 +1569,13 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       screenTrack = stream.getVideoTracks()[0]
       screenStream = stream
       screenSharing = true
+      traceWebRtcMedia('SCREEN_SHARE_LOCAL_START', {
+        trackKind: screenTrack.kind,
+        trackReadyState: screenTrack.readyState,
+        trackEnabled: screenTrack.enabled !== false,
+        mediaRole: 'screen',
+        result: 'captured'
+      })
       traceWebRtcMedia('LOCAL_TRACK_READY', {
         trackKind: screenTrack.kind,
         trackId: screenTrack.id,
@@ -985,6 +1584,14 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         streamId: screenStream.id
       })
       for (const entry of peers.values()) await syncPeerMedia(entry)
+      for (const entry of peers.values()) await requestPeerNegotiation(entry)
+      traceWebRtcMedia('SCREEN_SHARE_TRACK_ATTACHED', {
+        trackKind: screenTrack.kind,
+        trackReadyState: screenTrack.readyState,
+        trackEnabled: screenTrack.enabled !== false,
+        mediaRole: 'screen',
+        result: 'sender-sync-requested'
+      })
       screenTrack.onended = () => { void stopScreenShare() }
       await sendMediaState()
       emit('media')
@@ -1002,19 +1609,28 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     activeCallSession = session
     trace('START_BEGIN', 'session-start')
     startPromise = (async () => {
+      await waitForAuthReady()
+      if (!getCurrentAccessToken()) throw mediaError(null, 'AUTH_REQUIRED')
+      if (typeof RTCPeerConnection === 'undefined') throw mediaError(null, 'UNSUPPORTED_BROWSER')
+      if (!removeAuthSessionListener && typeof window !== 'undefined') {
+        const handleAuthSessionChanged = () => {
+          if (!getCurrentAccessToken()) void leave()
+        }
+        window.addEventListener(AUTH_SESSION_CHANGED, handleAuthSessionChanged)
+        removeAuthSessionListener = () => window.removeEventListener(AUTH_SESSION_CHANGED, handleAuthSessionChanged)
+      }
       intentionalLeave = false
       joinedAck = false
-      if (typeof RTCPeerConnection === 'undefined') throw mediaError(null, 'UNSUPPORTED_BROWSER')
       microphoneEnabled = Boolean(initialMicrophoneEnabled)
       if (initialMicrophoneStream) {
-        localStream = initialMicrophoneStream
+        setLocalMicrophoneStream(initialMicrophoneStream, 'initial-microphone-stream')
         localStream.getAudioTracks().forEach(track => { track.enabled = microphoneEnabled })
       } else {
         try {
-          await acquireMicrophoneWithDevice(selectedMicrophoneDeviceId, microphoneEnabled)
+          await acquireMicrophoneWithDevice(selectedMicrophoneDeviceId, microphoneEnabled, 'initial-microphone-acquisition')
         } catch (error) {
           if (microphoneEnabled) throw error
-          localStream = null
+          setLocalMicrophoneStream(null, 'initial-microphone-unavailable')
         }
       }
       cameraEnabled = false
@@ -1036,8 +1652,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       }
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api'
       const hubBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '')
-      connection = configureRealtimeHub(new signalR.HubConnectionBuilder())
-        .withUrl(`${hubBaseUrl}${HUB_ROUTE}`, { accessTokenFactory: () => getStoredAccessToken() || '' })
+      connection = configureRealtimeHub(new signalR.HubConnectionBuilder(), getCurrentAccessToken)
+        .withUrl(`${hubBaseUrl}${HUB_ROUTE}`, { accessTokenFactory: createCurrentAccessTokenFactory(getCurrentAccessToken) })
         .build()
       registerHandlers()
       emit('connecting')
@@ -1045,9 +1661,17 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
       await connection.start()
       trace('JOIN_BEGIN', 'initial-join')
       await refreshSnapshot(await connection.invoke('JoinVoiceRoom', projectId, voiceChannelId))
+      await sendMediaState()
       trace('START_OK', 'session-started')
       emit('connected')
-    })().finally(() => { startPromise = null })
+    })().catch((error) => {
+      if (!connection) {
+        removeAuthSessionListener?.()
+        removeAuthSessionListener = null
+        if (activeCallSession === session) activeCallSession = null
+      }
+      throw error
+    }).finally(() => { startPromise = null })
     return startPromise
   }
 
@@ -1055,6 +1679,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     if (leavePromise) return leavePromise
     leavePromise = (async () => {
       intentionalLeave = true
+      clearRtpDiagnosticTimers()
       trace('LEAVE_BEGIN', 'session-leave')
       if (startPromise) {
         try { await startPromise } catch { /* cleanup below remains authoritative */ }
@@ -1079,7 +1704,7 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         cameraTrack?.stop()
         rawCameraTrack?.stop()
         localStream?.getTracks().forEach(track => track.stop())
-        localStream = null
+        setLocalMicrophoneStream(null, 'call-leave')
         cameraTrack = null
         rawCameraTrack = null
         cameraStream = null
@@ -1093,6 +1718,8 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
         emitRemoteStreams()
         emit('disconnected')
         trace('LEAVE_DONE', 'session-leave')
+        removeAuthSessionListener?.()
+        removeAuthSessionListener = null
         if (activeCallSession === session) activeCallSession = null
       }
     })().finally(() => { leavePromise = null })
@@ -1134,7 +1761,37 @@ export const createCallMediaSession = ({ projectId, voiceChannelId, onState, onP
     isJoined: () => joinedAck && Boolean(callSessionId),
     getConnectionId: localConnectionId,
     getPeerDiagnostics: () => [...peers.values()].map(entry => inspectPeerConnection(entry.connectionId, entry.pc)),
-    getMediaState: () => ({ microphoneEnabled, cameraEnabled, screenSharing, backgroundEffect })
+    getWebRtcRuntimeDiagnostics: async () => {
+      const peerSnapshots = []
+      for (const [connectionId, entry] of peers.entries()) {
+        try {
+          const snapshot = await collectPeerRuntimeStats({
+            pc: entry.pc,
+            previous: previousRuntimeDiagnostics.get(connectionId) || null
+          })
+          previousRuntimeDiagnostics.set(connectionId, snapshot)
+          peerSnapshots.push(snapshot)
+        } catch {
+          peerSnapshots.push({
+            connectionState: entry.pc?.connectionState || 'unknown',
+            iceConnectionState: entry.pc?.iceConnectionState || 'unknown',
+            signalingState: entry.pc?.signalingState || 'unknown',
+            selectedCandidatePair: null,
+            rtp: { audio: {}, video: {} },
+            tracks: { senders: [], receivers: [] }
+          })
+        }
+      }
+      return {
+        callSessionPresent: true,
+        roomPresent: Boolean(roomId),
+        participantCount: participants.size,
+        peerSnapshots,
+        iceServer: getIceServerDiagnostics(),
+        events: getRecentWebRtcDiagnosticEvents()
+      }
+    },
+    getMediaState: () => ({ ...getParticipantMediaState(), backgroundEffect })
   }
   return session
 }

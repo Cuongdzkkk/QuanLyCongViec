@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const view = fs.readFileSync(path.join(here, '..', 'src', 'views', 'CollaborationChat.vue'), 'utf8')
+const captions = fs.readFileSync(path.join(here, '..', 'src', 'components', 'collaboration', 'LiveCaptionOverlay.vue'), 'utf8')
 
 const workspaceBlock = view.match(/\.chat-workspace \{(?=[^}]*height: min\(820px, calc\(100dvh - 112px\)\))[^}]*\}/)?.[0] || ''
 assert.match(workspaceBlock, /height:\s*min\(820px, calc\(100dvh - 112px\)\)/)
@@ -12,11 +13,11 @@ assert.match(workspaceBlock, /min-height:\s*min\(620px, calc\(100dvh - 112px\)\)
 assert.match(view, /\.chat-workspace \.call-header \+ \.call-workspace-body \{[\s\S]*?min-height: 0 !important;/)
 assert.match(view, /\.call-transcript-panel \{[^}]*max-height: 190px[^}]*min-height: 0[^}]*overflow-x: hidden; overflow-y: auto;/)
 assert.match(view, /\.call-transcript-list \{[^}]*min-height: 0[^}]*overflow: auto;/)
-assert.match(view, /class="call-consent-actions"/)
+assert.match(view, /class="caption-consent-actions"/)
 assert.match(view, /@click="respondCallAiConsent\(true\)"/)
 assert.match(view, /\.call-header \+ \.call-workspace-body:not\(\.is-presentation-mode\) \.call-controls-row \{[\s\S]*?grid-row: 4;/)
 assert.match(view, /\.call-header \+ \.call-workspace-body\.is-presentation-mode \{[\s\S]*?grid-template-rows: minmax\(220px, 1fr\) auto auto !important;/)
-assert.match(view, /\.call-live-caption-dock \{[^}]*pointer-events: none;/)
+assert.match(captions, /\.call-live-caption-dock \{[^}]*pointer-events: none;/)
 assert.match(view, /\.call-presentation-stage,[\s\S]*?\.call-camera-stage[^}]*min-height: 0 !important;/)
 
 const requiredDesktopViewports = [

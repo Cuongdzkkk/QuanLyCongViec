@@ -1,10 +1,13 @@
+using System.Collections.Concurrent;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaskManagement.Application.DTOs.Collaboration;
+using TaskManagement.Application.Diagnostics;
 using TaskManagement.Application.Interfaces;
+using TaskManagement.API.Services;
 
 namespace TaskManagement.API.Hubs;
 
@@ -14,12 +17,13 @@ public sealed class CallHub : Hub
     public const string Route = "/hubs/call";
     public const int MaximumReceiveMessageSize = 128 * 1024;
     public const int MaximumSdpUtf8Bytes = 96 * 1024;
+    private const string CaptionTransportCountersKey = "CallHub.CaptionTransportCounters";
 
     private readonly ICallRoomRegistry _rooms;
     private readonly ICallRoomAuthorizationService _authorization;
     private readonly ICallTranscriptionProvider _transcriptionProvider;
-    private readonly ICallTranscriptService _transcripts;
     private readonly ICallChatService _callChat;
+    private readonly ICallCaptionResultDispatcher _captionResults;
     private readonly IMeetingAiAnalysisService? _meetingAi;
     private readonly ILogger<CallHub> _logger;
 
@@ -27,16 +31,16 @@ public sealed class CallHub : Hub
         ICallRoomRegistry rooms,
         ICallRoomAuthorizationService authorization,
         ICallTranscriptionProvider transcriptionProvider,
-        ICallTranscriptService transcripts,
         ICallChatService callChat,
+        ICallCaptionResultDispatcher captionResults,
         ILogger<CallHub>? logger = null,
         IMeetingAiAnalysisService? meetingAi = null)
     {
         _rooms = rooms;
         _authorization = authorization;
         _transcriptionProvider = transcriptionProvider;
-        _transcripts = transcripts;
         _callChat = callChat;
+        _captionResults = captionResults;
         _meetingAi = meetingAi;
         _logger = logger ?? NullLogger<CallHub>.Instance;
     }
@@ -71,6 +75,7 @@ public sealed class CallHub : Hub
                 new CallParticipantJoinedDto(result.JoinedParticipant!),
                 Context.ConnectionAborted);
         }
+        TraceSignaling("JOIN_CONFIRMED", nameof(JoinVoiceRoom), roomId, Context.ConnectionId, true, true, true, true, true, result.Snapshot.Participants.Count, null);
         var nextAiState = result.Snapshot.AiState;
         if (previousAiState.State == CallAiStates.Active && nextAiState.State == CallAiStates.PausedConsent)
         {
@@ -314,12 +319,25 @@ public sealed class CallHub : Hub
             LogCaptionReject("not_joined", audioBytes.Length);
             throw new HubException("AI_TRANSCRIPTION_NOT_ACTIVE");
         }
-        if (_transcriptionProvider is null || _transcripts is null)
+        if (_transcriptionProvider is null)
         {
             LogCaptionReject("provider_unavailable", audioBytes.Length);
             throw new HubException("CALL_TRANSCRIPTION_NOT_CONFIGURED");
         }
 
+        var chunkIndex = NextCaptionTransportChunkIndex(
+            normalizedRoomId,
+            participant.CallSessionId,
+            participant.UserId,
+            participant.ConsentGeneration);
+        LogCaptionTransportDiagnostic(
+            roomMetadata,
+            participant.CallSessionId,
+            normalizedLanguage,
+            chunkIndex,
+            audioBytes);
+
+        var connectionId = Context.ConnectionId;
         var source = new CallAudioChunk(
             participant.CallSessionId,
             normalizedRoomId,
@@ -330,7 +348,7 @@ public sealed class CallHub : Hub
             startedAt,
             endedAt,
             participant.ConsentGeneration,
-            Context.ConnectionId,
+            connectionId,
             normalizedLanguage);
         _logger.LogInformation(
             "[CAPTION_SERVER] event=AUDIO_HANDLER_ACCEPT connectionId={ConnectionId} callSessionId={CallSessionId} projectId={ProjectId} voiceChannelId={VoiceChannelId} language={Language} payloadBytes={PayloadBytes}",
@@ -349,17 +367,18 @@ public sealed class CallHub : Hub
                 audioBytes.Length);
             if (_transcriptionProvider is ICallStreamingTranscriptionProvider streamingProvider)
             {
+                var rooms = _rooms;
                 await streamingProvider.SubmitAsync(
                     source,
-                    HandleTranscriptionResultAsync,
-                    () => _rooms.TryAuthorizeTranscription(normalizedRoomId, Context.ConnectionId, sessionId, consentGeneration, out _),
+                    _captionResults.DeliverAsync,
+                    () => rooms.TryAuthorizeTranscription(normalizedRoomId, connectionId, sessionId, consentGeneration, out _),
                     Context.ConnectionAborted);
             }
             else
             {
                 var result = await _transcriptionProvider.TranscribeAsync(source, Context.ConnectionAborted);
                 if (result is not null)
-                    await HandleTranscriptionResultAsync(source, result);
+                    await _captionResults.DeliverAsync(source, result);
             }
             _logger.LogInformation(
                 "[CAPTION_SERVER] event=DEEPGRAM_SEND_OK connectionId={ConnectionId} callSessionId={CallSessionId} payloadBytes={PayloadBytes}",
@@ -402,6 +421,46 @@ public sealed class CallHub : Hub
             reason,
             Context.ConnectionId,
             payloadBytes);
+
+    private void LogCaptionTransportDiagnostic(
+        (string ProjectId, string VoiceChannelId) roomMetadata,
+        Guid callSessionId,
+        string? language,
+        long chunkIndex,
+        byte[] audioBytes)
+    {
+        if (!CaptionTransportDiagnostics.IsSampledChunk(chunkIndex)) return;
+
+        var pcmSha256 = CaptionTransportDiagnostics.ComputeSha256Hex(audioBytes);
+        _logger.LogInformation(
+            "[CAPTION_TRANSPORT_SERVER_DIAG] event=CAPTION_TRANSPORT_SERVER_DIAG connectionId={ConnectionId} callSessionId={CallSessionId} projectId={ProjectId} voiceChannelId={VoiceChannelId} language={Language} chunkIndex={ChunkIndex} payloadBytes={PayloadBytes} pcmSha256={PcmSha256}",
+            Context.ConnectionId,
+            callSessionId,
+            roomMetadata.ProjectId,
+            roomMetadata.VoiceChannelId,
+            language ?? "",
+            chunkIndex,
+            audioBytes.Length,
+            pcmSha256);
+    }
+
+    private long NextCaptionTransportChunkIndex(
+        string roomId,
+        Guid callSessionId,
+        Guid speakerUserId,
+        long consentGeneration)
+    {
+        var items = Context.Items;
+        if (items is null) return 1;
+        var key = $"{roomId}\u001f{callSessionId:D}\u001f{speakerUserId:D}\u001f{consentGeneration}";
+        if (items.TryGetValue(CaptionTransportCountersKey, out var value)
+            && value is ConcurrentDictionary<string, long> counters)
+            return counters.AddOrUpdate(key, 1, (_, current) => current + 1);
+
+        var created = new ConcurrentDictionary<string, long>(StringComparer.Ordinal);
+        var existing = items[CaptionTransportCountersKey] = created;
+        return ((ConcurrentDictionary<string, long>)existing).AddOrUpdate(key, 1, (_, current) => current + 1);
+    }
 
     private static (string ProjectId, string VoiceChannelId) DescribeCaptionRoom(string? roomId)
     {
@@ -496,14 +555,55 @@ public sealed class CallHub : Hub
             payloadSize > MaximumSdpUtf8Bytes)
             throw new HubException("SIGNAL_DESCRIPTION_TOO_LARGE");
         var normalizedRoomId = NormalizeRoomId(roomId);
-        if (string.IsNullOrWhiteSpace(targetConnectionId) ||
-            !_rooms.TryGetParticipant(normalizedRoomId, Context.ConnectionId, out var sender) ||
-            !_rooms.TryGetParticipant(normalizedRoomId, targetConnectionId, out var target))
+        var callerRegistered = _rooms.TryGetParticipant(normalizedRoomId, Context.ConnectionId, out var sender);
+        var targetConnectionPresent = !string.IsNullOrWhiteSpace(targetConnectionId);
+        CallRoomParticipant target = null!;
+        var targetRegistered = targetConnectionPresent && _rooms.TryGetParticipant(normalizedRoomId, targetConnectionId!, out target);
+        var sameRoom = callerRegistered && targetRegistered;
+        if (!sameRoom)
+        {
+            var reason = !callerRegistered ? "CALLER_NOT_REGISTERED"
+                : !targetConnectionPresent ? "TARGET_CONNECTION_MISSING"
+                : !targetRegistered ? "TARGET_NOT_REGISTERED"
+                : "NOT_SAME_ROOM";
+            TraceSignaling("SIGNALING_REJECTED", methodName, normalizedRoomId, targetConnectionId, callerRegistered, targetRegistered, sameRoom, callerRegistered, targetConnectionPresent, null, reason);
             throw new HubException("NOT_IN_CALL_ROOM");
+        }
 
-        await Clients.Client(target.ConnectionId).SendAsync(
+        await Clients.Client(target!.ConnectionId).SendAsync(
             eventName, envelope(sender, target, payload), Context.ConnectionAborted);
+        TraceSignaling("SIGNAL_DELIVERED", methodName, normalizedRoomId, target.ConnectionId, callerRegistered, targetRegistered, sameRoom, callerRegistered, true, null, null);
         Trace("SIGNAL_OK", methodName, normalizedRoomId, _rooms.GetAiState(normalizedRoomId).CallSessionId, result: "ok");
+    }
+
+    private void TraceSignaling(
+        string eventName,
+        string method,
+        string? roomId,
+        string? targetConnectionId,
+        bool callerRegistered,
+        bool targetRegistered,
+        bool sameRoom,
+        bool callerConnectionPresent,
+        bool targetConnectionPresent,
+        int? participantCount = null,
+        string? reason = null)
+    {
+        _logger.LogInformation(
+            "[CALL_SIGNALING_DIAG] timestamp={Timestamp} event={Event} method={Method} connectionId={ConnectionId} targetConnectionId={TargetConnectionId} roomId={RoomId} callerRegistered={CallerRegistered} targetRegistered={TargetRegistered} sameRoom={SameRoom} callerConnectionPresent={CallerConnectionPresent} targetConnectionPresent={TargetConnectionPresent} participantCount={ParticipantCount} reason={Reason}",
+            DateTimeOffset.UtcNow,
+            eventName,
+            method,
+            Context.ConnectionId,
+            targetConnectionId,
+            roomId,
+            callerRegistered,
+            targetRegistered,
+            sameRoom,
+            callerConnectionPresent,
+            targetConnectionPresent,
+            participantCount,
+            reason);
     }
 
     private void Trace(
@@ -594,44 +694,6 @@ public sealed class CallHub : Hub
         else if (nextState.State == CallAiStates.PausedConsent)
             await Clients.Group(roomId).SendAsync(CallRealtimeEvents.AiTranscriptionPaused, dto, cancellationToken);
         await Clients.Group(roomId).SendAsync(CallRealtimeEvents.CallAiStateChanged, dto, cancellationToken);
-    }
-
-    private async Task HandleTranscriptionResultAsync(CallAudioChunk source, CallTranscriptionResult result)
-    {
-        if (string.IsNullOrWhiteSpace(result.Text) || string.IsNullOrWhiteSpace(source.SpeakerConnectionId)) return;
-        if (!_rooms.TryAuthorizeTranscription(
-                source.RoomId,
-                source.SpeakerConnectionId,
-                source.CallSessionId,
-                source.ConsentGeneration,
-                out _)) return;
-
-        if (!result.IsFinal)
-        {
-            await Clients.Group(source.RoomId).SendAsync(
-                CallRealtimeEvents.CallTranscriptInterim,
-                new CallTranscriptInterimDto(
-                    source.CallSessionId,
-                    source.SpeakerUserId,
-                    source.SpeakerDisplayName,
-                    result.StartedAt,
-                    result.EndedAt,
-                    result.Text.Trim(),
-                    result.Confidence),
-                Context.ConnectionAborted);
-            return;
-        }
-
-        if (_transcripts is null) return;
-        var transcript = await _transcripts.AppendAsync(source, result, Context.ConnectionAborted);
-        if (transcript is not null)
-        {
-            _meetingAi?.QueueIncremental(transcript);
-            await Clients.Group(source.RoomId).SendAsync(
-                CallRealtimeEvents.CallTranscriptChunkAdded,
-                transcript,
-                Context.ConnectionAborted);
-        }
     }
 
     private async Task StopRoomTranscriptionAsync(string roomId, CancellationToken cancellationToken)

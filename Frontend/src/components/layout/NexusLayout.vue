@@ -2,6 +2,7 @@
   <div class="dashboard-layout">
     <AppTopBar
       :sidebarVisible="sidebarVisible"
+      :showSidebar="!hideSidebar"
       @toggle-sidebar="toggleSidebar"
       @toggle-ai="toggleAI"
       @toggle-create="toggleCreate"
@@ -97,7 +98,17 @@
     </transition>
 
     <transition name="slide-right">
-      <aside v-if="aiVisible" id="ai-copilot-panel" class="ai-sidebar" role="dialog" aria-modal="false" :aria-label="aiCopy.title">
+      <aside
+        v-if="aiVisible"
+        id="ai-copilot-panel"
+        class="ai-sidebar"
+        :class="{ 'is-resizing': aiPanelResizing }"
+        :style="{ '--ai-panel-width': `${aiPanelSize.width}px`, '--ai-panel-height': `${aiPanelSize.height}px` }"
+        role="dialog"
+        aria-modal="false"
+        :aria-label="aiCopy.title"
+      >
+        <div class="ai-resize-handle" role="separator" aria-orientation="vertical" aria-label="Thay đổi chiều rộng bảng AI" @pointerdown="beginAiPanelResize"></div>
         <div class="ai-hero">
           <div class="ai-hero-top">
             <div class="ai-brand">
@@ -107,9 +118,17 @@
                 <h4>{{ aiCopy.title }}</h4>
               </div>
             </div>
-            <button class="close-ai" type="button" :title="aiCopy.closeTitle" @click="toggleAI">
+            <div class="ai-hero-actions">
+            <button class="ai-open-full-chat" type="button" title="Đặt lại kích thước bảng AI" aria-label="Đặt lại kích thước bảng AI" @click="resetAiPanelSize">
+              <i class="fa-solid fa-arrows-to-dot"></i>
+            </button>
+            <button class="ai-open-full-chat" type="button" title="Mở full chat" aria-label="Mở full chat" @click="openAiFullChat">
+              <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+            </button>
+            <button class="close-ai" type="button" :title="aiCopy.closeTitle" :aria-label="aiCopy.closeTitle" @click="toggleAI">
               <i class="fa-solid fa-xmark"></i>
             </button>
+            </div>
           </div>
           <p class="ai-hero-copy">{{ aiCopy.hero }}</p>
 
@@ -129,8 +148,9 @@
               <span :style="{ width: `${aiCreditPercent}%` }"></span>
             </div>
             <p v-if="aiCreditsExhausted" class="ai-credit-message">Bạn đã sử dụng hết AI Credits trong tháng này.</p>
-            <p v-else-if="aiCreditsLow" class="ai-credit-message">AI Credits sắp hết. Bạn còn {{ aiRemainingCredits }} credits.</p>
+            <p v-else-if="aiCreditsLow" class="ai-credit-message">Bạn sắp hết AI Credits · còn {{ aiRemainingCredits }} credits.</p>
             <p v-else class="ai-credit-message">Còn {{ aiRemainingCredits }} AI Credits trong tháng này.</p>
+            <button class="ai-credit-buy" type="button" @click="openAiCreditPurchase">Mua thêm</button>
           </div>
           <button class="ai-pin-toggle" type="button" @click="togglePetPinned">
             <i :class="petPinned ? 'fa-solid fa-thumbtack' : 'fa-solid fa-location-dot'"></i>
@@ -252,7 +272,10 @@
 
                   <!-- Gợi ý hành động (suggestedActions) -->
                   <div v-if="message.actions && message.actions.length" class="ai-action-preview-list" aria-label="AI action previews">
-                    <article v-for="(action, aIdx) in message.actions" :key="`${action.type}-${aIdx}`" class="ai-action-preview-card" :class="{ 'is-pending': action.uiStatus === 'pending' }">
+                    <p v-if="hasReadOnlyActions(message.actions)" class="ai-activity-note" role="status">
+                      <i class="fa-solid fa-circle-check"></i> Đã đọc dữ liệu hiện tại và bổ sung kết quả vào câu trả lời.
+                    </p>
+                    <article v-for="(action, aIdx) in writeActions(message.actions)" :key="`${action.type}-${aIdx}`" class="ai-action-preview-card" :class="{ 'is-pending': action.uiStatus === 'pending' }">
                       <div class="ai-action-preview-head">
                         <div>
                           <span class="ai-action-eyebrow">AI ACTION PREVIEW</span>
@@ -288,11 +311,11 @@
                           Thử lại
                         </button>
                         <template v-else>
-                          <button v-if="!isReadOnlyAction(action.type) && action.uiStatus !== 'success'" type="button" class="ai-action-cancel" :disabled="action.loading" @click="cancelAiAction(action)">Hủy</button>
+                          <button v-if="!isReadOnlyAction(action.type, action.requiresConfirmation) && action.uiStatus !== 'success'" type="button" class="ai-action-cancel" :disabled="action.loading" @click="cancelAiAction(action)">Hủy</button>
                           <button type="button" class="ai-action-confirm" :disabled="action.loading || action.uiStatus === 'success'" @click="executeAiAction(action)">
                           <i v-if="action.loading" class="fa-solid fa-spinner fa-spin"></i>
                           <i v-else-if="action.uiStatus === 'success'" class="fa-solid fa-check"></i>
-                          {{ action.uiStatus === 'success' ? 'Đã thực hiện' : (isReadOnlyAction(action.type) ? 'Xem kết quả' : 'Xác nhận') }}
+                          {{ action.uiStatus === 'success' ? 'Đã thực hiện' : (isReadOnlyAction(action.type, action.requiresConfirmation) ? 'Xem kết quả' : 'Xác nhận') }}
                           </button>
                         </template>
                       </div>
@@ -483,7 +506,7 @@
             </p>
             <p v-else-if="voiceState === 'error'" class="ai-voice-error" role="alert">{{ voiceError }}</p>
 
-            <label v-if="voiceState === 'review'" class="ai-voice-transcript">
+            <label v-if="voiceState === 'success'" class="ai-voice-transcript">
               <span>Transcript</span>
               <textarea v-model="voiceTranscript" rows="4" aria-label="Chỉnh sửa transcript"></textarea>
             </label>
@@ -496,10 +519,10 @@
               <button v-if="voiceState === 'error'" type="button" class="ai-voice-primary" @click="startVoiceRecording">
                 <i class="fa-solid fa-rotate-right"></i> Thử lại
               </button>
-              <button v-if="voiceState === 'review'" type="button" class="ai-voice-secondary" @click="recordVoiceAgain">
+              <button v-if="voiceState === 'success'" type="button" class="ai-voice-secondary" @click="recordVoiceAgain">
                 <i class="fa-solid fa-microphone-lines"></i> Thu lại
               </button>
-              <button v-if="voiceState === 'review'" type="button" class="ai-voice-primary" :disabled="!voiceTranscript.trim()" @click="useVoiceTranscript">
+              <button v-if="voiceState === 'success'" type="button" class="ai-voice-primary" :disabled="!voiceTranscript.trim()" @click="useVoiceTranscript">
                 Dùng nội dung này
               </button>
             </div>
@@ -525,12 +548,14 @@
               </template>
             </el-dropdown>
             <textarea
+              ref="aiComposerRef"
               v-model="aiInput"
               rows="1"
               :aria-label="aiCopy.placeholder"
               :placeholder="aiCopy.placeholder"
               @paste="handleComposerPaste"
-              @keydown.enter.exact.prevent="sendAiMessage"
+              @input="resizeAiComposer"
+              @keydown="handleAiComposerKeydown"
             ></textarea>
             <button
               class="ai-composer-icon-btn"
@@ -573,6 +598,65 @@
         <span>Bạn đang offline. Một số dữ liệu có thể không cập nhật.</span>
       </div>
     </transition>
+
+    <!-- Persistent Voice Call Dock Overlay (Discord-style) -->
+    <Transition name="route-soft">
+      <div
+        v-if="voiceCallStore.hasActiveCall && route.name !== 'CollaborationChat'"
+        class="persistent-call-overlay"
+        role="region"
+        aria-label="Kênh thoại đang kết nối"
+      >
+        <div class="call-overlay-info" @click="goToChatCall">
+          <span class="call-status-pulse"></span>
+          <div>
+            <strong>{{ voiceCallStore.activeVoiceChannel?.name || 'Kênh thoại' }}</strong>
+            <small>{{ voiceCallStore.participantsCount || 1 }} người trong phòng</small>
+          </div>
+        </div>
+
+        <div class="call-overlay-actions">
+          <button
+            type="button"
+            class="call-action-pill"
+            :class="{ muted: !voiceCallStore.isMicEnabled }"
+            :title="voiceCallStore.isMicEnabled ? 'Tắt micro' : 'Bật micro'"
+            @click="voiceCallStore.toggleMic()"
+          >
+            <i :class="voiceCallStore.isMicEnabled ? 'fa-solid fa-microphone' : 'fa-solid fa-microphone-slash'"></i>
+          </button>
+          
+          <button
+            type="button"
+            class="call-action-pill"
+            :class="{ active: voiceCallStore.isCameraEnabled }"
+            :title="voiceCallStore.isCameraEnabled ? 'Tắt camera' : 'Bật camera'"
+            @click="voiceCallStore.toggleCam()"
+          >
+            <i :class="voiceCallStore.isCameraEnabled ? 'fa-solid fa-video' : 'fa-solid fa-video-slash'"></i>
+          </button>
+
+          <button
+            type="button"
+            class="call-action-pill open-call"
+            title="Mở màn hình cuộc gọi"
+            @click="goToChatCall"
+          >
+            <i class="fa-solid fa-expand"></i>
+            <span>Mở màn hình</span>
+          </button>
+
+          <button
+            type="button"
+            class="call-action-pill hang-up"
+            title="Rời kênh thoại"
+            @click="voiceCallStore.leaveCall()"
+          >
+            <i class="fa-solid fa-phone-slash"></i>
+          </button>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -590,16 +674,32 @@ import GlobalStickiesDrawer from '@/components/stickies/GlobalStickiesDrawer.vue
 import FloatingStickiesLayer from '@/components/stickies/FloatingStickiesLayer.vue'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
+import { useAiConversationStore } from '@/store/useAiConversationStore'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useGoalStore } from '@/store/useGoalStore'
 import { useSprintStore } from '@/store/useSprintStore'
+import { useVoiceCallStore } from '@/store/useVoiceCallStore'
 import { AUTH_SESSION_CHANGED, getStoredUserSession } from '@/utils/authSession'
 import { getDefaultPermissionMatrix, hasPermission } from '@/utils/permissionGuard'
 import { buildSpacePath } from '@/utils/spaceRoute'
 import { MAX_FLOATING_STICKIES, useStickyStore } from '@/store/useStickyStore'
 import { getRandomPaletteColor } from '@/utils/colors'
 import { getStickyAccountId } from '@/utils/stickyAccountIsolation'
+import {
+  AI_PANEL_DEFAULT_WIDTH,
+  clampAiPanelSize,
+  isAiPanelResizable,
+  isComposerSendKey,
+  readAiPanelSize,
+  writeAiPanelSize,
+  writeActionsOnly
+} from '@/utils/aiWorkspace'
+
+const voiceCallStore = useVoiceCallStore()
+const goToChatCall = () => {
+  router.push('/chat')
+}
 import {
   STICKY_LAUNCHER_DRAG_THRESHOLD,
   clampStickyLauncherY,
@@ -626,6 +726,7 @@ const sprintStore = useSprintStore()
 const stickyStore = useStickyStore()
 const sidebarVisible = ref(window.innerWidth > 1024)
 const aiPetStore = useAiPetStore()
+const aiConversationStore = useAiConversationStore()
 const aiVisible = computed({ get: () => aiPetStore.isPanelOpen, set: value => aiPetStore.setPanelOpen(value) })
 const notesVisible = ref(false)
 const stickyLauncherRef = ref(null)
@@ -640,6 +741,14 @@ const aiInput = ref('')
 const aiSending = ref(false)
 const aiUsage = ref(null)
 const aiContentRef = ref(null)
+const aiComposerRef = ref(null)
+const aiPanelSize = ref(readAiPanelSize(window.localStorage, {
+  width: window.innerWidth,
+  height: window.innerHeight,
+  topInset: 68
+}))
+const aiPanelResizing = ref(false)
+let aiPanelResizeState = null
 
 const aiIncludedCredits = computed(() => Math.max(0, Number(aiUsage.value?.includedCredits || 0)))
 const aiUsedCredits = computed(() => Math.max(0, Number(aiUsage.value?.usedCredits || 0)))
@@ -1068,7 +1177,7 @@ const voiceStatusTitle = computed(() => ({
   requesting: 'Đang xin quyền microphone',
   recording: 'Đang ghi âm',
   transcribing: 'Đang nhận dạng giọng nói',
-  review: 'Kiểm tra transcript',
+  success: 'Đã nhận transcript',
   error: 'Không thể nhận dạng giọng nói'
 }[voiceState.value] || 'Nhập bằng giọng nói'))
 
@@ -1183,7 +1292,7 @@ const transcribeVoiceRecording = async (recording) => {
     const transcript = String(apiPayload(response)?.transcript || '').trim()
     if (!transcript) throw new Error('Không nhận diện được giọng nói Việt hoặc Anh. Hãy thu lại.')
     voiceTranscript.value = transcript
-    voiceState.value = 'review'
+    voiceState.value = 'success'
   } catch (error) {
     if (error?.code === 'ERR_CANCELED' || voiceState.value === 'idle') return
     voiceError.value = error.response?.data?.message || error.message || 'Không thể nhận dạng giọng nói. Hãy thử lại.'
@@ -1467,45 +1576,51 @@ const quickPrompts = computed(() => (localizedPageSuggestions[pageType.value] ||
     icon: ['fa-regular fa-file-lines', 'fa-solid fa-arrow-up-wide-short', 'fa-solid fa-lightbulb'][index % 3]
   })))
 
-const defaultChatHistory = () => [
-  {
-    role: 'bot',
-    content: aiCopy.value.welcome
-  }
-]
-
-const chatHistory = ref(defaultChatHistory())
-const conversations = ref([])
-const currentConversationId = ref(null)
-const currentConversationWorkspaceId = ref(null)
-const currentConversationTitle = ref('Cuộc trò chuyện mới')
-const conversationHistoryVisible = ref(false)
-const conversationSearch = ref('')
-const conversationLoading = ref(false)
-const conversationPage = ref(1)
-const conversationHasMore = ref(false)
-const filteredConversations = computed(() => {
-  const query = conversationSearch.value.trim().toLocaleLowerCase('vi-VN')
-  return query ? conversations.value.filter(item => item.title.toLocaleLowerCase('vi-VN').includes(query)) : conversations.value
+const chatHistory = computed({
+  get: () => aiConversationStore.messages,
+  set: value => { aiConversationStore.messages = value }
 })
+const conversations = computed({
+  get: () => aiConversationStore.conversations,
+  set: value => { aiConversationStore.conversations = value }
+})
+const currentConversationId = computed({
+  get: () => aiConversationStore.currentConversationId,
+  set: value => { aiConversationStore.currentConversationId = value }
+})
+const currentConversationWorkspaceId = computed({
+  get: () => aiConversationStore.currentConversationWorkspaceId,
+  set: value => { aiConversationStore.currentConversationWorkspaceId = value }
+})
+const currentConversationTitle = computed({
+  get: () => aiConversationStore.currentConversationTitle,
+  set: value => { aiConversationStore.currentConversationTitle = value }
+})
+const conversationHistoryVisible = computed({
+  get: () => aiConversationStore.historyVisible,
+  set: value => { aiConversationStore.historyVisible = value }
+})
+const conversationSearch = computed({
+  get: () => aiConversationStore.search,
+  set: value => { aiConversationStore.search = value }
+})
+const conversationLoading = computed({
+  get: () => aiConversationStore.loading,
+  set: value => { aiConversationStore.loading = value }
+})
+const conversationHasMore = computed({
+  get: () => aiConversationStore.hasMore,
+  set: value => { aiConversationStore.hasMore = value }
+})
+const filteredConversations = computed(() => aiConversationStore.filteredConversations)
 
 const apiPayload = (response) => response?.data?.data ?? response?.data ?? response
 const formatConversationDate = (value) => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : ''
 
 const loadConversations = async (reset = true) => {
   if (conversationLoading.value) return
-  conversationLoading.value = true
-  if (reset) {
-    conversationPage.value = 1
-    conversations.value = []
-  }
   try {
-    const response = await axiosClient.get('/ai/conversations', { params: { workspaceId: currentWorkspaceId.value, page: conversationPage.value, pageSize: 20 } })
-    const payload = apiPayload(response)
-    const items = payload.items || []
-    conversations.value = reset ? items : [...conversations.value, ...items]
-    conversationHasMore.value = conversations.value.length < (payload.total || 0)
-    if (conversationHasMore.value) conversationPage.value += 1
+    await aiConversationStore.loadConversations({ workspaceId: currentWorkspaceId.value, reset })
   } catch (error) {
     const status = error?.response?.status
     const message = status === 429
@@ -1515,8 +1630,6 @@ const loadConversations = async (reset = true) => {
         : 'Không thể tải lịch sử trò chuyện.'
     ElMessage.warning(message)
     conversationHasMore.value = false
-  } finally {
-    conversationLoading.value = false
   }
 }
 
@@ -1527,23 +1640,12 @@ const toggleConversationHistory = async () => {
 
 const startNewConversation = () => {
   releaseMessageAttachmentUrls()
-  currentConversationId.value = null
-  currentConversationWorkspaceId.value = null
-  currentConversationTitle.value = 'Cuộc trò chuyện mới'
-  chatHistory.value = defaultChatHistory()
-  conversationHistoryVisible.value = false
+  aiConversationStore.startNewConversation()
   clearPendingAttachments()
 }
 
 const ensureConversation = async (firstMessage) => {
-  if (currentConversationId.value) return currentConversationId.value
-  const title = firstMessage.trim().replace(/\s+/g, ' ').slice(0, 80) || 'Cuộc trò chuyện mới'
-  const response = await axiosClient.post('/ai/conversations', { workspaceId: currentWorkspaceId.value, title })
-  const conversation = apiPayload(response)
-  currentConversationId.value = conversation.id
-  currentConversationWorkspaceId.value = conversation.workspaceId
-  currentConversationTitle.value = conversation.title
-  return conversation.id
+  return aiConversationStore.ensureConversation({ workspaceId: currentWorkspaceId.value, firstMessage })
 }
 
 const releaseMessageAttachmentUrls = () => {
@@ -1552,33 +1654,19 @@ const releaseMessageAttachmentUrls = () => {
   }))
 }
 
-const serializableConversationMessages = () => chatHistory.value
-  .filter(message => !message.loading)
-  .map(message => ({
-    ...message,
-    attachments: message.attachments?.map(({ file, previewUrl, ...attachment }) => attachment)
-  }))
-
 const persistConversation = async () => {
   if (!currentConversationId.value) return
   try {
-    const messages = JSON.parse(JSON.stringify(serializableConversationMessages()))
-    await axiosClient.put(`/ai/conversations/${currentConversationId.value}`, { title: currentConversationTitle.value, messages })
+    await aiConversationStore.persistConversation()
   } catch {
     ElMessage.warning('Chưa thể lưu lịch sử trò chuyện. Hãy kiểm tra kết nối.')
   }
 }
 
 const openConversation = async (id) => {
-  const response = await axiosClient.get(`/ai/conversations/${id}`)
-  const conversation = apiPayload(response)
   releaseMessageAttachmentUrls()
-  currentConversationId.value = conversation.id
-  currentConversationWorkspaceId.value = conversation.workspaceId
-  currentConversationTitle.value = conversation.title
-  chatHistory.value = Array.isArray(conversation.messages) && conversation.messages.length ? conversation.messages : defaultChatHistory()
+  await aiConversationStore.openConversation(id)
   await hydrateConversationImages()
-  conversationHistoryVisible.value = false
   await scrollAiToBottom()
 }
 
@@ -1629,11 +1717,75 @@ const currentRouteLabel = computed(() => {
   return typeof name === 'string' ? name : route.path
 })
 
+const resetAiPanelSize = () => {
+  aiPanelSize.value = clampAiPanelSize({ width: AI_PANEL_DEFAULT_WIDTH, height: window.innerHeight }, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    topInset: 68
+  })
+  writeAiPanelSize(window.localStorage, aiPanelSize.value)
+}
+
+const beginAiPanelResize = (event) => {
+  if (!isAiPanelResizable(window.innerWidth) || (event.button !== undefined && event.button !== 0)) return
+  event.preventDefault()
+  aiPanelResizeState = { pointerId: event.pointerId, startX: event.clientX, startWidth: aiPanelSize.value.width }
+  aiPanelResizing.value = true
+  event.currentTarget?.setPointerCapture?.(event.pointerId)
+  window.addEventListener('pointermove', moveAiPanelResize)
+  window.addEventListener('pointerup', endAiPanelResize)
+  window.addEventListener('pointercancel', endAiPanelResize)
+}
+
+const moveAiPanelResize = (event) => {
+  const state = aiPanelResizeState
+  if (!state || event.pointerId !== state.pointerId) return
+  aiPanelSize.value = clampAiPanelSize({
+    ...aiPanelSize.value,
+    width: state.startWidth + state.startX - event.clientX
+  }, { width: window.innerWidth, height: window.innerHeight, topInset: 68 })
+}
+
+const endAiPanelResize = (event) => {
+  if (!aiPanelResizeState || event.pointerId !== aiPanelResizeState.pointerId) return
+  writeAiPanelSize(window.localStorage, aiPanelSize.value)
+  aiPanelResizeState = null
+  aiPanelResizing.value = false
+  window.removeEventListener('pointermove', moveAiPanelResize)
+  window.removeEventListener('pointerup', endAiPanelResize)
+  window.removeEventListener('pointercancel', endAiPanelResize)
+}
+
+const openAiFullChat = async () => {
+  aiVisible.value = false
+  await router.push({ name: 'AIPage' })
+}
+
+const openAiCreditPurchase = () => router.push('/#pricing')
+
+const resizeAiComposer = () => {
+  const textarea = aiComposerRef.value
+  if (!textarea) return
+  textarea.style.height = 'auto'
+  textarea.style.height = `${Math.min(textarea.scrollHeight, 170)}px`
+}
+
+const handleAiComposerKeydown = (event) => {
+  if (!isComposerSendKey(event)) return
+  event.preventDefault()
+  sendAiMessage()
+}
+
 const updateSize = () => {
   isMobile.value = window.innerWidth <= 1024
   if (!isMobile.value) {
     sidebarVisible.value = true
   }
+  aiPanelSize.value = clampAiPanelSize(aiPanelSize.value, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    topInset: 68
+  })
   petPosition.value = clampPetPosition()
   nextTick(() => window.setTimeout(normalizePetPosition, 80))
   if (isMobile.value || aiVisible.value) stopPetWandering()
@@ -1770,7 +1922,7 @@ const openFromPet = (event) => {
 
 const handleGlobalKeydown = (event) => {
   const isEscape = event.key === 'Escape' || event.key === 'Esc' || event.code === 'Escape' || event.keyCode === 27
-  if (!isEscape || (!aiPetStore.isPanelOpen && !notesVisible.value)) return
+  if (!isEscape) return
   // Element Plus owns Escape while a real modal overlay is open. The AI panel
   // is not an overlay, so only close it when no modal is currently active.
   const hasActiveElementPlusOverlay = [...document.querySelectorAll('.el-overlay')].some((overlay) => {
@@ -1778,6 +1930,15 @@ const handleGlobalKeydown = (event) => {
     return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0'
   })
   if (hasActiveElementPlusOverlay) return
+
+  if (isMobile.value && sidebarVisible.value) {
+    event.preventDefault()
+    event.stopPropagation()
+    sidebarVisible.value = false
+    return
+  }
+
+  if (!aiPetStore.isPanelOpen && !notesVisible.value) return
   event.preventDefault()
   event.stopPropagation()
   aiPetStore.setPanelOpen(false)
@@ -1822,6 +1983,11 @@ onUnmounted(() => {
   window.removeEventListener('integration-detail-opened', closeUtilitiesForIntegrationDetail)
   window.removeEventListener('pointermove', movePet)
   window.removeEventListener('pointerup', endPetDrag)
+  window.removeEventListener('pointermove', moveAiPanelResize)
+  window.removeEventListener('pointerup', endAiPanelResize)
+  window.removeEventListener('pointercancel', endAiPanelResize)
+  aiPanelResizeState = null
+  aiPanelResizing.value = false
   clearStickyLauncherDrag()
   stopPetWandering()
   cancelVoiceInput()
@@ -1830,6 +1996,7 @@ onUnmounted(() => {
 })
 
 watch(() => route.fullPath, () => {
+  if (isMobile.value) sidebarVisible.value = false
   nextTick(() => window.setTimeout(normalizePetPosition, 160))
 })
 
@@ -1873,7 +2040,9 @@ const readOnlyActionTypes = new Set([
   'refresh_report', 'export_report_csv', 'summarize_report'
 ])
 
-const isReadOnlyAction = (type) => readOnlyActionTypes.has(String(type || '').toLowerCase())
+const isReadOnlyAction = (type, requiresConfirmation) => requiresConfirmation === false || readOnlyActionTypes.has(String(type || '').toLowerCase())
+const writeActions = actions => writeActionsOnly(actions, isReadOnlyAction)
+const hasReadOnlyActions = actions => (actions || []).some(action => isReadOnlyAction(action?.type, action?.requiresConfirmation))
 
 const escapeHtml = (value = '') => `${value}`
   .replace(/&/g, '&amp;')
@@ -1983,21 +2152,21 @@ const actionDetails = (action) => {
     add('Tên mục tiêu', payloadValue(action, 'title', 'name'))
     add('Mô tả', payloadValue(action, 'description'))
   } else if (type === 'update_task_status') {
-    add('Task', payloadValue(action, 'taskTitle', 'taskId'))
+    add('Task', payloadValue(action, 'taskTitle', 'title'))
     add('Trạng thái mới', payloadValue(action, 'statusName', 'status'))
   } else if (type === 'assign_task') {
-    add('Task', payloadValue(action, 'taskTitle', 'taskId'))
-    add('Người nhận', payloadValue(action, 'assigneeName', 'assigneeId', 'assignedUserId'))
+    add('Task', payloadValue(action, 'taskTitle', 'title'))
+    add('Người nhận', payloadValue(action, 'assigneeName', 'assigneeEmail', 'assignee'))
   } else if (['create_cycle', 'create_module', 'create_page', 'create_view', 'create_intake_request'].includes(type)) {
     add('Tên', payloadValue(action, 'name', 'title'))
     add('Dự án', payloadValue(action, 'projectName') || resolveProjectLabel(action))
     add('Bắt đầu', payloadValue(action, 'startDate'))
     add('Kết thúc', payloadValue(action, 'endDate'))
   } else if (['update_task_priority', 'update_task_due_date'].includes(type)) {
-    add('Task', payloadValue(action, 'taskTitle', 'taskId'))
+    add('Task', payloadValue(action, 'taskTitle', 'title'))
     add(type === 'update_task_priority' ? 'Độ ưu tiên mới' : 'Hạn mới', payloadValue(action, type === 'update_task_priority' ? 'priority' : 'dueDate'))
   } else if (type === 'add_comment') {
-    add('Đối tượng', payloadValue(action, 'entityType', 'entityId'))
+    add('Đối tượng', payloadValue(action, 'entityType'))
     add('Nội dung', payloadValue(action, 'content'))
   }
   return details
@@ -2143,6 +2312,21 @@ const executeAiAction = async (action) => {
   action.uiStatus = 'loading'
   action.error = ''
   try {
+    if (action.directExecution === true) {
+      const response = await axiosClient.post('/ai/actions/execute', {
+        type: action.type,
+        workspaceId: currentWorkspaceId.value || null,
+        projectId: currentProjectId.value || actionPayload(action).projectId || null,
+        payload: actionPayload(action)
+      })
+      const root = response.data || {}
+      const result = root?.data ?? root
+      if (root?.success === false || !result || typeof result !== 'object') throw new Error('Backend không trả về kết quả đọc dữ liệu.')
+      action.result = result
+      action.uiStatus = 'success'
+      ElMessage.success(result?.message || 'Đã tải dữ liệu thành công.')
+      return
+    }
     action.idempotencyKey ||= `${action.type}-${crypto.randomUUID()}`
     if (!action.serverActionId) {
       const previewResponse = await axiosClient.post('/ai/actions/preview', {
@@ -2983,7 +3167,7 @@ const handleProjectCreated = (newProject) => {
     padding: 0;
     width: 100% !important;
     min-width: 0 !important;
-    overflow-x: hidden !important;
+    overflow-x: clip !important;
   }
 
   .sidebar-overlay {
@@ -3153,6 +3337,7 @@ const handleProjectCreated = (newProject) => {
 
 .ai-floating-btn:focus-visible,
 .close-ai:focus-visible,
+.ai-open-full-chat:focus-visible,
 .quick-action:focus-visible,
 .send-btn:focus-visible,
 .ai-composer-icon-btn:focus-visible,
@@ -3177,8 +3362,10 @@ const handleProjectCreated = (newProject) => {
   position: fixed;
   right: 16px;
   top: calc(var(--sa-topbar-height, 52px) + 16px);
-  bottom: 16px;
-  width: min(456px, calc(100vw - 32px));
+  width: clamp(360px, var(--ai-panel-width, 456px), min(720px, 70vw));
+  height: clamp(500px, var(--ai-panel-height, 680px), calc(100dvh - var(--sa-topbar-height, 52px) - 32px));
+  max-height: calc(100dvh - var(--sa-topbar-height, 52px) - 32px);
+  box-sizing: border-box;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 18px;
@@ -3188,6 +3375,37 @@ const handleProjectCreated = (newProject) => {
   flex-direction: column;
   overflow: hidden;
 }
+
+.ai-sidebar.is-resizing,
+.ai-sidebar.is-resizing * { user-select: none; }
+
+.ai-resize-handle {
+  position: absolute;
+  z-index: 3;
+  top: 18px;
+  bottom: 18px;
+  left: -5px;
+  width: 10px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.ai-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 2px;
+  height: 48px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity .16s ease;
+}
+
+.ai-sidebar:hover .ai-resize-handle::after,
+.ai-sidebar.is-resizing .ai-resize-handle::after { opacity: 1; }
 
 .ai-hero {
   padding: 20px 20px 17px;
@@ -3221,6 +3439,17 @@ const handleProjectCreated = (newProject) => {
   box-sizing: border-box;
   flex: 0 0 auto;
 }
+
+.ai-activity-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.ai-activity-note i { color: var(--color-success, #16803c); }
 
 .ai-action-preview-card.is-pending {
   border-color: color-mix(in srgb, var(--sa-primary) 42%, var(--color-border));
@@ -3347,6 +3576,13 @@ const handleProjectCreated = (newProject) => {
   gap: 12px;
 }
 
+.ai-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
 .ai-brand {
   align-items: center;
   gap: 11px;
@@ -3408,6 +3644,25 @@ const handleProjectCreated = (newProject) => {
 .close-ai:hover {
   color: var(--color-text-primary);
   border-color: color-mix(in srgb, var(--sa-primary) 36%, var(--color-border));
+}
+
+.ai-open-full-chat {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.ai-open-full-chat:hover,
+.ai-open-full-chat:focus-visible {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--sa-primary) 36%, var(--color-border));
+  outline: none;
 }
 
 .ai-content {
@@ -4038,7 +4293,7 @@ const handleProjectCreated = (newProject) => {
 }
 
 .ai-input-wrapper {
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
   border: 1px solid color-mix(in srgb, var(--color-border) 84%, var(--sa-primary));
   border-radius: 16px;
@@ -4048,7 +4303,15 @@ const handleProjectCreated = (newProject) => {
 }
 
 .ai-input-wrapper :deep(.el-dropdown) {
-  flex: 0 0 34px;
+  flex: 0 0 44px;
+}
+
+.ai-input-wrapper .ai-composer-icon-btn,
+.ai-input-wrapper .send-btn {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  border-radius: 12px;
 }
 
 .ai-input-wrapper:focus-within {
@@ -4074,13 +4337,13 @@ const handleProjectCreated = (newProject) => {
 
 .ai-input-wrapper textarea {
   flex: 1;
-  min-height: 58px !important;
+  min-height: 44px !important;
   max-height: 170px;
   resize: none;
   background: transparent !important;
   border: 0 !important;
   color: var(--color-text-primary) !important;
-  padding: 10px !important;
+  padding: 8px 10px !important;
   line-height: 1.5;
   outline: none;
   box-shadow: none !important;
@@ -4151,13 +4414,18 @@ const handleProjectCreated = (newProject) => {
   }
 
   .ai-sidebar {
-    top: 56px;
-    right: 8px;
-    left: 8px;
-    bottom: 8px;
+    top: calc(var(--sa-topbar-height, 52px) + env(safe-area-inset-top));
+    right: 0;
+    left: 0;
+    bottom: env(safe-area-inset-bottom);
     width: auto;
-    border-radius: 14px;
+    height: auto;
+    max-height: none;
+    border-radius: 14px 14px 0 0;
   }
+
+  .ai-resize-handle { display: none; }
+  .ai-input-area { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
 
   .ai-floating-btn {
     width: 58px;
@@ -4185,6 +4453,21 @@ const handleProjectCreated = (newProject) => {
   .ai-action-controls button { width: 100%; min-height: 38px; }
   .ai-action-details { grid-template-columns: 1fr; gap: 2px; }
   .ai-action-details dd { margin-bottom: 6px; }
+}
+
+@media (min-width: 761px) and (max-width: 1024px) {
+  .ai-sidebar {
+    top: calc(var(--sa-topbar-height, 52px) + 12px);
+    right: 12px;
+    bottom: 12px;
+    left: auto;
+    width: min(560px, calc(100vw - 24px));
+    height: auto;
+    max-height: none;
+    border-radius: 16px;
+  }
+
+  .ai-resize-handle { display: none; }
 }
 
 .offline-warning-banner {
@@ -4279,8 +4562,127 @@ const handleProjectCreated = (newProject) => {
   line-height: 1.4;
 }
 
+.ai-credit-buy {
+  min-height: 32px;
+  margin-top: 9px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ai-credit-buy:hover,
+.ai-credit-buy:focus-visible {
+  background: var(--sa-primary-soft);
+  outline: none;
+}
+
 .ai-credit-card.is-low { border-color: #d9a441; }
 .ai-credit-card.is-low .ai-credit-progress > span { background: #d9a441; }
 .ai-credit-card.is-empty { border-color: #d25b5b; }
 .ai-credit-card.is-empty .ai-credit-progress > span { width: 0 !important; background: #d25b5b; }
+
+.persistent-call-overlay {
+  position: fixed;
+  z-index: 2000;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--color-success, #10b981) 40%, var(--color-border));
+  background: var(--color-surface, #0f172a);
+  color: var(--color-text-primary, #ffffff);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  transition: all 0.2s ease;
+}
+.persistent-call-overlay .call-overlay-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.persistent-call-overlay .call-status-pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.25);
+  animation: call-pulse-ping 2s infinite ease-in-out;
+}
+@keyframes call-pulse-ping {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+}
+.persistent-call-overlay .call-overlay-info strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.persistent-call-overlay .call-overlay-info small {
+  display: block;
+  font-size: 11px;
+  color: var(--color-text-muted, #94a3b8);
+}
+.persistent-call-overlay .call-overlay-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.persistent-call-overlay .call-action-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.persistent-call-overlay .call-action-pill:hover {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 15%, var(--color-surface));
+  color: var(--color-accent);
+}
+.persistent-call-overlay .call-action-pill.muted {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+}
+.persistent-call-overlay .call-action-pill.active {
+  background: color-mix(in srgb, var(--color-accent) 20%, var(--color-surface));
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.persistent-call-overlay .call-action-pill.open-call {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #ffffff;
+}
+.persistent-call-overlay .call-action-pill.open-call:hover {
+  opacity: 0.9;
+}
+.persistent-call-overlay .call-action-pill.hang-up {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #ffffff;
+}
+.persistent-call-overlay .call-action-pill.hang-up:hover {
+  background: #dc2626;
+}
 </style>

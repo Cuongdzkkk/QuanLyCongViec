@@ -3,6 +3,36 @@ using System.Collections.Generic;
 
 namespace TaskManagement.Application.DTOs.AI
 {
+    public sealed class AiTaskReadPayloadDto
+    {
+        public Guid ProjectId { get; set; }
+        public Guid TaskId { get; set; }
+    }
+
+    public sealed class AiProjectReadPayloadDto
+    {
+        public Guid ProjectId { get; set; }
+    }
+
+    public sealed class AiTaskSearchPayloadDto
+    {
+        public Guid ProjectId { get; set; }
+        public string? Query { get; set; }
+        public string? Status { get; set; }
+        public Guid? AssigneeId { get; set; }
+        public int? Priority { get; set; }
+        public int MaxResults { get; set; } = 25;
+    }
+
+    public sealed class AiGoalReadPayloadDto
+    {
+        public Guid GoalId { get; set; }
+    }
+
+    public sealed class AiPersonalWorkSummaryPayloadDto
+    {
+    }
+
     public class AiSubTaskDto
     {
         public string Title { get; set; } = string.Empty;

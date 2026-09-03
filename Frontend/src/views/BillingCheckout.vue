@@ -4,7 +4,7 @@
       <button type="button" class="back-button" @click="router.push('/#pricing')">
         <ArrowLeft :size="17" /> {{ t('Quay lại bảng giá', 'Back to pricing') }}
       </button>
-      <div class="brand">SprintA <span>Billing</span></div>
+      <div class="brand"><SprintaBrand size="compact" /><span>Billing</span></div>
     </header>
 
     <section class="checkout-shell" v-loading="loading">
@@ -219,6 +219,7 @@ import { ArrowLeft, CircleAlert, CircleHelp, Clock3, Copy, QrCode, ShieldCheck }
 import axiosClient from '@/api/axiosClient'
 import { billingApi, unwrapBillingData } from '@/api/billingApi'
 import { language } from '@/i18n'
+import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 import {
   canShowPaymentReceipt,
   createCheckoutOrderGate,
@@ -567,7 +568,7 @@ onBeforeUnmount(() => {
 .checkout-page .back-button, .checkout-page .support-action, .checkout-page .close-detail { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--checkout-muted); font-family: inherit; }
 .checkout-page .back-button:hover, .checkout-page .support-action:hover, .checkout-page .close-detail:hover { color: var(--checkout-primary); }
 .checkout-page .brand { color: var(--checkout-text); font-family: var(--sp-font-display, var(--sp-font-ui, Inter, sans-serif)); }
-.checkout-page .brand span { color: var(--checkout-primary); }
+.checkout-page .brand > span { color: var(--checkout-primary); }
 .checkout-page .checkout-shell { width: min(1240px, calc(100% - 40px)); margin: 0 auto; padding: 44px 0 80px; }
 .checkout-page .checkout-intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 32px; min-height: 148px; padding-bottom: 36px; border-bottom: 1px solid var(--checkout-border); }
 .checkout-page .eyebrow, .checkout-page .section-kicker, .checkout-page .visual-meta, .checkout-page .state-eyebrow { color: var(--checkout-muted); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
@@ -731,5 +732,43 @@ onBeforeUnmount(() => {
 @media (max-width: 1024px) { .checkout-page .payment-stage { grid-template-columns: minmax(0, 1fr) minmax(320px, .88fr); }.checkout-page .order-card { position: static; }.success-facts { grid-template-columns: repeat(2, 1fr); gap: 18px 0; }.success-facts > div:nth-child(2) { border-right: 0; }.success-facts > div:nth-child(3) { padding-left: 0; }.success-facts > div:nth-child(4) { padding-right: 0; } }
 @media (max-width: 760px) { .checkout-page .checkout-shell { width: min(100% - 28px, 1240px); padding-top: 32px; }.checkout-page .checkout-intro { grid-template-columns: 1fr; gap: 18px; }.checkout-page .price-block { min-width: 0; text-align: left; }.checkout-page .payment-stage { grid-template-columns: 1fr; }.checkout-page .payment-visual { min-height: 0; }.checkout-page .account-overview-surface { grid-template-columns: 1fr; }.account-plan, .account-wallet, .account-period { min-height: 0; }.account-wallet { border: 0; border-top: 1px solid var(--checkout-border); border-bottom: 1px solid var(--checkout-border); }.checkout-page .account-summary-grid { grid-template-columns: 1fr; }.summary-item { min-height: 0; }.summary-item + .summary-item { border-top: 1px solid var(--checkout-border); border-left: 0; }.section-heading { align-items: flex-start; flex-direction: column; gap: 8px; }.history-table-header { display: none; }.history-row { grid-template-columns: 1fr auto; gap: 12px 16px; }.history-date { text-align: right; }.history-amount { grid-column: 1; }.history-status-cell { grid-column: 2; grid-row: 2; justify-content: flex-end; }.history-actions { grid-column: 1 / -1; justify-content: flex-start; padding-top: 4px; }.success-composition .success-actions { align-items: stretch; flex-direction: column; }.success-composition .primary-button, .success-composition .secondary-button { width: 100%; }.bucket-meta { align-items: flex-start; flex-direction: column; gap: 5px; } }
 @media (max-width: 520px) { .checkout-page .checkout-nav { height: 64px; padding: 0 14px; }.checkout-page .back-button { font-size: 12px; }.checkout-page .brand { font-size: 16px; }.checkout-page .checkout-shell { width: min(100% - 24px, 1240px); padding: 26px 0 56px; }.checkout-page .checkout-intro h1 { font-size: 36px; }.checkout-page .payment-visual, .checkout-page .order-card, .checkout-page .state-composition, .checkout-page .billing-history, .checkout-page .billing-detail, .checkout-page .wallet-surface { border-radius: 14px; padding: 20px; }.checkout-page .section-topline { align-items: flex-start; flex-wrap: wrap; }.checkout-page .visual-heading { align-items: flex-start; flex-direction: column; gap: 8px; margin-top: 34px; }.checkout-page .visual-meta { padding-bottom: 0; }.checkout-page .detail-list > div { grid-template-columns: 1fr; gap: 6px; }.checkout-page .detail-list dd { text-align: left; }.checkout-page .copy-detail dd { justify-content: flex-start; }.checkout-page .countdown-block { align-items: flex-start; flex-direction: column; }.checkout-page .countdown-block > div:last-child { text-align: left; }.success-hero { gap: 13px; }.success-hero .state-icon { width: 46px; height: 46px; }.paid-proof { grid-template-columns: 1fr; }.paid-proof > div + div { border-top: 1px solid var(--checkout-border); border-left: 0; }.success-facts { grid-template-columns: 1fr 1fr; gap: 18px 0; }.success-facts > div { padding: 0 12px; }.success-facts > div:first-child, .success-facts > div:nth-child(3) { padding-left: 0; }.success-facts > div:nth-child(2), .success-facts > div:last-child { padding-right: 0; }.bucket-main { align-items: flex-start; flex-direction: column; gap: 10px; }.history-row { grid-template-columns: 1fr; }.history-date, .history-status-cell { grid-column: auto; grid-row: auto; justify-content: flex-start; text-align: left; }.history-actions { padding-top: 0; }.state-actions { align-items: stretch; flex-direction: column; }.state-actions .primary-button { width: 100%; }.state-actions .support-action { justify-content: center; } }
+.checkout-page .checkout-nav {
+  min-width: 0;
+  gap: 12px 20px;
+}
+
+.checkout-page .back-button {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.checkout-page .brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+@media (max-width: 520px) {
+  .checkout-page .checkout-nav {
+    height: auto;
+    min-height: 64px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    padding-block: 10px;
+  }
+
+  .checkout-page .back-button {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .checkout-page .brand {
+    flex: 0 0 auto;
+    margin-left: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) { .checkout-state-flow > *, .checkout-page .bucket-progress span { animation: none; transition: none; } }
 </style>

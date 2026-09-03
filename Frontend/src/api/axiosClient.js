@@ -1,7 +1,8 @@
 import axios from 'axios';
-import { clearAuthSession, getStoredAccessToken } from '@/utils/authSession'
+import { clearAuthSession, getCurrentAccessToken, updateCurrentAccessToken, waitForAuthReady } from '@/utils/authSession'
 import { ensureAiOperationId } from '@/utils/aiOperationId'
 import { applyAuthHeader, shouldRefreshUnauthorized } from '@/utils/authRequest'
+import { attachCurrentAccessToken, createRefreshCoordinator } from '@/utils/authTransport'
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api';
 
@@ -13,26 +14,36 @@ const axiosClient = axios.create({
     withCredentials: true // Rất quan trọng để đính kèm HttpOnly cookies (RefreshToken)
 });
 
-let isRefreshing = false;
-let failedQueue = [];
-
-const processQueue = (error, token = null) => {
-    failedQueue.forEach(prom => {
-        if (error) {
-            prom.reject(error);
-        } else {
-            prom.resolve(token);
-        }
-    });
-
-    failedQueue = [];
-};
+const refreshCoordinator = createRefreshCoordinator({
+    refreshAccessToken: async () => {
+        // The refresh cookie is sent automatically. The current access token identifies the session.
+        const accessToken = getCurrentAccessToken();
+        const authHeaders = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+        const { data } = await axios.post(`${baseURL}/auth/refresh-token`, {}, {
+            headers: authHeaders,
+            withCredentials: true
+        });
+        return data?.data?.accessToken ?? data?.accessToken;
+    },
+    updateAccessToken: updateCurrentAccessToken,
+    handleRefreshFailure: () => {
+        clearAuthSession();
+        const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        const redirect = currentPath && !currentPath.startsWith('/login')
+            ? `?redirect=${encodeURIComponent(currentPath)}`
+            : '';
+        window.location.href = `/login${redirect}`;
+    }
+});
 
 axiosClient.interceptors.request.use(
-    (config) => {
+    async (config) => {
         ensureAiOperationId(config)
-        const token = getStoredAccessToken();
-        applyAuthHeader(config, token)
+        await attachCurrentAccessToken(config, {
+            waitForAuthReady,
+            getCurrentAccessToken,
+            applyAuthHeader
+        })
         const locale = localStorage.getItem('admin_locale') || 'vi';
         config.headers['Accept-Language'] = locale;
         return config;
@@ -52,59 +63,15 @@ axiosClient.interceptors.response.use(
             return Promise.reject(error);
         }
         if (shouldRefreshUnauthorized(error, originalRequest)) {
-            if (isRefreshing) {
-                return new Promise(function (resolve, reject) {
-                    failedQueue.push({ resolve, reject });
-                }).then(token => {
-                    applyAuthHeader(originalRequest, token)
-                    return axiosClient(originalRequest);
-                }).catch(err => {
-                    return Promise.reject(err);
-                });
-            }
-
+            if (!getCurrentAccessToken()) return Promise.reject(error);
             originalRequest._retry = true;
-            isRefreshing = true;
-
             try {
-                // Call refresh-token API. Cookie is automatically sent due to withCredentials
-                // Backend requires the expired access token in the header to identify the user
-                const accessToken = getStoredAccessToken();
-                const authHeaders = accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {};
-                const { data } = await axios.post(`${baseURL}/auth/refresh-token`, {}, {
-                    headers: authHeaders,
-                    withCredentials: true
+                return refreshCoordinator.retryAfterRefresh(token => {
+                    applyAuthHeader(originalRequest, token)
+                    return axiosClient(originalRequest)
                 });
-
-                const newAccessToken = data?.data?.accessToken ?? data?.accessToken;
-                if (!newAccessToken) {
-                    throw new Error('Refresh token response did not include an access token.');
-                }
-                sessionStorage.setItem('accessToken', newAccessToken);
-                localStorage.removeItem('accessToken');
-
-                axiosClient.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
-                applyAuthHeader(originalRequest, newAccessToken)
-
-                processQueue(null, newAccessToken);
-                return axiosClient(originalRequest);
             } catch (err) {
-                processQueue(err, null);
-                const refreshStatus = err?.response?.status
-                const shouldForceLogout = refreshStatus === 401 || refreshStatus === 403
-
-                if (shouldForceLogout) {
-                    clearAuthSession();
-                    const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-                    const redirect = currentPath && !currentPath.startsWith('/login')
-                        ? `?redirect=${encodeURIComponent(currentPath)}`
-                        : '';
-                    window.location.href = `/login${redirect}`;
-                }
-
                 return Promise.reject(err);
-            } finally {
-                isRefreshing = false;
             }
         }
 

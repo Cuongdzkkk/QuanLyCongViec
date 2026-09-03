@@ -1,6 +1,7 @@
 import * as signalR from '@microsoft/signalr'
 import { isExpectedNetworkError } from '@/utils/errorTelemetry'
-import { getStoredAccessToken } from '@/utils/authSession'
+import { AUTH_SESSION_CHANGED, getCurrentAccessToken, waitForAuthReady } from '@/utils/authSession'
+import { createCurrentAccessTokenFactory } from '@/utils/authTransport'
 import { configureRealtimeHub } from '@/services/realtimeHubConfig'
 
 class SignalRService {
@@ -12,6 +13,11 @@ class SignalRService {
     this.startPromise = null
     this.handlers = new Map()
     this.connectionGeneration = 0
+    if (typeof window !== 'undefined') {
+      window.addEventListener(AUTH_SESSION_CHANGED, () => {
+        if (!getCurrentAccessToken()) void this.stopConnection()
+      })
+    }
   }
 
   async startConnection(projectId) {
@@ -40,6 +46,8 @@ class SignalRService {
   }
 
   async ensureConnection() {
+    await waitForAuthReady()
+    if (!getCurrentAccessToken()) return false
     if ([signalR.HubConnectionState.Connected, signalR.HubConnectionState.Connecting, signalR.HubConnectionState.Reconnecting]
       .includes(this.connection?.state)) {
       return this.startPromise || true
@@ -49,9 +57,9 @@ class SignalRService {
     const generation = ++this.connectionGeneration
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5136/api'
     const hubBaseUrl = apiBaseUrl.replace(/\/api\/?$/, '')
-    this.connection = configureRealtimeHub(new signalR.HubConnectionBuilder())
+    this.connection = configureRealtimeHub(new signalR.HubConnectionBuilder(), getCurrentAccessToken)
       .withUrl(`${hubBaseUrl}/kanban-hub`, {
-        accessTokenFactory: () => getStoredAccessToken() || ''
+        accessTokenFactory: createCurrentAccessTokenFactory(getCurrentAccessToken)
       })
       .configureLogging(signalR.LogLevel.None)
       .build()

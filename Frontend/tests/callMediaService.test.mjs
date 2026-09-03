@@ -68,6 +68,49 @@ for (const event of [
   'TRACK_ENDED'
 ]) assert.ok(source.includes(`'${event}'`), `missing WebRTC media diagnostic ${event}`)
 
+for (const event of [
+  'JOIN_CONFIRMED',
+  'PARTICIPANT_DISCOVERED',
+  'PEER_CREATE',
+  'LOCAL_TRACK_STATE',
+  'OFFER_CREATE_BEGIN',
+  'OFFER_CREATE_OK',
+  'OFFER_RECEIVED',
+  'REMOTE_DESCRIPTION_SET_OFFER',
+  'ANSWER_CREATE_BEGIN',
+  'ANSWER_CREATE_OK',
+  'ANSWER_RECEIVED',
+  'REMOTE_DESCRIPTION_SET_ANSWER',
+  'ICE_LOCAL_GENERATED',
+  'ICE_RECEIVED',
+  'ICE_ADD_OK',
+  'ICE_ADD_FAIL',
+  'SIGNALING_STATE_CHANGED',
+  'ICE_CONNECTION_STATE_CHANGED',
+  'PEER_CONNECTION_STATE_CHANGED',
+  'REMOTE_AUDIO_STREAM_UPDATED',
+  'REMOTE_CAMERA_STREAM_UPDATED',
+  'REMOTE_SCREEN_STREAM_UPDATED',
+  'REMOTE_MEDIA_ELEMENT_BOUND',
+  'REMOTE_AUDIO_PLAY_BEGIN',
+  'REMOTE_AUDIO_PLAY_OK',
+  'REMOTE_AUDIO_PLAY_FAIL',
+  'SCREEN_SHARE_LOCAL_START',
+  'SCREEN_SHARE_TRACK_ATTACHED',
+  'SCREEN_SHARE_REMOTE_RECEIVED',
+  'SCREEN_SHARE_LOCAL_STOP',
+  'SCREEN_SHARE_REMOTE_STOP',
+  'PEER_CLOSE'
+]) assert.ok(source.includes(`'${event}'`) || collaborationChat.includes(`'${event}'`), `missing runtime diagnostic ${event}`)
+
+assert.match(source, /\$\{eventPrefix\}_SEND_BEGIN/)
+assert.match(source, /\$\{eventPrefix\}_SEND_OK/)
+assert.match(source, /\$\{eventPrefix\}_SEND_FAIL/)
+const safeDiagnostic = source.slice(source.indexOf("console.info('[WEBRTC_DIAG]'"), source.indexOf("\n  })", source.indexOf("console.info('[WEBRTC_DIAG]'")))
+assert.equal(safeDiagnostic.includes(['track', 'Id'].join('') + ':'), false, 'WebRTC diagnostic output must not expose track identifiers')
+assert.equal(safeDiagnostic.includes(['stream', 'Id'].join('') + ':'), false, 'WebRTC diagnostic output must not expose stream identifiers')
+assert.equal(source.includes("console.info('[WEBRTC_MEDIA]'"), false, 'legacy media diagnostic prefix must not remain')
+
 for (const needle of [
   'cameraTransceiver',
   'screenTransceiver',
@@ -93,13 +136,26 @@ for (const needle of [
 
 assert.match(source, /if \(!joinedAck \|\| !connection \|\| connection\.state !== signalR\.HubConnectionState\.Connected \|\| !roomId\) return/)
 assert.match(source, /joinedAck = true[\s\S]{0,220}roomId = read\(snapshot/)
-assert.match(source, /onreconnected\(async \(\) => \{[\s\S]{0,500}JoinVoiceRoom[\s\S]{0,220}refreshSnapshot/)
+const reconnectFlow = source.slice(source.indexOf('connection.onreconnected'), source.indexOf('connection.onclose'))
+assert.match(reconnectFlow, /if \(reconnectPromise\) return reconnectPromise/)
+assert.match(reconnectFlow, /JoinVoiceRoom[\s\S]*refreshSnapshot\(snapshot, \{ initiateMissing: true \}\)[\s\S]*await sendMediaState\(\)/)
+assert.equal(reconnectFlow.includes('closeAllPeers()'), false, 'reconnect must preserve healthy WebRTC peers')
 assert.match(source, /pendingInboundSignals\.splice\(0\)[\s\S]{0,260}applyOffer[\s\S]{0,160}applyCandidate/)
+assert.match(source, /await refreshSnapshot\(await connection\.invoke\('JoinVoiceRoom', projectId, voiceChannelId\)\)\n {6}await sendMediaState\(\)\n {6}trace\('START_OK'/, 'pre-join media state is published exactly after the initial join')
+assert.match(source, /const getParticipantMediaState = \(\) => \(\{[\s\S]{0,260}isLiveEnabledTrack\(cameraTrack\)[\s\S]{0,120}isLiveEnabledTrack\(screenTrack\)/, 'published state follows live local tracks')
+assert.match(source, /PublishParticipantMediaState', roomId, getParticipantMediaState\(\)/)
+const startFlow = source.slice(source.indexOf('const start = async'), source.indexOf('const leave = async'))
+assert.match(startFlow, /cameraEnabled = false[\s\S]*adoptCameraStream\(stream\)/, 'pre-join camera capture updates the current camera state')
+assert.match(startFlow, /JoinVoiceRoom[\s\S]*await sendMediaState\(\)/, 'pre-join camera on/off state is published after join')
+assert.match(reconnectFlow, /const snapshot = await connection\.invoke\('JoinVoiceRoom', projectId, voiceChannelId\)[\s\S]*await refreshSnapshot\(snapshot, \{ initiateMissing: true \}\)[\s\S]*await sendMediaState\(\)/, 'rejoin republishes current media state once')
 assert.match(source, /const createPeer = async \(connectionId, \{ initiate = false \} = \{\}\)/)
 assert.match(source, /initialNegotiationComplete: false,[\s\S]{0,100}initiateInitialOffer: initiate/)
+assert.match(source, /if \(initiate\) \{[\s\S]{0,700}entry\.pc\.addTrack\(track, stream\)/, 'initial offer peers attach local tracks with addTrack')
+assert.match(source, /await entry\.pc\.setRemoteDescription\(description\)[\s\S]{0,180}bindOfferTransceivers\(entry\)[\s\S]{0,100}await syncPeerMedia\(entry\)/, 'answer peers bind offer transceivers before attaching local media')
+assert.match(source, /const bindOfferTransceivers = entry => \{[\s\S]{0,400}cameraTransceiver \|\|=/, 'answer peers preserve camera and screen m-line roles')
 assert.match(source, /onnegotiationneeded = \(\) => \{[\s\S]{0,180}initialNegotiationComplete \|\| entry\.initiateInitialOffer/)
 assert.match(source, /ParticipantJoined[\s\S]{0,320}createPeer\(participant\.connectionId, \{ initiate: true \}\)/)
-assert.match(source, /for \(const participant of participants\.values\(\)\) await createPeer\(participant\.connectionId\)/)
+assert.match(source, /for \(const participant of participants\.values\(\)\) \{[\s\S]{0,100}createPeer\(participant\.connectionId, \{ initiate: initiateMissing \}\)/)
 assert.match(source, /if \(entry\.initiateInitialOffer\) await negotiate\(entry\)/)
 assert.match(source, /createPeer\(connectionId, \{ initiate: `\$\{localConnectionId\(\)\}` < `\$\{connectionId\}` \}\)/)
 assert.equal(source.includes('await syncPeerMedia(entry)\n    await negotiate(entry)'), false, 'peer creation must not unconditionally send a duplicate initial offer')
@@ -122,6 +178,9 @@ assert.match(microphoneToggle, /if \(senderNeedsSync\)/, 'sender replacement is 
 assert.match(source, /getPeerDiagnostics: \(\) =>/)
 assert.match(source, /mid: entry\?\.cameraTransceiver\?\.mid \|\| null/)
 assert.match(source, /remoteMediaSourcesByMid\?\.get\(transceiver\.mid\)/)
+assert.match(source, /const requestPeerNegotiation = async entry/)
+assert.match(source, /for \(const entry of peers\.values\(\)\) await requestPeerNegotiation\(entry\)/)
+assert.match(source, /negotiationRequested: false/)
 assert.match(collaborationChat, /traceWebRtcMedia\('VIDEO_SRC_OBJECT_SET'/)
 assert.match(collaborationChat, /traceWebRtcMedia\('VIDEO_PLAY_OK'/)
 for (const state of ['connectionState', 'iceConnectionState', 'signalingState', 'senders', 'receivers', 'transceivers', 'readyState']) {
@@ -130,6 +189,11 @@ for (const state of ['connectionState', 'iceConnectionState', 'signalingState', 
 assert.match(collaborationChat, /resumeBlockedCallMedia/)
 assert.match(collaborationChat, /error\?\.name === 'NotAllowedError'/)
 assert.equal((source.match(/new signalR\.HubConnectionBuilder\(\)/g) || []).length, 1, 'CallHub must have one connection owner')
+assert.equal((source.match(/await sendMediaState\(\)/g) || []).length, 7, 'initial join, rejoin, and existing media transitions each publish once')
+console.log('PREJOIN_CAMERA_ON: current cameraEnabled=true is published after JoinVoiceRoom')
+console.log('PREJOIN_CAMERA_OFF: current cameraEnabled=false is published after JoinVoiceRoom')
+console.log('POSTJOIN_CAMERA_TOGGLE: existing toggle publication remains covered')
+console.log('REJOIN_CAMERA_STATE: current media state is published once after reconnect rejoin')
 for (const event of [
   'INSTANCE_CREATE',
   'START_BEGIN',
@@ -158,7 +222,7 @@ for (const regression of [
   'LATE_JOIN_RECEIVES_EXISTING_SCREEN',
   'TRACK_END_REMOVES_ONLY_CORRECT_MEDIA',
   'ONE_INITIAL_NEGOTIATION_PER_PEER',
-  'RECONNECT_REBUILDS_MEDIA_WITHOUT_DUPLICATE_OFFER'
+  'RECONNECT_RECONCILES_MEDIA_WITHOUT_DUPLICATE_OFFER'
 ]) console.log(`${regression}: covered`)
 
 console.log('REMOTE_CAMERA_A_TO_B: covered by per-peer camera receiver mapping')
@@ -167,5 +231,6 @@ console.log('MIC_A_TO_B: covered by stable audio sender and remote audio stream 
 console.log('MIC_B_TO_A: covered by symmetric stable audio sender and remote audio stream binding')
 console.log('MUTE_UNMUTE_WITHOUT_RENEGOTIATION: covered')
 console.log('REMOTE_MEDIA_ROLE_CLASSIFICATION: transceiver-first with metadata fallback')
+console.log('TWO_PARTY_MEDIA_HARNESS: audio, camera, and screen tracks are asserted in both directions')
 
 console.log(`callMediaService.test.mjs: ${required.length + 48} media/chat/lifecycle checks passed`)

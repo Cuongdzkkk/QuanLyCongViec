@@ -237,6 +237,7 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
 import ToolbarFilterMenu from '@/components/common/ToolbarFilterMenu.vue'
 import DropdownFilter from '@/components/common/DropdownFilter.vue'
+import { getAvatarColor } from '@/utils/avatarHelper'
 
 const peopleStore = usePeopleStore()
 const teamStore = useTeamStore()

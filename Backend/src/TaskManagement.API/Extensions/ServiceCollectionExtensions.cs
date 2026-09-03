@@ -28,6 +28,8 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<IJwtService, JwtService>();
             services.AddSingleton<IGoogleTokenVerifier, GoogleTokenVerifier>();
             services.AddScoped<IGoogleIdentityValidator, GoogleIdentityValidator>();
+            services.AddSingleton<IGoogleLoginOAuthStateStore, GoogleLoginOAuthStateStore>();
+            services.AddScoped<IGoogleAuthorizationCodeExchange, GoogleAuthorizationCodeExchange>();
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IProjectMemberService, ProjectMemberService>();
             services.AddScoped<IWorkTaskService, WorkTaskService>();
@@ -59,6 +61,7 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<ICallChatService, CallChatService>();
             services.AddSingleton<ICallRoomRegistry, TaskManagement.API.Services.CallRoomRegistry>();
             services.AddScoped<ICallTranscriptService, CallTranscriptService>();
+            services.AddSingleton<TaskManagement.API.Services.ICallCaptionResultDispatcher, TaskManagement.API.Services.CallCaptionResultDispatcher>();
             var callTranscriptionOptions = configuration
                 .GetSection(CallTranscriptionOptions.SectionName)
                 .Get<CallTranscriptionOptions>() ?? new CallTranscriptionOptions();
@@ -79,6 +82,10 @@ namespace TaskManagement.API.Extensions
             services.AddHttpClient("GoogleCalendar", client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("IntegrationOAuth:GoogleCalendar:TimeoutSeconds", 30), 5, 120));
+            });
+            services.AddHttpClient("GoogleAuth", client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Google:TimeoutSeconds", 30), 5, 120));
             });
             services.AddHttpClient();
             services.AddSingleton<IOAuthStateStore, OAuthStateStore>();

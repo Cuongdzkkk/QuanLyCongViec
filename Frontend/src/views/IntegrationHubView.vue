@@ -653,7 +653,10 @@ const renderedProviders = computed(() => {
     })
   }
 
-  return list
+  return list.filter(provider => !(
+    ['github', 'zalo'].includes(provider.provider)
+    && provider.status === 'coming_soon'
+  ))
 })
 
 const googleCalendar = computed(() => providers.value.find(provider => provider.provider === 'google-calendar') || null)

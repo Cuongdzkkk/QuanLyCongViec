@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using System.Data;
 using TaskManagement.Application.Auth;
 using TaskManagement.Application.Common;
@@ -30,6 +31,7 @@ namespace TaskManagement.Infrastructure.Services
         private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly ISignalRClientNotifier? _clientNotifier;
         private readonly ILogger<AuthService>? _logger;
+        private readonly HttpClient? _githubHttpClient;
 
         public AuthService(
             ApplicationDbContext context,
@@ -41,7 +43,8 @@ namespace TaskManagement.Infrastructure.Services
             ICollaborationChannelService? collaborationChannelService = null,
             IHttpContextAccessor? httpContextAccessor = null,
             ISignalRClientNotifier? clientNotifier = null,
-            ILogger<AuthService>? logger = null)
+            ILogger<AuthService>? logger = null,
+            HttpClient? githubHttpClient = null)
         {
             _context = context;
             _jwtService = jwtService;
@@ -53,6 +56,7 @@ namespace TaskManagement.Infrastructure.Services
             _httpContextAccessor = httpContextAccessor;
             _clientNotifier = clientNotifier;
             _logger = logger;
+            _githubHttpClient = githubHttpClient;
         }
 
         public async Task<(AuthResponseDto? response, string? refreshToken, bool requires2FA)> LoginAsync(LoginRequestDto request)
@@ -291,7 +295,299 @@ namespace TaskManagement.Infrastructure.Services
             return (result.response!, result.refreshToken!);
         }
 
+        public async Task<IReadOnlyList<ExternalLoginStatusDto>> GetExternalLoginStatusAsync(Guid userId)
+        {
+            var logins = await _context.ExternalLogins
+                .AsNoTracking()
+                .Where(login => login.UserId == userId)
+                .ToListAsync();
+
+            return SupportedExternalProviders
+                .Select(provider =>
+                {
+                    var login = logins.SingleOrDefault(item => item.Provider == provider);
+                    return new ExternalLoginStatusDto
+                    {
+                        Provider = provider,
+                        IsLinked = login != null,
+                        ProviderEmail = login?.ProviderEmail,
+                        LinkedAt = login?.CreatedAt
+                    };
+                })
+                .ToArray();
+        }
+
+        public async Task LinkGoogleAsync(Guid userId, GoogleLoginRequestDto request)
+        {
+            var identity = await _googleIdentityValidator.ValidateAsync(request.Credential?.Trim() ?? string.Empty);
+            await LinkExternalLoginAsync(userId, "Google", identity.Subject, identity.Email);
+        }
+
+        public async Task LinkGitHubAsync(Guid userId, GitHubLoginRequestDto request)
+        {
+            var identity = await GetGitHubIdentityAsync(request);
+            await LinkExternalLoginAsync(userId, "GitHub", identity.Subject, identity.Email);
+        }
+
+        public async Task UnlinkExternalLoginAsync(Guid userId, string provider)
+        {
+            var normalizedProvider = NormalizeExternalProvider(provider);
+            var user = await _context.Users
+                .Include(item => item.ExternalLogins)
+                .SingleOrDefaultAsync(item => item.Id == userId && !item.IsDeleted && item.IsActive);
+            if (user == null) throw new UnauthorizedAccessException("Authenticated account is unavailable.");
+
+            var login = user.ExternalLogins.SingleOrDefault(item => item.Provider == normalizedProvider);
+            if (login == null) throw new KeyNotFoundException("This external account is not linked.");
+
+            var hasAnotherLoginMethod = !string.IsNullOrWhiteSpace(user.PasswordHash) || user.ExternalLogins.Count > 1;
+            if (!hasAnotherLoginMethod) throw new LastLoginMethodException();
+
+            _context.ExternalLogins.Remove(login);
+            await _context.SaveChangesAsync();
+        }
+
+        private async Task LinkExternalLoginAsync(Guid userId, string provider, string subject, string email)
+        {
+            var user = await _context.Users
+                .Include(item => item.ExternalLogins)
+                .SingleOrDefaultAsync(item => item.Id == userId && !item.IsDeleted && item.IsActive);
+            if (user == null) throw new UnauthorizedAccessException("Authenticated account is unavailable.");
+
+            var subjectOwner = await _context.ExternalLogins
+                .SingleOrDefaultAsync(item => item.Provider == provider && item.ProviderSubject == subject);
+            if (subjectOwner != null && subjectOwner.UserId != userId)
+                throw new AccountLinkConflictException();
+            if (user.ExternalLogins.Any(item => item.Provider == provider && item.ProviderSubject == subject))
+                return;
+            if (user.ExternalLogins.Any(item => item.Provider == provider))
+                throw new AccountLinkConflictException("Một tài khoản cùng nhà cung cấp đã được liên kết.");
+
+            var now = DateTime.UtcNow;
+            _context.ExternalLogins.Add(new ExternalLogin
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                Provider = provider,
+                ProviderSubject = subject,
+                ProviderEmail = email,
+                CreatedAt = now,
+                LastLoginAt = now
+            });
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                _context.ChangeTracker.Clear();
+                throw new AccountLinkConflictException();
+            }
+        }
+
+        private static readonly string[] SupportedExternalProviders = ["Google", "GitHub"];
+
+        private static string NormalizeExternalProvider(string provider) =>
+            SupportedExternalProviders.SingleOrDefault(item => item.Equals(provider?.Trim(), StringComparison.OrdinalIgnoreCase))
+            ?? throw new ArgumentException("Unsupported external account provider.");
+
+        private const string LegacyGitHubSsoDeviceId = "GitHub-App-SSO";
+
+        private async Task<bool> IsEligibleLegacyGitHubUserAsync(User user)
+        {
+            if (user.IsDeleted || !user.IsActive || !string.IsNullOrWhiteSpace(user.PasswordHash))
+                return false;
+
+            var hasExternalLogin = await _context.ExternalLogins
+                .AnyAsync(login => login.UserId == user.Id);
+            if (hasExternalLogin)
+                return false;
+
+            return await _context.RefreshTokens.AnyAsync(token =>
+                token.UserId == user.Id && token.DeviceId == LegacyGitHubSsoDeviceId);
+        }
+
+        private async Task<(AuthResponseDto response, string refreshToken)> RecoverLegacyGitHubUserAsync(
+            User user,
+            GitHubIdentity identity)
+        {
+            IDbContextTransaction? transaction = null;
+
+            try
+            {
+                if (_context.Database.IsRelational())
+                    transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+                var currentUser = await _context.Users
+                    .Include(item => item.UserRoles)
+                    .ThenInclude(userRole => userRole.Role)
+                    .SingleOrDefaultAsync(item => item.Id == user.Id && item.Email.ToLower() == identity.Email);
+                if (currentUser == null)
+                    throw new GitHubAccountConflictException();
+                if (currentUser.IsDeleted || !currentUser.IsActive)
+                    throw new GitHubAccountForbiddenException();
+
+                if (!await IsEligibleLegacyGitHubUserAsync(currentUser))
+                {
+                    var existingLogin = await _context.ExternalLogins
+                        .Include(login => login.User)
+                            .ThenInclude(linkedUser => linkedUser.UserRoles)
+                            .ThenInclude(userRole => userRole.Role)
+                        .SingleOrDefaultAsync(login =>
+                            login.Provider == "GitHub" && login.ProviderSubject == identity.Subject);
+                    if (existingLogin == null || existingLogin.UserId != currentUser.Id)
+                        throw new GitHubAccountConflictException();
+
+                    existingLogin.LastLoginAt = DateTime.UtcNow;
+                    existingLogin.ProviderEmail = identity.Email;
+                    await _context.SaveChangesAsync();
+                    if (transaction != null)
+                        await transaction.CommitAsync();
+                    var existingTokens = await GenerateTokensForUser(existingLogin.User, "GitHub-SSO");
+                    return (existingTokens.response!, existingTokens.refreshToken!);
+                }
+
+                var now = DateTime.UtcNow;
+                _context.ExternalLogins.Add(new ExternalLogin
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = currentUser.Id,
+                    User = currentUser,
+                    Provider = "GitHub",
+                    ProviderSubject = identity.Subject,
+                    ProviderEmail = identity.Email,
+                    CreatedAt = now,
+                    LastLoginAt = now
+                });
+                await _context.SaveChangesAsync();
+                if (transaction != null)
+                    await transaction.CommitAsync();
+                var tokens = await GenerateTokensForUser(currentUser, "GitHub-SSO");
+                return (tokens.response!, tokens.refreshToken!);
+            }
+            catch (DbUpdateException)
+            {
+                if (transaction != null)
+                    await transaction.RollbackAsync();
+                _context.ChangeTracker.Clear();
+                var concurrentLogin = await _context.ExternalLogins
+                    .Include(login => login.User)
+                        .ThenInclude(linkedUser => linkedUser.UserRoles)
+                        .ThenInclude(userRole => userRole.Role)
+                    .SingleOrDefaultAsync(login =>
+                        login.Provider == "GitHub" && login.ProviderSubject == identity.Subject);
+
+                if (concurrentLogin == null || concurrentLogin.UserId != user.Id)
+                    throw new GitHubAccountConflictException();
+
+                if (concurrentLogin.User.IsDeleted || !concurrentLogin.User.IsActive)
+                    throw new GitHubAccountForbiddenException();
+
+                concurrentLogin.LastLoginAt = DateTime.UtcNow;
+                concurrentLogin.ProviderEmail = identity.Email;
+                await _context.SaveChangesAsync();
+                var concurrentTokens = await GenerateTokensForUser(concurrentLogin.User, "GitHub-SSO");
+                return (concurrentTokens.response!, concurrentTokens.refreshToken!);
+            }
+            finally
+            {
+                if (transaction != null)
+                    await transaction.DisposeAsync();
+            }
+        }
+
         public async Task<(AuthResponseDto response, string refreshToken)> GitHubLoginAsync(GitHubLoginRequestDto request)
+        {
+            var identity = await GetGitHubIdentityAsync(request);
+            var linkedLogin = await _context.ExternalLogins
+                .Include(login => login.User)
+                    .ThenInclude(user => user.UserRoles)
+                    .ThenInclude(userRole => userRole.Role)
+                .SingleOrDefaultAsync(login =>
+                    login.Provider == "GitHub" && login.ProviderSubject == identity.Subject);
+            if (linkedLogin != null)
+            {
+                var hasDifferentEmailOwner = await _context.Users.AnyAsync(user =>
+                    user.Id != linkedLogin.UserId && user.Email.ToLower() == identity.Email);
+                if (hasDifferentEmailOwner)
+                    throw new GitHubAccountConflictException();
+
+                if (linkedLogin.User.IsDeleted || !linkedLogin.User.IsActive)
+                    throw new GitHubAccountForbiddenException();
+
+                linkedLogin.LastLoginAt = DateTime.UtcNow;
+                linkedLogin.ProviderEmail = identity.Email;
+                await _context.SaveChangesAsync();
+                var linkedTokens = await GenerateTokensForUser(linkedLogin.User, "GitHub-SSO");
+                return (linkedTokens.response!, linkedTokens.refreshToken!);
+            }
+
+            var emailOwners = await _context.Users
+                .Include(user => user.UserRoles)
+                .ThenInclude(userRole => userRole.Role)
+                .Where(user => user.Email.ToLower() == identity.Email)
+                .Take(2)
+                .ToListAsync();
+            if (emailOwners.Count > 1)
+                throw new GitHubAccountConflictException();
+
+            var emailOwner = emailOwners.SingleOrDefault();
+            if (emailOwner != null)
+            {
+                if (emailOwner.IsDeleted || !emailOwner.IsActive)
+                    throw new GitHubAccountForbiddenException();
+
+                if (await IsEligibleLegacyGitHubUserAsync(emailOwner))
+                    return await RecoverLegacyGitHubUserAsync(emailOwner, identity);
+
+                throw new GitHubAccountConflictException();
+            }
+
+            var now = DateTime.UtcNow;
+            var user = new User
+            {
+                Id = Guid.NewGuid(),
+                Email = identity.Email,
+                FullName = identity.DisplayName,
+                PasswordHash = string.Empty,
+                IsActive = true,
+                IsDeleted = false,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            user.ExternalLogins.Add(new ExternalLogin
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                User = user,
+                Provider = "GitHub",
+                ProviderSubject = identity.Subject,
+                ProviderEmail = identity.Email,
+                CreatedAt = now,
+                LastLoginAt = now
+            });
+            _context.Users.Add(user);
+
+            var defaultRole = await _context.Roles
+                .FirstOrDefaultAsync(role => role.Name == "Developer" || role.Name == "DEV");
+            if (defaultRole != null)
+            {
+                var userRole = new UserRole
+                {
+                    UserId = user.Id,
+                    RoleId = defaultRole.Id,
+                    Role = defaultRole
+                };
+                _context.UserRoles.Add(userRole);
+                user.UserRoles = [userRole];
+            }
+
+            await _context.SaveChangesAsync();
+            var tokens = await GenerateTokensForUser(user, "GitHub-SSO");
+            return (tokens.response!, tokens.refreshToken!);
+        }
+
+        private async Task<GitHubIdentity> GetGitHubIdentityAsync(GitHubLoginRequestDto request)
         {
             var gitHubConfig = _configuration.GetSection("GitHub");
             var clientId = gitHubConfig["ClientId"] ?? throw new InvalidOperationException("GitHub ClientId chưa được cấu hình.");
@@ -307,160 +603,108 @@ namespace TaskManagement.Infrastructure.Services
             var frontendBaseUrl = (_configuration["Frontend:BaseUrl"] ?? "http://localhost:5173").TrimEnd('/');
             var redirectUri = gitHubConfig["RedirectUri"] ?? $"{frontendBaseUrl}/auth/github/callback";
 
-            using var httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("SprintA", "1.0"));
-
-            var tokenRequest = new Dictionary<string, string>
+            var httpClient = _githubHttpClient ?? new HttpClient();
+            try
             {
-                { "client_id", clientId },
-                { "client_secret", clientSecret },
-                { "code", request.Code },
-                { "redirect_uri", redirectUri }
-            };
+                httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("SprintA", "1.0"));
 
-            var tokenResponse = await httpClient.PostAsync(
-                "https://github.com/login/oauth/access_token",
-                new FormUrlEncodedContent(tokenRequest));
-            
-            var tokenContent = await tokenResponse.Content.ReadAsStringAsync();
-            var tokenJson = JsonSerializer.Deserialize<JsonElement>(tokenContent);
+                var tokenRequest = new Dictionary<string, string>
+                {
+                    { "client_id", clientId },
+                    { "client_secret", clientSecret },
+                    { "code", request.Code },
+                    { "redirect_uri", redirectUri }
+                };
 
-            if (!tokenJson.TryGetProperty("access_token", out var accessTokenElement))
-            {
-                var errorDesc = tokenJson.TryGetProperty("error_description", out var errEl) 
-                    ? errEl.GetString() 
-                    : "Không thể xác thực với GitHub.";
-                throw new UnauthorizedAccessException(errorDesc);
-            }
+                var tokenResponse = await httpClient.PostAsync(
+                    "https://github.com/login/oauth/access_token",
+                    new FormUrlEncodedContent(tokenRequest));
 
-            var githubAccessToken = accessTokenElement.GetString()!;
+                var tokenContent = await tokenResponse.Content.ReadAsStringAsync();
+                var tokenJson = JsonSerializer.Deserialize<JsonElement>(tokenContent);
 
-            // Bước 2: Dùng access_token lấy thông tin user từ GitHub API
-            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", githubAccessToken);
+                if (!tokenJson.TryGetProperty("access_token", out var accessTokenElement))
+                {
+                    var errorDesc = tokenJson.TryGetProperty("error_description", out var errEl)
+                        ? errEl.GetString()
+                        : "Không thể xác thực với GitHub.";
+                    throw new UnauthorizedAccessException(errorDesc);
+                }
 
-            var userResponse = await httpClient.GetAsync("https://api.github.com/user");
-            var userContent = await userResponse.Content.ReadAsStringAsync();
-            var githubUser = JsonSerializer.Deserialize<JsonElement>(userContent);
+                var githubAccessToken = accessTokenElement.GetString()!;
 
-            var githubEmail = githubUser.TryGetProperty("email", out var emailEl) && emailEl.ValueKind != JsonValueKind.Null
-                ? emailEl.GetString()
-                : null;
+                // Bước 2: Dùng access_token lấy thông tin user từ GitHub API
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", githubAccessToken);
 
-            // Nếu email bị ẩn, gọi thêm API emails
-            if (string.IsNullOrEmpty(githubEmail))
-            {
+                var userResponse = await httpClient.GetAsync("https://api.github.com/user");
+                var userContent = await userResponse.Content.ReadAsStringAsync();
+                var githubUser = JsonSerializer.Deserialize<JsonElement>(userContent);
+
+                string? githubEmail = null;
                 var emailsResponse = await httpClient.GetAsync("https://api.github.com/user/emails");
                 var emailsContent = await emailsResponse.Content.ReadAsStringAsync();
                 var emails = JsonSerializer.Deserialize<JsonElement>(emailsContent);
 
-                foreach (var emailItem in emails.EnumerateArray())
+                if (emails.ValueKind == JsonValueKind.Array)
                 {
-                    if (emailItem.TryGetProperty("primary", out var primary) && primary.GetBoolean())
+                    foreach (var emailItem in emails.EnumerateArray())
                     {
-                        githubEmail = emailItem.GetProperty("email").GetString();
-                        break;
+                        if (emailItem.TryGetProperty("primary", out var primary) && primary.GetBoolean() &&
+                            emailItem.TryGetProperty("verified", out var verified) && verified.GetBoolean())
+                        {
+                            githubEmail = emailItem.GetProperty("email").GetString();
+                            break;
+                        }
                     }
                 }
-            }
 
-            if (string.IsNullOrEmpty(githubEmail))
-            {
-                throw new UnauthorizedAccessException("Không thể lấy email từ tài khoản GitHub. Vui lòng cho phép truy cập email.");
-            }
-
-            var githubName = githubUser.TryGetProperty("name", out var nameEl) && nameEl.ValueKind != JsonValueKind.Null
-                ? nameEl.GetString()
-                : githubUser.GetProperty("login").GetString();
-
-            // Bước 3: Tìm hoặc tạo User mới
-            githubEmail = EmailCanonicalizer.Normalize(githubEmail);
-            var user = await _context.Users
-                .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Email.ToLower() == githubEmail);
-
-            if (user?.IsDeleted == true)
-            {
-                throw new UnauthorizedAccessException("Unable to authenticate this account.");
-            }
-
-            if (user == null)
-            {
-                user = new User
+                if (string.IsNullOrEmpty(githubEmail))
                 {
-                    Id = Guid.NewGuid(),
-                    Email = githubEmail,
-                    FullName = githubName ?? githubEmail,
-                    PasswordHash = string.Empty,
-                    CreatedAt = DateTime.UtcNow,
-                    IsDeleted = false
-                };
-
-                _context.Users.Add(user);
-
-                var defaultRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Developer" || r.Name == "DEV");
-                if (defaultRole != null)
-                {
-                    var ur = new UserRole
-                    {
-                        UserId = user.Id,
-                        RoleId = defaultRole.Id,
-                        Role = defaultRole
-                    };
-                    _context.UserRoles.Add(ur);
-                    user.UserRoles = new List<UserRole> { ur };
+                    throw new UnauthorizedAccessException("Không thể lấy email từ tài khoản GitHub. Vui lòng cho phép truy cập email.");
                 }
 
-                await _context.SaveChangesAsync();
+                if (!githubUser.TryGetProperty("id", out var idElement))
+                    throw new UnauthorizedAccessException("Không thể xác định tài khoản GitHub.");
+
+                if (idElement.ValueKind != JsonValueKind.Number ||
+                    !idElement.TryGetInt64(out var githubId) || githubId <= 0)
+                    throw new UnauthorizedAccessException("Không thể xác định tài khoản GitHub.");
+                var githubSubject = githubId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+                var githubName = githubUser.TryGetProperty("name", out var nameEl) && nameEl.ValueKind != JsonValueKind.Null
+                    ? nameEl.GetString()
+                    : githubUser.GetProperty("login").GetString();
+
+                githubEmail = EmailCanonicalizer.Normalize(githubEmail);
+                return new GitHubIdentity(githubSubject, githubEmail, githubName ?? githubEmail);
             }
-
-            if (!user.IsActive)
+            finally
             {
-                throw new UnauthorizedAccessException("Unable to authenticate this account.");
+                if (_githubHttpClient == null) httpClient.Dispose();
             }
-
-            var roles = user.UserRoles?.Select(ur => ur.Role.Name).ToList() ?? new List<string>();
-
-            var accessToken = _jwtService.GenerateAccessToken(user, roles);
-            var refreshToken = _jwtService.GenerateRefreshToken();
-
-            user.RefreshToken = refreshToken;
-            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
-
-            _context.RefreshTokens.Add(new RefreshToken 
-            {
-                Id = Guid.NewGuid(),
-                UserId = user.Id,
-                Token = refreshToken,
-                DeviceId = request.Code?.Length > 10 ? "GitHub-App-SSO" : "SSO-WEB",
-                ExpiryTime = DateTime.UtcNow.AddDays(7),
-                IsRevoked = false
-            });
-
-            await _context.SaveChangesAsync();
-
-            var response = new AuthResponseDto
-            {
-                AccessToken = accessToken,
-                Id = user.Id,
-                Email = user.Email,
-                FullName = user.FullName,
-                AvatarUrl = user.AvatarUrl,
-                SystemRoles = roles.ToArray()
-            };
-
-            return (response, refreshToken);
         }
 
-        public async Task<(string newAccessToken, string newRefreshToken)> RefreshTokenAsync(string accessToken, string refreshToken)
-        {
-            var principal = _jwtService.GetPrincipalFromExpiredToken(accessToken);
-            if (principal == null) throw new UnauthorizedAccessException("Invalid access token or refresh token");
+        private sealed record GitHubIdentity(string Subject, string Email, string DisplayName);
 
-            var userIdString = principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(userIdString, out Guid userId))
-                throw new UnauthorizedAccessException("Invalid token claims");
+        public async Task<(string newAccessToken, string newRefreshToken)> RefreshTokenAsync(string? accessToken, string refreshToken)
+        {
+            var activeSession = await _context.RefreshTokens.FirstOrDefaultAsync(token =>
+                token.Token == refreshToken &&
+                !token.IsRevoked &&
+                token.ExpiryTime > DateTime.UtcNow);
+
+            if (activeSession == null)
+                throw new UnauthorizedAccessException("Invalid access token or refresh token");
+
+            var userId = activeSession.UserId;
+            if (!string.IsNullOrWhiteSpace(accessToken))
+            {
+                var principal = _jwtService.GetPrincipalFromExpiredToken(accessToken);
+                var userIdString = principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!Guid.TryParse(userIdString, out var accessTokenUserId) || accessTokenUserId != userId)
+                    throw new UnauthorizedAccessException("Invalid access token or refresh token");
+            }
 
             var user = await _context.Users
                 .Include(u => u.UserRoles)
@@ -483,19 +727,6 @@ namespace TaskManagement.Infrastructure.Services
                     await _context.SaveChangesAsync();
                 }
 
-                throw new UnauthorizedAccessException("Invalid access token or refresh token");
-            }
-
-            var activeSession = await _context.RefreshTokens.FirstOrDefaultAsync(token =>
-                token.UserId == userId &&
-                token.Token == refreshToken &&
-                !token.IsRevoked &&
-                token.ExpiryTime > DateTime.UtcNow);
-
-            // RefreshTokens is the source of truth for each active session.
-            // User.RefreshToken only tracks the latest issued token and must not invalidate other sessions.
-            if (activeSession == null)
-            {
                 throw new UnauthorizedAccessException("Invalid access token or refresh token");
             }
 
@@ -598,7 +829,13 @@ namespace TaskManagement.Infrastructure.Services
         public async Task RegisterAsync(RegisterRequestDto request)
         {
             var canonicalEmail = EmailCanonicalizer.Normalize(request.Email);
-            var otpValidation = _otpService.ValidateOtp(canonicalEmail, request.OtpCode);
+            var otpToken = request.OtpToken?.Trim() ?? string.Empty;
+            if (otpToken.Length != 43 || otpToken.Any(character => !char.IsLetterOrDigit(character) && character is not ('-' or '_')))
+            {
+                throw new InvalidOperationException("Token xác thực email không hợp lệ hoặc đã hết hạn.");
+            }
+
+            var otpValidation = _otpService.ValidateOtp(canonicalEmail, otpToken);
             if (otpValidation.Status == OtpValidationStatus.Locked)
                 throw new OtpRateLimitException(otpValidation.RetryAfterSeconds);
             if (!otpValidation.IsValid)

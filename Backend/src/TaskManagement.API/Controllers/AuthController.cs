@@ -3,12 +3,15 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.AspNetCore.WebUtilities;
+using System.Security.Cryptography;
 using TaskManagement.Application.Auth;
 using TaskManagement.Application.Common;
 using TaskManagement.Application.DTOs.Auth;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.Infrastructure.Services;
 
 namespace TaskManagement.API.Controllers
 {
@@ -20,19 +23,38 @@ namespace TaskManagement.API.Controllers
         private readonly IOtpService _otpService;
         private readonly IEmailService _emailService;
         private readonly ApplicationDbContext _context;
+        private readonly IConfiguration _configuration;
+        private readonly IGoogleAuthorizationCodeExchange _googleAuthorizationCodeExchange;
+        private readonly IGoogleLoginOAuthStateStore _googleLoginOAuthStateStore;
+        private readonly IOAuthStateStore _oauthStateStore;
         private readonly ILogger<AuthController> _logger;
+
+        private const string GoogleLoginStateCookieName = "sprinta_google_login_state";
+        private const string GitHubLoginStateCookieName = "sprinta_github_login_state";
+        private const string ExternalLinkStateCookieName = "sprinta_external_link_state";
+        private const int OAuthStateLifetimeMinutes = 5;
+        private const string GitHubLoginStatePrefix = "login.";
+        private const string GitHubLinkStatePrefix = "link.";
 
         public AuthController(
             IAuthService authService,
             IOtpService otpService,
             IEmailService emailService,
             ApplicationDbContext context,
-            ILogger<AuthController>? logger = null)
+            IConfiguration configuration,
+            IGoogleAuthorizationCodeExchange googleAuthorizationCodeExchange,
+            IGoogleLoginOAuthStateStore googleLoginOAuthStateStore,
+            ILogger<AuthController>? logger = null,
+            IOAuthStateStore? oauthStateStore = null)
         {
             _authService = authService;
             _otpService = otpService;
             _emailService = emailService;
             _context = context;
+            _configuration = configuration;
+            _googleAuthorizationCodeExchange = googleAuthorizationCodeExchange;
+            _googleLoginOAuthStateStore = googleLoginOAuthStateStore;
+            _oauthStateStore = oauthStateStore ?? new OAuthStateStore();
             _logger = logger ?? NullLogger<AuthController>.Instance;
         }
 
@@ -55,10 +77,26 @@ namespace TaskManagement.API.Controllers
 
                 var account = await _context.Users
                     .AsNoTracking()
+                    .Include(user => user.ExternalLogins)
                     .FirstOrDefaultAsync(user => user.Email.ToLower() == email);
+                var canCompleteRegistration = account == null ||
+                    (!account.IsDeleted &&
+                     !account.IsActive &&
+                     string.IsNullOrWhiteSpace(account.PasswordHash) &&
+                     account.ExternalLogins.Count == 0);
+
+                if (purpose == "register" && !canCompleteRegistration)
+                {
+                    return Conflict(new
+                    {
+                        statusCode = StatusCodes.Status409Conflict,
+                        message = "Email này đã được sử dụng. Vui lòng đăng nhập hoặc sử dụng Quên mật khẩu."
+                    });
+                }
+
                 var shouldSend = purpose switch
                 {
-                    "register" => account == null,
+                    "register" => canCompleteRegistration,
                     "login" or "reset" or "forgot-password" => account is { IsActive: true, IsDeleted: false },
                     "invite" => true,
                     _ => false
@@ -68,13 +106,15 @@ namespace TaskManagement.API.Controllers
                 var issueResult = _otpService.StoreOtp(email, otpCode, GetOtpFingerprint());
                 if (!issueResult.Issued)
                 {
+                    var retryAfterSeconds = Math.Max(1, issueResult.RetryAfterSeconds);
+                    Response.Headers["Retry-After"] = retryAfterSeconds.ToString();
                     return StatusCode(StatusCodes.Status429TooManyRequests, new
                     {
                         statusCode = StatusCodes.Status429TooManyRequests,
                         message = issueResult.Locked
                             ? "Quá nhiều yêu cầu hoặc lần thử. Vui lòng thử lại sau."
                             : "Vui lòng chờ trước khi yêu cầu mã OTP mới.",
-                        retryAfterSeconds = issueResult.RetryAfterSeconds
+                        retryAfterSeconds
                     });
                 }
 
@@ -84,13 +124,32 @@ namespace TaskManagement.API.Controllers
                     {
                         await _emailService.SendOtpEmailAsync(email, otpCode);
                     }
-                    catch
+                    catch (Exception exception)
                     {
                         _otpService.InvalidateOtp(email);
+                        _logger.LogWarning(
+                            "OTP email delivery failed for {Purpose} request. ErrorType={ErrorType}",
+                            purpose,
+                            exception.GetType().Name);
+                        return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                        {
+                            statusCode = StatusCodes.Status503ServiceUnavailable,
+                            message = "Không thể gửi email xác thực lúc này. Vui lòng thử lại sau."
+                        });
                     }
                 }
 
-                return Ok(new { statusCode = 200, message = "Nếu email hợp lệ, mã OTP sẽ được gửi đến hộp thư của bạn." });
+                var configuredCooldown = _configuration["OtpSecurity:ResendCooldownSeconds"];
+                var resendCooldownSeconds = int.TryParse(configuredCooldown, out var parsedCooldown)
+                    ? Math.Max(1, parsedCooldown)
+                    : 60;
+
+                return Ok(new
+                {
+                    statusCode = 200,
+                    message = "Nếu email hợp lệ, mã OTP sẽ được gửi đến hộp thư của bạn.",
+                    resendCooldownSeconds
+                });
             }
             catch (Exception ex)
             {
@@ -449,6 +508,15 @@ namespace TaskManagement.API.Controllers
                     message = "This email is already associated with another sign-in method."
                 });
             }
+            catch (ExternalAccountConflictException)
+            {
+                _logger.LogWarning("Google sign-in rejected: account linking conflict");
+                return Conflict(new
+                {
+                    statusCode = StatusCodes.Status409Conflict,
+                    message = "This email is already associated with another sign-in method."
+                });
+            }
             catch (GoogleProviderUnavailableException)
             {
                 _logger.LogWarning("Google sign-in failed: provider unavailable");
@@ -469,9 +537,301 @@ namespace TaskManagement.API.Controllers
             }
         }
 
+        [HttpPost("google-code/start")]
+        public IActionResult StartGoogleAuthorizationCodeLogin()
+        {
+            if (!HasTrustedGoogleOrigin() ||
+                !TryGetGoogleAuthorizationCodeConfig(out _, out _, out var redirectUri) ||
+                !IsConfiguredRedirectUriForRequestOrigin(redirectUri))
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    statusCode = StatusCodes.Status503ServiceUnavailable,
+                    message = "Google authentication is temporarily unavailable."
+                });
+            }
+
+            var state = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
+            _googleLoginOAuthStateStore.Store(state, DateTime.UtcNow.AddMinutes(OAuthStateLifetimeMinutes));
+            SetGoogleLoginStateCookie(state);
+
+            return Ok(new { statusCode = 200, data = new { state } });
+        }
+
+        [HttpPost("google-code/login")]
+        public async Task<IActionResult> GoogleAuthorizationCodeLogin([FromBody] GoogleAuthorizationCodeLoginRequestDto request)
+        {
+            if (!HasTrustedGoogleOrigin() ||
+                !string.Equals(Request.Headers["X-Requested-With"].ToString(), "XmlHttpRequest", StringComparison.Ordinal))
+            {
+                return BadRequest(new { statusCode = 400, message = "Google sign-in request is invalid." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Code) || string.IsNullOrWhiteSpace(request.State) ||
+                !Request.Cookies.TryGetValue(GoogleLoginStateCookieName, out var cookieState) ||
+                !CryptographicOperations.FixedTimeEquals(
+                    System.Text.Encoding.UTF8.GetBytes(request.State),
+                    System.Text.Encoding.UTF8.GetBytes(cookieState ?? string.Empty)) ||
+                !_googleLoginOAuthStateStore.TryConsume(request.State))
+            {
+                DeleteGoogleLoginStateCookie();
+                return Unauthorized(new { statusCode = 401, message = "Google sign-in state is invalid or expired." });
+            }
+
+            DeleteGoogleLoginStateCookie();
+
+            if (!TryGetGoogleAuthorizationCodeConfig(out var clientId, out var clientSecret, out var redirectUri) ||
+                !IsConfiguredRedirectUriForRequestOrigin(redirectUri))
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    statusCode = StatusCodes.Status503ServiceUnavailable,
+                    message = "Google authentication is temporarily unavailable."
+                });
+            }
+
+            try
+            {
+                var idToken = await _googleAuthorizationCodeExchange.ExchangeAsync(
+                    request.Code.Trim(),
+                    clientId,
+                    clientSecret,
+                    redirectUri,
+                    HttpContext.RequestAborted);
+
+                return await GoogleLogin(new GoogleLoginRequestDto { Credential = idToken });
+            }
+            catch (GoogleCredentialException)
+            {
+                _logger.LogWarning("Google authorization code rejected: invalid provider response");
+                return Unauthorized(new { statusCode = 401, message = "Google credential is invalid or expired." });
+            }
+            catch (GoogleProviderUnavailableException)
+            {
+                _logger.LogWarning("Google authorization code exchange failed: provider unavailable");
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    statusCode = StatusCodes.Status503ServiceUnavailable,
+                    message = "Google authentication is temporarily unavailable."
+                });
+            }
+        }
+
+        [HttpPost("google-code/link/start")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public IActionResult StartGoogleAccountLink()
+        {
+            if (!TryGetAuthenticatedUserId(out var userId) || !HasTrustedGoogleOrigin() ||
+                !TryGetGoogleAuthorizationCodeConfig(out _, out _, out var redirectUri) ||
+                !IsConfiguredRedirectUriForRequestOrigin(redirectUri))
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    statusCode = StatusCodes.Status503ServiceUnavailable,
+                    message = "Google authentication is temporarily unavailable."
+                });
+            }
+
+            var state = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
+            _oauthStateStore.Store(
+                state,
+                userId,
+                "GoogleLink",
+                string.Empty,
+                DateTime.UtcNow.AddMinutes(OAuthStateLifetimeMinutes));
+            SetExternalLinkStateCookie(state);
+            return Ok(new { statusCode = 200, data = new { state } });
+        }
+
+        [HttpPost("google-code/link")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public async Task<IActionResult> LinkGoogleAccount([FromBody] GoogleAuthorizationCodeLoginRequestDto request)
+        {
+            if (!TryGetAuthenticatedUserId(out var userId) || !HasTrustedGoogleOrigin() ||
+                !string.Equals(Request.Headers["X-Requested-With"].ToString(), "XmlHttpRequest", StringComparison.Ordinal))
+                return BadRequest(new { statusCode = 400, message = "Google account link request is invalid." });
+
+            if (!TryConsumeExternalLinkState(request.State ?? string.Empty, userId, "GoogleLink"))
+                return Unauthorized(new { statusCode = 401, message = "Google account link state is invalid or expired." });
+
+            try
+            {
+                if (!TryGetGoogleAuthorizationCodeConfig(out var clientId, out var clientSecret, out var redirectUri) ||
+                    !IsConfiguredRedirectUriForRequestOrigin(redirectUri))
+                    return StatusCode(StatusCodes.Status503ServiceUnavailable, new { statusCode = 503, message = "Google authentication is temporarily unavailable." });
+
+                var idToken = await _googleAuthorizationCodeExchange.ExchangeAsync(
+                    request.Code.Trim(), clientId, clientSecret, redirectUri, HttpContext.RequestAborted);
+                await _authService.LinkGoogleAsync(userId, new GoogleLoginRequestDto { Credential = idToken });
+                return Ok(new { statusCode = 200, message = "Đã liên kết Google thành công." });
+            }
+            catch (GoogleCredentialException)
+            {
+                return Unauthorized(new { statusCode = 401, message = "Google credential is invalid or expired." });
+            }
+            catch (GoogleProviderUnavailableException)
+            {
+                _logger.LogWarning("Google account link failed: provider unavailable");
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    statusCode = StatusCodes.Status503ServiceUnavailable,
+                    message = "Google authentication is temporarily unavailable."
+                });
+            }
+            catch (AccountLinkConflictException ex)
+            {
+                return Conflict(new { statusCode = 409, message = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { statusCode = 400, message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { statusCode = 401, message = ex.Message });
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new { statusCode = 500, message = "Google account link could not be completed." });
+            }
+        }
+
+        [HttpGet("github-link/start")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public IActionResult StartGitHubAccountLink()
+        {
+            if (!TryGetAuthenticatedUserId(out var userId))
+                return Unauthorized(new { statusCode = 401, message = "Authenticated account is required." });
+
+            var gitHubConfig = _configuration.GetSection("GitHub");
+            var clientId = gitHubConfig["ClientId"]?.Trim();
+            var redirectUri = gitHubConfig["RedirectUri"]?.Trim();
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(redirectUri))
+                return StatusCode(503, new { statusCode = 503, message = "GitHub authentication is temporarily unavailable." });
+
+            var state = GitHubLinkStatePrefix + WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
+            _oauthStateStore.Store(
+                state,
+                userId,
+                "GitHubLink",
+                string.Empty,
+                DateTime.UtcNow.AddMinutes(OAuthStateLifetimeMinutes));
+            SetExternalLinkStateCookie(state);
+            var url = "https://github.com/login/oauth/authorize" +
+                $"?client_id={Uri.EscapeDataString(clientId)}" +
+                $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
+                "&scope=user%3Aemail" +
+                $"&state={Uri.EscapeDataString(state)}";
+            return Ok(new { statusCode = 200, data = new { url } });
+        }
+
+        [HttpGet("github-login/start")]
+        public IActionResult StartGitHubLogin()
+        {
+            var gitHubConfig = _configuration.GetSection("GitHub");
+            var clientId = gitHubConfig["ClientId"]?.Trim();
+            var redirectUri = gitHubConfig["RedirectUri"]?.Trim();
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(redirectUri))
+                return StatusCode(503, new { statusCode = 503, message = "GitHub authentication is temporarily unavailable." });
+
+            var state = GitHubLoginStatePrefix + WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
+            _oauthStateStore.Store(
+                state,
+                Guid.Empty,
+                "GitHubLogin",
+                string.Empty,
+                DateTime.UtcNow.AddMinutes(OAuthStateLifetimeMinutes));
+            Response.Cookies.Append(GitHubLoginStateCookieName, state, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                IsEssential = true,
+                MaxAge = TimeSpan.FromMinutes(OAuthStateLifetimeMinutes),
+                Path = "/api/auth"
+            });
+
+            var url = "https://github.com/login/oauth/authorize" +
+                $"?client_id={Uri.EscapeDataString(clientId)}" +
+                $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
+                "&scope=user%3Aemail" +
+                $"&state={Uri.EscapeDataString(state)}";
+            return Ok(new { statusCode = 200, data = new { url } });
+        }
+
+        [HttpPost("github-link")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public async Task<IActionResult> LinkGitHubAccount([FromBody] GitHubLoginRequestDto request)
+        {
+            if (!TryGetAuthenticatedUserId(out var userId))
+                return Unauthorized(new { statusCode = 401, message = "Authenticated account is required." });
+            if (!TryConsumeExternalLinkState(request.State ?? string.Empty, userId, "GitHubLink"))
+                return Unauthorized(new { statusCode = 401, message = "GitHub account link state is invalid or expired." });
+
+            try
+            {
+                await _authService.LinkGitHubAsync(userId, request);
+                return Ok(new { statusCode = 200, message = "Đã liên kết GitHub thành công." });
+            }
+            catch (AccountLinkConflictException ex)
+            {
+                return Conflict(new { statusCode = 409, message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { statusCode = 401, message = ex.Message });
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new { statusCode = 500, message = "GitHub account link could not be completed." });
+            }
+        }
+
+        [HttpGet("external-logins")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public async Task<IActionResult> GetExternalLogins()
+        {
+            if (!TryGetAuthenticatedUserId(out var userId))
+                return Unauthorized(new { statusCode = 401, message = "Authenticated account is required." });
+            return Ok(new { statusCode = 200, data = await _authService.GetExternalLoginStatusAsync(userId) });
+        }
+
+        [HttpDelete("external-logins/{provider}")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public async Task<IActionResult> UnlinkExternalLogin(string provider)
+        {
+            if (!TryGetAuthenticatedUserId(out var userId))
+                return Unauthorized(new { statusCode = 401, message = "Authenticated account is required." });
+
+            try
+            {
+                await _authService.UnlinkExternalLoginAsync(userId, provider);
+                return Ok(new { statusCode = 200, message = "Đã ngắt liên kết tài khoản." });
+            }
+            catch (LastLoginMethodException ex)
+            {
+                return Conflict(new { statusCode = 409, message = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { statusCode = 404, message = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { statusCode = 400, message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { statusCode = 401, message = ex.Message });
+            }
+        }
+
         [HttpPost("github-login")]
         public async Task<IActionResult> GitHubLogin([FromBody] GitHubLoginRequestDto request)
         {
+            if (!TryConsumeGitHubLoginState(request.State ?? string.Empty))
+                return Unauthorized(new { statusCode = 401, message = "GitHub sign-in state is invalid or expired." });
+
             try
             {
                 var (response, refreshToken) = await _authService.GitHubLoginAsync(request);
@@ -488,10 +848,145 @@ namespace TaskManagement.API.Controllers
                 await RecordLoginActivityAsync(response.Id, "GitHub SSO");
                 return Ok(new { statusCode = 200, message = "Success", data = response });
             }
+            catch (GitHubAccountConflictException ex)
+            {
+                return Conflict(new { statusCode = 409, message = ex.Message });
+            }
+            catch (GitHubAccountForbiddenException ex)
+            {
+                return StatusCode(403, new { statusCode = 403, message = ex.Message });
+            }
             catch (Exception ex)
             {
                 return Unauthorized(new { statusCode = 401, message = ex.Message });
             }
+        }
+
+        private bool TryGetGoogleAuthorizationCodeConfig(
+            out string clientId,
+            out string clientSecret,
+            out string redirectUri)
+        {
+            clientId = _configuration["Google:ClientId"]?.Trim() ?? string.Empty;
+            clientSecret = _configuration["Google:ClientSecret"]?.Trim() ?? string.Empty;
+            redirectUri = _configuration["Google:RedirectUri"]?.Trim() ?? string.Empty;
+            return _configuration.GetValue<bool>("Google:Enabled") &&
+                !string.IsNullOrWhiteSpace(clientId) &&
+                !string.IsNullOrWhiteSpace(clientSecret) &&
+                Uri.TryCreate(redirectUri, UriKind.Absolute, out _);
+        }
+
+        private bool TryGetAuthenticatedUserId(out Guid userId)
+        {
+            return Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out userId);
+        }
+
+        private bool TryConsumeExternalLinkState(string state, Guid userId, string provider)
+        {
+            if (string.IsNullOrWhiteSpace(state) ||
+                !Request.Cookies.TryGetValue(ExternalLinkStateCookieName, out var cookieState) ||
+                !CryptographicOperations.FixedTimeEquals(
+                    System.Text.Encoding.UTF8.GetBytes(state),
+                    System.Text.Encoding.UTF8.GetBytes(cookieState ?? string.Empty)) ||
+                !_oauthStateStore.TryConsume(state, userId, provider, out _))
+            {
+                DeleteExternalLinkStateCookie();
+                return false;
+            }
+
+            DeleteExternalLinkStateCookie();
+            return true;
+        }
+
+        private bool TryConsumeGitHubLoginState(string state)
+        {
+            if (string.IsNullOrWhiteSpace(state) ||
+                !Request.Cookies.TryGetValue(GitHubLoginStateCookieName, out var cookieState) ||
+                !CryptographicOperations.FixedTimeEquals(
+                    System.Text.Encoding.UTF8.GetBytes(state),
+                    System.Text.Encoding.UTF8.GetBytes(cookieState ?? string.Empty)) ||
+                !_oauthStateStore.TryConsume(state, Guid.Empty, "GitHubLogin", out _))
+            {
+                Response.Cookies.Delete(GitHubLoginStateCookieName, new CookieOptions { Path = "/api/auth" });
+                return false;
+            }
+
+            Response.Cookies.Delete(GitHubLoginStateCookieName, new CookieOptions { Path = "/api/auth" });
+            return true;
+        }
+
+        private void SetExternalLinkStateCookie(string state)
+        {
+            Response.Cookies.Append(ExternalLinkStateCookieName, state, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                IsEssential = true,
+                MaxAge = TimeSpan.FromMinutes(OAuthStateLifetimeMinutes),
+                Path = "/api/auth"
+            });
+        }
+
+        private void DeleteExternalLinkStateCookie()
+        {
+            Response.Cookies.Delete(ExternalLinkStateCookieName, new CookieOptions
+            {
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                Path = "/api/auth"
+            });
+        }
+
+        private bool HasTrustedGoogleOrigin()
+        {
+            var origin = Request.Headers.Origin.ToString().TrimEnd('/');
+            if (string.IsNullOrWhiteSpace(origin)) return false;
+
+            var configuredOrigins = _configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+            var frontendOrigin = _configuration["Frontend:BaseUrl"]?.TrimEnd('/');
+            return configuredOrigins
+                .Append(frontendOrigin)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Any(item => string.Equals(item!.TrimEnd('/'), origin, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private bool IsConfiguredRedirectUriForRequestOrigin(string redirectUri)
+        {
+            if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var configuredUri)) return false;
+
+            var origin = Request.Headers.Origin.ToString().TrimEnd('/');
+            if (!Uri.TryCreate(origin, UriKind.Absolute, out var requestOrigin)) return false;
+
+            return configuredUri.Scheme.Equals(requestOrigin.Scheme, StringComparison.OrdinalIgnoreCase) &&
+                configuredUri.Host.Equals(requestOrigin.Host, StringComparison.OrdinalIgnoreCase) &&
+                configuredUri.Port == requestOrigin.Port &&
+                string.IsNullOrEmpty(configuredUri.AbsolutePath.Trim('/')) &&
+                string.IsNullOrEmpty(configuredUri.Query) &&
+                string.IsNullOrEmpty(configuredUri.Fragment);
+        }
+
+        private void SetGoogleLoginStateCookie(string state)
+        {
+            Response.Cookies.Append(GoogleLoginStateCookieName, state, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                IsEssential = true,
+                MaxAge = TimeSpan.FromMinutes(OAuthStateLifetimeMinutes),
+                Path = "/api/auth/google-code"
+            });
+        }
+
+        private void DeleteGoogleLoginStateCookie()
+        {
+            Response.Cookies.Delete(GoogleLoginStateCookieName, new CookieOptions
+            {
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                Path = "/api/auth/google-code"
+            });
         }
 
         [HttpPost("register")]
@@ -528,12 +1023,9 @@ namespace TaskManagement.API.Controllers
                 }
 
                 var authHeader = Request.Headers["Authorization"].FirstOrDefault();
-                if (authHeader == null || !authHeader.StartsWith("Bearer "))
-                {
-                    return Unauthorized(new { statusCode = 401, message = "Access token is missing" });
-                }
-
-                var accessToken = authHeader.Substring("Bearer ".Length).Trim();
+                var accessToken = authHeader != null && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                    ? authHeader.Substring("Bearer ".Length).Trim()
+                    : null;
                 var (newAccessToken, newRefreshToken) = await _authService.RefreshTokenAsync(accessToken, refreshToken);
 
                 var cookieOptions = new CookieOptions

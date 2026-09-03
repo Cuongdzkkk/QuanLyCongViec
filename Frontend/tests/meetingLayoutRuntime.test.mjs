@@ -110,11 +110,35 @@ const threeParticipantRender = getMeetingRenderCollections({
 assert.deepEqual(threeParticipantRender.cameraStageParticipants.map(item => item.userId), ['U1', 'U2', 'U3'])
 assert.equal(threeParticipantRender.cameraRailParticipants.length, 0)
 
+const fourUsers = [...threeUsers, participant('U4', 'C4')]
+const fourParticipantRender = getMeetingRenderCollections({
+  mode: 'CAMERA_GRID',
+  participantsInCall: fourUsers
+})
+assert.deepEqual(fourParticipantRender.cameraStageParticipants.map(item => item.userId), ['U1', 'U2', 'U3', 'U4'])
+assert.equal(fourParticipantRender.cameraStageParticipants.length, 4)
+
+const fiveUsers = [...fourUsers, participant('U5', 'C5')]
+const fiveParticipantRender = getMeetingRenderCollections({
+  mode: 'CAMERA_GRID',
+  participantsInCall: fiveUsers
+})
+assert.equal(fiveParticipantRender.cameraStageParticipants.length, 5)
+assert.equal(new Set(fiveParticipantRender.cameraStageParticipants.map(item => item.userId)).size, 5)
+
 const duplicateUser = dedupeParticipantsByUser([
   { ...oneUser, cameraStream: { id: 'STREAM1' }, videoTrack: { id: 'TRACK1' } },
   { ...oneUser, connectionId: 'reconnected-C1', cameraStream: { id: 'STREAM1' }, videoTrack: { id: 'TRACK1' } }
 ], 'C1')
 assert.equal(duplicateUser.length, 1)
+
+const replacementUser = dedupeParticipantsByUser([
+  { ...oneUser, connectionId: 'stale-C1', cameraEnabled: false },
+  { ...oneUser, connectionId: 'replacement-C1', cameraEnabled: true }
+])
+assert.equal(replacementUser.length, 1)
+assert.equal(replacementUser[0].connectionId, 'replacement-C1')
+assert.equal(replacementUser[0].cameraEnabled, true)
 
 const productionEvidenceRender = getMeetingRenderCollections({
   mode: 'CAMERA_FOCUS',
@@ -129,7 +153,9 @@ assert.deepEqual(renderedCameraSources, ['STREAM1/TRACK1'])
 
 assert.match(view, /v-for="user in cameraStageParticipants"/)
 assert.match(view, /v-else-if="hasCallParticipants" class="call-camera-stage"/)
-assert.match(view, /v-else class="call-camera-stage-avatar"/)
+assert.match(view, /v-else class="call-camera-off-state"/)
+assert.match(view, /Camera đang tắt/)
+assert.match(view, /Microphone đang bật/)
 assert.match(view, /user\.connectionId !== callConnectionId && isParticipantVideoVisible\(user\)/)
 assert.match(view, /v-if="callRailParticipants\.length" class="call-participant-rail"/)
 assert.match(view, /v-for="user in callRailParticipants"/)
@@ -148,7 +174,7 @@ assert.match(view, /call-fullscreen-panel/)
 assert.match(view, /callHandRaised \? 'Hạ tay' : 'Giơ tay'/)
 assert.match(view, /callTranscriptionCapabilities\.configured/)
 assert.match(view, /@click="toggleCallCaptions"/)
-assert.match(view, /class="call-live-caption-dock"/)
+assert.match(view, /<LiveCaptionOverlay :enabled="captionsEnabled" :captions="liveCaptionRows"/)
 assert.match(view, /:data-participant-count="cameraStageParticipants\.length"/)
 assert.match(view, /\.call-camera-stage\[data-participant-count="1"\]/)
 assert.match(view, /\.call-camera-stage\[data-participant-count="2"\]/)
@@ -160,6 +186,27 @@ assert.match(view, /const callViewModes =/)
 assert.match(view, /\['spotlight', 'sidebar'\]/)
 assert.match(view, /callViewMode\.value === 'tiled'/)
 
+const layoutDiagnosticSource = view.slice(
+  view.indexOf('const meetingLayoutCorrelation'),
+  view.indexOf('const route = useRoute')
+)
+const layoutSnapshotSource = view.slice(
+  view.indexOf('const describeMeetingParticipant'),
+  view.indexOf('const callLayoutClasses')
+)
+assert.match(layoutDiagnosticSource, /\[MEETING_LAYOUT_DIAG\]/)
+assert.match(layoutSnapshotSource, /PARTICIPANT_SNAPSHOT/)
+assert.match(layoutSnapshotSource, /TILE_SNAPSHOT/)
+assert.match(layoutSnapshotSource, /GRID_SNAPSHOT/)
+assert.match(layoutSnapshotSource, /STREAM_OWNERSHIP_SNAPSHOT/)
+assert.match(layoutSnapshotSource, /userKey/)
+assert.match(layoutSnapshotSource, /connectionKey/)
+assert.match(layoutSnapshotSource, /displayNameCollisionCount/)
+assert.match(layoutSnapshotSource, /width: rect \? Math\.round\(rect\.width\) : 0/)
+assert.match(layoutSnapshotSource, /height: rect \? Math\.round\(rect\.height\) : 0/)
+assert.doesNotMatch(`${layoutDiagnosticSource}${layoutSnapshotSource}`, /\b(access_token|authorization|bearer|deviceId|trackId|streamId|SDP|ICE)\b/i)
+assert.match(view, /scheduleMeetingLayoutDiagnostics\(\)/)
+
 console.log('TWO_PARTICIPANTS_NO_SHARE_SHOWS_BOTH: covered')
 console.log('REMOTE_CAMERA_OFF_STILL_SHOWS_REMOTE_TILE: covered')
 console.log('REMOTE_CAMERA_ON_SHOWS_REMOTE_VIDEO: covered')
@@ -168,3 +215,4 @@ console.log('STOP_SHARE_RETURNS_TO_TWO_PERSON_GRID: covered')
 console.log('LOCAL_USER_DOES_NOT_HIDE_REMOTE_PARTICIPANT: covered')
 console.log('THREE_PARTICIPANTS_RENDER_GRID: covered')
 console.log('meetingLayoutRuntime.test.mjs: render collections prevent duplicate stage/thumb cameras and preserve presentation rails')
+console.log('MEETING_LAYOUT_DIAGNOSTICS: participant, tile, grid, and ownership snapshots are redacted and debug-gated')

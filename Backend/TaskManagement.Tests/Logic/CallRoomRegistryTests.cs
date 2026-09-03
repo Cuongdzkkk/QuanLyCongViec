@@ -143,8 +143,8 @@ public sealed class CallRoomRegistryTests
             registry,
             authorization.Object,
             Mock.Of<ICallTranscriptionProvider>(),
-            Mock.Of<ICallTranscriptService>(),
-            Mock.Of<ICallChatService>())
+            Mock.Of<ICallChatService>(),
+            Mock.Of<ICallCaptionResultDispatcher>())
         {
             Context = context.Object,
             Groups = groups.Object,
@@ -164,6 +164,76 @@ public sealed class CallRoomRegistryTests
             CallRealtimeEvents.WebRtcOffer,
             It.IsAny<object?[]>(),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task JoinedParticipantsRelayBidirectionalSignalingAndReconnectUsesCurrentConnection()
+    {
+        var projectId = Guid.NewGuid();
+        var userA = Guid.NewGuid();
+        var userB = Guid.NewGuid();
+        var roomId = $"project:{projectId:N}:voice:general";
+        var registry = new CallRoomRegistry();
+        var authorization = new Mock<ICallRoomAuthorizationService>();
+        authorization.Setup(item => item.AuthorizeVoiceRoomJoinAsync(projectId, userA, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        authorization.Setup(item => item.AuthorizeVoiceRoomJoinAsync(projectId, userB, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        authorization.Setup(item => item.GetParticipantProfileAsync(userA, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallParticipantProfile(userA, "Participant A", null));
+        authorization.Setup(item => item.GetParticipantProfileAsync(userB, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CallParticipantProfile(userB, "Participant B", null));
+
+        var roomProxy = new Mock<IClientProxy>();
+        var othersProxy = new Mock<IClientProxy>();
+        var connectionAProxy = new Mock<ISingleClientProxy>();
+        var connectionBProxy = new Mock<ISingleClientProxy>();
+        var connectionANewProxy = new Mock<ISingleClientProxy>();
+        var clients = new Mock<IHubCallerClients>();
+        clients.Setup(item => item.Group(roomId)).Returns(roomProxy.Object);
+        clients.Setup(item => item.OthersInGroup(roomId)).Returns(othersProxy.Object);
+        clients.Setup(item => item.Client("connection-a")).Returns(connectionAProxy.Object);
+        clients.Setup(item => item.Client("connection-b")).Returns(connectionBProxy.Object);
+        clients.Setup(item => item.Client("connection-a-new")).Returns(connectionANewProxy.Object);
+
+        var hubA = CreateHub(registry, authorization.Object, "connection-a", userA, clients.Object);
+        var hubB = CreateHub(registry, authorization.Object, "connection-b", userB, clients.Object);
+
+        var snapshotA = await hubA.JoinVoiceRoom(projectId.ToString(), "general");
+        var snapshotB = await hubB.JoinVoiceRoom(projectId.ToString(), "general");
+
+        snapshotA.RoomId.Should().Be(roomId);
+        snapshotB.Participants.Select(item => item.ConnectionId).Should().BeEquivalentTo("connection-a", "connection-b");
+        await hubA.SendWebRtcOffer(roomId, "connection-b", new { type = "offer", sdp = "a-offer" });
+        await hubB.SendWebRtcAnswer(roomId, "connection-a", new { type = "answer", sdp = "b-answer" });
+        await hubA.SendIceCandidate(roomId, "connection-b", new { candidate = "a-ice" });
+        await hubB.SendIceCandidate(roomId, "connection-a", new { candidate = "b-ice" });
+
+        connectionAProxy.Invocations.Select(item => item.Arguments[0]).Should().ContainInOrder(
+            CallRealtimeEvents.WebRtcAnswer,
+            CallRealtimeEvents.IceCandidate);
+        connectionBProxy.Invocations.Select(item => item.Arguments[0]).Should().ContainInOrder(
+            CallRealtimeEvents.WebRtcOffer,
+            CallRealtimeEvents.IceCandidate);
+
+        var reconnectedHubA = CreateHub(registry, authorization.Object, "connection-a-new", userA, clients.Object);
+        var reconnectedSnapshot = await reconnectedHubA.JoinVoiceRoom(projectId.ToString(), "general");
+
+        reconnectedSnapshot.Participants.Select(item => item.ConnectionId).Should().BeEquivalentTo("connection-a-new", "connection-b");
+        registry.IsParticipantInRoom(roomId, "connection-a").Should().BeFalse();
+        await hubB.SendWebRtcOffer(roomId, "connection-a-new", new { type = "offer", sdp = "b-offer-after-reconnect" });
+        await reconnectedHubA.SendWebRtcAnswer(roomId, "connection-b", new { type = "answer", sdp = "a-answer-after-reconnect" });
+        await hubB.SendIceCandidate(roomId, "connection-a-new", new { candidate = "b-ice-after-reconnect" });
+        await reconnectedHubA.SendIceCandidate(roomId, "connection-b", new { candidate = "a-ice-after-reconnect" });
+
+        connectionANewProxy.Invocations.Select(item => item.Arguments[0]).Should().ContainInOrder(
+            CallRealtimeEvents.WebRtcOffer,
+            CallRealtimeEvents.IceCandidate);
+        connectionBProxy.Invocations.Select(item => item.Arguments[0]).Should().ContainInOrder(
+            CallRealtimeEvents.WebRtcOffer,
+            CallRealtimeEvents.IceCandidate,
+            CallRealtimeEvents.WebRtcAnswer,
+            CallRealtimeEvents.IceCandidate);
     }
 
     [Theory]
@@ -510,8 +580,8 @@ public sealed class CallRoomRegistryTests
             registry,
             authorization,
             Mock.Of<ICallTranscriptionProvider>(),
-            Mock.Of<ICallTranscriptService>(),
-            callChat ?? Mock.Of<ICallChatService>())
+            callChat ?? Mock.Of<ICallChatService>(),
+            Mock.Of<ICallCaptionResultDispatcher>())
         {
             Context = context.Object,
             Groups = new Mock<IGroupManager>().Object,

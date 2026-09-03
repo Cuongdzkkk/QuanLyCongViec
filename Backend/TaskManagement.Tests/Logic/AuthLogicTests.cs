@@ -279,18 +279,20 @@ namespace TaskManagement.Tests.Logic
         }
 
         [Fact]
-        public async Task Register_ValidOtp_Succeeds()
+        public async Task Register_ValidVerificationToken_Succeeds()
         {
             var email = "register@example.com";
             var otp = _otpService.GenerateOtp();
             _otpService.StoreOtp(email, otp);
+            _otpService.ValidateOtp(email, otp).IsValid.Should().BeTrue();
+            var otpToken = _otpService.IssueVerificationToken(email);
 
             var request = new RegisterRequestDto
             {
                 Email = email,
                 FullName = "Register User",
                 Password = "Password123!",
-                OtpCode = otp
+                OtpToken = otpToken
             };
 
             await _authService.RegisterAsync(request);
@@ -302,7 +304,7 @@ namespace TaskManagement.Tests.Logic
         }
 
         [Fact]
-        public async Task Register_InvalidOtp_ThrowsInvalidOperationException()
+        public async Task Register_InvalidVerificationToken_ThrowsInvalidOperationException()
         {
             var email = "register@example.com";
 
@@ -311,7 +313,7 @@ namespace TaskManagement.Tests.Logic
                 Email = email,
                 FullName = "Register User",
                 Password = "Password123!",
-                OtpCode = "INVALID"
+                OtpToken = "INVALID"
             };
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => _authService.RegisterAsync(request));
@@ -410,6 +412,43 @@ namespace TaskManagement.Tests.Logic
             result.newRefreshToken.Should().Be("new-refresh");
             (await _context.RefreshTokens.SingleAsync(token => token.Token == "old-refresh")).IsRevoked.Should().BeTrue();
             (await _context.RefreshTokens.SingleAsync(token => token.Token == "new-refresh")).IsRevoked.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task RefreshToken_ActiveUser_CanRestoreFromHttpOnlyCookieWithoutAccessToken()
+        {
+            var userId = Guid.NewGuid();
+            var user = new User
+            {
+                Id = userId,
+                Email = "cookie-refresh@example.com",
+                FullName = "Cookie Refresh User",
+                PasswordHash = "unused",
+                IsActive = true,
+                IsDeleted = false,
+                RefreshToken = "cookie-refresh",
+                RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(1)
+            };
+            _context.Users.Add(user);
+            _context.RefreshTokens.Add(new RefreshToken
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Token = "cookie-refresh",
+                DeviceId = "browser",
+                ExpiryTime = DateTime.UtcNow.AddDays(1),
+                IsRevoked = false
+            });
+            await _context.SaveChangesAsync();
+
+            _jwtServiceMock.Setup(service => service.GenerateAccessToken(user, It.IsAny<IList<string>>())).Returns("restored-access");
+            _jwtServiceMock.Setup(service => service.GenerateRefreshToken()).Returns("rotated-refresh");
+
+            var result = await _authService.RefreshTokenAsync(null, "cookie-refresh");
+
+            result.newAccessToken.Should().Be("restored-access");
+            result.newRefreshToken.Should().Be("rotated-refresh");
+            _jwtServiceMock.Verify(service => service.GetPrincipalFromExpiredToken(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

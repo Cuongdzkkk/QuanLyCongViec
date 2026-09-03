@@ -5,10 +5,15 @@
         <span class="grid-icon">⋮⋮⋮</span>
       </div>
 
-      <div class="sprinta-logo" @click="router.push('/site-selection')">
-        <img src="@/assets/logo_QLCV.png" alt="SprintA Logo" class="sprinta-logo-img" />
-        <span class="logo-text">SprintA</span>
-      </div>
+      <SprintaBrand
+        class="sprinta-logo"
+        size="compact"
+        role="link"
+        tabindex="0"
+        @click="router.push('/site-selection')"
+        @keydown.enter="router.push('/site-selection')"
+        @keydown.space.prevent="router.push('/site-selection')"
+      />
 
       <!-- Home Site Context Navigation -->
       <nav v-if="isHomeContext" class="topbar-nav">
@@ -22,10 +27,19 @@
           <span class="ws-name">{{ workspaceName }}</span>
           <i class="fa-solid fa-chevron-down ms-1"></i>
         </div>
-        <button class="menu-toggle" @click="emit('toggle-sidebar')">
-          <i class="fa-solid fa-bars-staggered"></i>
-        </button>
       </div>
+
+      <button
+        v-if="showSidebar"
+        class="menu-toggle"
+        type="button"
+        aria-controls="app-sidebar"
+        :aria-expanded="sidebarVisible"
+        aria-label="Mở hoặc đóng thanh điều hướng"
+        @click="emit('toggle-sidebar')"
+      >
+        <i class="fa-solid fa-bars-staggered" aria-hidden="true"></i>
+      </button>
     </div>
 
     <div class="nav-center" ref="searchWrapperRef">
@@ -115,8 +129,20 @@ import { toggleTheme, currentTheme } from '@/utils/theme'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import { buildSpacePath } from '@/utils/spaceRoute'
+import SprintaBrand from '@/components/branding/SprintaBrand.vue'
 
 const emit = defineEmits(['toggle-sidebar', 'toggle-ai', 'toggle-create'])
+
+defineProps({
+  sidebarVisible: {
+    type: Boolean,
+    default: false
+  },
+  showSidebar: {
+    type: Boolean,
+    default: true
+  }
+})
 
 const handleGlobalCreate = () => {
   window.dispatchEvent(new CustomEvent('global-create-click'))
@@ -346,29 +372,9 @@ onUnmounted(() => {
 }
 
 .sprinta-logo {
-  display: flex;
-  align-items: center;
-  gap: 0;
   margin-right: 6px;
   cursor: pointer;
   min-height: 32px;
-}
-
-.sprinta-logo-img {
-  height: 22px;
-  width: auto;
-  object-fit: contain;
-  transform: scale(2.55);
-  margin-right: 10px;
-  margin-left: 6px;
-  filter: drop-shadow(0 6px 14px rgba(14, 165, 233, 0.28));
-}
-
-.logo-text {
-  font-size: 18px;
-  font-weight: 800;
-  color: #FFFFFF;
-  letter-spacing: -0.03em;
 }
 
 /* Home Site Nav */
@@ -703,17 +709,6 @@ onUnmounted(() => {
   .app-topbar {
     height: 48px;
     padding: 0 8px;
-  }
-
-  .sprinta-logo-img {
-    height: 18px;
-    transform: scale(2.25);
-    margin-left: 3px;
-    margin-right: 6px;
-  }
-
-  .logo-text {
-    font-size: 16px;
   }
 
   .workspace-switcher {
