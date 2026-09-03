@@ -211,373 +211,71 @@
           </div>
 
           <div class="chat-thread">
-            <div
-              v-for="(message, index) in chatHistory"
-              :key="`${message.role}-${index}`"
-              class="chat-message"
-              :class="message.role"
-            >
-              <div class="message-avatar" :class="message.role === 'user' ? 'user-avatar' : 'ai-avatar'">
-                <img v-if="message.role === 'bot'" src="/ai-sprinta/idle.png" alt="Mascot SprintA AI" />
-                <img v-else-if="profileAvatar" :src="profileAvatar" :alt="`Ảnh đại diện của ${profileName}`" />
-                <span v-else aria-hidden="true">{{ profileInitials }}</span>
-              </div>
-              <div class="message-stack">
-                <span class="message-author">{{ message.role === 'bot' ? aiCopy.botName : aiCopy.you }}</span>
-                <div class="message-bubble">
-                  <i v-if="message.loading" class="fa-solid fa-spinner fa-spin mr-2"></i>
-                  <div v-if="message.attachments?.length" class="message-attachments" role="list" aria-label="Attachment trong tin nhắn">
-                    <article v-for="attachment in message.attachments" :key="attachment.id" class="message-attachment-card" role="listitem">
-                      <button v-if="attachment.kind === 'image'" class="message-attachment-image" type="button" @click="openAttachmentPreview(attachment)">
-                        <img v-if="attachment.previewUrl" :src="attachment.previewUrl" :alt="attachment.name" />
-                        <i v-else class="fa-regular fa-image" aria-hidden="true"></i>
-                      </button>
-                      <div v-else class="ai-attachment-file-icon" aria-hidden="true"><i :class="attachment.icon"></i></div>
-                      <div class="ai-attachment-meta">
-                        <strong>{{ attachment.name }}</strong>
-                        <span>{{ attachment.typeLabel }} · {{ formatAttachmentBytes(attachment.size) }}</span>
-                        <small><i class="fa-solid fa-circle-check"></i> Đã xử lý</small>
-                      </div>
-                      <button class="message-attachment-open" type="button" :title="`Mở ${attachment.name}`" @click="openAttachmentPreview(attachment)">
-                        <i class="fa-solid fa-up-right-from-square"></i>
-                      </button>
-                    </article>
-                  </div>
-                  <div class="markdown-body" v-html="renderMarkdown(message.content)"></div>
-                  <div v-if="message.citations?.length" class="ai-citations" aria-label="Nguồn trích dẫn">
-                    <strong>Nguồn</strong>
-                    <button v-for="citation in message.citations" :key="`${citation.sourceId}-${citation.attachmentId}`" type="button" @click="openCitation(citation)">
-                      <span>[{{ citation.sourceId }}] {{ citation.fileName }} · {{ citation.locator }}</span>
-                      <small>{{ citation.excerpt }}</small>
-                    </button>
-                  </div>
-                  <div v-if="message.role === 'bot' && !message.loading" class="message-tools" aria-label="Thao tác với câu trả lời">
-                    <button type="button" title="Sao chép câu trả lời" @click="copyAiMessage(message.content)">
-                      <i class="fa-regular fa-copy"></i>
-                    </button>
-                    <button type="button" title="Hỏi tiếp từ câu trả lời" @click="continueFromAiMessage(message.content)">
-                      <i class="fa-solid fa-reply"></i>
-                    </button>
-                  </div>
-
-                  <!-- Cảnh báo (warnings) -->
-                  <div v-if="message.warnings && message.warnings.length" class="ai-warnings mt-3 bg-red-50 dark:bg-red-950/20 p-2.5 rounded border border-red-200 dark:border-red-900/50">
-                    <div class="text-xs font-semibold text-red-600 dark:text-red-400 mb-1 flex items-center gap-1.5">
-                      <i class="fa-solid fa-triangle-exclamation"></i> Cảnh báo rủi ro
-                    </div>
-                    <ul class="list-disc pl-4 text-xs text-red-700 dark:text-red-300 space-y-0.5">
-                      <li v-for="(warn, wIdx) in message.warnings" :key="wIdx">{{ warn }}</li>
-                    </ul>
-                  </div>
-
-                  <!-- Gợi ý hành động (suggestedActions) -->
-                  <div v-if="message.actions && message.actions.length" class="ai-action-preview-list" aria-label="AI action previews">
-                    <p v-if="hasReadOnlyActions(message.actions)" class="ai-activity-note" role="status">
-                      <i class="fa-solid fa-circle-check"></i> Đã đọc dữ liệu hiện tại và bổ sung kết quả vào câu trả lời.
-                    </p>
-                    <article v-for="(action, aIdx) in writeActions(message.actions)" :key="`${action.type}-${aIdx}`" class="ai-action-preview-card" :class="{ 'is-pending': action.uiStatus === 'pending' }">
-                      <div class="ai-action-preview-head">
-                        <div>
-                          <span class="ai-action-eyebrow">AI ACTION PREVIEW</span>
-                          <strong>{{ actionLabel(action.type) }}</strong>
-                        </div>
-                        <span class="ai-action-status" :class="`is-${action.uiStatus || 'pending'}`">{{ actionStatusLabel(action) }}</span>
-                      </div>
-                      <p class="ai-action-description">{{ action.description || actionSummary(action) }}</p>
-                      <dl class="ai-action-details">
-                        <template v-for="detail in actionDetails(action)" :key="detail.label">
-                          <dt>{{ detail.label }}</dt>
-                          <dd>{{ detail.value }}</dd>
-                        </template>
-                      </dl>
-                      <div v-if="action.duplicateCandidate" class="ai-duplicate-warning" role="alert">
-                        <strong>Đã có công việc tương tự trong dự án</strong>
-                        <p>#{{ action.duplicateCandidate.sequenceId || action.duplicateCandidate.id }} · {{ action.duplicateCandidate.title }} · {{ action.duplicateCandidate.statusName }}</p>
-                        <div class="ai-duplicate-actions">
-                          <button type="button" @click="openDuplicateTask(action, false)">Mở công việc hiện có</button>
-                          <button type="button" @click="openDuplicateTask(action, true)">Cập nhật công việc hiện có</button>
-                          <button type="button" class="is-danger" @click="confirmDuplicateCreation(action)">Vẫn tạo công việc mới</button>
-                        </div>
-                      </div>
-                      <p v-if="action.error" class="ai-action-error" role="alert">{{ action.error }}</p>
-                      <p v-if="action.result?.message" class="ai-action-result" role="status">{{ action.result.message }}</p>
-                      <div v-if="!action.duplicateCandidate" class="ai-action-controls">
-                        <button v-if="action.uiStatus === 'cancelled'" type="button" class="ai-action-confirm" @click="retryAiAction(action)">
-                          <i class="fa-solid fa-rotate-right"></i>
-                          Thực hiện lại
-                        </button>
-                        <button v-else-if="action.uiStatus === 'error'" type="button" class="ai-action-confirm" :disabled="action.loading" @click="executeAiAction(action)">
-                          <i class="fa-solid fa-rotate-right"></i>
-                          Thử lại
-                        </button>
-                        <template v-else>
-                          <button v-if="!isReadOnlyAction(action.type, action.requiresConfirmation) && action.uiStatus !== 'success'" type="button" class="ai-action-cancel" :disabled="action.loading" @click="cancelAiAction(action)">Hủy</button>
-                          <button type="button" class="ai-action-confirm" :disabled="action.loading || action.uiStatus === 'success'" @click="executeAiAction(action)">
-                          <i v-if="action.loading" class="fa-solid fa-spinner fa-spin"></i>
-                          <i v-else-if="action.uiStatus === 'success'" class="fa-solid fa-check"></i>
-                          {{ action.uiStatus === 'success' ? 'Đã thực hiện' : (isReadOnlyAction(action.type, action.requiresConfirmation) ? 'Xem kết quả' : 'Xác nhận') }}
-                          </button>
-                        </template>
-                      </div>
-                    </article>
-                  </div>
-
-                  <div v-if="message.suggestedActions && message.suggestedActions.length" class="ai-actions mt-3 flex flex-col gap-2">
-                    <div v-for="(action, aIdx) in message.suggestedActions" :key="aIdx" class="action-card bg-primary-light dark:bg-primary-dark/30 p-2.5 rounded border border-gray-200 dark:border-gray-800">
-                      <p class="text-xs text-gray-700 dark:text-gray-300 font-medium">Chuyển công việc sang trạng thái mới:</p>
-                      <div class="flex justify-between items-center mt-2 gap-2">
-                        <span class="text-xs text-gray-500 font-semibold">{{ action.taskTitle }} &rarr; {{ action.statusName }}</span>
-                        <el-button 
-                          size="small" 
-                          type="success"
-                          :loading="action.loading"
-                          :disabled="action.completed || !canUpdateTaskInProject"
-                          @click="confirmSuggestedAction(action)"
-                        >
-                          {{ action.completed ? 'Đã thực hiện' : 'Xác nhận chuyển' }}
-                        </el-button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Đề xuất công việc (suggestedTasks) -->
-                  <div v-if="message.suggestedTasks && message.suggestedTasks.length" class="ai-suggested-tasks mt-3 p-3 bg-gray-50 dark:bg-gray-900/30 rounded border border-gray-200 dark:border-gray-800">
-                    <div class="flex justify-between items-center mb-2.5 pb-1.5 border-b border-gray-200 dark:border-gray-800">
-                      <span class="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-                        <i class="fa-solid fa-list-check text-blue-500"></i> AI đề xuất công việc
-                      </span>
-                      <el-button 
-                        v-if="message.suggestedTasks.some(t => !t.created)"
-                        size="small" 
-                        type="primary" 
-                        link
-                        :disabled="!canCreateTaskInProject"
-                        @click="createAllSuggestedTasks(message)"
-                      >
-                        Tạo tất cả
-                      </el-button>
-                    </div>
-                    
-                    <div class="space-y-2.5 max-h-[300px] overflow-y-auto">
-                      <div v-for="(task, tIdx) in message.suggestedTasks" :key="tIdx" class="suggested-task-item p-2 bg-white dark:bg-gray-950 rounded border border-gray-100 dark:border-gray-900 text-xs">
-                        <div class="font-medium text-gray-800 dark:text-gray-200 flex justify-between gap-2">
-                          <span>{{ task.title }}</span>
-                          <span v-if="task.priority" class="text-[10px] px-1.5 py-0.5 rounded" :class="[
-                            task.priority === 1 ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' :
-                            task.priority === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300' :
-                            task.priority === 4 ? 'bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-300' :
-                            'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                          ]">
-                            P{{ task.priority }}
-                          </span>
-                        </div>
-                        <p class="text-gray-500 dark:text-gray-400 mt-1 text-[11px] leading-relaxed">{{ task.description }}</p>
-                        
-                        <div class="mt-2.5 flex justify-between items-center text-[10px] text-gray-400">
-                          <span>Hạn: {{ task.dueDate || 'N/A' }}</span>
-                          <span>{{ task.assigneeEmail || '' }}</span>
-                        </div>
-
-                        <div class="mt-2.5 pt-2 border-t border-gray-100 dark:border-gray-900 flex justify-end">
-                          <span v-if="task.created" class="text-xs text-green-600 dark:text-green-400 font-semibold flex items-center gap-1">
-                            <i class="fa-solid fa-circle-check"></i> Đã tạo
-                          </span>
-                          <el-button 
-                            v-else
-                            size="small" 
-                            type="primary" 
-                            plain
-                            :loading="task.loading"
-                            :disabled="!canCreateTaskInProject"
-                            @click="createSuggestedTask(task, message)"
-                          >
-                            Tạo task này
-                          </el-button>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div v-if="!canCreateTaskInProject" class="text-[10px] text-red-500 mt-2 text-center">
-                      Bạn không có quyền tạo công việc trong dự án này.
-                    </div>
-                  </div>
-
-                  <!-- Prompt gợi ý (suggestedPrompts) -->
-                  <div v-if="message.suggestedPrompts && message.suggestedPrompts.length" class="ai-suggested-prompts mt-3 pt-2.5 border-t border-dashed border-gray-200 dark:border-gray-800 flex flex-wrap gap-1.5">
-                    <button 
-                      v-for="(p, pIdx) in message.suggestedPrompts" 
-                      :key="pIdx"
-                      class="px-2.5 py-1.5 rounded-full bg-gray-100 dark:bg-gray-900 hover:bg-blue-50 dark:hover:bg-blue-950 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 text-xs border border-gray-200 dark:border-gray-800 transition-colors text-left font-medium"
-                      type="button"
-                      @click="useQuickPrompt(p)"
-                    >
-                      <i class="fa-regular fa-lightbulb text-yellow-500 mr-1"></i>
-                      <span>{{ p }}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <AiMessage
+              v-for="(sharedMessage, sharedIndex) in chatHistory"
+              :key="`shared-${sharedMessage.role}-${sharedIndex}`"
+              :message="sharedMessage"
+              :profile-avatar="profileAvatar"
+              :profile-name="profileName"
+              :profile-initials="profileInitials"
+              :can-update-task="canUpdateTaskInProject"
+              :can-create-task="canCreateTaskInProject"
+              @preview-attachment="openAttachmentPreview"
+              @open-citation="openCitation"
+              @copy="copyAiMessage"
+              @continue="continueFromAiMessage"
+              @execute-action="executeAiAction"
+              @cancel-action="cancelAiAction"
+              @retry-action="retryAiAction"
+              @quick-prompt="useQuickPrompt"
+              @confirm-suggested-action="confirmSuggestedAction"
+              @create-suggested-task="createSuggestedTask"
+              @create-all-suggested-tasks="createAllSuggestedTasks"
+              @open-duplicate-task="openDuplicateTask"
+              @confirm-duplicate-creation="confirmDuplicateCreation"
+            />
           </div>
         </div>
 
-        <div
-          class="ai-input-area"
-          :class="{ 'is-dragging-files': composerDragActive }"
-          @dragenter.prevent="composerDragActive = true"
-          @dragover.prevent="composerDragActive = true"
-          @dragleave.prevent="handleComposerDragLeave"
-          @drop.prevent="handleComposerDrop"
-        >
-          <input
-            ref="aiAttachmentInputRef"
-            class="ai-attachment-input"
-            type="file"
-            multiple
-            :accept="composerAttachmentAccept"
-            @change="handleAttachmentInput"
-          />
-
-          <div v-if="pendingAttachments.length" class="ai-attachment-tray" role="list" aria-label="Tệp đang chờ tải lên">
-            <article
-              v-for="attachment in pendingAttachments"
-              :key="attachment.id"
-              class="ai-attachment-card"
-              :class="`is-${attachment.kind}`"
-              role="listitem"
-            >
-              <button
-                v-if="attachment.kind === 'image'"
-                class="ai-attachment-thumbnail"
-                type="button"
-                :title="`Mở ${attachment.name}`"
-                @click="openAttachmentPreview(attachment)"
-              >
-                <img :src="attachment.previewUrl" :alt="attachment.name" />
-              </button>
-              <div v-else class="ai-attachment-file-icon" aria-hidden="true">
-                <i :class="attachment.icon"></i>
-              </div>
-
-              <div class="ai-attachment-meta">
-                <strong>{{ attachment.kind === 'image' ? attachment.displayName : attachment.name }}</strong>
-                <span>
-                  {{ attachment.typeLabel }} · {{ formatAttachmentBytes(attachment.size) }}
-                  <template v-if="attachment.width && attachment.height"> · {{ attachment.width }}×{{ attachment.height }}</template>
-                </span>
-                <small :class="`is-${attachment.status || 'pending'}`"><i :class="attachmentStatusIcon(attachment.status)"></i> {{ attachmentStatusLabel(attachment.status) }}</small>
-              </div>
-
-              <div class="ai-attachment-actions">
-                <button type="button" :title="`Mở ${attachment.name}`" @click="openAttachmentPreview(attachment)">
-                  <i class="fa-solid fa-up-right-from-square"></i>
-                </button>
-                <button type="button" :title="`Gỡ ${attachment.name}`" @click="removePendingAttachment(attachment.id)">
-                  <i class="fa-solid fa-xmark"></i>
-                </button>
-              </div>
-            </article>
-          </div>
-
-          <section v-if="voiceState !== 'idle'" class="ai-voice-panel" aria-label="Nhập bằng giọng nói">
-            <div class="ai-voice-head">
-              <div>
-                <strong>{{ voiceStatusTitle }}</strong>
-                <span v-if="voiceState === 'recording'" class="ai-voice-timer">{{ voiceElapsedLabel }}</span>
-              </div>
-              <label class="ai-voice-language">
-                <span>Ngôn ngữ giọng nói: {{ voiceLanguageLabel }}</span>
-                <select v-model="voiceLanguage" :disabled="voiceState === 'transcribing'" aria-label="Ngôn ngữ giọng nói">
-                  <option value="auto">Tự động (VI/EN)</option>
-                  <option value="vi">Tiếng Việt</option>
-                  <option value="en">English</option>
-                </select>
-              </label>
-            </div>
-
-            <p v-if="voiceState === 'requesting'" class="ai-voice-note" role="status">
-              Trình duyệt đang yêu cầu quyền sử dụng microphone.
-            </p>
-            <p v-else-if="voiceState === 'recording'" class="ai-voice-note" role="status">
-              Audio chỉ được giữ tạm để phiên âm và sẽ không được lưu vĩnh viễn.
-            </p>
-            <p v-else-if="voiceState === 'transcribing'" class="ai-voice-note" role="status">
-              <i class="fa-solid fa-spinner fa-spin"></i> Đang chuyển giọng nói thành văn bản...
-            </p>
-            <p v-else-if="voiceState === 'error'" class="ai-voice-error" role="alert">{{ voiceError }}</p>
-
-            <label v-if="voiceState === 'success'" class="ai-voice-transcript">
-              <span>Transcript</span>
-              <textarea v-model="voiceTranscript" rows="4" aria-label="Chỉnh sửa transcript"></textarea>
-            </label>
-
-            <div class="ai-voice-actions">
-              <button type="button" class="ai-voice-secondary" @click="cancelVoiceInput">Hủy</button>
-              <button v-if="voiceState === 'recording'" type="button" class="ai-voice-primary" @click="stopVoiceRecording">
-                <i class="fa-solid fa-stop"></i> Dừng
-              </button>
-              <button v-if="voiceState === 'error'" type="button" class="ai-voice-primary" @click="startVoiceRecording">
-                <i class="fa-solid fa-rotate-right"></i> Thử lại
-              </button>
-              <button v-if="voiceState === 'success'" type="button" class="ai-voice-secondary" @click="recordVoiceAgain">
-                <i class="fa-solid fa-microphone-lines"></i> Thu lại
-              </button>
-              <button v-if="voiceState === 'success'" type="button" class="ai-voice-primary" :disabled="!voiceTranscript.trim()" @click="useVoiceTranscript">
-                Dùng nội dung này
-              </button>
-            </div>
-          </section>
-
-          <div class="ai-input-wrapper">
-            <el-dropdown trigger="click" placement="top-start" @command="handleAttachmentCommand">
-              <button class="ai-composer-icon-btn" type="button" title="Thêm ảnh hoặc tài liệu" aria-label="Thêm ảnh hoặc tài liệu">
-                <i class="fa-solid fa-plus"></i>
-              </button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="browse">
-                    <i class="fa-regular fa-folder-open"></i> Chọn ảnh hoặc tài liệu
-                  </el-dropdown-item>
-                  <el-dropdown-item command="paste">
-                    <i class="fa-regular fa-clipboard"></i> Dán ảnh từ clipboard
-                  </el-dropdown-item>
-                  <el-dropdown-item command="screenshot" :disabled="capturingScreenshot">
-                    <i class="fa-solid fa-display"></i> Chụp màn hình
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-            <textarea
-              ref="aiComposerRef"
-              v-model="aiInput"
-              rows="1"
-              :aria-label="aiCopy.placeholder"
-              :placeholder="aiCopy.placeholder"
-              @paste="handleComposerPaste"
-              @input="resizeAiComposer"
-              @keydown="handleAiComposerKeydown"
-            ></textarea>
-            <button
-              class="ai-composer-icon-btn"
-              :class="{ active: voiceState !== 'idle' }"
-              type="button"
-              title="Nhập bằng giọng nói"
-              aria-label="Nhập bằng giọng nói"
-              :disabled="voiceState === 'requesting' || voiceState === 'recording' || voiceState === 'transcribing'"
-              @click="startVoiceRecording"
-            >
-              <i class="fa-solid fa-microphone"></i>
-            </button>
-            <button class="send-btn" type="button" :disabled="aiSending || aiCreditsExhausted || (!aiInput.trim() && !pendingAttachments.length)" title="Gửi tin nhắn" aria-label="Gửi tin nhắn" @click="sendAiMessage">
-              <i v-if="!aiSending" class="fa-solid fa-paper-plane"></i>
-              <i v-else class="fa-solid fa-spinner fa-spin"></i>
-            </button>
-          </div>
-          <div class="ai-input-foot">
-            <span>{{ pendingAttachments.length ? 'Attachment sẽ được tải lên kho riêng tư khi gửi.' : aiCopy.enterHint }}</span>
-            <button type="button" @click="startNewConversation">{{ aiCopy.reset }}</button>
-          </div>
-        </div>
+        <AiComposer
+          ref="aiComposerRef"
+          :model-value="aiInput"
+          :placeholder="aiCopy.placeholder"
+          :enter-hint="aiCopy.enterHint"
+          :reset-label="aiCopy.reset"
+          :sending="aiSending"
+          :credits-exhausted="aiCreditsExhausted"
+          :pending-attachments="pendingAttachments"
+          :composer-drag-active="composerDragActive"
+          :capturing-screenshot="capturingScreenshot"
+          :voice-state="voiceState"
+          :voice-language="voiceLanguage"
+          :voice-language-label="voiceLanguageLabel"
+          :voice-status-title="voiceStatusTitle"
+          :voice-elapsed-label="voiceElapsedLabel"
+          :voice-transcript="voiceTranscript"
+          :voice-error="voiceError"
+          :accept="composerAttachmentAccept"
+          @update:model-value="aiInput = $event"
+          @update:voice-language="voiceLanguage = $event"
+          @update:voice-transcript="voiceTranscript = $event"
+          @files="handleAttachmentInput"
+          @preview-attachment="openAttachmentPreview"
+          @remove-attachment="removePendingAttachment"
+          @attachment-command="handleAttachmentCommand"
+          @paste="handleComposerPaste"
+          @keydown="handleAiComposerKeydown"
+          @dragenter="composerDragActive = true"
+          @dragleave="handleComposerDragLeave"
+          @drop="handleComposerDrop"
+          @start-voice="startVoiceRecording"
+          @stop-voice="stopVoiceRecording"
+          @cancel-voice="cancelVoiceInput"
+          @record-again="recordVoiceAgain"
+          @use-transcript="useVoiceTranscript"
+          @send="sendAiMessage"
+          @reset="startNewConversation"
+        />
       </aside>
     </transition>
 
@@ -663,7 +361,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import DOMPurify from 'dompurify'
 import { useRoute, useRouter } from 'vue-router'
 import axiosClient from '@/api/axiosClient'
 import CreateProjectModal from '../CreateProjectModal.vue'
@@ -672,6 +369,8 @@ import AppTopBar from './AppTopBar.vue'
 import NexusSidebar from './NexusSidebar.vue'
 import GlobalStickiesDrawer from '@/components/stickies/GlobalStickiesDrawer.vue'
 import FloatingStickiesLayer from '@/components/stickies/FloatingStickiesLayer.vue'
+import AiComposer from '@/components/ai/AiComposer.vue'
+import AiMessage from '@/components/ai/AiMessage.vue'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
 import { useAiConversationStore } from '@/store/useAiConversationStore'
@@ -693,7 +392,6 @@ import {
   isComposerSendKey,
   readAiPanelSize,
   writeAiPanelSize,
-  writeActionsOnly
 } from '@/utils/aiWorkspace'
 
 const voiceCallStore = useVoiceCallStore()
@@ -709,7 +407,7 @@ import {
   writeStickyLauncherY
 } from '@/utils/stickyLauncher'
 
-const props = defineProps({
+defineProps({
   hideSidebar: {
     type: Boolean,
     default: false
@@ -741,7 +439,6 @@ const aiInput = ref('')
 const aiSending = ref(false)
 const aiUsage = ref(null)
 const aiContentRef = ref(null)
-const aiComposerRef = ref(null)
 const aiPanelSize = ref(readAiPanelSize(window.localStorage, {
   width: window.innerWidth,
   height: window.innerHeight,
@@ -876,7 +573,7 @@ const quickCreateSticky = async () => {
 const petDragging = ref(false)
 const petMoved = ref(false)
 const petDragOffset = ref({ x: 0, y: 0 })
-const aiAttachmentInputRef = ref(null)
+const aiComposerRef = ref(null)
 const pendingAttachments = ref([])
 const composerDragActive = ref(false)
 const capturingScreenshot = ref(false)
@@ -963,20 +660,6 @@ const formatAttachmentBytes = (bytes) => {
   const value = bytes / (1024 ** unitIndex)
   return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`
 }
-
-const attachmentStatusLabel = (status) => ({
-  uploading: 'Đang tải lên',
-  processing: 'Đang xử lý',
-  error: 'Tải lên thất bại',
-  ready: 'Đã xử lý'
-}[String(status || 'pending').toLowerCase()] || 'Chờ tải lên')
-
-const attachmentStatusIcon = (status) => ({
-  uploading: 'fa-solid fa-arrow-up-from-bracket fa-bounce',
-  processing: 'fa-solid fa-spinner fa-spin',
-  error: 'fa-solid fa-circle-exclamation',
-  ready: 'fa-solid fa-circle-check'
-}[String(status || 'pending').toLowerCase()] || 'fa-regular fa-clock')
 
 const imageDimensions = (objectUrl) => new Promise((resolve, reject) => {
   const image = new Image()
@@ -1153,7 +836,7 @@ const captureScreenAttachment = async () => {
 }
 
 const handleAttachmentCommand = (command) => {
-  if (command === 'browse') aiAttachmentInputRef.value?.click()
+  if (command === 'browse') aiComposerRef.value?.openFilePicker?.()
   if (command === 'paste') readClipboardImage()
   if (command === 'screenshot') captureScreenAttachment()
 }
@@ -1423,7 +1106,7 @@ const aiCopyMap = {
     title: 'Trợ lý công việc',
     hero: 'Hỏi nhanh, tóm tắt tiến độ, tạo checklist hoặc xin gợi ý ưu tiên ở bất kỳ trang nào.',
     contextTitle: 'Ngữ cảnh hiện tại',
-    currentPagePrompt: 'Tom tat trang hien tai',
+    currentPagePrompt: 'Tóm tắt trang hiện tại',
     botName: 'SprintA AI',
     you: 'Bạn',
     placeholder: 'Hỏi AI về task, dashboard, deadline...',
@@ -1434,10 +1117,10 @@ const aiCopyMap = {
     sendFailed: 'Không gửi được tin nhắn tới AI.',
     welcome: 'Xin chào Khôi. Mình sẵn sàng tóm tắt, gợi ý ưu tiên, tạo checklist hoặc phân tích nội dung trên trang hiện tại.',
     prompts: [
-      { label: 'Tóm tắt trang', icon: 'fa-regular fa-file-lines', text: 'Tom tat trang hien tai va neu 3 diem can chu y.' },
-      { label: 'Gợi ý ưu tiên', icon: 'fa-solid fa-arrow-up-wide-short', text: 'Goi y viec nen lam tiep theo dua tren ngu canh hien tai.' },
-      { label: 'Tạo checklist', icon: 'fa-solid fa-list-check', text: 'Tao checklist ngan gon de hoan thanh cong viec nay.' },
-      { label: 'Viết cập nhật', icon: 'fa-solid fa-pen-nib', text: 'Soan ban cap nhat tien do ngan gon cho team.' }
+      { label: 'Tóm tắt trang', icon: 'fa-regular fa-file-lines', text: 'Tóm tắt trang hiện tại và nêu 3 điểm cần chú ý.' },
+      { label: 'Gợi ý ưu tiên', icon: 'fa-solid fa-arrow-up-wide-short', text: 'Gợi ý việc nên làm tiếp theo dựa trên ngữ cảnh hiện tại.' },
+      { label: 'Tạo checklist', icon: 'fa-solid fa-list-check', text: 'Tạo checklist ngắn gọn để hoàn thành công việc này.' },
+      { label: 'Viết cập nhật', icon: 'fa-solid fa-pen-nib', text: 'Soạn bản cập nhật tiến độ ngắn gọn cho team.' }
     ]
   },
   en: {
@@ -1538,14 +1221,14 @@ const viAiCopy = {
 const aiCopy = computed(() => i18nStore.locale === 'en' ? aiCopyOverrideMap.en : viAiCopy)
 
 const pageSuggestions = {
-  'work-items': ['Tom tat tinh hinh du an nay', 'Cong viec nao dang tre han?', 'Ai dang bi qua tai?', 'Goi y uu tien hom nay', 'Giai thich cac cot Kanban hien tai'],
-  reports: ['Bao cao nay dang noi dieu gi?', 'Rui ro lon nhat cua du an la gi?', 'Nen xu ly van de nao truoc?'],
-  settings: ['Giai thich quyen cua toi trong du an nay', 'Workflow hien tai co hop ly khong?', 'Custom Fields nay dung de lam gi?'],
-  goals: ['Tom tat tien do muc tieu', 'Muc tieu nao dang co nguy co?', 'De xuat viec can lam de tang tien do'],
-  integration: ['Tom tat cac item moi', 'Item nao nen chuyen thanh cong viec?', 'Co noi dung nao can xu ly gap?'],
-  inbox: ['Tom tat cac item moi', 'Item nao nen chuyen thanh cong viec?', 'Co noi dung nao can xu ly gap?'],
-  dashboard: ['Tom tat dashboard hien tai', 'Rui ro nao can xu ly truoc?', 'Goi y uu tien hom nay'],
-  unknown: ['Toi co the giup gi cho ban trong SprintA?', 'Tom tat trang hien tai', 'Giai thich doan da chon']
+  'work-items': ['Tóm tắt tình hình dự án này', 'Công việc nào đang trễ hạn?', 'Ai đang bị quá tải?', 'Gợi ý ưu tiên hôm nay', 'Giải thích các cột Kanban hiện tại'],
+  reports: ['Báo cáo này đang nói điều gì?', 'Rủi ro lớn nhất của dự án là gì?', 'Nên xử lý vấn đề nào trước?'],
+  settings: ['Giải thích quyền của tôi trong dự án này', 'Workflow hiện tại có hợp lý không?', 'Custom Fields này dùng để làm gì?'],
+  goals: ['Tóm tắt tiến độ mục tiêu', 'Mục tiêu nào đang có nguy cơ?', 'Đề xuất việc cần làm để tăng tiến độ'],
+  integration: ['Tóm tắt các item mới', 'Item nào nên chuyển thành công việc?', 'Có nội dung nào cần xử lý gấp?'],
+  inbox: ['Tóm tắt các item mới', 'Item nào nên chuyển thành công việc?', 'Có nội dung nào cần xử lý gấp?'],
+  dashboard: ['Tóm tắt dashboard hiện tại', 'Rủi ro nào cần xử lý trước?', 'Gợi ý ưu tiên hôm nay'],
+  unknown: ['Tôi có thể giúp gì cho bạn trong SprintA?', 'Tóm tắt trang hiện tại', 'Giải thích đoạn đã chọn']
 }
 
 const inferPageType = (path = '') => {
@@ -1762,13 +1445,6 @@ const openAiFullChat = async () => {
 }
 
 const openAiCreditPurchase = () => router.push('/#pricing')
-
-const resizeAiComposer = () => {
-  const textarea = aiComposerRef.value
-  if (!textarea) return
-  textarea.style.height = 'auto'
-  textarea.style.height = `${Math.min(textarea.scrollHeight, 170)}px`
-}
 
 const handleAiComposerKeydown = (event) => {
   if (!isComposerSendKey(event)) return
@@ -2031,145 +1707,11 @@ const useQuickPrompt = (prompt) => {
   aiInput.value = prompt
 }
 
-const readOnlyActionTypes = new Set([
-  'summarize_dashboard', 'summarize_project', 'list_overdue_tasks', 'get_workload',
-  'explain_report', 'summarize_page', 'summarize_intakes', 'suggest_view_filter',
-  'list_work_items', 'list_cycles', 'list_modules', 'list_pages', 'list_views',
-  'list_intakes', 'list_pending_intakes', 'analyze_priority_distribution',
-  'analyze_status_distribution', 'analyze_workload', 'identify_project_risks',
-  'refresh_report', 'export_report_csv', 'summarize_report'
-])
-
-const isReadOnlyAction = (type, requiresConfirmation) => requiresConfirmation === false || readOnlyActionTypes.has(String(type || '').toLowerCase())
-const writeActions = actions => writeActionsOnly(actions, isReadOnlyAction)
-const hasReadOnlyActions = actions => (actions || []).some(action => isReadOnlyAction(action?.type, action?.requiresConfirmation))
-
-const escapeHtml = (value = '') => `${value}`
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#039;')
-
-const renderMarkdown = (value = '') => {
-  const source = `${value || ''}`.replace(/\r\n/g, '\n').trim()
-  if (!source) return ''
-  const codeBlocks = []
-  let safe = escapeHtml(source).replace(/```([\w-]*)\n?([\s\S]*?)```/g, (_, language, code) => {
-    const index = codeBlocks.push(`<pre><code class="language-${language || 'text'}">${code.trim()}</code></pre>`) - 1
-    return `@@CODE_BLOCK_${index}@@`
-  })
-  safe = safe
-    .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^# (.+)$/gm, '<h2>$1</h2>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/__(.+?)__/g, '<strong>$1</strong>')
-    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
-    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-    .replace(/^\s*[-*] (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
-    .replace(/^(\d+)\. (.+)$/gm, '<li><span class="md-list-index">$1.</span> $2</li>')
-    .replace(/\n{2,}/g, '</p><p>')
-    .replace(/\n/g, '<br>')
-    .replace(/@@CODE_BLOCK_(\d+)@@/g, (_, index) => codeBlocks[Number(index)])
-  return DOMPurify.sanitize(`<p>${safe}</p>`, { USE_PROFILES: { html: true } })
-}
-
-const actionLabel = (type = '') => ({
-  create_project: 'Tạo project mới',
-  create_task: 'Tạo task mới',
-  create_cycle: 'Tạo chu kỳ mới',
-  create_module: 'Tạo mô-đun mới',
-  create_page: 'Tạo tài liệu mới',
-  create_view: 'Tạo bộ lọc đã lưu',
-  create_intake_request: 'Tạo yêu cầu mới',
-  update_task_status: 'Cập nhật trạng thái task',
-  update_task_priority: 'Cập nhật độ ưu tiên',
-  update_task_due_date: 'Cập nhật hạn task',
-  assign_task: 'Giao task cho thành viên',
-  add_comment: 'Thêm bình luận',
-  create_goal: 'Tạo mục tiêu mới',
-  summarize_dashboard: 'Tóm tắt dashboard',
-  summarize_project: 'Tóm tắt dự án',
-  list_overdue_tasks: 'Liệt kê task quá hạn',
-  get_workload: 'Xem tải công việc',
-  explain_report: 'Giải thích báo cáo',
-  summarize_page: 'Tóm tắt tài liệu',
-  summarize_intakes: 'Tóm tắt hàng chờ yêu cầu',
-  suggest_view_filter: 'Gợi ý bộ lọc'
-}[String(type).toLowerCase()] || 'Thực hiện thay đổi')
-
-const actionStatusLabel = (action) => ({
-  pending: 'Chờ xác nhận',
-  loading: 'Đang xử lý',
-  success: 'Thành công',
-  cancelled: 'Đã hủy',
-  error: 'Thất bại'
-}[action.uiStatus || 'pending'] || 'Chờ xác nhận')
-
 const actionPayload = (action) => action?.payload || {}
 const payloadValue = (action, ...keys) => {
   const payload = actionPayload(action)
   const key = keys.find(item => payload[item] !== undefined && payload[item] !== null && `${payload[item]}`.trim() !== '')
   return key ? payload[key] : ''
-}
-
-const resolveProjectLabel = (action) => {
-  const projectId = payloadValue(action, 'projectId')
-  const current = projectStore.currentProject
-  if (current && (!projectId || current.id === projectId || current.Id === projectId)) {
-    return current.name || current.Name || 'Dự án hiện tại'
-  }
-  const projects = projectStore.projects || projectStore.allProjects || []
-  const project = projects.find(item => item?.id === projectId || item?.Id === projectId)
-  return project?.name || project?.Name || 'Dự án hiện tại'
-}
-
-const actionSummary = (action) => {
-  const type = String(action?.type || '').toLowerCase()
-  if (type === 'create_project') return `Tạo project “${payloadValue(action, 'name', 'projectName') || 'Chưa đặt tên'}”.`
-  if (type === 'create_task') return `Tạo task “${payloadValue(action, 'title', 'taskTitle') || 'Chưa đặt tên'}”.`
-  if (type === 'create_goal') return `Tạo mục tiêu “${payloadValue(action, 'title', 'name') || 'Chưa đặt tên'}”.`
-  if (type === 'update_task_status') return `Chuyển task sang “${payloadValue(action, 'statusName', 'status') || 'trạng thái mới'}”.`
-  if (type === 'assign_task') return 'Giao task cho thành viên được chỉ định.'
-  if (isReadOnlyAction(type)) return 'Đọc dữ liệu hiện tại để trả về một tóm tắt có căn cứ.'
-  return 'AI đề xuất một thay đổi cần bạn xác nhận.'
-}
-
-const actionDetails = (action) => {
-  const type = String(action?.type || '').toLowerCase()
-  const details = []
-  const add = (label, value) => { if (value !== '' && value !== null && value !== undefined) details.push({ label, value: `${value}` }) }
-  if (type === 'create_project') {
-    add('Tên project', payloadValue(action, 'name', 'projectName'))
-    add('Mô tả', payloadValue(action, 'description'))
-  } else if (type === 'create_task') {
-    add('Tiêu đề', payloadValue(action, 'title', 'taskTitle'))
-    add('Hạn', payloadValue(action, 'dueDate', 'plannedEndDate'))
-    add('Ưu tiên', payloadValue(action, 'priority'))
-  } else if (type === 'create_goal') {
-    add('Tên mục tiêu', payloadValue(action, 'title', 'name'))
-    add('Mô tả', payloadValue(action, 'description'))
-  } else if (type === 'update_task_status') {
-    add('Task', payloadValue(action, 'taskTitle', 'title'))
-    add('Trạng thái mới', payloadValue(action, 'statusName', 'status'))
-  } else if (type === 'assign_task') {
-    add('Task', payloadValue(action, 'taskTitle', 'title'))
-    add('Người nhận', payloadValue(action, 'assigneeName', 'assigneeEmail', 'assignee'))
-  } else if (['create_cycle', 'create_module', 'create_page', 'create_view', 'create_intake_request'].includes(type)) {
-    add('Tên', payloadValue(action, 'name', 'title'))
-    add('Dự án', payloadValue(action, 'projectName') || resolveProjectLabel(action))
-    add('Bắt đầu', payloadValue(action, 'startDate'))
-    add('Kết thúc', payloadValue(action, 'endDate'))
-  } else if (['update_task_priority', 'update_task_due_date'].includes(type)) {
-    add('Task', payloadValue(action, 'taskTitle', 'title'))
-    add(type === 'update_task_priority' ? 'Độ ưu tiên mới' : 'Hạn mới', payloadValue(action, type === 'update_task_priority' ? 'priority' : 'dueDate'))
-  } else if (type === 'add_comment') {
-    add('Đối tượng', payloadValue(action, 'entityType'))
-    add('Nội dung', payloadValue(action, 'content'))
-  }
-  return details
 }
 
 const cancelAiAction = async (action) => {
@@ -3346,7 +2888,7 @@ const handleProjectCreated = (newProject) => {
 .ai-context-card button:focus-visible,
 .ai-selected-text button:focus-visible,
 .ai-input-foot button:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--sa-primary) 55%, #ffffff);
+  outline: 3px solid color-mix(in srgb, var(--sa-primary) 55%, var(--color-text-inverse));
   outline-offset: 3px;
 }
 
@@ -3354,7 +2896,7 @@ const handleProjectCreated = (newProject) => {
   position: fixed;
   inset: var(--sa-topbar-height, 52px) 0 0;
   z-index: 1490;
-  background: rgba(2, 6, 23, 0.48);
+  background: color-mix(in srgb, var(--color-bg) 48%, transparent);
   backdrop-filter: blur(3px);
 }
 
@@ -3449,7 +2991,7 @@ const handleProjectCreated = (newProject) => {
   font-size: 11px;
 }
 
-.ai-activity-note i { color: var(--color-success, #16803c); }
+.ai-activity-note i { color: var(--color-success); }
 
 .ai-action-preview-card.is-pending {
   border-color: color-mix(in srgb, var(--sa-primary) 42%, var(--color-border));
@@ -3496,8 +3038,8 @@ const handleProjectCreated = (newProject) => {
   font-weight: 800;
 }
 
-.ai-action-status.is-success { color: #16803c; }
-.ai-action-status.is-error { color: #c2410c; }
+.ai-action-status.is-success { color: var(--color-success); }
+.ai-action-status.is-error { color: var(--color-danger); }
 .ai-action-description,
 .ai-action-result,
 .ai-action-error {
@@ -3517,28 +3059,28 @@ const handleProjectCreated = (newProject) => {
 
 .ai-action-details dt { color: var(--color-text-muted); }
 .ai-action-details dd { margin: 0; color: var(--color-text-primary); overflow-wrap: anywhere; }
-.ai-action-error { color: #dc2626; }
-.ai-action-result { color: #16803c; }
+.ai-action-error { color: var(--color-danger); }
+.ai-action-result { color: var(--color-success); }
 
 .ai-duplicate-warning {
   padding: 10px;
-  border: 1px solid #d97706;
+  border: 1px solid var(--color-warning);
   border-radius: 8px;
-  background: #fffbeb;
-  color: #7c2d12;
+  background: var(--color-warning-bg);
+  color: var(--color-text-primary);
 }
 .ai-duplicate-warning p { margin: 4px 0 8px; overflow-wrap: anywhere; }
 .ai-duplicate-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .ai-duplicate-actions button {
   min-height: 30px;
   padding: 6px 9px;
-  border: 1px solid #d97706;
+  border: 1px solid var(--color-warning);
   border-radius: 6px;
-  background: #fff;
-  color: #7c2d12;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
   cursor: pointer;
 }
-.ai-duplicate-actions .is-danger { background: #9a3412; color: #fff; }
+.ai-duplicate-actions .is-danger { background: var(--color-danger); color: var(--color-text-inverse); }
 
 .ai-action-controls { justify-content: flex-end; }
 .ai-action-controls button {
@@ -3552,7 +3094,7 @@ const handleProjectCreated = (newProject) => {
 }
 .ai-action-controls button:disabled { cursor: not-allowed; opacity: .55; }
 .ai-action-cancel { border: 1px solid var(--color-border); background: transparent; color: var(--color-text-secondary); }
-.ai-action-confirm { border: 1px solid var(--sa-primary); background: var(--sa-primary); color: #fff; }
+.ai-action-confirm { border: 1px solid var(--sa-primary); background: var(--sa-primary); color: var(--color-text-inverse); }
 
 .chat-message,
 .message-bubble,
@@ -4052,8 +3594,8 @@ const handleProjectCreated = (newProject) => {
   margin-right: 4px;
 }
 
-.ai-attachment-meta small.is-ready { color: #16803c; }
-.ai-attachment-meta small.is-error { color: #dc2626; }
+.ai-attachment-meta small.is-ready { color: var(--color-success); }
+.ai-attachment-meta small.is-error { color: var(--color-danger); }
 .ai-attachment-meta small.is-uploading,
 .ai-attachment-meta small.is-processing { color: var(--color-accent); }
 
@@ -4212,7 +3754,7 @@ const handleProjectCreated = (newProject) => {
 .ai-voice-head strong { color: var(--color-text-primary); font-size: 13px; }
 
 .ai-voice-timer {
-  color: var(--color-danger, #dc2626);
+  color: var(--color-danger);
   font: 700 12px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
@@ -4243,7 +3785,7 @@ const handleProjectCreated = (newProject) => {
   line-height: 1.5;
 }
 
-.ai-voice-error { color: var(--color-danger, #dc2626); }
+.ai-voice-error { color: var(--color-danger); }
 
 .ai-voice-transcript {
   display: grid;
@@ -4284,7 +3826,7 @@ const handleProjectCreated = (newProject) => {
 }
 
 .ai-voice-secondary { background: transparent; color: var(--color-text-secondary); }
-.ai-voice-primary { border-color: var(--color-accent) !important; background: var(--color-accent); color: #ffffff; }
+.ai-voice-primary { border-color: var(--color-accent) !important; background: var(--color-accent); color: var(--color-text-inverse); }
 .ai-voice-actions button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 @media (max-width: 560px) {
@@ -4299,7 +3841,7 @@ const handleProjectCreated = (newProject) => {
   border-radius: 16px;
   background: var(--color-surface);
   padding: 8px 9px 8px 12px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text-inverse) 4%, transparent);
 }
 
 .ai-input-wrapper :deep(.el-dropdown) {
@@ -4356,7 +3898,7 @@ const handleProjectCreated = (newProject) => {
   border: 0;
   border-radius: 12px;
   background: var(--color-accent);
-  color: #ffffff;
+  color: var(--color-text-inverse);
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -4581,10 +4123,10 @@ const handleProjectCreated = (newProject) => {
   outline: none;
 }
 
-.ai-credit-card.is-low { border-color: #d9a441; }
-.ai-credit-card.is-low .ai-credit-progress > span { background: #d9a441; }
-.ai-credit-card.is-empty { border-color: #d25b5b; }
-.ai-credit-card.is-empty .ai-credit-progress > span { width: 0 !important; background: #d25b5b; }
+.ai-credit-card.is-low { border-color: var(--color-warning); }
+.ai-credit-card.is-low .ai-credit-progress > span { background: var(--color-warning); }
+.ai-credit-card.is-empty { border-color: var(--color-danger); }
+.ai-credit-card.is-empty .ai-credit-progress > span { width: 0 !important; background: var(--color-danger); }
 
 .persistent-call-overlay {
   position: fixed;

@@ -56,7 +56,8 @@
   --color-text-secondary: color-mix(in srgb, var(--color-text-primary) 70%, transparent); /* Labels */
   --color-text-muted: color-mix(in srgb, var(--color-text-primary) 50%, transparent);    /* Placeholders */
   --color-text-disabled: color-mix(in srgb, var(--color-text-primary) 30%, transparent);
-  --color-text-inverse: #ffffff;  
+  --color-text-inverse: #ffffff;
+  --color-on-accent: var(--color-text-inverse);
   
   --color-border: var(--sa-border);       /* Slate-200 */
   --color-border-hover: #cbd5e1;
@@ -158,6 +159,7 @@
   
   --color-text-primary: #e2e8f0;   /* Light Slate */
   --color-text-inverse: #ffffff;
+  --color-on-accent: var(--color-text-inverse);
   
   --color-border: var(--sa-border);       
   --color-border-hover: #3a5272;

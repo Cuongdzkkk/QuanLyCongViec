@@ -33,25 +33,25 @@
         </div>
 
         <details class="workspace-tools">
-          <summary><span>Workspace tools</span><small>GitHub analysis và backlog review</small></summary>
+          <summary><span>Công cụ workspace</span><small>Phân tích GitHub và review backlog</small></summary>
         <div class="repo-panel">
           <div class="repo-head">
             <div>
-              <div class="panel-title">GitHub repo analysis</div>
-              <div class="panel-copy">Chọn repo, đọc nhanh metadata và gửi một prompt phân tích task vào chat box.</div>
+              <div class="panel-title">Phân tích repo GitHub</div>
+              <div class="panel-copy">Chọn repo, đọc nhanh metadata và gửi prompt phân tích task vào khung chat.</div>
             </div>
-            <button class="ghost-btn" type="button" :disabled="repoLoading" @click="analyzeRepository">Analyze repo</button>
+            <button class="ghost-btn" type="button" :disabled="repoLoading" @click="analyzeRepository">Phân tích repo</button>
           </div>
           <div class="repo-grid">
             <input v-model="repoForm.url" type="text" class="repo-input" placeholder="https://github.com/owner/repo" />
             <input v-model="repoForm.token" type="password" class="repo-input" placeholder="GitHub token (optional)" />
           </div>
           <div class="repo-actions">
-            <button class="ghost-btn" type="button" @click="useQuickPrompt('Phan ra task sau thanh 3-5 subtask ro rang, co test va ban giao.')">
-              Chen lenh breakdown
+            <button class="ghost-btn" type="button" @click="useQuickPrompt('Phân rã task sau thành 3-5 subtask rõ ràng, có test và bàn giao.')">
+              Chèn lệnh breakdown
             </button>
             <button class="ghost-btn" type="button" :disabled="repoLoading" @click="prepareBreakdownPrompt">
-              Mau prompt phan ra task
+              Mẫu prompt phân rã task
             </button>
           </div>
           <p v-if="repoStatus" class="repo-status">{{ repoStatus }}</p>
@@ -60,7 +60,7 @@
             <p class="analysis-summary">{{ repoAnalysis.summary }}</p>
             <div class="analysis-actions">
               <div class="analysis-project">
-                <strong>Project tao task:</strong>
+                <strong>Project tạo task:</strong>
                 <span>{{ activeProjectName }}</span>
               </div>
               <div class="analysis-action-buttons">
@@ -212,77 +212,74 @@
         </details>
 
         <div class="chat-history">
-          <div v-for="(msg, idx) in chatHistory" :key="idx" class="chat-row" :class="msg.role">
-            <div v-if="msg.role === 'bot'" class="bot-icon-circle"><i class="fa-solid fa-robot"></i></div>
-            <div :class="['bubble', msg.role === 'user' ? 'primary' : '']">
-              <div>{{ msg.content }}</div>
-              <div v-if="msg.progressSteps?.length" class="thinking-steps">
-                <div
-                  v-for="(step, stepIdx) in msg.progressSteps"
-                  :key="`${idx}-${stepIdx}`"
-                  class="thinking-step"
-                  :class="{ active: stepIdx <= (msg.progressIndex || 0) }"
-                >
-                  <i class="fa-solid fa-circle-notch" v-if="stepIdx === (msg.progressIndex || 0) && msg.isTyping"></i>
-                  <i class="fa-solid fa-check" v-else-if="stepIdx < (msg.progressIndex || 0)"></i>
-                  <i class="fa-regular fa-circle" v-else></i>
-                  <span>{{ step }}</span>
-                </div>
-              </div>
-              <i v-if="msg.isTyping" class="fa-solid fa-ellipsis fa-fade"></i>
-              <div v-if="msg.actions?.length" class="page-action-list" aria-label="AI action previews">
-                <article v-for="(action, actionIndex) in writeActions(msg.actions)" :key="`${action.type}-${actionIndex}`" class="page-action-card">
-                  <div class="page-action-head"><div><span>CẦN BẠN XÁC NHẬN</span><strong>{{ actionLabel(action.type) }}</strong></div><em>{{ actionStatusLabel(action) }}</em></div>
-                  <p>{{ action.description || 'AI đề xuất một thay đổi dựa trên yêu cầu của bạn.' }}</p>
-                  <dl><template v-for="detail in actionDetails(action)" :key="detail.label"><dt>{{ detail.label }}</dt><dd>{{ detail.value }}</dd></template></dl>
-                  <p v-if="action.error" class="page-action-error" role="alert">{{ action.error }}</p>
-                  <p v-if="action.result?.message" class="page-action-success" role="status">{{ action.result.message }}</p>
-                  <div class="page-action-controls">
-                    <button type="button" class="cancel-action" :disabled="action.loading || action.uiStatus === 'success'" @click="cancelPageAction(action)">Hủy</button>
-                    <button type="button" class="confirm-action" :disabled="action.loading || action.uiStatus === 'success'" @click="confirmPageAction(action)">{{ action.loading ? 'Đang xử lý...' : action.uiStatus === 'success' ? 'Đã thực hiện' : 'Xác nhận' }}</button>
-                  </div>
-                </article>
-                <small v-if="msg.actions.some(action => isReadOnlyAction(action.type, action.requiresConfirmation))" class="page-read-note">Đã đọc dữ liệu hiện tại để bổ sung kết quả.</small>
-              </div>
-            </div>
-            <div v-if="msg.role === 'user'" class="user-avatar-circle">{{ userInitials }}</div>
-          </div>
+          <AiMessage
+            v-for="(msg, idx) in chatHistory"
+            :key="`${msg.role}-${idx}`"
+            :message="msg"
+            :profile-initials="userInitials"
+            @preview-attachment="openAttachmentPreview"
+            @open-citation="openCitation"
+            @copy="copyAiMessage"
+            @continue="continueFromAiMessage"
+            @execute-action="confirmPageAction"
+            @cancel-action="cancelPageAction"
+            @retry-action="retryPageAction"
+            @quick-prompt="useQuickPrompt"
+          />
         </div>
 
         <div class="ai-chat-input-wrapper">
-          <div class="input-box">
-            <button class="full-composer-icon" type="button" title="Mở công cụ attachment" aria-label="Mở công cụ attachment" @click="returnToFloating"><i class="fa-solid fa-plus"></i></button>
-            <textarea
-              ref="fullComposerRef"
-              v-model="userMessage"
-              rows="1"
-              placeholder="Hoi SprintA AI bat cu dieu gi..."
-              :disabled="isLoading"
-              @input="resizeFullComposer"
-              @keydown="handleComposerKeydown"
-            ></textarea>
-            <button class="full-composer-icon" type="button" title="Mở nhập bằng giọng nói" aria-label="Mở nhập bằng giọng nói" @click="returnToFloating"><i class="fa-solid fa-microphone"></i></button>
-            <button class="send-btn" type="button" :disabled="isLoading || !userMessage.trim()" @click="sendMessage()">
-              <span class="fa fa-paper-plane"></span>
-            </button>
-          </div>
-          <div class="ai-disclaimer">SprintA AI co the mac sai sot. Hay kiem tra lai cac thong tin quan trong.</div>
+          <AiComposer
+            v-model="userMessage"
+            :placeholder="'Hỏi SprintA AI bất cứ điều gì...'"
+            :enter-hint="'Enter để gửi · Shift + Enter để xuống dòng'"
+            reset-label="Cuộc trò chuyện mới"
+            :sending="isLoading"
+            :credits-exhausted="aiCreditsExhausted"
+            :pending-attachments="pendingAttachments"
+            :composer-drag-active="composerDragActive"
+            :capturing-screenshot="capturingScreenshot"
+            :voice-state="voiceState"
+            :voice-language="voiceLanguage"
+            :voice-language-label="voiceLanguageLabel"
+            :voice-status-title="voiceStatusTitle"
+            :voice-elapsed-label="voiceElapsedLabel"
+            :voice-transcript="voiceTranscript"
+            :voice-error="voiceError"
+            :accept="composerAttachmentAccept"
+            @files="handleAttachmentInput"
+            @preview-attachment="openAttachmentPreview"
+            @remove-attachment="removePendingAttachment"
+            @attachment-command="handleAttachmentCommand"
+            @paste="handleComposerPaste"
+            @keydown="handleComposerKeydown"
+            @dragenter="composerDragActive = true"
+            @dragleave="handleComposerDragLeave"
+            @drop="handleComposerDrop"
+            @start-voice="startVoiceRecording"
+            @stop-voice="stopVoiceRecording"
+            @cancel-voice="cancelVoiceInput"
+            @record-again="recordVoiceAgain"
+            @use-transcript="applyVoiceTranscript"
+            @send="sendMessage"
+            @reset="startNewConversation"
+          />
         </div>
       </div>
 
       <aside class="ai-details-panel">
         <div class="panel-section">
-          <div class="section-label">Tro ly AI</div>
-          <div class="section-title">HANH DONG NHANH</div>
+          <div class="section-label">Trợ lý AI</div>
+          <div class="section-title">HÀNH ĐỘNG NHANH</div>
           <div class="quick-links">
-            <button class="q-link" type="button" @click="useQuickPrompt('Tao lo trinh cho du an hien tai')">
-              <i class="fa-solid fa-map-location-dot"></i> Tao lo trinh
+            <button class="q-link" type="button" @click="useQuickPrompt('Tạo lộ trình cho dự án hiện tại')">
+              <i class="fa-solid fa-map-location-dot"></i> Tạo lộ trình
             </button>
-            <button class="q-link" type="button" @click="useQuickPrompt('Tom tat cac cong viec quan trong')">
-              <i class="fa-regular fa-file-lines"></i> Tom tat cong viec
+            <button class="q-link" type="button" @click="useQuickPrompt('Tóm tắt các công việc quan trọng')">
+              <i class="fa-regular fa-file-lines"></i> Tóm tắt công việc
             </button>
-            <button class="q-link" type="button" @click="useQuickPrompt('Soan ban cap nhat tien do ngan gon')">
-              <i class="fa-solid fa-pen-nib"></i> Soan ban cap nhat
+            <button class="q-link" type="button" @click="useQuickPrompt('Soạn bản cập nhật tiến độ ngắn gọn')">
+              <i class="fa-solid fa-pen-nib"></i> Soạn bản cập nhật
             </button>
             <button class="q-link" type="button" @click="prepareBreakdownPrompt()">
               <i class="fa-solid fa-list-check"></i> Breakdown task
@@ -291,7 +288,7 @@
         </div>
 
         <div class="panel-section mt-30">
-          <div class="section-title">NHAC NHO</div>
+          <div class="section-title">NHẮC NHỞ</div>
           <p class="text-muted sidebar-copy">Credits và trạng thái xử lý được cập nhật theo tài khoản của bạn. Nếu AI chậm, tiến trình sẽ hiển thị ngay trong cuộc trò chuyện.</p>
         </div>
 
@@ -310,10 +307,12 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import CustomizeSidebarModal from '../components/CustomizeSidebarModal.vue'
+import AiComposer from '@/components/ai/AiComposer.vue'
+import AiMessage from '@/components/ai/AiMessage.vue'
 
 import axiosClient from '@/api/axiosClient'
 import { useProjectStore } from '@/store/useProjectStore'
@@ -327,7 +326,8 @@ import { getScopedCurrentProjectId } from '@/utils/projectContext'
 import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
 import { useAiConversationStore } from '@/store/useAiConversationStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
-import { isComposerSendKey, writeActionsOnly } from '@/utils/aiWorkspace'
+import { isComposerSendKey } from '@/utils/aiWorkspace'
+import { useAiComposer } from '@/composables/useAiComposer'
 
 const router = useRouter()
 const aiConversationStore = useAiConversationStore()
@@ -341,13 +341,17 @@ const showCustomizeModal = ref(false)
 const sidebarPreferences = ref({ audit: true, users: true })
 
 const userMessage = ref('')
-const fullComposerRef = ref(null)
 const isLoading = ref(false)
 const repoLoading = ref(false)
 const repoStatus = ref('')
 const repoAnalysis = ref(null)
 const createBacklogLoading = ref('')
 const aiUsage = ref(null)
+const aiCreditsExhausted = computed(() => Boolean(
+  aiUsage.value
+  && Number(aiUsage.value.includedCredits || 0) > 0
+  && Number(aiUsage.value.remainingCredits ?? aiUsage.value.remainingIncludedCredits ?? (aiUsage.value.includedCredits - Number(aiUsage.value.usedCredits || 0))) <= 0
+))
 const selectedBacklogKeys = ref([])
 const reviewTargetSprintId = ref('')
 const repoForm = ref({
@@ -370,18 +374,43 @@ const conversationSearch = computed({
 })
 const currentWorkspaceId = computed(() => currentProjectRecord.value?.workspaceId || currentProjectRecord.value?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null)
 const formatConversationDate = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : ''
+const {
+  pendingAttachments,
+  composerDragActive,
+  capturingScreenshot,
+  voiceState,
+  voiceLanguage,
+  voiceTranscript,
+  voiceError,
+  voiceElapsedLabel,
+  voiceLanguageLabel,
+  voiceStatusTitle,
+  accept: composerAttachmentAccept,
+  openAttachmentPreview,
+  removePendingAttachment,
+  handleAttachmentInput,
+  handleComposerPaste,
+  handleAttachmentCommand,
+  handleComposerDrop,
+  handleComposerDragLeave,
+  startVoiceRecording,
+  stopVoiceRecording,
+  cancelVoiceInput,
+  recordVoiceAgain,
+  useVoiceTranscript
+} = useAiComposer({ workspaceId: currentWorkspaceId })
 
 const breakdownProgressSteps = [
-  'Dang phan tich task',
-  'Dang truy van dich vu AI',
-  'Dang thu lai neu can',
-  'Dang tong hop ket qua'
+  'Đang phân tích task',
+  'Đang truy vấn dịch vụ AI',
+  'Đang thử lại nếu cần',
+  'Đang tổng hợp kết quả'
 ]
 
 const defaultProgressSteps = [
-  'Dang doc yeu cau',
-  'Dang truy van AI',
-  'Dang tong hop phan hoi'
+  'Đang đọc yêu cầu',
+  'Đang truy vấn AI',
+  'Đang tổng hợp phản hồi'
 ]
 
 let progressTimer = null
@@ -503,60 +532,7 @@ const returnToFloating = async () => {
   await router.back()
 }
 const openAiCreditPurchase = () => router.push('/#pricing')
-
-const readOnlyActionTypes = new Set([
-  'summarize_dashboard', 'summarize_project', 'list_overdue_tasks', 'get_workload',
-  'explain_report', 'summarize_page', 'summarize_intakes', 'suggest_view_filter',
-  'list_work_items', 'list_cycles', 'list_modules', 'list_pages', 'list_views',
-  'list_intakes', 'list_pending_intakes', 'analyze_priority_distribution',
-  'analyze_status_distribution', 'analyze_workload', 'identify_project_risks',
-  'refresh_report', 'export_report_csv', 'summarize_report'
-])
-const isReadOnlyAction = (type, requiresConfirmation) => requiresConfirmation === false || readOnlyActionTypes.has(String(type || '').toLowerCase())
-const writeActions = actions => writeActionsOnly(actions, isReadOnlyAction)
 const actionPayload = action => action?.payload || {}
-const payloadValue = (action, ...keys) => {
-  const payload = actionPayload(action)
-  const key = keys.find(item => payload[item] !== undefined && payload[item] !== null && `${payload[item]}`.trim() !== '')
-  return key ? payload[key] : ''
-}
-const actionLabel = type => ({
-  create_task: 'Tạo task mới', create_project: 'Tạo project mới', create_goal: 'Tạo mục tiêu mới',
-  update_task_status: 'Cập nhật trạng thái task', update_task_priority: 'Cập nhật độ ưu tiên',
-  update_task_due_date: 'Cập nhật hạn task', assign_task: 'Giao task cho thành viên',
-  add_comment: 'Thêm bình luận', create_cycle: 'Tạo chu kỳ mới', create_module: 'Tạo mô-đun mới',
-  create_page: 'Tạo tài liệu mới', create_view: 'Tạo bộ lọc đã lưu', create_intake_request: 'Tạo yêu cầu mới'
-}[String(type || '').toLowerCase()] || 'Thực hiện thay đổi')
-const actionDetails = action => {
-  const type = String(action?.type || '').toLowerCase()
-  const details = []
-  const add = (label, value) => { if (value !== '' && value !== null && value !== undefined) details.push({ label, value: `${value}` }) }
-  if (type === 'create_task') {
-    add('Tiêu đề', payloadValue(action, 'title', 'taskTitle'))
-    add('Hạn', payloadValue(action, 'dueDate', 'plannedEndDate'))
-    add('Ưu tiên', payloadValue(action, 'priority'))
-  } else if (type === 'create_project' || type === 'create_goal') {
-    add('Tên', payloadValue(action, 'name', 'projectName', 'title'))
-    add('Mô tả', payloadValue(action, 'description'))
-  } else if (type === 'update_task_status') {
-    add('Task', payloadValue(action, 'taskTitle', 'title'))
-    add('Trạng thái mới', payloadValue(action, 'statusName', 'status'))
-  } else if (type === 'assign_task') {
-    add('Task', payloadValue(action, 'taskTitle', 'title'))
-    add('Người nhận', payloadValue(action, 'assigneeName', 'assigneeEmail', 'assignee'))
-  } else if (type === 'update_task_priority' || type === 'update_task_due_date') {
-    add('Task', payloadValue(action, 'taskTitle', 'title'))
-    add(type === 'update_task_priority' ? 'Độ ưu tiên mới' : 'Hạn mới', payloadValue(action, type === 'update_task_priority' ? 'priority' : 'dueDate'))
-  } else if (type === 'add_comment') {
-    add('Đối tượng', payloadValue(action, 'entityType'))
-    add('Nội dung', payloadValue(action, 'content'))
-  } else {
-    add('Tên', payloadValue(action, 'name', 'title'))
-    add('Dự án', payloadValue(action, 'projectName'))
-  }
-  return details
-}
-const actionStatusLabel = action => ({ pending: 'Chờ xác nhận', loading: 'Đang xử lý', success: 'Thành công', cancelled: 'Đã hủy', error: 'Thất bại' }[action.uiStatus || 'pending'] || 'Chờ xác nhận')
 
 const confirmPageAction = async action => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
@@ -595,17 +571,39 @@ const cancelPageAction = async action => {
   await aiConversationStore.persistConversation()
 }
 
+const retryPageAction = action => {
+  if (!action || action.loading) return
+  action.uiStatus = 'pending'
+  action.error = ''
+  return confirmPageAction(action)
+}
+
+const copyAiMessage = async content => {
+  if (!content) return
+  try { await navigator.clipboard.writeText(content); ElMessage.success('Đã sao chép câu trả lời.') } catch { ElMessage.info('Không thể sao chép tự động trên trình duyệt này.') }
+}
+
+const continueFromAiMessage = content => {
+  userMessage.value = `Hãy giải thích thêm và đưa ra bước tiếp theo từ câu trả lời này:\n${`${content || ''}`.slice(0, 600)}`
+  window.setTimeout(() => document.querySelector('.ai-composer-row textarea')?.focus(), 0)
+}
+
+const openCitation = citation => {
+  const attachment = chatHistory.value.flatMap(message => message.attachments || []).find(item => item.id === citation?.attachmentId)
+  if (attachment) openAttachmentPreview(attachment)
+}
+
+const applyVoiceTranscript = () => {
+  const transcript = useVoiceTranscript()
+  if (!transcript) return
+  userMessage.value = transcript
+  cancelVoiceInput()
+}
+
 const handleComposerKeydown = event => {
   if (!isComposerSendKey(event)) return
   event.preventDefault()
   sendMessage()
-}
-
-const resizeFullComposer = () => {
-  const textarea = fullComposerRef.value
-  if (!textarea) return
-  textarea.style.height = 'auto'
-  textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`
 }
 
 const isBreakdownPrompt = (message) => {
@@ -638,36 +636,63 @@ const startThinkingMessage = (message) => {
   }, 900)
 }
 
+const uploadFullAttachments = async conversationId => {
+  const uploaded = []
+  for (const attachment of pendingAttachments.value) {
+    attachment.status = 'uploading'
+    const form = new FormData()
+    form.append('file', attachment.file, attachment.name)
+    form.append('conversationId', conversationId)
+    if (currentWorkspaceId.value) form.append('workspaceId', currentWorkspaceId.value)
+    try {
+      const response = await axiosClient.post('/ai/attachments', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      const payload = response.data?.data ?? response.data
+      Object.assign(attachment, { id: payload.id, name: payload.fileName || attachment.name, size: payload.fileSize || attachment.size, contentUrl: payload.contentUrl, mimeType: payload.mimeType, status: String(payload.status || 'ready').toLowerCase() })
+      uploaded.push(attachment)
+    } catch (error) {
+      attachment.status = 'error'
+      throw error
+    }
+  }
+  return uploaded
+}
+
 const sendMessage = async (overrideMessage = null) => {
   const outgoing = `${overrideMessage ?? userMessage.value}`.trim()
-  if (!outgoing || isLoading.value) return
+  const hasAttachments = pendingAttachments.value.length > 0
+  if (aiCreditsExhausted.value || (!outgoing && !hasAttachments) || isLoading.value) return
 
   if (!overrideMessage) {
     userMessage.value = ''
   }
 
-  chatHistory.value.push({ role: 'user', content: outgoing })
+  const sentAttachments = pendingAttachments.value
   isLoading.value = true
   startThinkingMessage(outgoing)
 
   try {
     const conversationId = await aiConversationStore.ensureConversation({
       workspaceId: currentWorkspaceId.value,
-      firstMessage: outgoing
+      firstMessage: outgoing || sentAttachments.map(item => item.name).join(', ')
     })
+    const uploadedAttachments = hasAttachments ? await uploadFullAttachments(conversationId) : []
+    pendingAttachments.value = []
+    chatHistory.value.splice(chatHistory.value.length - 1, 0, { role: 'user', content: outgoing || 'Hãy phân tích các attachment đã đính kèm.', attachments: uploadedAttachments })
     const history = chatHistory.value
       .filter(item => !item.isTyping)
       .slice(-10)
       .map(item => ({ role: item.role === 'bot' ? 'assistant' : 'user', content: item.content }))
 
-    const response = await axiosClient.post('/ai/context-chat', {
-      conversationId,
-      route: '/ai-assistant',
-      projectId: currentProjectId.value || null,
-      workspaceId: currentWorkspaceId.value || null,
-      message: outgoing,
-      pageContext: { pageType: 'ai-assistant', currentView: 'conversation', visibleTaskIds: [], visibleStatuses: [], filters: {}, extra: { history } }
-    })
+    const response = uploadedAttachments.length
+      ? await axiosClient.post('/ai/attachment-chat', { conversationId, workspaceId: currentWorkspaceId.value || null, attachmentIds: uploadedAttachments.map(item => item.id), message: outgoing })
+      : await axiosClient.post('/ai/context-chat', {
+        conversationId,
+        route: '/ai-assistant',
+        projectId: currentProjectId.value || null,
+        workspaceId: currentWorkspaceId.value || null,
+        message: outgoing,
+        pageContext: { pageType: 'ai-assistant', currentView: 'conversation', visibleTaskIds: [], visibleStatuses: [], filters: {}, extra: { history } }
+      })
 
     clearProgressTimer()
     chatHistory.value.pop()
@@ -679,6 +704,7 @@ const sendMessage = async (overrideMessage = null) => {
       role: 'bot',
       content: message,
       warnings: payload?.warnings || [],
+      citations: payload?.citations || [],
       actions: (payload?.actions || []).map(action => ({
         ...action,
         type: String(action.type || '').toLowerCase(),
@@ -714,24 +740,24 @@ const useQuickPrompt = (prompt) => {
 }
 
 const prepareBreakdownPrompt = () => {
-  userMessage.value = 'Phan ra task sau thanh 3-5 subtask ro rang. Moi subtask can co muc tieu, owner de xuat, test/checklist va ban giao.'
+  userMessage.value = 'Phân rã task sau thành 3-5 subtask rõ ràng. Mỗi subtask cần có mục tiêu, owner đề xuất, test/checklist và bàn giao.'
 }
 
 const analyzeRepository = async () => {
   const repoUrl = repoForm.value.url.trim()
   if (!repoUrl) {
-    ElMessage.warning('Hay nhap repo GitHub truoc.')
+    ElMessage.warning('Hãy nhập repo GitHub trước.')
     return
   }
 
   const parsed = parseRepo(repoUrl)
   if (!parsed) {
-    ElMessage.error('Repo URL khong dung dinh dang GitHub.')
+    ElMessage.error('Repo URL không đúng định dạng GitHub.')
     return
   }
 
   repoLoading.value = true
-  repoStatus.value = 'Dang phan tich repo qua backend AI...'
+  repoStatus.value = 'Đang phân tích repo qua backend AI...'
 
   try {
     const response = await runWithEphemeralGitHubToken(repoForm.value, gitHubToken =>
@@ -743,25 +769,25 @@ const analyzeRepository = async () => {
 
     const analysis = response.data?.data
     if (!analysis) {
-      throw new Error('AI khong tra ve repo analysis hop le.')
+      throw new Error('AI không trả về repo analysis hợp lệ.')
     }
 
     repoAnalysis.value = analysis
     syncReviewSelectionFromAnalysis()
-    userMessage.value = analysis.suggestedPrompt || `Phan tich repo ${parsed.owner}/${parsed.repo} va de xuat backlog tiep theo.`
+    userMessage.value = analysis.suggestedPrompt || `Phân tích repo ${parsed.owner}/${parsed.repo} và đề xuất backlog tiếp theo.`
     repoStatus.value = `Da phan tich repo ${analysis.repository}. Prompt da san sang trong chat box.`
     chatHistory.value.push({
       role: 'bot',
       content: [
         `Repo ${analysis.repository}: ${analysis.summary}`,
         '',
-        `Quick wins: ${(analysis.quickWins || []).map(item => item.title).join(' | ') || 'Khong co'}`,
-        `Medium tasks: ${(analysis.mediumTasks || []).map(item => item.title).join(' | ') || 'Khong co'}`,
-        `Risky tasks: ${(analysis.riskyTasks || []).map(item => item.title).join(' | ') || 'Khong co'}`
+        `Quick wins: ${(analysis.quickWins || []).map(item => item.title).join(' | ') || 'Không có'}`,
+        `Medium tasks: ${(analysis.mediumTasks || []).map(item => item.title).join(' | ') || 'Không có'}`,
+        `Risky tasks: ${(analysis.riskyTasks || []).map(item => item.title).join(' | ') || 'Không có'}`
       ].join('\n')
     })
   } catch (error) {
-    repoStatus.value = error.response?.data?.message || error.message || 'Khong phan tich duoc repo.'
+    repoStatus.value = error.response?.data?.message || error.message || 'Không phân tích được repo.'
     ElMessage.error(repoStatus.value)
   } finally {
     repoLoading.value = false
@@ -770,12 +796,12 @@ const analyzeRepository = async () => {
 
 const createBacklogItems = async (mode) => {
   if (!repoAnalysis.value) {
-    ElMessage.warning('Hay phan tich repo truoc')
+    ElMessage.warning('Hãy phân tích repo trước.')
     return
   }
 
   if (!currentProjectId.value) {
-    ElMessage.warning('Hay chon project tren sidebar truoc')
+    ElMessage.warning('Hãy chọn project trên sidebar trước.')
     return
   }
 
@@ -810,7 +836,7 @@ const createBacklogItems = async (mode) => {
     ElMessage.success(response.data?.message || `Da tao ${created.length} work items`)
     repoStatus.value = `Da tao ${created.length} work items vao ${activeProjectName.value}.`
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || 'Khong tao duoc AI backlog items')
+    ElMessage.error(error.response?.data?.message || 'Không tạo được AI backlog items.')
   } finally {
     createBacklogLoading.value = ''
   }
@@ -818,12 +844,12 @@ const createBacklogItems = async (mode) => {
 
 const createReviewedBacklogItems = async () => {
   if (!repoAnalysis.value) {
-    ElMessage.warning('Hay phan tich repo truoc')
+    ElMessage.warning('Hãy phân tích repo trước.')
     return
   }
 
   if (!currentProjectId.value) {
-    ElMessage.warning('Hay chon project tren sidebar truoc')
+    ElMessage.warning('Hãy chọn project trên sidebar trước.')
     return
   }
 
@@ -833,7 +859,7 @@ const createReviewedBacklogItems = async () => {
   }
 
   if (!selectedBacklogItems.value.length) {
-    ElMessage.warning('Hay chon it nhat mot AI backlog item')
+    ElMessage.warning('Hãy chọn ít nhất một AI backlog item.')
     return
   }
 
@@ -872,7 +898,7 @@ const createReviewedBacklogItems = async () => {
     ElMessage.success(response.data?.message || `Da tao ${created.length} work items`)
     repoStatus.value = `Da tao ${created.length} work items vao ${reviewTargetSprintLabel.value}.`
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || 'Khong tao duoc reviewed AI backlog items')
+    ElMessage.error(error.response?.data?.message || 'Không tạo được reviewed AI backlog items.')
   } finally {
     createBacklogLoading.value = ''
   }
@@ -909,7 +935,6 @@ onMounted(() => {
   projectStore.fetchAllProjects().catch(() => [])
   loadAiUsage()
   loadConversations(true)
-  nextTick(resizeFullComposer)
   if (currentProjectId.value) {
     sprintStore.fetchSprints(currentProjectId.value).catch(() => [])
     signalRService.startConnection(`${currentProjectId.value}`)
@@ -1099,7 +1124,7 @@ const handleSidebarSaved = (prefs) => {
   padding: 16px;
   border: 1px solid var(--color-border);
   border-radius: 16px;
-  background: color-mix(in srgb, var(--color-surface-elevated, #141722) 92%, #0ea5e9 8%);
+  background: color-mix(in srgb, var(--color-surface-elevated) 92%, var(--color-accent) 8%);
 }
 
 .review-head {
@@ -1125,7 +1150,7 @@ const handleSidebarSaved = (prefs) => {
   min-width: 84px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(15, 23, 42, 0.45);
+  background: color-mix(in srgb, var(--color-surface-hover) 72%, transparent);
   border: 1px solid var(--color-border);
 }
 
@@ -1334,7 +1359,7 @@ const handleSidebarSaved = (prefs) => {
 
 .user-avatar-circle {
   background: var(--accent-color);
-  color: #ffffff;
+  color: var(--color-text-inverse);
   font-weight: 700;
 }
 
@@ -1352,7 +1377,7 @@ const handleSidebarSaved = (prefs) => {
 
 .bubble.primary {
   background: var(--accent-color);
-  color: #ffffff;
+  color: var(--color-text-inverse);
   border-color: var(--accent-color);
 }
 
@@ -1387,7 +1412,7 @@ const handleSidebarSaved = (prefs) => {
 }
 .input-box:focus-within {
   border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .input-box input {
@@ -1407,7 +1432,7 @@ const handleSidebarSaved = (prefs) => {
 .send-btn {
   border: 0;
   background: transparent;
-  color: #0ea5e9;
+  color: var(--color-accent);
   cursor: pointer;
 }
 
@@ -1484,7 +1509,7 @@ const handleSidebarSaved = (prefs) => {
 }
 
 .plan-label {
-  color: #0ea5e9;
+  color: var(--color-accent);
   font-size: 12px;
   font-weight: 700;
   margin-bottom: 8px;
@@ -1500,8 +1525,8 @@ const handleSidebarSaved = (prefs) => {
 .btn-upgrade {
   border: 0;
   border-radius: 6px;
-  background: #0ea5e9;
-  color: #ffffff;
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
   padding: 10px 14px;
   cursor: pointer;
 }
@@ -1606,10 +1631,10 @@ const handleSidebarSaved = (prefs) => {
 .page-action-card dd { margin: 0; overflow-wrap: anywhere; }
 .cancel-action, .confirm-action { min-height: 36px; padding: 0 12px; border-radius: 8px; font-size: 11px; font-weight: 800; cursor: pointer; }
 .cancel-action { border: 1px solid var(--color-border); background: transparent; color: var(--color-text-secondary); }
-.confirm-action { border: 1px solid var(--color-accent); background: var(--color-accent); color: #fff; }
+.confirm-action { border: 1px solid var(--color-accent); background: var(--color-accent); color: var(--color-text-inverse); }
 .cancel-action:disabled, .confirm-action:disabled { cursor: not-allowed; opacity: .55; }
-.page-action-error { color: var(--color-danger, #dc2626) !important; }
-.page-action-success, .page-read-note { color: var(--color-success, #16803c) !important; }
+.page-action-error { color: var(--color-danger) !important; }
+.page-action-success, .page-read-note { color: var(--color-success) !important; }
 
 @media (max-width: 1100px) {
   .ai-page-flex-wrapper { height: calc(100dvh - 56px); }
