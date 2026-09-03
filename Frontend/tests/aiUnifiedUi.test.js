@@ -15,6 +15,17 @@ test('panel and full chat use the same composer and message components', () => {
   assert.match(nexusLayout, /import AiMessage from ['"]@\/components\/ai\/AiMessage\.vue['"]/)
 })
 
+test('AI composer focus uses the exposed component ref contract', () => {
+  assert.match(composer, /ref="textareaInput"/)
+  assert.match(composer, /focusInput: \(\) => textareaInput\.value\?\.focus\(\)/)
+  assert.match(nexusLayout, /ref="aiComposerRef"/)
+  assert.match(nexusLayout, /aiComposerRef\.value\?\.focusInput\?\.\(\)/)
+  assert.match(aiPage, /ref="aiComposerRef"/)
+  assert.match(aiPage, /aiComposerRef\.value\?\.focusInput\?\.\(\)/)
+  assert.doesNotMatch(nexusLayout, /querySelector\([^\n]*textarea/)
+  assert.doesNotMatch(aiPage, /querySelector\([^\n]*textarea/)
+})
+
 test('full composer exposes the same attachment, screenshot, voice, and send controls', () => {
   for (const contract of ['attachment-command', 'screenshot', 'start-voice', 'use-transcript', 'drop', 'send']) {
     assert.match(composer, new RegExp(contract))

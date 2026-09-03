@@ -63,6 +63,7 @@
         </template>
       </el-dropdown>
       <textarea
+        ref="textareaInput"
         :value="modelValue"
         rows="1"
         :aria-label="placeholder"
@@ -108,6 +109,7 @@ const emit = defineEmits([
 ])
 
 const fileInput = ref(null)
+const textareaInput = ref(null)
 const handleInput = event => {
   const textarea = event.target
   textarea.style.height = 'auto'
@@ -125,7 +127,10 @@ const formatBytes = bytes => {
 const statusLabel = status => ({ uploading: 'Đang tải lên', processing: 'Đang xử lý', error: 'Tải lên thất bại', ready: 'Đã xử lý' }[String(status || 'pending').toLowerCase()] || 'Chờ tải lên')
 const statusIcon = status => ({ uploading: 'fa-solid fa-arrow-up-from-bracket fa-bounce', processing: 'fa-solid fa-spinner fa-spin', error: 'fa-solid fa-circle-exclamation', ready: 'fa-solid fa-circle-check' }[String(status || 'pending').toLowerCase()] || 'fa-regular fa-clock')
 
-defineExpose({ openFilePicker: () => fileInput.value?.click() })
+defineExpose({
+  openFilePicker: () => fileInput.value?.click(),
+  focusInput: () => textareaInput.value?.focus()
+})
 </script>
 
 <style scoped>

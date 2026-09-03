@@ -230,6 +230,7 @@
 
         <div class="ai-chat-input-wrapper">
           <AiComposer
+            ref="aiComposerRef"
             v-model="userMessage"
             :placeholder="'Hỏi SprintA AI bất cứ điều gì...'"
             :enter-hint="'Enter để gửi · Shift + Enter để xuống dòng'"
@@ -330,6 +331,7 @@ import { isComposerSendKey } from '@/utils/aiWorkspace'
 import { useAiComposer } from '@/composables/useAiComposer'
 
 const router = useRouter()
+const aiComposerRef = ref(null)
 const aiConversationStore = useAiConversationStore()
 const aiPetStore = useAiPetStore()
 const projectStore = useProjectStore()
@@ -585,7 +587,7 @@ const copyAiMessage = async content => {
 
 const continueFromAiMessage = content => {
   userMessage.value = `Hãy giải thích thêm và đưa ra bước tiếp theo từ câu trả lời này:\n${`${content || ''}`.slice(0, 600)}`
-  window.setTimeout(() => document.querySelector('.ai-composer-row textarea')?.focus(), 0)
+  window.setTimeout(() => aiComposerRef.value?.focusInput?.(), 0)
 }
 
 const openCitation = citation => {

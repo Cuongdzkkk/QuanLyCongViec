@@ -1064,7 +1064,7 @@ const useVoiceTranscript = async () => {
   cancelVoiceInput()
   aiInput.value = transcript
   await nextTick()
-  document.querySelector('.ai-input-wrapper textarea')?.focus()
+  aiComposerRef.value?.focusInput?.()
 }
 
 function loadPetPosition() {
@@ -1961,7 +1961,7 @@ const copyAiMessage = async (content) => {
 
 const continueFromAiMessage = (content) => {
   aiInput.value = `Hãy giải thích thêm và đưa ra bước tiếp theo từ câu trả lời này:\n${content.slice(0, 600)}`
-  nextTick(() => document.querySelector('.ai-input-wrapper textarea')?.focus())
+  nextTick(() => aiComposerRef.value?.focusInput?.())
 }
 
 const captureSelectedText = () => {
@@ -3096,18 +3096,11 @@ const handleProjectCreated = (newProject) => {
 .ai-action-cancel { border: 1px solid var(--color-border); background: transparent; color: var(--color-text-secondary); }
 .ai-action-confirm { border: 1px solid var(--sa-primary); background: var(--sa-primary); color: var(--color-text-inverse); }
 
-.chat-message,
-.message-bubble,
-.ai-input-wrapper,
 .ai-input-foot {
   display: flex;
 }
 
-.message-stack,
-.message-bubble,
 .ai-action-preview-list { min-width: 0; width: 100%; }
-.message-stack { display: flex; flex-direction: column; align-items: stretch; }
-.message-bubble { flex-direction: column; align-items: stretch; }
 .ai-action-preview-list { flex: 0 0 auto; }
 .ai-action-preview-list { align-items: stretch; }
 .ai-action-description, .ai-action-result, .ai-action-error { overflow-wrap: anywhere; }
@@ -3378,131 +3371,6 @@ const handleProjectCreated = (newProject) => {
   gap: 14px;
 }
 
-.chat-message {
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.chat-message.user {
-  flex-direction: row-reverse;
-}
-
-.message-avatar {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  display: grid;
-  place-items: center;
-  border-radius: 9px;
-  background: var(--color-surface-hover);
-  color: var(--color-text-secondary);
-}
-
-.message-avatar img {
-  width: 26px;
-  height: 26px;
-  object-fit: contain;
-}
-
-.chat-message.bot .message-avatar {
-  background: var(--sa-primary-soft);
-  color: var(--color-accent);
-}
-
-.chat-message.user .message-avatar {
-  background: color-mix(in srgb, var(--color-success) 14%, var(--color-surface));
-  color: var(--color-success);
-}
-
-.message-stack {
-  max-width: calc(100% - 42px);
-}
-
-.chat-message.user .message-stack {
-  display: grid;
-  justify-items: end;
-}
-
-.message-author {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.message-bubble {
-  align-items: flex-start;
-  gap: 8px;
-  max-width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  border-top-left-radius: 5px;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font-size: 13px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  box-shadow: 0 6px 18px rgb(15 35 60 / 0.06);
-  position: relative;
-}
-
-.message-tools {
-  display: flex;
-  gap: 4px;
-  margin-top: 8px;
-  padding-top: 7px;
-  border-top: 1px solid var(--color-border);
-}
-
-.message-tools button {
-  width: 26px;
-  height: 26px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.message-tools button:hover,
-.message-tools button:focus-visible {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
-  outline: none;
-}
-
-.chat-message.user .message-bubble {
-  border-top-left-radius: 14px;
-  border-top-right-radius: 5px;
-  border-color: color-mix(in srgb, var(--sa-primary) 30%, var(--color-border));
-  background: color-mix(in srgb, var(--sa-primary-soft) 68%, var(--color-surface));
-}
-
-.ai-input-area {
-  position: relative;
-  padding: 14px 18px 16px;
-  border-top: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-surface) 92%, var(--color-surface-hover));
-}
-
-.ai-input-area.is-dragging-files {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -4px;
-  background: color-mix(in srgb, var(--sa-primary-soft) 52%, var(--color-surface));
-}
-
-.ai-attachment-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 .ai-attachment-tray {
   display: grid;
   gap: 8px;
@@ -3598,64 +3466,6 @@ const handleProjectCreated = (newProject) => {
 .ai-attachment-meta small.is-error { color: var(--color-danger); }
 .ai-attachment-meta small.is-uploading,
 .ai-attachment-meta small.is-processing { color: var(--color-accent); }
-
-.message-attachments {
-  display: grid;
-  width: min(100%, 390px);
-  gap: 8px;
-}
-
-.message-attachment-card {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 32px;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  padding: 7px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--color-surface-hover) 62%, transparent);
-}
-
-.message-attachment-image {
-  width: 72px;
-  height: 54px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: var(--color-surface-hover);
-  color: var(--color-accent);
-  cursor: pointer;
-}
-
-.message-attachment-card:has(.message-attachment-image) {
-  grid-template-columns: 72px minmax(0, 1fr) 32px;
-}
-
-.message-attachment-image img {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-}
-
-.message-attachment-open {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-}
-
-.message-attachment-open:hover { background: var(--color-surface); color: var(--color-accent); }
 
 .ai-citations {
   display: grid;
@@ -3834,63 +3644,6 @@ const handleProjectCreated = (newProject) => {
   .ai-voice-language select { width: 100%; max-width: none; }
 }
 
-.ai-input-wrapper {
-  align-items: center;
-  gap: 8px;
-  border: 1px solid color-mix(in srgb, var(--color-border) 84%, var(--sa-primary));
-  border-radius: 16px;
-  background: var(--color-surface);
-  padding: 8px 9px 8px 12px;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text-inverse) 4%, transparent);
-}
-
-.ai-input-wrapper :deep(.el-dropdown) {
-  flex: 0 0 44px;
-}
-
-.ai-input-wrapper .ai-composer-icon-btn,
-.ai-input-wrapper .send-btn {
-  width: 44px;
-  height: 44px;
-  flex-basis: 44px;
-  border-radius: 12px;
-}
-
-.ai-input-wrapper:focus-within {
-  border-color: var(--color-accent);
-  box-shadow: none;
-}
-
-.markdown-body { min-width: 0; overflow-wrap: anywhere; }
-.markdown-body p { margin: 0 0 8px; }
-.markdown-body p:last-child { margin-bottom: 0; }
-.markdown-body h2,
-.markdown-body h3,
-.markdown-body h4 { margin: 0 0 8px; color: var(--color-text-primary); line-height: 1.3; }
-.markdown-body h2 { font-size: 15px; }
-.markdown-body h3 { font-size: 14px; }
-.markdown-body h4 { font-size: 13px; }
-.markdown-body ul { margin: 6px 0 10px; padding-left: 18px; }
-.markdown-body li { margin: 4px 0; }
-.markdown-body code { padding: 2px 5px; border-radius: 5px; background: var(--color-surface-hover); font: 600 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
-.markdown-body pre { margin: 9px 0; padding: 10px 12px; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 9px; background: color-mix(in srgb, var(--color-bg) 72%, var(--color-surface)); }
-.markdown-body pre code { padding: 0; background: transparent; font-weight: 500; white-space: pre; }
-.markdown-body .md-list-index { color: var(--color-accent); font-weight: 800; }
-
-.ai-input-wrapper textarea {
-  flex: 1;
-  min-height: 44px !important;
-  max-height: 170px;
-  resize: none;
-  background: transparent !important;
-  border: 0 !important;
-  color: var(--color-text-primary) !important;
-  padding: 8px 10px !important;
-  line-height: 1.5;
-  outline: none;
-  box-shadow: none !important;
-}
-
 .send-btn {
   width: 40px;
   height: 40px;
@@ -3967,8 +3720,6 @@ const handleProjectCreated = (newProject) => {
   }
 
   .ai-resize-handle { display: none; }
-  .ai-input-area { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
-
   .ai-floating-btn {
     width: 58px;
     height: 58px;
