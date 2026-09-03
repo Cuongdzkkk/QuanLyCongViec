@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Claims;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
@@ -97,6 +98,53 @@ public sealed class GoogleAuthorizationCodeFlowTests
     }
 
     [Fact]
+    public void ExternalLinkStart_BindsStateToAuthenticatedUserAndProvider()
+    {
+        var stateStore = new CapturingExternalLinkStateStore();
+        var userId = Guid.NewGuid();
+        var controller = CreateController(
+            Configuration(),
+            Mock.Of<IAuthService>(),
+            Mock.Of<IGoogleAuthorizationCodeExchange>(),
+            new CapturingStateStore(),
+            stateStore,
+            userId);
+
+        var result = controller.StartGoogleAccountLink();
+
+        result.Should().BeOfType<OkObjectResult>();
+        stateStore.UserId.Should().Be(userId);
+        stateStore.Provider.Should().Be("GoogleLink");
+        stateStore.StoredState.Should().NotBeNullOrWhiteSpace();
+        controller.Response.Headers.SetCookie.ToString().Should().Contain("sprinta_external_link_state=");
+    }
+
+    [Fact]
+    public async Task ExternalLink_RejectsMismatchedCookieBeforeProviderService()
+    {
+        var auth = new Mock<IAuthService>(MockBehavior.Strict);
+        var stateStore = new CapturingExternalLinkStateStore();
+        var controller = CreateController(
+            Configuration(),
+            auth.Object,
+            Mock.Of<IGoogleAuthorizationCodeExchange>(),
+            new CapturingStateStore(),
+            stateStore,
+            Guid.NewGuid());
+        controller.HttpContext.Request.Headers.Cookie = "sprinta_external_link_state=other-state";
+
+        var result = await controller.LinkGitHubAccount(new GitHubLoginRequestDto
+        {
+            Code = "authorization-code",
+            State = "server-state"
+        });
+
+        result.Should().BeOfType<UnauthorizedObjectResult>();
+        stateStore.ConsumeCalled.Should().BeFalse();
+        auth.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task CodeExchange_SendsSecretOnlyToGoogleTokenEndpointAndReturnsIdToken()
     {
         var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
@@ -120,7 +168,9 @@ public sealed class GoogleAuthorizationCodeFlowTests
         IConfiguration configuration,
         IAuthService auth,
         IGoogleAuthorizationCodeExchange exchange,
-        IGoogleLoginOAuthStateStore stateStore)
+        IGoogleLoginOAuthStateStore stateStore,
+        IOAuthStateStore? externalLinkStateStore = null,
+        Guid? authenticatedUserId = null)
     {
         var context = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
@@ -128,6 +178,11 @@ public sealed class GoogleAuthorizationCodeFlowTests
         var httpContext = new DefaultHttpContext();
         httpContext.Request.Headers.Origin = Origin;
         httpContext.Request.Headers["X-Requested-With"] = "XmlHttpRequest";
+        if (authenticatedUserId.HasValue)
+        {
+            httpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.NameIdentifier, authenticatedUserId.Value.ToString())], "test"));
+        }
         return new AuthController(
             auth,
             Mock.Of<IOtpService>(),
@@ -135,7 +190,8 @@ public sealed class GoogleAuthorizationCodeFlowTests
             context,
             configuration,
             exchange,
-            stateStore)
+            stateStore,
+            oauthStateStore: externalLinkStateStore)
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext }
         };
@@ -166,6 +222,28 @@ public sealed class GoogleAuthorizationCodeFlowTests
         {
             ConsumeCalled = true;
             return ConsumeResult && state == State;
+        }
+    }
+
+    private sealed class CapturingExternalLinkStateStore : IOAuthStateStore
+    {
+        public string? StoredState { get; private set; }
+        public Guid UserId { get; private set; }
+        public string? Provider { get; private set; }
+        public bool ConsumeCalled { get; private set; }
+
+        public void Store(string nonce, Guid userId, string provider, string codeVerifier, DateTime expiresAt)
+        {
+            StoredState = nonce;
+            UserId = userId;
+            Provider = provider;
+        }
+
+        public bool TryConsume(string nonce, Guid userId, string provider, out string codeVerifier)
+        {
+            ConsumeCalled = true;
+            codeVerifier = string.Empty;
+            return false;
         }
     }
 

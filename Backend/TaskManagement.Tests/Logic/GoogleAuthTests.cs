@@ -85,6 +85,123 @@ public sealed class GoogleAuthTests
     }
 
     [Fact]
+    public async Task AuthenticatedUser_CanLinkGoogle_AndLoginResolvesSameUser()
+    {
+        await using var context = CreateContext();
+        var user = User("hybrid-link@example.com", passwordHash: "password-hash");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context, Identity(SubjectA, user.Email));
+
+        await service.LinkGoogleAsync(user.Id, new GoogleLoginRequestDto { Credential = "valid-id-token" });
+        var result = await service.GoogleLoginAsync(new GoogleLoginRequestDto { Credential = "valid-id-token" });
+
+        result.response.Id.Should().Be(user.Id);
+        (await context.Users.CountAsync()).Should().Be(1);
+        (await context.ExternalLogins.SingleAsync()).UserId.Should().Be(user.Id);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_WithExistingEmailWithoutLink_ReturnsConflictWithoutCreatingLink()
+    {
+        await using var context = CreateContext();
+        var user = User("github-existing@example.com", passwordHash: "password-hash");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        using var githubClient = new HttpClient(new GitHubHandler("github-existing@example.com"));
+        var service = CreateService(
+            context,
+            Identity(SubjectA, "unused@example.com"),
+            httpClient: githubClient,
+            configuration: Configuration(new Dictionary<string, string?>
+            {
+                ["GitHub:ClientId"] = "client",
+                ["GitHub:ClientSecret"] = "secret",
+                ["GitHub:RedirectUri"] = "https://sprinta.example/auth/github/callback"
+            }));
+
+        var action = () => service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        await action.Should().ThrowAsync<GitHubAccountConflictException>();
+        (await context.ExternalLogins.CountAsync()).Should().Be(0);
+        (await context.Users.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_NewUserStoresProviderSubject()
+    {
+        await using var context = CreateContext();
+        using var githubClient = new HttpClient(new GitHubHandler("github-new@example.com"));
+        var service = CreateService(
+            context,
+            Identity(SubjectA, "unused@example.com"),
+            httpClient: githubClient,
+            configuration: Configuration(new Dictionary<string, string?>
+            {
+                ["GitHub:ClientId"] = "client",
+                ["GitHub:ClientSecret"] = "secret",
+                ["GitHub:RedirectUri"] = "https://sprinta.example/auth/github/callback"
+            }));
+
+        var result = await service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        result.response.Email.Should().Be("github-new@example.com");
+        var login = await context.ExternalLogins.SingleAsync();
+        login.Provider.Should().Be("GitHub");
+        login.ProviderSubject.Should().Be("123");
+        login.UserId.Should().Be(result.response.Id);
+    }
+
+    [Fact]
+    public async Task GitHubLogin_LinkedSubjectResolvesOriginalUser()
+    {
+        await using var context = CreateContext();
+        var user = User("original@example.com", passwordHash: "password-hash");
+        context.AddRange(user, new ExternalLogin
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            User = user,
+            Provider = "GitHub",
+            ProviderSubject = "123",
+            ProviderEmail = user.Email
+        });
+        await context.SaveChangesAsync();
+        using var githubClient = new HttpClient(new GitHubHandler("renamed@example.com"));
+        var service = CreateService(
+            context,
+            Identity(SubjectA, "unused@example.com"),
+            httpClient: githubClient,
+            configuration: Configuration(new Dictionary<string, string?>
+            {
+                ["GitHub:ClientId"] = "client",
+                ["GitHub:ClientSecret"] = "secret",
+                ["GitHub:RedirectUri"] = "https://sprinta.example/auth/github/callback"
+            }));
+
+        var result = await service.GitHubLoginAsync(new GitHubLoginRequestDto { Code = "github-code" });
+
+        result.response.Id.Should().Be(user.Id);
+        (await context.Users.CountAsync()).Should().Be(1);
+        (await context.ExternalLogins.SingleAsync()).ProviderEmail.Should().Be("renamed@example.com");
+    }
+
+    [Fact]
+    public async Task UnlinkExternalLogin_RejectsRemovingFinalUsableMethod()
+    {
+        await using var context = CreateContext();
+        var user = User("google-only@example.com");
+        context.AddRange(user, Login(user, SubjectA));
+        await context.SaveChangesAsync();
+        var service = CreateService(context, Identity(SubjectA, user.Email));
+
+        var action = () => service.UnlinkExternalLoginAsync(user.Id, "Google");
+
+        await action.Should().ThrowAsync<LastLoginMethodException>();
+        (await context.ExternalLogins.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
     public async Task DeletedEmailWithoutLink_IsNotRecreated()
     {
         await using var context = CreateContext();
@@ -362,22 +479,27 @@ public sealed class GoogleAuthTests
     private static AuthService CreateService(
         ApplicationDbContext context,
         GoogleIdentity identity,
-        Mock<IJwtService>? jwt = null) =>
-        CreateService(context, new MutableGoogleValidator(identity), jwt);
+        Mock<IJwtService>? jwt = null,
+        HttpClient? httpClient = null,
+        IConfiguration? configuration = null) =>
+        CreateService(context, new MutableGoogleValidator(identity), jwt, httpClient, configuration);
 
     private static AuthService CreateService(
         ApplicationDbContext context,
         IGoogleIdentityValidator validator,
-        Mock<IJwtService>? jwt = null)
+        Mock<IJwtService>? jwt = null,
+        HttpClient? httpClient = null,
+        IConfiguration? configuration = null)
     {
         jwt ??= JwtMock();
         return new AuthService(
             context,
             jwt.Object,
-            Configuration(new Dictionary<string, string?>()),
+            configuration ?? Configuration(new Dictionary<string, string?>()),
             Mock.Of<IOtpService>(),
             Mock.Of<IEmailService>(),
-            validator);
+            validator,
+            githubHttpClient: httpClient);
     }
 
     private static Mock<IJwtService> JwtMock()
@@ -425,6 +547,22 @@ public sealed class GoogleAuthTests
             CreatedAt = DateTime.UtcNow,
             LastLoginAt = DateTime.UtcNow
         };
+
+    private sealed class GitHubHandler(string email) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.RequestUri?.AbsoluteUri.Contains("access_token", StringComparison.Ordinal) == true
+                ? "{\"access_token\":\"github-access\"}"
+                : request.RequestUri?.AbsoluteUri.EndsWith("/user", StringComparison.Ordinal) == true
+                    ? $"{{\"id\":123,\"login\":\"octo\",\"name\":\"Octo\",\"email\":\"{email}\"}}"
+                    : "[]";
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+            });
+        }
+    }
 
     private static AuthController Controller(
         ApplicationDbContext context,
