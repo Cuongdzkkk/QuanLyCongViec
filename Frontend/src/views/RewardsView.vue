@@ -391,7 +391,7 @@
                       <time>{{ formatDate(grant.earnedAt) }}</time>
                     </div>
                     <strong class="tx-pts" style="color: #f59e0b;">
-                      1x {{ grant.rewardType }}
+                      {{ grant.quantity }}x {{ grant.rewardType }}
                     </strong>
                   </div>
                 </div>
@@ -515,11 +515,30 @@
         <el-tab-pane label="Giỏ hàng của tôi" name="cart">
           <div v-if="myGrants.length === 0" class="empty-list-small" style="text-align: center; padding: 40px; color: #64748b;">Chưa có phần thưởng nào.</div>
           <div class="shop-grid" v-else>
-            <div v-for="grant in myGrants" :key="grant.id" class="premium-card cyber-reward-card" style="display: flex; flex-direction: column; padding: 16px; border-radius: 12px; background: white; border: 1px solid #cbd5e1; align-items: center;">
-              <i class="fa-solid fa-gift" style="font-size: 32px; color: #10b981; margin-bottom: 12px;"></i>
-              <strong style="font-size: 15px; color: #0f172a; text-align: center; margin-bottom: 8px;">{{ grant.rewardName }}</strong>
-              <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Đã đổi lúc: {{ formatDate(grant.earnedAt) }}</div>
-              <strong style="color: #f59e0b; font-size: 14px; margin-top: 8px;">1x {{ grant.rewardType }}</strong>
+            <div v-for="grant in myGrants" :key="grant.id" class="premium-card cyber-reward-card" style="display: flex; flex-direction: column; height: 295px; padding: 0; box-sizing: border-box; overflow: hidden; position: relative; border-radius: 12px; background: white; border: 1px solid #cbd5e1;">
+              <div class="cyber-image-area" style="height: 140px; border-radius: 8px 8px 0 0; background: #f8fafc; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; border-bottom: 1px solid #e2e8f0; flex-shrink: 0;">
+                <img v-if="getRewardImage(grant.rewardDefinitionId)" :src="getRewardImage(grant.rewardDefinitionId)" style="width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0;" />
+                <div v-else style="display: flex; flex-direction: column; align-items: center; justify-content: center; color: #cbd5e1; height: 100%; width: 100%;">
+                  <i class="fa-solid fa-image" style="font-size: 32px; margin-bottom: 8px;"></i>
+                  <span style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Chưa có ảnh</span>
+                </div>
+                <div style="position: absolute; top: 8px; right: 8px; background: #ef4444; color: white; padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: 900; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 2px solid white; z-index: 10;">
+                  x{{ grant.quantity }}
+                </div>
+              </div>
+              <div style="padding: 12px; display: flex; flex-direction: column; flex: 1;">
+                <strong style="font-size: 15px; color: #0f172a; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; letter-spacing: -0.3px;">{{ grant.rewardName }}</strong>
+                <p style="margin: 6px 0 12px; color: #475569; font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; flex: 1;">
+                  {{ getRewardConfig(getRewardDefById(grant.rewardDefinitionId))?.text || '' }}
+                </p>
+                <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between;">
+                  <span style="font-size: 11px; font-weight: 600; color: #94a3b8;">{{ formatDate(grant.earnedAt) }}</span>
+                  <div style="background: #fef08a; padding: 4px 10px; border-radius: 20px; color: #a16207; font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                    <i class="fa-solid fa-coins"></i> 
+                    <span>{{ getRewardConfig(getRewardDefById(grant.rewardDefinitionId))?.pointCost ?? 0 }} pts</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </el-tab-pane>
@@ -1374,6 +1393,10 @@ const getRewardConfig = (reward) => {
   return localRewardConfigs.value[reward.id]
 }
 
+const getRewardDefById = (id) => {
+  return seasonDashboard.value.availableRewards?.find(r => r.id === id) || { id, name: '' }
+}
+
 const shopSearch = ref('')
 const newSeasonRewards = ref([])
 
@@ -1619,7 +1642,24 @@ const seasonTimeRemaining = computed(() => {
 })
 const shopRefreshKey = ref(0)
 const managedGrants = computed(() => seasonDashboard.value.openRewards || [])
-const myGrants = computed(() => seasonDashboard.value.rewardHistory || [])
+const myGrants = computed(() => {
+  const history = seasonDashboard.value.rewardHistory || []
+  const map = {}
+  history.forEach(grant => {
+    if (!map[grant.rewardDefinitionId]) {
+      map[grant.rewardDefinitionId] = {
+        ...grant,
+        quantity: 1
+      }
+    } else {
+      map[grant.rewardDefinitionId].quantity += 1
+      if (new Date(grant.earnedAt) > new Date(map[grant.rewardDefinitionId].earnedAt)) {
+        map[grant.rewardDefinitionId].earnedAt = grant.earnedAt
+      }
+    }
+  })
+  return Object.values(map)
+})
 const shopItems = computed(() => {
   const trigger = shopRefreshKey.value // Reactivity trigger
   const currentSeason = seasonDashboard.value.currentSeason

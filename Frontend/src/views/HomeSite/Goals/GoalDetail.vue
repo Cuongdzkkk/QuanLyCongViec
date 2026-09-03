@@ -44,7 +44,6 @@
         Cập nhật <span v-if="updates.length" class="badge-count">{{ updates.length + 1 }}</span>
       </button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'jira' }" @click="currentTab = 'jira'">SprintA</button>
-      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'projects' }" @click="currentTab = 'projects'">Dự án</button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'learnings' }" @click="currentTab = 'learnings'">Bài học rút ra</button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'risks' }" @click="currentTab = 'risks'">Rủi ro</button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'decisions' }" @click="currentTab = 'decisions'">Quyết định</button>
@@ -260,6 +259,15 @@
         <template v-if="currentTab === 'jira'">
           <div class="section-header-row">
             <h3>Công việc SprintA</h3>
+            <div v-if="goalOwnerData" style="display:flex;align-items:center;gap:8px;font-size:12px;color:#5E6C84;">
+              <span>Leader</span><AppAvatar :user="goalOwnerData" :size="28" />
+            </div>
+          </div>
+          <div v-if="goalStore.linkedProjects?.length" class="goal-sprint-projects">
+            <button v-for="project in goalStore.linkedProjects" :key="project.id" type="button" class="goal-sprint-project" @click="goToProjectDetail(project.id)">
+              <span><i class="fa-solid fa-rocket"></i>{{ project.name || project.title }}</span>
+              <span style="display:flex;align-items:center;gap:10px;"><button v-if="isOwner" type="button" class="icon-btn-micro" title="Hủy liên kết project" @click.stop="unlinkProject(project)"><i class="fa-solid fa-ellipsis-vertical"></i></button><i class="fa-solid fa-chevron-right"></i></span>
+            </button>
           </div>
           <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px; background: white;">
              <div style="position: relative;">
@@ -377,6 +385,7 @@
                     </div>
                   </div>
                 </div>
+                <div v-if="isMineGoalItem(item)" class="goal-item-actions"><button type="button" class="icon-btn-micro" title="Chỉnh sửa" @click="editGoalItem(item, 'lessons')"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>
                 <div class="post-content">
                   <h4 style="margin: 0 0 8px 0; color: #172B4D; font-size: 16px;"><i class="fa-regular fa-lightbulb" style="color: #FFAB00; margin-right: 6px;"></i> {{ item.title }}</h4>
                   <div v-html="sanitizeHtml(item.text)"></div>
@@ -433,6 +442,7 @@
                     </div>
                   </div>
                 </div>
+                <div v-if="isMineGoalItem(item)" class="goal-item-actions"><button type="button" class="icon-btn-micro" title="Chỉnh sửa" @click="editGoalItem(item, 'risks')"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>
                 <div class="post-content">
                   <h4 style="margin: 0 0 8px 0; color: #172B4D; font-size: 16px;"><i class="fa-solid fa-triangle-exclamation" style="color: #FF5630; margin-right: 6px;"></i> {{ item.title }}</h4>
                   <div v-html="sanitizeHtml(item.text)"></div>
@@ -489,6 +499,7 @@
                     </div>
                   </div>
                 </div>
+                <div v-if="isMineGoalItem(item)" class="goal-item-actions"><button type="button" class="icon-btn-micro" title="Chỉnh sửa" @click="editGoalItem(item, 'decisions')"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>
                 <div class="post-content">
                   <h4 style="margin: 0 0 8px 0; color: #172B4D; font-size: 16px;"><i class="fa-solid fa-check-circle" style="color: #36B37E; margin-right: 6px;"></i> {{ item.title }}</h4>
                   <div v-html="sanitizeHtml(item.text)"></div>
@@ -859,6 +870,9 @@ onMounted(async () => {
   if (peopleStore.users.length === 0) await peopleStore.fetchPeople('', 1, 100);
   if (route.params.id) {
     await goalStore.fetchGoalDetail(route.params.id)
+    linkedTeams.value = goal.value?.departmentId
+      ? teamStore.allTeams.filter(team => `${team.id}` === `${goal.value.departmentId}`)
+      : []
     const dateValue = goal.value?.startDate || goal.value?.dueDate || goal.value?.date || null
     startDate.value = dateValue
     startDateInput.value = dateValue ? new Date(dateValue).toISOString().slice(0, 10) : ''
@@ -963,11 +977,37 @@ const addSubGoal = (g) => {
 }
 const removeSubGoal = (id) => { linkedSubGoals.value = linkedSubGoals.value.filter(x => x.id !== id) }
 
-const addTeam = (t) => {
-  if (!linkedTeams.value.find(x => x.id === t.id)) linkedTeams.value.push(t)
+const addTeam = async t => {
+  if (!isOwner.value || linkedTeams.value.find(x => x.id === t.id)) return
+  await goalStore.updateGoal(goal.value.id, { departmentId: t.id })
+  linkedTeams.value = [t]
   popovers.value.teams = false
 }
-const removeTeam = (id) => { linkedTeams.value = linkedTeams.value.filter(x => x.id !== id) }
+
+const linkProject = async project => {
+  if (!isOwner.value || !goal.value?.id) return
+  const workspaceId = await projectStore.ensureWorkspaceId()
+  await axiosClient.post(`/workspaces/${workspaceId}/projects/${project.id}/links`, {
+    linkedType: 'Goal',
+    linkedId: goal.value.id
+  })
+  await goalStore.fetchGoalDetail(goal.value.id)
+}
+
+const unlinkProject = async project => {
+  if (!isOwner.value || !goal.value?.id || !window.confirm('Hủy liên kết project với mục tiêu này?')) return
+  const workspaceId = await projectStore.ensureWorkspaceId()
+  const response = await axiosClient.get(`/workspaces/${workspaceId}/projects/${project.id}/links`)
+  const links = response.data?.data || response.data || []
+  const link = links.find(item => `${item.linkedType || item.LinkedType}`.toLowerCase() === 'goal' && `${item.linkedId || item.LinkedId}` === `${goal.value.id}`)
+  if (link?.id) await axiosClient.delete(`/workspaces/${workspaceId}/projects/${project.id}/links/${link.id}`)
+  await goalStore.fetchGoalDetail(goal.value.id)
+}
+const removeTeam = async id => {
+  if (!isOwner.value) return
+  await goalStore.updateGoal(goal.value.id, { departmentId: null })
+  linkedTeams.value = linkedTeams.value.filter(x => x.id !== id)
+}
 
 const saveStartDate = async () => {
   if (!goal.value?.workspaceId || !goal.value?.id || !startDateInput.value) {
@@ -1137,6 +1177,32 @@ const postUpdate = () => {
 </script>
 
 <style scoped>
+.goal-sprint-projects {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.goal-sprint-project {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 13px 16px;
+  border: 1px solid #dfe1e6;
+  border-radius: 8px;
+  background: #fff;
+  color: #172b4d;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.goal-sprint-project:hover { background: #f7f9fc; }
+.goal-sprint-project i:first-child { color: #0052cc; margin-right: 10px; }
+.goal-sprint-project > i { color: #6b778c; }
 .goal-detail-wrapper {
   display: flex;
   flex-direction: column;

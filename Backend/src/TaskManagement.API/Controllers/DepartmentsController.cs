@@ -204,6 +204,9 @@ namespace TaskManagement.API.Controllers
                     id = k.Id,
                     message = k.Message,
                     sender = k.Sender.FullName ?? k.Sender.Email,
+                    senderId = k.SenderId,
+                    senderEmail = k.Sender.Email,
+                    senderAvatarUrl = k.Sender.AvatarUrl,
                     icon = k.Icon ?? "🌟",
                     createdAt = k.CreatedAt
                 })
@@ -463,6 +466,7 @@ namespace TaskManagement.API.Controllers
         [HttpPost("{id}/goals/{goalId}")]
         public async Task<IActionResult> LinkGoal(Guid id, Guid goalId)
         {
+            if (!await CanManageTeamLinksAsync(id)) return Forbid();
             var departmentExists = await _context.Departments.AnyAsync(d => d.Id == id);
             if (!departmentExists)
                 return NotFound(ApiResponse<object>.Error("Team không tồn tại.", 404));
@@ -509,6 +513,7 @@ namespace TaskManagement.API.Controllers
         [HttpDelete("{id}/goals/{goalId}")]
         public async Task<IActionResult> UnlinkGoal(Guid id, Guid goalId)
         {
+            if (!await CanManageTeamLinksAsync(id)) return Forbid();
             var goal = await _context.Goals.FirstOrDefaultAsync(g => g.Id == goalId);
             var links = await _context.TeamGoals
                 .Where(tg => tg.DepartmentId == id && tg.GoalId == goalId)
@@ -547,6 +552,7 @@ namespace TaskManagement.API.Controllers
         [HttpPost("{id}/projects/{projectId}")]
         public async Task<IActionResult> LinkProject(Guid id, Guid projectId)
         {
+            if (!await CanManageTeamLinksAsync(id)) return Forbid();
             var departmentExists = await _context.Departments.AnyAsync(d => d.Id == id);
             if (!departmentExists)
                 return NotFound(ApiResponse<object>.Error("Team không tồn tại.", 404));
@@ -579,6 +585,7 @@ namespace TaskManagement.API.Controllers
         [HttpDelete("{id}/projects/{projectId}")]
         public async Task<IActionResult> UnlinkProject(Guid id, Guid projectId)
         {
+            if (!await CanManageTeamLinksAsync(id)) return Forbid();
             var links = await _context.ProjectDepartmentRoles
                 .Where(pdr => pdr.DepartmentId == id && pdr.ProjectId == projectId)
                 .ToListAsync();
@@ -625,6 +632,14 @@ namespace TaskManagement.API.Controllers
             await PublishDepartmentDetailAsync(id, "projects-changed", new { projectId });
 
             return NoContent();
+        }
+
+        private async Task<bool> CanManageTeamLinksAsync(Guid departmentId)
+        {
+            if (User.IsInRole("Admin") || User.IsInRole("SystemAdmin")) return true;
+            var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            return Guid.TryParse(claim, out var userId) && await _context.Departments
+                .AnyAsync(department => department.Id == departmentId && department.ManagerId == userId && !department.IsDeleted);
         }
     }
 }

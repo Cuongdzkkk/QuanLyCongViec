@@ -42,7 +42,6 @@
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'activity' }" @click="currentTab = 'activity'">SprintA</button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'hierarchy' }" @click="currentTab = 'hierarchy'">Phân cấp</button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'goals' }" @click="currentTab = 'goals'">Mục Tiêu</button>
-      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'projects' }" @click="currentTab = 'projects'">Dự Án</button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'kudos' }" @click="currentTab = 'kudos'">Khen ngợi</button>
     </template>
     
@@ -90,13 +89,16 @@
         <section class="info-section">
           <div class="section-header-row">
             <h3>Công việc SprintA của {{ team.name }}</h3>
+            <div v-if="team.manager" style="display:flex;align-items:center;gap:8px;font-size:12px;color:#5E6C84;">
+              <span>Leader</span><UserAvatar :user="{ ...team.manager, fullName: team.manager.name }" :size="28" :fontSize="10" />
+            </div>
           </div>
           
           <div class="activity-list" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 32px;" v-if="taskProjectGroups.length > 0">
             <div v-for="group in taskProjectGroups" :key="group.projectId" class="team-task-project">
               <button type="button" class="team-task-project-header" @click="toggleTaskProject(group.projectId)">
                 <span><i class="fa-solid fa-rocket"></i> {{ group.projectName }}</span>
-                <span><i class="fa-solid" :class="expandedTaskProjects[group.projectId] ? 'fa-chevron-up' : 'fa-chevron-down'"></i></span>
+                <span style="display:flex;align-items:center;gap:10px;"><button v-if="isTeamLeader" type="button" class="icon-btn-micro" title="Hủy liên kết project" @click.stop="unlinkProject(group.projectId)"><i class="fa-solid fa-ellipsis-vertical"></i></button><i class="fa-solid" :class="expandedTaskProjects[group.projectId] ? 'fa-chevron-up' : 'fa-chevron-down'"></i></span>
               </button>
               <div v-if="expandedTaskProjects[group.projectId]" class="team-task-member-list">
                 <div v-for="member in group.members" :key="member.userId" class="team-task-member-row">
@@ -308,10 +310,10 @@
                  <div style="width: 24px; height: 24px; background-color: #EBECF0; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
                    <i class="fa-solid fa-bullseye" style="color: #6B778C; font-size: 14px;"></i>
                  </div>
-                 <span class="status-badge" style="background-color: #DFE1E6; color: #42526E; font-size: 11px; font-weight: bold; text-transform: uppercase; padding: 2px 6px;">{{ goal.status || 'Đã hoàn tất 🚀' }}</span>
+                 <div style="display:flex; align-items:center; gap:8px;"><span class="status-badge" style="background-color: #DFE1E6; color: #42526E; font-size: 11px; font-weight: bold; text-transform: uppercase; padding: 2px 6px;">{{ goal.status || 'Đã hoàn tất 🚀' }}</span><button v-if="isTeamLeader" type="button" class="icon-btn-micro" @click.stop="unlinkGoal(goal.id)" title="Hủy liên kết"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>
                </div>
                <div style="font-size: 14px; color: #172B4D; font-weight: 500; margin-bottom: 4px;">{{ goal.title }}</div>
-               <div style="font-size: 12px; color: #6B778C;">Thuộc sở hữu của {{ goal.owner }}</div>
+               <div style="display:flex; justify-content:space-between; align-items:center; font-size: 12px; color: #6B778C;"><span>Thuộc sở hữu của {{ goal.ownerName || goal.owner || 'Không rõ' }}</span><UserAvatar :user="{ id: goal.ownerId, fullName: goal.ownerName, avatarUrl: goal.ownerAvatarUrl }" :size="24" :fontSize="9" /></div>
              </div>
            </div>
 
@@ -391,6 +393,12 @@
         <div class="section-header-row">
           <h3>Khen ngợi</h3>
         </div>
+        <div v-if="kudos.length" class="kudos-list" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">
+          <div v-for="item in kudos" :key="item.id" class="kudos-card" style="background:#fff;border:1px solid #DFE1E6;border-radius:8px;padding:16px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><UserAvatar :user="{ id:item.senderId, fullName:item.sender, email:item.senderEmail, avatarUrl:item.senderAvatarUrl }" :size="32" :fontSize="12" /><strong>{{ item.sender }}</strong><span style="margin-left:auto;color:#6B778C;font-size:12px;">{{ new Date(item.createdAt).toLocaleDateString('vi-VN') }}</span></div>
+            <div style="color:#172B4D;white-space:pre-wrap;" v-html="sanitizeHtml(item.message)"></div>
+          </div>
+        </div>
         <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
            <div style="position: relative;">
               <div style="width: 80px; height: 80px; background-color: #FFFAE6; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
@@ -401,7 +409,7 @@
               </div>
            </div>
            <div style="flex: 1; position: relative;">
-              <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Đội ngũ này chưa nhận được lời khen ngợi nào</h4>
+              <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">{{ kudos.length ? 'Gửi thêm lời khen ngợi' : 'Đội ngũ này chưa nhận được lời khen ngợi nào' }}</h4>
               <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Khen ngợi giúp công nhận những thành quả cá nhân và đội ngũ xuất sắc. Hãy gửi lời khen để khuyến khích mọi người!</p>
               <div style="position: relative; display: inline-block;">
                 <button class="secondary-btn" @click="isGiveKudosOpen = true" style="display: flex; align-items: center; gap: 8px;">
@@ -853,6 +861,7 @@ const currentUser = getStoredUser()
 const isSiteOwner = computed(() => {
   return currentUser?.role === 'Admin' || currentUser?.role === 'SystemAdmin'
 })
+const isTeamLeader = computed(() => isSiteOwner.value || `${team.value?.manager?.id || ''}` === `${currentUser?.id || ''}`)
 
 const sites = computed(() => siteStore.sites || [])
 const siteGoals = computed(() => goalStore.goals || [])
@@ -887,6 +896,10 @@ const teamTasks = computed(() => (teamStore.activityTasks || []).filter(task => 
 const expandedTaskProjects = ref({})
 const taskProjectGroups = computed(() => {
   const groups = new Map()
+  for (const project of projects.value || []) {
+    const projectId = project.id || project.Id
+    if (projectId) groups.set(projectId, { projectId, projectName: project.name || project.title || 'Project', members: new Map() })
+  }
   for (const task of teamTasks.value) {
     const projectId = task.projectId || task.ProjectId
     if (!projectId) continue
@@ -1038,6 +1051,16 @@ const linkGoal = async (goal) => {
   isGoalDropdownOpen.value = false
 }
 
+const unlinkGoal = async goalId => {
+  if (!isTeamLeader.value) return
+  try {
+    await teamStore.unlinkGoal(goalId)
+    ElMessage.success('Đã hủy liên kết mục tiêu')
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.message || 'Không thể hủy liên kết mục tiêu')
+  }
+}
+
 const linkProject = async (proj) => {
   try {
     await teamStore.linkProject(proj.id)
@@ -1049,7 +1072,17 @@ const linkProject = async (proj) => {
   isSprintAProjectOpen.value = false
 }
 
-const linkSite = site => ElMessage.success(`Đã chọn site ${site.name || site.Name}`)
+const unlinkProject = async projectId => {
+  if (!isTeamLeader.value || !window.confirm('Hủy liên kết project và gỡ phân công của thành viên Team?')) return
+  try {
+    await teamStore.unlinkProject(projectId)
+    ElMessage.success('Đã hủy liên kết project')
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.message || 'Không thể hủy liên kết project')
+  }
+}
+
+const linkSite = site => ElMessage.info(`Site ${site.name || site.Name} đã được chọn. Backend hiện chưa có bảng liên kết Team-Site để lưu dữ liệu.`)
 const addExternalLink = () => {
   const url = window.prompt('Nhập URL cần liên kết')
   if (!url) return
