@@ -29,7 +29,8 @@
               :title="!canCurrentUserCreateTask ? 'Bạn không có quyền tạo công việc' : ''"
             >
               <span class="cyber-btn-content">
-                <i class="fa-solid fa-plus"></i> {{ t('Add work item') }}
+                <span class="cyber-base-text"><i class="fa-solid fa-plus"></i> {{ t('Add work item') }}</span>
+                <span class="cyber-freeze-text" aria-hidden="true"><i class="fa-solid fa-plus"></i> {{ t('Add work item') }}</span>
               </span>
             </button>
           </div>
@@ -3469,21 +3470,46 @@ onUnmounted(() => {
   border-color: #e2e8f0;
 }
 
-/* Button Content (Simple Elegant Glow) */
+/* Button Content (True Freeze Effect) */
 .cyber-btn-content {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cyber-base-text,
+.cyber-freeze-text {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-weight: 500;
   font-size: 14px;
-  color: #606266;
-  text-shadow: 0 0 0px transparent;
-  transition: color 0.6s ease-out, text-shadow 0.6s ease-out;
 }
 
-.cyber-create-task-btn:hover:not(:disabled) .cyber-btn-content {
+/* Default gray text */
+.cyber-base-text {
+  color: #606266;
+}
+
+/* The frozen blue text that expands from top right */
+.cyber-freeze-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   color: var(--color-accent);
   text-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+  /* Circle size 0% means it's completely invisible, located at top right */
+  clip-path: circle(0% at 100% 0%);
+  transition: clip-path 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+/* On hover, expand the circle to cover the whole text */
+.cyber-create-task-btn:hover:not(:disabled) .cyber-freeze-text {
+  clip-path: circle(150% at 100% 0%);
 }
 
 /* ==================================
@@ -6243,3 +6269,5 @@ onUnmounted(() => {
   color: var(--color-accent) !important;
 }
 </style>
+ 
+ 

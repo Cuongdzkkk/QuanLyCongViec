@@ -2313,40 +2313,91 @@ onUnmounted(() => {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  min-width: 142px;
-  height: 42px !important;
-  padding: 0 18px !important;
-  border: 1px solid rgba(125, 211, 252, .42) !important;
-  border-radius: 12px !important;
-  background: linear-gradient(135deg, #0757c9 0%, #0b75dc 52%, #159ee8 100%) !important;
+  min-width: 150px;
+  height: 44px !important;
+  padding: 0 20px !important;
+  border: 1px solid rgba(56, 189, 248, .58) !important;
+  border-radius: 11px !important;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, .12), transparent 32%),
+    linear-gradient(115deg, #061638 0%, #0a2f78 34%, #075bd1 65%, #08a9e5 100%) !important;
+  background-size: 100% 100%, 220% 220%;
   color: #fff !important;
   font-size: 13px !important;
-  font-weight: 800 !important;
-  letter-spacing: .01em;
-  box-shadow: 0 8px 18px rgba(7, 87, 201, .22), inset 0 1px 0 rgba(255, 255, 255, .2) !important;
-  transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+  font-weight: 850 !important;
+  letter-spacing: .025em;
+  text-shadow: 0 1px 8px rgba(2, 16, 48, .7);
+  box-shadow:
+    0 8px 18px rgba(2, 26, 82, .28),
+    0 0 0 1px rgba(8, 169, 229, .12),
+    inset 0 1px 0 rgba(255, 255, 255, .24),
+    inset 0 -2px 0 rgba(1, 19, 59, .32) !important;
+  transition: transform .24s cubic-bezier(.22, 1, .36, 1), box-shadow .24s ease, filter .24s ease, background-position .5s ease;
+  animation: cycle-button-energy 4s ease-in-out infinite;
 }
 
 .cycles-add-button::before {
   content: '';
   position: absolute;
-  inset: 0 auto 0 -70%;
-  width: 48%;
-  transform: skewX(-20deg);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .25), transparent);
-  transition: left .5s ease;
+  inset: -90% -20%;
+  width: 34%;
+  transform: rotate(24deg) translateX(-260%);
+  background: linear-gradient(90deg, transparent, rgba(125, 211, 252, .04), rgba(255, 255, 255, .7), rgba(56, 189, 248, .18), transparent);
+  transition: transform .78s cubic-bezier(.2, .8, .2, 1);
   pointer-events: none;
   z-index: -1;
 }
 
+.cycles-add-button::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(255, 255, 255, .28), transparent 27%),
+    linear-gradient(110deg, transparent 20%, rgba(34, 211, 238, .08) 50%, transparent 80%);
+  opacity: .9;
+  pointer-events: none;
+  transition: opacity .25s ease, transform .25s ease;
+}
+
+@keyframes cycle-button-energy {
+  0%, 100% {
+    background-position: 0 0, 0% 50%;
+    box-shadow: 0 8px 18px rgba(2, 26, 82, .28), 0 0 0 1px rgba(8, 169, 229, .12), inset 0 1px 0 rgba(255, 255, 255, .24), inset 0 -2px 0 rgba(1, 19, 59, .32);
+  }
+  50% {
+    background-position: 0 0, 100% 50%;
+    box-shadow: 0 11px 24px rgba(2, 50, 142, .34), 0 0 0 3px rgba(34, 211, 238, .055), 0 0 18px rgba(14, 165, 233, .14), inset 0 1px 0 rgba(255, 255, 255, .28), inset 0 -2px 0 rgba(1, 19, 59, .32);
+  }
+}
+
 .cycles-add-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  filter: saturate(1.08) brightness(1.04);
-  box-shadow: 0 12px 24px rgba(7, 87, 201, .3), 0 0 0 4px rgba(14, 165, 233, .1), inset 0 1px 0 rgba(255, 255, 255, .24) !important;
+  transform: translateY(-3px) scale(1.035);
+  background-position: 0 0, 100% 50%;
+  filter: saturate(1.22) brightness(1.1);
+  box-shadow: 0 16px 30px rgba(2, 50, 142, .4), 0 0 0 5px rgba(34, 211, 238, .14), 0 0 30px rgba(14, 165, 233, .28), inset 0 1px 0 rgba(255, 255, 255, .34), inset 0 -2px 0 rgba(1, 19, 59, .28) !important;
+  animation: none;
 }
 
 .cycles-add-button:hover:not(:disabled)::before {
-  left: 125%;
+  transform: rotate(24deg) translateX(360%);
+}
+
+.cycles-add-button:hover:not(:disabled)::after {
+  opacity: 1;
+  transform: scale(1.04);
+}
+
+.cycles-add-button:hover:not(:disabled) i {
+  transform: translateX(-2px) rotate(-12deg) scale(1.16);
+  filter: drop-shadow(0 0 6px rgba(165, 243, 252, .8));
+}
+
+.cycles-add-button i {
+  position: relative;
+  z-index: 1;
+  transition: transform .24s cubic-bezier(.22, 1, .36, 1);
 }
 
 .cycles-add-button:focus-visible {
@@ -2355,14 +2406,24 @@ onUnmounted(() => {
 }
 
 .cycles-add-button:active:not(:disabled) {
-  transform: translateY(0) scale(.98);
-  filter: brightness(.96);
-  box-shadow: 0 5px 12px rgba(7, 87, 201, .22), inset 0 2px 5px rgba(2, 30, 78, .2) !important;
+  transform: translateY(-1px) scale(.965);
+  filter: brightness(.94) saturate(1.08);
+  box-shadow: 0 7px 14px rgba(2, 30, 78, .3), 0 0 0 3px rgba(34, 211, 238, .17), inset 0 3px 8px rgba(1, 19, 59, .35) !important;
 }
 
 .cycles-add-button:disabled {
   opacity: .55;
   filter: grayscale(.2);
   box-shadow: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cycles-add-button,
+  .cycles-add-button::before,
+  .cycles-add-button::after,
+  .cycles-add-button i {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 </style>
