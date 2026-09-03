@@ -34,38 +34,39 @@
               <span class="cyber-base">
                 <i class="fa-solid fa-plus"></i> {{ t('Add work item') }}
               </span>
-              <span class="cyber-symbiote" aria-hidden="true" style="clip-path: url(#symbiote-mask);">
+              <span class="cyber-symbiote" aria-hidden="true" style="-webkit-mask-image: url(#symbiote-mask); mask: url(#symbiote-mask);">
                 <i class="fa-solid fa-plus"></i> {{ t('Add work item') }}
               </span>
               <!-- Embedded SVG for gooey masking -->
               <svg width="0" height="0" style="position: absolute; pointer-events: none;">
                 <defs>
-                  <filter id="goo">
-                    <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+                  <filter id="goo" x="-50%" y="-50%" width="200%" height="200%">
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="0.03" result="blur" />
                     <!-- Threshold for sharp liquid edge -->
                     <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="goo" />
                     <!-- Organic noise for irregular edges -->
-                    <feTurbulence type="fractalNoise" baseFrequency="0.08" numOctaves="3" result="noise" />
-                    <feDisplacementMap in="goo" in2="noise" scale="12" xChannelSelector="R" yChannelSelector="G" result="displaced" />
+                    <feTurbulence type="fractalNoise" baseFrequency="5" numOctaves="3" result="noise" />
+                    <feDisplacementMap in="goo" in2="noise" scale="0.1" xChannelSelector="R" yChannelSelector="G" result="displaced" />
                     <feComposite in="SourceGraphic" in2="displaced" operator="atop" />
                   </filter>
-                  <clipPath id="symbiote-mask">
+                  <mask id="symbiote-mask" maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox">
+                    <rect x="-0.5" y="-0.5" width="2" height="2" fill="black" />
                     <g filter="url(#goo)">
                       <!-- Liquid blobs crawling from edges -->
                       <!-- Left tendril -->
-                      <circle cx="10%" cy="110%" :r="(symbioteProgress * 150) + '%'" />
+                      <circle cx="0.1" cy="1.1" :r="symbioteProgress * 1.5" fill="white" />
                       <!-- Right tendril -->
-                      <circle cx="90%" cy="120%" :r="(symbioteProgress * Math.pow(symbioteProgress, 0.5) * 160) + '%'" />
+                      <circle cx="0.9" cy="1.2" :r="symbioteProgress * Math.pow(symbioteProgress, 0.5) * 1.6" fill="white" />
                       <!-- Top tendril -->
-                      <circle cx="40%" cy="-20%" :r="(symbioteProgress * 140) + '%'" />
+                      <circle cx="0.4" cy="-0.2" :r="symbioteProgress * 1.4" fill="white" />
                       <!-- Center micro droplets -->
-                      <circle cx="50%" cy="50%" :r="(symbioteProgress * Math.pow(symbioteProgress, 2) * 120) + '%'" />
+                      <circle cx="0.5" cy="0.5" :r="symbioteProgress * Math.pow(symbioteProgress, 2) * 1.2" fill="white" />
                       <!-- Bottom-right stretch -->
-                      <circle cx="85%" cy="85%" :r="(symbioteProgress * 130) + '%'" />
+                      <circle cx="0.85" cy="0.85" :r="symbioteProgress * 1.3" fill="white" />
                       <!-- Top-left filament -->
-                      <circle cx="-10%" cy="10%" :r="(symbioteProgress * 140) + '%'" />
+                      <circle cx="-0.1" cy="0.1" :r="symbioteProgress * 1.4" fill="white" />
                     </g>
-                  </clipPath>
+                  </mask>
                 </defs>
               </svg>
             </button>
