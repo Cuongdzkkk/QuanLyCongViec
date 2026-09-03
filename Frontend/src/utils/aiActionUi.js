@@ -7,6 +7,23 @@ const readOnlyActionTypes = new Set([
   'refresh_report', 'export_report_csv', 'summarize_report'
 ])
 
+// Keep quick tools aligned with action types already supported by the backend.
+// Quick tools only seed an intent; writes still go through the normal preview
+// and explicit confirmation flow in the panel and full-page composer.
+export const AI_QUICK_ACTIONS = [
+  { type: 'create_task', label: 'Tạo task', icon: 'fa-solid fa-square-plus', mode: 'write', prompt: 'Tạo task mới trong project hiện tại với tiêu đề và thông tin tôi sẽ cung cấp.' },
+  { type: 'summarize_project', label: 'Tóm tắt dự án', icon: 'fa-solid fa-chart-simple', mode: 'read', prompt: 'Tóm tắt dự án hiện tại và nêu 3 điểm cần chú ý.' },
+  { type: 'get_workload', label: 'Xem tải công việc', icon: 'fa-solid fa-users-viewfinder', mode: 'read', prompt: 'Cho tôi biết tải công việc hiện tại của team.' },
+  { type: 'update_task_status', label: 'Cập nhật trạng thái', icon: 'fa-solid fa-arrow-right-arrow-left', mode: 'write', prompt: 'Cập nhật trạng thái task tôi chỉ định sang trạng thái tôi nêu.' },
+  { type: 'create_cycle', label: 'Tạo sprint', icon: 'fa-solid fa-arrows-spin', mode: 'write', prompt: 'Tạo sprint mới cho project hiện tại với thông tin tôi sẽ cung cấp.' },
+  { type: 'assign_task', label: 'Giao task', icon: 'fa-solid fa-user-check', mode: 'write', prompt: 'Giao task tôi chỉ định cho thành viên tôi nêu.' },
+  { type: 'add_comment', label: 'Thêm bình luận', icon: 'fa-solid fa-comment-medical', mode: 'write', prompt: 'Thêm bình luận vào task tôi chỉ định với nội dung tôi sẽ cung cấp.' },
+  { type: 'list_overdue_tasks', label: 'Task quá hạn', icon: 'fa-solid fa-calendar-xmark', mode: 'read', prompt: 'Liệt kê các task đang quá hạn và đề xuất thứ tự xử lý.' },
+  { type: 'summarize_page', label: 'Tóm tắt trang', icon: 'fa-regular fa-file-lines', mode: 'read', prompt: 'Tóm tắt trang hiện tại và nêu 3 điểm cần chú ý.' },
+  { type: 'explain_report', label: 'Giải thích báo cáo', icon: 'fa-solid fa-magnifying-glass-chart', mode: 'read', prompt: 'Giải thích các điểm chính trong báo cáo hiện tại.' },
+  { type: 'suggest_view_filter', label: 'Gợi ý bộ lọc', icon: 'fa-solid fa-filter-circle-dollar', mode: 'read', prompt: 'Gợi ý bộ lọc hữu ích cho dữ liệu hiện tại.' }
+]
+
 export const isReadOnlyAiAction = (type, requiresConfirmation) =>
   requiresConfirmation === false || readOnlyActionTypes.has(String(type || '').toLowerCase())
 
