@@ -665,9 +665,23 @@ public sealed class RewardSystemService : IRewardSystemService
 
                     if (deductLeaderboard)
                     {
-                    var pointEvent = new RewardPointEvent
-                    {
-                        Id = Guid.NewGuid(),
+                        var validWorkTaskId = await _context.RewardPointEvents
+                            .Where(e => e.UserId == userId && e.SeasonId == reward.SeasonId)
+                            .Select(e => e.WorkTaskId)
+                            .FirstOrDefaultAsync();
+
+                        if (validWorkTaskId == Guid.Empty)
+                        {
+                            validWorkTaskId = await _context.WorkTasks
+                                .Where(t => t.ProjectId == projectId)
+                                .Select(t => t.Id)
+                                .FirstOrDefaultAsync();
+                        }
+
+                        var pointEvent = new RewardPointEvent
+                        {
+                            Id = Guid.NewGuid(),
+                            WorkTaskId = validWorkTaskId,
                         UserId = userId,
                         SeasonId = reward.SeasonId,
                         ProjectId = projectId,
