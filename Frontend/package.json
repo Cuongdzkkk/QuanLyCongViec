@@ -50,7 +50,7 @@
     "vue3-apexcharts": "^1.11.1",
     "vue3-google-login": "^2.0.37",
     "vuedraggable": "^4.1.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@element-plus/icons-vue": "^2.3.2",
@@ -59,7 +59,7 @@
     "element-plus": "^2.13.5",
     "eslint": "8.57.1",
     "eslint-plugin-vue": "9.33.0",
-    "postcss": "^8.5.9",
+    "postcss": "^8.5.26",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.3",
     "unplugin-auto-import": "^21.0.0",

@@ -39,7 +39,7 @@ export function parseImportDate(value) {
     const [year, month, day] = raw.split('-').map(Number)
     return validIsoDate(year, month, day)
   }
-  const match = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/)
+  const match = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
   if (match) return validIsoDate(Number(match[3]), Number(match[2]), Number(match[1]))
   return null
 }
