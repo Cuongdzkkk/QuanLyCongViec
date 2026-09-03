@@ -3395,13 +3395,12 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 32px;
-  padding: 0 16px;
-  border-radius: 8px;
-  background: white;
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  padding: 0 15px; /* match el-button */
+  border-radius: 4px; /* match el-button plain */
+  background: #ffffff;
+  border: 1px solid #dcdfe6; /* default border color */
   cursor: pointer;
   overflow: hidden;
-  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.05);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 1;
 }
@@ -3418,8 +3417,8 @@ onUnmounted(() => {
     from 0deg,
     transparent 0%,
     transparent 60%,
-    rgba(59, 130, 246, 0.1) 75%,
-    rgba(59, 130, 246, 0.9) 95%,
+    rgba(59, 130, 246, 0.2) 75%,
+    rgba(59, 130, 246, 1) 95%,
     transparent 100%
   );
   animation: cyber-spin 3s linear infinite;
@@ -3434,7 +3433,7 @@ onUnmounted(() => {
   position: absolute;
   inset: 1px;
   background: #ffffff;
-  border-radius: 7px;
+  border-radius: 3px;
   z-index: -1;
   transition: background 0.3s ease;
 }
@@ -3447,9 +3446,8 @@ onUnmounted(() => {
 
 /* Hover Effects */
 .cyber-create-task-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
   border-color: transparent;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2), 0 0 10px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
 }
 
 .cyber-create-task-btn:hover:not(:disabled)::before {
@@ -3457,12 +3455,11 @@ onUnmounted(() => {
 }
 
 .cyber-create-task-btn:hover:not(:disabled)::after {
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.98);
 }
 
 .cyber-create-task-btn:active:not(:disabled) {
   transform: translateY(1px);
-  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
 }
 
 .cyber-create-task-btn:disabled {
@@ -3477,22 +3474,22 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-weight: 600;
-  font-size: 13px;
-  /* Shimmer gradient */
+  font-weight: 500; /* match el-button */
+  font-size: 14px; /* match el-button */
+  /* Shimmer gradient using standard text color */
   background: linear-gradient(
     90deg, 
-    var(--color-accent) 0%, 
-    var(--color-accent) 40%, 
-    #60a5fa 50%, 
-    var(--color-accent) 60%, 
-    var(--color-accent) 100%
+    #606266 0%, /* standard text color */
+    #606266 40%, 
+    var(--color-accent) 50%, /* laser light color */
+    #606266 60%, 
+    #606266 100%
   );
   background-size: 200% 100%;
+  background-position: 200% center;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  color: var(--color-accent);
   transition: background-position 0.3s ease;
 }
 
@@ -3502,7 +3499,7 @@ onUnmounted(() => {
 
 @keyframes cyber-shimmer {
   0% { background-position: 200% center; }
-  100% { background-position: 0% center; }
+  100% { background-position: -200% center; }
 }
 
 /* ==================================
