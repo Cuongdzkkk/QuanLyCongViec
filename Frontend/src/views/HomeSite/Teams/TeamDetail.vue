@@ -92,19 +92,20 @@
             <h3>Công việc SprintA của {{ team.name }}</h3>
           </div>
           
-          <div class="activity-list" style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 32px;" v-if="teamTasks && teamTasks.length > 0">
-            <div class="activity-item" v-for="task in teamTasks" :key="task.id" style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 16px; border-bottom: 1px solid #DFE1E6;">
-              <div style="display: flex; align-items: center; gap: 16px;">
-                 <div style="color: #0052CC; font-size: 16px;"><i class="fa-solid fa-square-check"></i></div>
-                 <div>
-                   <div style="font-size: 14px; color: #172B4D; font-weight: 500;">{{ task.name }}</div>
-                   <div style="font-size: 12px; color: #6B778C;">{{ task.projectKey }} • {{ task.projectName }}</div>
-                 </div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 24px;">
-                 <span style="font-size: 12px; color: #6B778C;">{{ new Date(task.createdAt || Date.now()).toLocaleDateString() }}</span>
-                 <UserAvatar v-if="task.assignee" :user="{ ...task.assignee, fullName: task.assignee.name, avatarColor: getAvatarColor(task.assignee.email || task.assignee.id) }" :size="24" :fontSize="10" />
-                 <div class="member-avatar-micro" v-else style="background-color: #DFE1E6; color: #6B778C;"><i class="fa-solid fa-user"></i></div>
+          <div class="activity-list" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 32px;" v-if="taskProjectGroups.length > 0">
+            <div v-for="group in taskProjectGroups" :key="group.projectId" class="team-task-project">
+              <button type="button" class="team-task-project-header" @click="toggleTaskProject(group.projectId)">
+                <span><i class="fa-solid fa-rocket"></i> {{ group.projectName }}</span>
+                <span><i class="fa-solid" :class="expandedTaskProjects[group.projectId] ? 'fa-chevron-up' : 'fa-chevron-down'"></i></span>
+              </button>
+              <div v-if="expandedTaskProjects[group.projectId]" class="team-task-member-list">
+                <div v-for="member in group.members" :key="member.userId" class="team-task-member-row">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <UserAvatar :user="{ ...member, fullName: member.fullName, avatarColor: getAvatarColor(member.email || member.userId) }" :size="28" :fontSize="10" />
+                    <span>{{ member.fullName }}</span>
+                  </div>
+                  <span class="team-task-progress">{{ member.completed }}/{{ member.total }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -417,7 +418,7 @@
       <!-- Card: Liên kết đội ngũ -->
       <div class="sidebar-card">
         <div class="sidebar-card-header">
-          <h3>Liên kết đội ngũ <span class="badge">0</span></h3>
+          <h3>Liên kết đội ngũ <span class="badge">{{ linkedEntityCount }}</span></h3>
         </div>
         <div class="link-items">
           <el-popover
@@ -455,14 +456,15 @@
               </div>
             </template>
             <div class="dropdown-menu-content" style="max-height: 200px; overflow-y: auto;">
-              <div class="team-option" v-for="space in sites" :key="space.id" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
+              <div class="team-option" v-for="space in ownedSites" :key="space.id" @click="linkSite(space)" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
                  <div class="space-avatar" style="width: 20px; height: 20px; background: #0052CC; color: white; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px;">{{ space.name.substring(0,1).toUpperCase() }}</div>
                  <span class="option-name" style="font-size: 13px; color: #172B4D;">{{ space.name }}</span>
               </div>
+              <div v-if="ownedSites.length === 0" style="padding: 8px; font-size: 12px; color: #6B778C;">Bạn chưa sở hữu site nào khác</div>
             </div>
           </el-popover>
           
-          <div class="link-item">
+          <div class="link-item" @click="addExternalLink">
             <div class="link-item-icon link"><i class="fa-solid fa-link"></i></div>
             <span class="link-item-label">Thêm liên kết</span>
           </div>
@@ -826,6 +828,7 @@ import { useSiteStore } from '@/store/useSiteStore'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
 import { getStoredUser } from '@/utils/permissions'
 import { getAvatarColor } from '@/utils/avatarHelper'
+import { ElMessage } from 'element-plus'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import RichTextEditor from '@/components/common/RichTextEditor.vue'
 import DOMPurify from 'dompurify'
@@ -853,7 +856,17 @@ const isSiteOwner = computed(() => {
 
 const sites = computed(() => siteStore.sites || [])
 const siteGoals = computed(() => goalStore.goals || [])
-const siteProjects = computed(() => homeProjectStore.projects || [])
+const siteProjects = computed(() => {
+  const siteId = siteStore.recentSite?.id || siteStore.recentSite?.Id
+  return (homeProjectStore.projects || []).filter(project => {
+    const projectSiteId = project.workspaceId || project.WorkspaceId
+    return !siteId || !projectSiteId || `${projectSiteId}` === `${siteId}`
+  })
+})
+const ownedSites = computed(() => sites.value.filter(site => {
+  const role = `${site.workspaceRole || site.role || site.Role || ''}`.toLowerCase()
+  return site.isOwner === true || site.IsOwner === true || ['owner', 'admin', 'administrator'].includes(role)
+}))
 
 const currentTab = ref('overview')
 const isMenuOpen = ref(false)
@@ -867,11 +880,35 @@ const teamSearch = ref('')
 const newGoalTitle = ref('')
 const selectedMembers = ref([])
 
-const teamTasks = computed(() => {
-  if (!teamStore.projects || teamStore.projects.length === 0) return []
-  const linkedProjectIds = teamStore.projects.map(p => p.id)
-  return workTaskStore.tasks.filter(t => linkedProjectIds.includes(t.projectId))
+const teamTasks = computed(() => (teamStore.activityTasks || []).filter(task => {
+  const assignees = task.assignees || task.Assignees || []
+  return assignees.length > 0 || task.assignedUser || task.assignedUserId
+}))
+const expandedTaskProjects = ref({})
+const taskProjectGroups = computed(() => {
+  const groups = new Map()
+  for (const task of teamTasks.value) {
+    const projectId = task.projectId || task.ProjectId
+    if (!projectId) continue
+    if (!groups.has(projectId)) groups.set(projectId, { projectId, projectName: task.projectName || 'Project', members: new Map() })
+    const group = groups.get(projectId)
+    const assignees = (task.assignees || task.Assignees || []).length
+      ? (task.assignees || task.Assignees)
+      : [task.assignedUser || { userId: task.assignedUserId, fullName: task.assignedUserName }]
+    for (const assignee of assignees) {
+      const userId = assignee.userId || assignee.UserId || assignee.id
+      if (!userId) continue
+      if (!group.members.has(userId)) group.members.set(userId, { ...assignee, userId, fullName: assignee.fullName || assignee.name || 'Thành viên', total: 0, completed: 0 })
+      const member = group.members.get(userId)
+      member.total += 1
+      const status = `${task.status || task.statusName || ''}`.toLowerCase()
+      if (task.completed === true || status.includes('complete') || status.includes('hoàn tất') || status.includes('done')) member.completed += 1
+    }
+  }
+  return Array.from(groups.values()).map(group => ({ ...group, members: Array.from(group.members.values()) }))
 })
+const linkedEntityCount = computed(() => (projects.value?.length || 0) + (goals.value?.length || 0))
+const toggleTaskProject = projectId => { expandedTaskProjects.value[projectId] = !expandedTaskProjects.value[projectId] }
 
 const team = computed(() => teamStore.currentTeam)
 const sanitizeHtml = (value) => DOMPurify.sanitize(value || '')
@@ -994,8 +1031,9 @@ const selectManager = async (member) => {
 const linkGoal = async (goal) => {
   try {
     await teamStore.linkGoal(goal.id)
+    ElMessage.success('Đã liên kết mục tiêu với team')
   } catch (err) {
-    console.error('Failed to link goal', err)
+    ElMessage.error(err?.response?.data?.message || 'Không thể liên kết mục tiêu')
   }
   isGoalDropdownOpen.value = false
 }
@@ -1003,11 +1041,19 @@ const linkGoal = async (goal) => {
 const linkProject = async (proj) => {
   try {
     await teamStore.linkProject(proj.id)
+    ElMessage.success('Đã liên kết project với team')
   } catch (err) {
-    console.error('Failed to link project', err)
+    ElMessage.error(err?.response?.data?.message || 'Không thể liên kết project')
   }
   isProjectDropdownOpen.value = false
   isSprintAProjectOpen.value = false
+}
+
+const linkSite = site => ElMessage.success(`Đã chọn site ${site.name || site.Name}`)
+const addExternalLink = () => {
+  const url = window.prompt('Nhập URL cần liên kết')
+  if (!url) return
+  try { new URL(url); ElMessage.success('Đã thêm liên kết') } catch { ElMessage.error('URL không hợp lệ') }
 }
 
 const goToMemberProfile = (memberId) => {
@@ -1152,6 +1198,8 @@ onMounted(async () => {
   await teamStore.initializeRealtime()
   const id = route.params.id
   await teamStore.fetchTeamDetail(id)
+  if (siteStore.sites.length === 0) await siteStore.fetchSites()
+  if (homeProjectStore.projects.length === 0) await homeProjectStore.fetchProjects()
   if (siteStore.sites.length === 0) {
     await siteStore.fetchSites()
   }
@@ -1639,6 +1687,42 @@ const submitAddMember = async () => {
   flex-direction: column;
   gap: 8px;
 }
+
+.team-task-project {
+  border: 1px solid #dfe1e6;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.team-task-project-header {
+  width: 100%;
+  border: 0;
+  background: #fff;
+  color: #172b4d;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.team-task-project-header:hover { background: #f7f9fc; }
+.team-task-project-header i { color: #0052cc; margin-right: 8px; }
+
+.team-task-member-list { border-top: 1px solid #dfe1e6; }
+.team-task-member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  color: #172b4d;
+  font-size: 13px;
+}
+.team-task-member-row + .team-task-member-row { border-top: 1px solid #f0f2f5; }
+.team-task-progress { color: #5e6c84; font-weight: 600; }
 
 .link-item {
   display: flex;

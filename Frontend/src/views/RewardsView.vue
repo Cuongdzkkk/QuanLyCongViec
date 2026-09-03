@@ -2125,14 +2125,11 @@ const redeemReward = async (item) => {
     })
     
     ElMessage.success(res.data?.message || 'Đổi quà thành công!')
-    
-    // Update local state without full reload
     if (res.data?.data) {
       wallet.value.totalPoints = res.data.data.remainingPoints
       item.quantity = res.data.data.remainingQuantity
-    } else {
-      await loadRewards()
     }
+    await loadRewards()
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Không thể đổi quà.')
   } finally {

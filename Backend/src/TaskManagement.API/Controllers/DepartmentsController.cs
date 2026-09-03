@@ -160,7 +160,18 @@ namespace TaskManagement.API.Controllers
                         name = task.Reporter.FullName ?? task.Reporter.Email,
                         email = task.Reporter.Email,
                         avatarUrl = task.Reporter.AvatarUrl
-                    }
+                    },
+                    assignees = task.TaskAssignments
+                        .Where(assignment => assignment.Status)
+                        .Select(assignment => new
+                        {
+                            userId = assignment.UserId,
+                            fullName = assignment.User.FullName ?? assignment.User.Email,
+                            email = assignment.User.Email,
+                            avatarUrl = assignment.User.AvatarUrl,
+                            progressPercent = assignment.ProgressPercent
+                        })
+                        .ToList()
                 })
                 .ToListAsync();
 
