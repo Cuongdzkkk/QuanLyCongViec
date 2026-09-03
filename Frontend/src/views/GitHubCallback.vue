@@ -17,7 +17,7 @@
   <script setup>
   import { ref, onMounted } from 'vue'
   import { useRouter, useRoute } from 'vue-router'
-  import axiosClient from '../api/axiosClient'
+  import { linkGitHubAccount, loginWithGitHub } from '@/api/authApi'
   import { saveAuthSession } from '@/utils/authSession'
   import { clearLegacyGitHubCredentialStorage } from '@/utils/githubCredentials'
   import { Loading, CircleCloseFilled } from '@element-plus/icons-vue'
@@ -31,6 +31,7 @@ const errorMsg = ref('')
 onMounted(async () => {
   clearLegacyGitHubCredentialStorage()
   const code = route.query.code
+  const state = typeof route.query.state === 'string' ? route.query.state : ''
 
   if (!code) {
     errorMsg.value = 'Không nhận được mã xác thực từ GitHub.'
@@ -39,7 +40,14 @@ onMounted(async () => {
   }
 
   try {
-    const res = await axiosClient.post('/auth/github-login', { code })
+    if (state.startsWith('link.')) {
+      await linkGitHubAccount(code, state)
+      ElMessage.success('Đã liên kết tài khoản GitHub thành công!')
+      router.push('/profile?tab=connected')
+      return
+    }
+
+    const res = await loginWithGitHub(code, state)
 
     saveAuthSession(res.data.data)
 
@@ -85,5 +93,3 @@ onMounted(async () => {
   font-size: 16px;
 }
 </style>
-
-

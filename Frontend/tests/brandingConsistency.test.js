@@ -52,12 +52,12 @@ test('social buttons have exact labels, ARIA names, and shared dimensions', () =
   assert.match(login, /@media \(max-width: 640px\)[\s\S]*?\.social-login \{[\s\S]*?grid-template-columns: 1fr;/)
 })
 
-test('Google uses the registered callback path and GitHub OAuth handler remains intact', () => {
+test('Google and GitHub OAuth handlers use their registered callback paths', () => {
   assert.match(login, /registerGoogleAuthorizationCodeClient/)
   assert.match(login, /callback: handleGoogleLogin/)
   assert.match(login, /loginWithGoogleAuthorizationCode\(code, state/)
-  assert.match(login, /const handleGitHubLogin = \(\) => \{/)
-  assert.match(login, /https:\/\/github\.com\/login\/oauth\/authorize\?client_id=\$\{clientId\}/)
+  assert.match(login, /const handleGitHubLogin = async \(\) => \{/)
+  assert.match(login, /startGitHubLogin\(\)/)
   assert.match(googleService, /initCodeClient/)
   assert.match(googleService, /ux_mode: 'popup'/)
   assert.doesNotMatch(login, /google\.accounts\.id\.prompt|accounts\.id\.renderButton/)
