@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <ProjectPageContainer class="space-summary-page">
     <div v-if="isForbidden" class="forbidden-overlay">
       <div class="forbidden-content">
@@ -1398,7 +1398,6 @@ let moduleDetailRequestId = 0
 let initialDataRequestId = 0
 const activeCarryOverSprintId = computed(() => route.query.carryOverFromSprintId || null)
 const carryOverTaskIds = ref([])
- => project.value?.icon || project.value?.identifier?.charAt(0)?.toUpperCase() || project.value?.name?.charAt(0)?.toUpperCase() || 'P')
 const getShowSubtasksStorageKey = (projectId = currentProjectId.value || getProjectId()) => `space-summary:${projectId || 'default'}:show-subtasks`
 const getDisplayPropertiesStorageKey = (projectId = currentProjectId.value || getProjectId()) => `space-summary:${projectId || 'default'}:display-properties`
 const loadShowSubtasksPreference = (projectId = currentProjectId.value || getProjectId()) => {
