@@ -2143,8 +2143,7 @@ const createReward = async () => {
       pointCost: rewardForm.value.pointCost || 0,
       quantity: rewardForm.value.quantity || null,
       claimLimit: rewardForm.value.claimLimit || null,
-      requireActiveMemberAtSettlement: false,
-      displayValue: croppedImage
+      requireActiveMemberAtSettlement: false
     })
 
     const responseData = res.data?.data || res.data

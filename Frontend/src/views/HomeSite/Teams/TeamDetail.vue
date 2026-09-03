@@ -77,7 +77,7 @@
               <UserAvatar :user="{ ...member, fullName: member.fullName || member.name, avatarColor: getAvatarColor(member.email || member.id) }" :size="32" :fontSize="14" :clickable="false" />
               <div class="member-info">
                 <span class="member-name hover:underline" style="font-weight: 600; color: #172B4D; font-size: 13.5px;">{{ member.fullName || member.name }}</span>
-                <span class="member-role" style="font-size: 12px; color: #5E6C84; display: block; margin-top: 2px;">{{ member.role || 'Thành viên' }}</span>
+                <span class="member-role" style="font-size: 12px; color: #5E6C84; display: block; margin-top: 2px;">{{ `${member.id}` === `${team.manager?.id || team.managerId || ''}` ? 'Leader' : (member.role || 'Thành viên') }}</span>
               </div>
             </div>
           </div>

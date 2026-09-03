@@ -93,7 +93,7 @@
               </div>
               <div v-else>
                 <div class="timeline-item" v-for="entry in goalHistory" :key="entry.id" style="display: flex; align-items: flex-start; gap: 12px;">
-                   <AppAvatar :user="{ fullName: entry.actor, email: entry.email }" :size="24" />
+                   <AppAvatar :src="entry.avatarUrl || entry.actorAvatarUrl" :name="entry.actor" :email="entry.email" size="xs" />
                    <div style="flex: 1;">
                       <div style="display: flex; justify-content: space-between; align-items: center;">
                          <span style="font-size: 14px; color: #172B4D;"><strong>{{ entry.actor }}</strong> {{ entry.action }}</span>
@@ -194,7 +194,7 @@
             <div class="timeline-post" style="margin-bottom: 24px; border: 1px solid #DFE1E6; padding: 16px; border-radius: 3px; background: white;" v-for="update in goalStore.updates" :key="update.id">
               <div class="post-header">
                 <div class="post-user">
-                  <AppAvatar :user="{ id: update.userId, fullName: update.userName, avatarUrl: update.userAvatar }" :size="32" />
+                  <AppAvatar :src="update.userAvatarUrl || update.userAvatar" :name="update.userName" :email="update.userEmail" size="sm" />
                   <div class="user-info">
                     <span class="user-name">{{ update.userName }}</span>
                     <span class="post-time">{{ new Date(update.createdAt).toLocaleString('vi-VN') }}</span>
@@ -260,7 +260,7 @@
           <div class="section-header-row">
             <h3>Công việc SprintA</h3>
             <div v-if="goalOwnerData" style="display:flex;align-items:center;gap:8px;font-size:12px;color:#5E6C84;">
-              <span>Leader</span><AppAvatar :user="goalOwnerData" :size="28" />
+              <span>Leader</span><AppAvatar :src="goalOwnerData.avatarUrl" :name="goalOwnerData.fullName" :email="goalOwnerData.email" size="xs" />
             </div>
           </div>
           <div v-if="goalStore.linkedProjects?.length" class="goal-sprint-projects">
