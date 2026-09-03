@@ -284,6 +284,26 @@ using (var scope = app.Services.CreateScope())
         context.Database.ExecuteSqlRaw("CREATE INDEX IX_RewardGrants_RewardDefinitionId_SeasonId_RecipientUserId ON RewardGrants (RewardDefinitionId, SeasonId, RecipientUserId)");
     }
     catch { }
+
+    try
+    {
+        // Auto-repair missing negative RewardPointEvents for old redemptions
+        context.Database.ExecuteSqlRaw(@"
+            INSERT INTO RewardPointEvents (Id, UserId, SeasonId, ProjectId, Points, Xp, ScoreSource, Status, CompletedAt, FinalizedAt, CancellationReason)
+            SELECT NEWID(), rg.RecipientUserId, rg.SeasonId, rg.ProjectId, -(rd.PointCost), 0, 'Redeem', 'Finalized', rg.EarnedAt, rg.EarnedAt, 'Auto-repaired old redemption'
+            FROM RewardGrants rg
+            JOIN RewardDefinitions rd ON rg.RewardDefinitionId = rd.Id
+            WHERE rd.PointCost IS NOT NULL AND rd.PointCost > 0
+            AND NOT EXISTS (
+                SELECT 1 FROM RewardPointEvents rpe 
+                WHERE rpe.UserId = rg.RecipientUserId 
+                AND rpe.SeasonId = rg.SeasonId 
+                AND rpe.ScoreSource = 'Redeem' 
+                AND rpe.CompletedAt = rg.EarnedAt
+            )
+        ");
+    }
+    catch { }
 }
 
 app.Run();

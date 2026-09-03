@@ -399,7 +399,7 @@
             <div style="color:#172B4D;white-space:pre-wrap;" v-html="sanitizeHtml(item.message)"></div>
           </div>
         </div>
-        <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
+        <div v-if="!kudos.length" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
            <div style="position: relative;">
               <div style="width: 80px; height: 80px; background-color: #FFFAE6; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
                  <i class="fa-solid fa-medal" style="font-size: 32px; color: #FFAB00;"></i>

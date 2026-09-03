@@ -378,7 +378,7 @@
             <div class="timeline-post" v-for="item in goalStore.lessons" :key="item.id" style="margin-bottom: 16px;">
                 <div class="post-header">
                   <div class="post-user">
-                    <AppAvatar :user="{ id: item.creatorId, fullName: item.creatorName, avatarUrl: item.creatorAvatarUrl, email: item.creatorEmail }" :size="32" />
+                    <AppAvatar :src="item.creatorAvatarUrl" :name="item.creatorName" :email="item.creatorEmail" size="sm" />
                     <div class="user-info">
                       <span class="user-name">{{ item.creatorName }}</span>
                       <span class="post-time">{{ new Date(item.createdAt).toLocaleString('vi-VN') }}</span>
@@ -435,7 +435,7 @@
             <div class="timeline-post" v-for="item in goalStore.risks" :key="item.id" style="margin-bottom: 16px;">
                 <div class="post-header">
                   <div class="post-user">
-                    <AppAvatar :user="{ id: item.creatorId, fullName: item.creatorName, avatarUrl: item.creatorAvatarUrl, email: item.creatorEmail }" :size="32" />
+                    <AppAvatar :src="item.creatorAvatarUrl" :name="item.creatorName" :email="item.creatorEmail" size="sm" />
                     <div class="user-info">
                       <span class="user-name">{{ item.creatorName }}</span>
                       <span class="post-time">{{ new Date(item.createdAt).toLocaleString('vi-VN') }}</span>
@@ -492,7 +492,7 @@
             <div class="timeline-post" v-for="item in goalStore.decisions" :key="item.id" style="margin-bottom: 16px;">
                 <div class="post-header">
                   <div class="post-user">
-                    <AppAvatar :user="{ id: item.creatorId, fullName: item.creatorName, avatarUrl: item.creatorAvatarUrl, email: item.creatorEmail }" :size="32" />
+                    <AppAvatar :src="item.creatorAvatarUrl" :name="item.creatorName" :email="item.creatorEmail" size="sm" />
                     <div class="user-info">
                       <span class="user-name">{{ item.creatorName }}</span>
                       <span class="post-time">{{ new Date(item.createdAt).toLocaleString('vi-VN') }}</span>
@@ -1009,6 +1009,23 @@ const removeTeam = async id => {
   linkedTeams.value = linkedTeams.value.filter(x => x.id !== id)
 }
 
+const isMineGoalItem = item => `${item.creatorId || ''}` === `${authStore.userId || ''}`
+const editGoalItem = async (item, tab) => {
+  if (!isMineGoalItem(item)) return
+  const shouldDelete = window.confirm('Nhấn OK để xóa nội dung này. Nhấn Hủy để chỉnh sửa.')
+  const workspaceId = await goalStore.ensureWorkspaceId()
+  if (shouldDelete) {
+    await axiosClient.delete(`/workspaces/${workspaceId}/goals/${goal.value.id}/${tab}/${item.id}`)
+    const list = goalStore[tab] || []
+    goalStore[tab] = list.filter(value => value.id !== item.id)
+    return
+  }
+  const content = window.prompt('Chỉnh sửa nội dung', item.text || item.title || '')
+  if (content === null || !content.trim()) return
+  await axiosClient.put(`/workspaces/${workspaceId}/goals/${goal.value.id}/${tab}/${item.id}`, { text: content })
+  item.text = content
+}
+
 const saveStartDate = async () => {
   if (!goal.value?.workspaceId || !goal.value?.id || !startDateInput.value) {
     popovers.value.startDate = false
@@ -1203,6 +1220,9 @@ const postUpdate = () => {
 .goal-sprint-project:hover { background: #f7f9fc; }
 .goal-sprint-project i:first-child { color: #0052cc; margin-right: 10px; }
 .goal-sprint-project > i { color: #6b778c; }
+.goal-item-actions { display:flex; justify-content:flex-end; margin-top:-34px; margin-bottom:8px; min-height:28px; position:relative; z-index:2; }
+.goal-item-actions .icon-btn-micro { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; color:#42526E; background:#F4F5F7; border:1px solid #DFE1E6; border-radius:4px; cursor:pointer; }
+.goal-item-actions .icon-btn-micro:hover { background:#EBECF0; color:#172B4D; }
 .goal-detail-wrapper {
   display: flex;
   flex-direction: column;
