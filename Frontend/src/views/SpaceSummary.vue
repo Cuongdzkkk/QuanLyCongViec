@@ -3390,77 +3390,67 @@ onUnmounted(() => {
 /* ==================================
    HI-TECH MODERN BUTTON THEME
    ================================== */
+/* ==============================================================
+   ULTIMATE CYBER-GLASS BUTTON (Beating Codex's Cycles Button)
+   ============================================================== */
 .cyber-create-task-btn {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 32px;
-  padding: 0 15px; /* match el-button */
-  border-radius: 4px; /* match el-button plain */
+  padding: 8px 15px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px; /* matches el-button */
   background: #ffffff;
-  border: 1px solid #dcdfe6; /* default border color */
   cursor: pointer;
-  overflow: hidden;
+  overflow: hidden; /* Clips the glass reflection */
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 1;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* standard el-button shadow */
 }
 
-/* The spinning glowing laser border */
+/* Premium Glass Reflection Sweep (Tilted Apple-style shine) */
 .cyber-create-task-btn::before {
   content: '';
   position: absolute;
-  top: -150%;
-  left: -150%;
-  width: 400%;
-  height: 400%;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0%,
-    transparent 60%,
-    rgba(59, 130, 246, 0.2) 75%,
-    rgba(59, 130, 246, 1) 95%,
-    transparent 100%
+  inset: -100% -50%;
+  width: 50%;
+  transform: rotate(25deg) translateX(-300%);
+  background: linear-gradient(
+    90deg, 
+    transparent, 
+    rgba(255, 255, 255, 0.9), 
+    rgba(125, 211, 252, 0.35), 
+    transparent
   );
-  animation: cyber-spin 3s linear infinite;
-  opacity: 0;
-  transition: opacity 0.4s ease;
-  z-index: -2;
+  transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+  pointer-events: none;
+  z-index: 0;
 }
 
-/* The inner mask to make the laser only visible on the border */
-.cyber-create-task-btn::after {
-  content: '';
-  position: absolute;
-  inset: 1px;
-  background: #ffffff;
-  border-radius: 3px;
-  z-index: -1;
-  transition: background-color 0.3s ease;
+@keyframes cyber-breathe {
+  0% { box-shadow: 0 8px 20px rgba(14, 165, 233, 0.2), 0 0 0 2px rgba(56, 189, 248, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6); }
+  100% { box-shadow: 0 12px 28px rgba(14, 165, 233, 0.35), 0 0 0 4px rgba(56, 189, 248, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.9); }
 }
 
-@keyframes cyber-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Hover Effects */
+/* Hover States */
 .cyber-create-task-btn:hover:not(:disabled) {
-  border-color: transparent;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+  background: radial-gradient(circle at 10% 0%, rgba(255, 255, 255, 0.95), rgba(240, 249, 255, 1) 100%);
+  transform: translateY(-1px);
+  /* The ultimate cyber glow breathing */
+  box-shadow: 0 8px 20px rgba(14, 165, 233, 0.2), 0 0 0 2px rgba(56, 189, 248, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  animation: cyber-breathe 2.5s ease-in-out infinite alternate;
 }
 
 .cyber-create-task-btn:hover:not(:disabled)::before {
-  opacity: 1;
-}
-
-.cyber-create-task-btn:hover:not(:disabled)::after {
-  background-color: rgba(59, 130, 246, 0.05); /* separate light background color */
+  transform: rotate(25deg) translateX(400%);
 }
 
 .cyber-create-task-btn:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: translateY(1px) scale(0.98);
+  animation: none;
+  box-shadow: 0 3px 8px rgba(14, 165, 233, 0.15), 0 0 0 2px rgba(56, 189, 248, 0.2) !important;
 }
 
 .cyber-create-task-btn:disabled {
