@@ -1017,13 +1017,17 @@ const loadAiUsage = async () => {
 }
 
 onMounted(() => {
-  siteStore.fetchSites().then(syncSelectedWorkspace).catch(() => {})
+  siteStore.fetchSites()
+    .then(() => {
+      syncSelectedWorkspace()
+      loadConversations(true)
+    })
+    .catch(() => loadConversations(true))
   window.addEventListener('sprinta-workspace-changed', handleWorkspaceChanged)
   window.addEventListener(AUTH_SESSION_CHANGED, refreshCurrentUser)
   clearLegacyGitHubCredentialStorage()
   projectStore.fetchAllProjects().catch(() => [])
   loadAiUsage()
-  loadConversations(true)
   if (currentProjectId.value) {
     sprintStore.fetchSprints(currentProjectId.value).catch(() => [])
     signalRService.startConnection(`${currentProjectId.value}`)
