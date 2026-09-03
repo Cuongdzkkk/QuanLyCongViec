@@ -1337,6 +1337,8 @@ const saveEditReward = async (reward) => {
       
       r.name = payloadName
       r.description = JSON.stringify(currentConfig)
+      r.method = currentConfig.usePoints ? 'Redeem' : 'Gift'
+      r.pointCost = currentConfig.pointCost || 0
       ElMessage.success('Đã lưu cấu hình phần thưởng vào CSDL thành công!')
     } catch (err) {
       ElMessage.error('Không thể lưu phần thưởng.')
