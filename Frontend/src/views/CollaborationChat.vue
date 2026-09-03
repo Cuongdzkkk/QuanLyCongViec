@@ -237,9 +237,9 @@
                 </button>
               </div>
             </template>
-            <div v-else-if="hasCallParticipants" class="call-camera-stage" :class="`layout-${callLayoutMode.toLowerCase()}`" :data-participant-count="cameraStageParticipants.length" aria-label="Call participants">
+            <div v-else-if="hasCallParticipants" class="call-camera-stage" :class="`layout-${callLayoutMode.toLowerCase()}`" :data-participant-count="visibleCallStageParticipants.length" aria-label="Call participants">
               <article
-                v-for="user in cameraStageParticipants"
+                v-for="user in visibleCallStageParticipants"
                 :key="`stage-${user.connectionId}`"
                 class="call-camera-stage-tile"
                 :class="{ 'is-focused-participant': focusedParticipantConnectionId === user.connectionId, 'is-speaking': isParticipantSpeaking(user) }"
@@ -281,6 +281,31 @@
                   <span v-if="user.handRaised" class="call-hand-indicator" title="Đang giơ tay"><i class="fa-solid fa-hand" aria-hidden="true"></i><span>Đang giơ tay</span></span>
                 </span>
                 <span v-if="isParticipantVideoVisible(user) && !user.microphoneEnabled" class="call-camera-stage-muted" title="Đang tắt micro" aria-label="Đang tắt micro"><i class="fa-solid fa-microphone-slash" aria-hidden="true"></i></span>
+              </article>
+              <article
+                v-if="callOverflowCount > 0"
+                class="call-camera-stage-tile call-overflow-tile"
+                role="button"
+                tabindex="0"
+                aria-label="Xem thêm người tham gia"
+                @click="openCallParticipants"
+                @keydown.enter.prevent="openCallParticipants"
+                @keydown.space.prevent="openCallParticipants"
+              >
+                <div class="call-overflow-content">
+                  <div class="call-overflow-avatars">
+                    <el-avatar
+                      v-for="user in participantsInCall.slice(visibleCallStageParticipants.length, visibleCallStageParticipants.length + 3)"
+                      :key="`overflow-${user.connectionId}`"
+                      :size="36"
+                      :src="user.avatarUrl"
+                    >
+                      {{ (user.displayName || 'U').charAt(0).toUpperCase() }}
+                    </el-avatar>
+                  </div>
+                  <strong>+{{ callOverflowCount }} người còn lại</strong>
+                  <span class="call-overflow-hint">Nhấp để xem danh sách</span>
+                </div>
               </article>
             </div>
             <div v-else class="call-grid-empty" aria-live="polite">
@@ -1160,6 +1185,7 @@ import { createCallMediaSession, traceCallHubLifecycle, traceWebRtcMedia } from 
 import { isWebRtcDebugEnabled, recordMediaElementDiagnostic } from '@/utils/webrtcRuntimeDiagnostics'
 import {
   dedupeParticipantsByUser,
+  getBoundedCallStageParticipants,
   getMeetingLayoutMode,
   getMeetingRenderCollections
 } from '@/services/meetingLayoutState'
@@ -1798,6 +1824,12 @@ const callRailParticipants = computed(() => [
   ...meetingRenderCollections.value.cameraRailParticipants,
   ...meetingRenderCollections.value.presentationRailParticipants
 ])
+const visibleCallStageParticipants = computed(() => callLayoutMode.value === 'CAMERA_GRID'
+  ? getBoundedCallStageParticipants(participantsInCall.value)
+  : cameraStageParticipants.value)
+const callOverflowCount = computed(() => callLayoutMode.value === 'CAMERA_GRID'
+  ? Math.max(participantsInCall.value.length - visibleCallStageParticipants.value.length, 0)
+  : 0)
 const describeMeetingParticipant = participant => {
   const isSelf = participant.connectionId === callConnectionId.value
   const remoteEntry = isSelf ? null : remoteStreams.value.get(participant.connectionId)
@@ -9023,6 +9055,53 @@ background-color: #111c2d !important;
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-workspace .chat-sidebar { transition: none; }
+}
+
+/* Bounded Voice Call Stage & Overflow Summary Tile */
+.chat-workspace .call-camera-stage-tile.call-overflow-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--chat-surface-2) 85%, var(--chat-accent));
+  border: 1px dashed color-mix(in srgb, var(--chat-accent) 45%, var(--chat-line)) !important;
+  border-radius: 16px;
+  cursor: pointer;
+  padding: 16px;
+  transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+.chat-workspace .call-camera-stage-tile.call-overflow-tile:hover {
+  border-color: var(--chat-accent) !important;
+  background: color-mix(in srgb, var(--chat-accent) 22%, var(--chat-surface-2));
+  transform: translateY(-2px);
+}
+.chat-workspace .call-overflow-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.chat-workspace .call-overflow-avatars {
+  display: flex;
+  align-items: center;
+}
+.chat-workspace .call-overflow-avatars .el-avatar {
+  margin-left: -8px;
+  border: 2px solid var(--chat-surface);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+.chat-workspace .call-overflow-avatars .el-avatar:first-child {
+  margin-left: 0;
+}
+.chat-workspace .call-overflow-content strong {
+  color: var(--chat-ink);
+  font-size: 13.5px;
+  font-weight: 800;
+}
+.chat-workspace .call-overflow-hint {
+  color: var(--chat-accent);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 /* Unified project accordion navigator. */
