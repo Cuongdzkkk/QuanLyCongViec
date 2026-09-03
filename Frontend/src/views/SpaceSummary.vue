@@ -3432,10 +3432,20 @@ onUnmounted(() => {
   content: '';
   position: absolute;
   inset: 1px;
-  background: #ffffff;
+  /* Freeze effect background: wipe from right (white) to left (light tint) */
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.08) 0%,
+    rgba(59, 130, 246, 0.08) 48%,
+    rgba(59, 130, 246, 0.3) 50%, /* the light beam edge */
+    #ffffff 52%,
+    #ffffff 100%
+  );
+  background-size: 250% 100%;
+  background-position: 100% center;
   border-radius: 3px;
   z-index: -1;
-  transition: background 0.3s ease;
+  transition: background-position 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes cyber-spin {
@@ -3455,7 +3465,7 @@ onUnmounted(() => {
 }
 
 .cyber-create-task-btn:hover:not(:disabled)::after {
-  background: rgba(255, 255, 255, 0.98);
+  background-position: 0% center; /* fill the background */
 }
 
 .cyber-create-task-btn:active:not(:disabled) {
@@ -3469,37 +3479,32 @@ onUnmounted(() => {
   border-color: #e2e8f0;
 }
 
-/* Button Content (Shimmering Text) */
+/* Button Content (Freezing Text) */
 .cyber-btn-content {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-weight: 500; /* match el-button */
   font-size: 14px; /* match el-button */
-  /* Shimmer gradient using standard text color */
+  /* Freeze effect text: wipe from right (gray) to left (blue) */
   background: linear-gradient(
     90deg, 
-    #606266 0%, /* standard text color */
-    #606266 40%, 
-    var(--color-accent) 50%, /* laser light color */
-    #606266 60%, 
+    var(--color-accent) 0%, 
+    var(--color-accent) 48%, 
+    #93c5fd 50%, /* laser light highlight */
+    #606266 52%, 
     #606266 100%
   );
-  background-size: 200% 100%;
-  background-position: 200% center;
+  background-size: 250% 100%;
+  background-position: 100% center;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  transition: background-position 0.3s ease;
+  transition: background-position 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .cyber-create-task-btn:hover:not(:disabled) .cyber-btn-content {
-  animation: cyber-shimmer 2s linear infinite;
-}
-
-@keyframes cyber-shimmer {
-  0% { background-position: 200% center; }
-  100% { background-position: -200% center; }
+  background-position: 0% center; /* fill the text */
 }
 
 /* ==================================
