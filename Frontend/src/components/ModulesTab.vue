@@ -1333,6 +1333,20 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
+.empty-state-action-btn {
+  background: #fff;
+  color: #0795d3;
+  border: 1px solid #8bd5f7;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.empty-state-action-btn:hover,
+.empty-state-action-btn:focus-visible {
+  background: #0ea5e9;
+  border-color: #0ea5e9;
+  color: #fff;
+}
+
 /* Modal Redesigns */
 .modal-overlay {
   position: fixed;

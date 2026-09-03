@@ -79,7 +79,7 @@ defineProps({
   padding: 7px 16px;
   border: 1px solid #8bd5f7;
   border-radius: 8px;
-  background: #f5fcff;
+  background: #fff;
   color: #0795d3;
   font: inherit;
   font-size: 13px;
@@ -89,7 +89,14 @@ defineProps({
 }
 
 .empty-actions :deep(button:hover) {
-  background: #e0f5ff;
-  border-color: #38bdf8;
+  background: #0ea5e9;
+  border-color: #0ea5e9;
+  color: #fff;
+}
+
+.empty-actions :deep(button:active) {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: #fff;
 }
 </style>
