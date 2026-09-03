@@ -43,7 +43,7 @@
     <div
       ref="stickyLauncherRef"
       class="global-utility-rail"
-      :class="{ 'is-dragging': stickyLauncherDragging }"
+      :class="{ 'is-dragging': stickyLauncherDragging, 'is-ai-open': aiVisible }"
       :style="stickyLauncherStyle"
       aria-label="Công cụ nhanh"
     >
@@ -289,6 +289,7 @@
 
     <CreateSpaceModal v-model:visible="createSpaceVisible" @created="handleSpaceCreated" />
     <CreateProjectModal v-model:visible="createVisible" @created="handleProjectCreated" />
+    <AiCreditsPurchaseModal v-model="aiCreditsModalVisible" />
 
     <transition name="fade">
       <div v-if="isOffline" class="offline-warning-banner" role="alert">
@@ -371,6 +372,7 @@ import GlobalStickiesDrawer from '@/components/stickies/GlobalStickiesDrawer.vue
 import FloatingStickiesLayer from '@/components/stickies/FloatingStickiesLayer.vue'
 import AiComposer from '@/components/ai/AiComposer.vue'
 import AiMessage from '@/components/ai/AiMessage.vue'
+import AiCreditsPurchaseModal from '@/components/ai/AiCreditsPurchaseModal.vue'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
 import { useAiConversationStore } from '@/store/useAiConversationStore'
@@ -393,6 +395,7 @@ import {
   readAiPanelSize,
   writeAiPanelSize,
 } from '@/utils/aiWorkspace'
+import { AI_QUICK_ACTIONS } from '@/utils/aiActionUi'
 
 const voiceCallStore = useVoiceCallStore()
 const goToChatCall = () => {
@@ -438,6 +441,7 @@ const isMobile = ref(window.innerWidth <= 1024)
 const aiInput = ref('')
 const aiSending = ref(false)
 const aiUsage = ref(null)
+const aiCreditsModalVisible = ref(false)
 const aiContentRef = ref(null)
 const aiPanelSize = ref(readAiPanelSize(window.localStorage, {
   width: window.innerWidth,
@@ -471,7 +475,10 @@ const selectedText = ref('')
 const selectionPopover = ref({ visible: false, left: 0, top: 0 })
 const petPinned = computed({ get: () => aiPetStore.isPinned, set: value => aiPetStore.setPinned(value) })
 const petPosition = computed({ get: () => aiPetStore.position, set: value => aiPetStore.setPosition(value) })
-const stickyLauncherStyle = computed(() => ({ top: `${stickyLauncherY.value ?? Math.round(window.innerHeight * 0.5)}px` }))
+const stickyLauncherStyle = computed(() => ({
+  top: `${stickyLauncherY.value ?? Math.round(window.innerHeight * 0.5)}px`,
+  '--ai-sidebar-width': `${aiPanelSize.value.width}px`
+}))
 const stickyLauncherAccountId = () => getStickyAccountId(getStoredUserSession())
 const getStickyLauncherBounds = () => {
   const launcherHeight = stickyLauncherRef.value?.offsetHeight || 42
@@ -1252,12 +1259,13 @@ const localizedPageSuggestions = {
   dashboard: ['Tóm tắt dashboard hiện tại', 'Rủi ro nào cần xử lý trước?', 'Gợi ý ưu tiên hôm nay'],
   unknown: ['Tôi có thể giúp gì cho bạn trong SprintA?', 'Tóm tắt trang hiện tại', 'Giải thích đoạn đã chọn']
 }
-const quickPrompts = computed(() => (localizedPageSuggestions[pageType.value] || localizedPageSuggestions.unknown)
-  .map((text, index) => ({
-    label: text,
-    text,
-    icon: ['fa-regular fa-file-lines', 'fa-solid fa-arrow-up-wide-short', 'fa-solid fa-lightbulb'][index % 3]
-  })))
+const quickPrompts = computed(() => {
+  const contextualText = (localizedPageSuggestions[pageType.value] || localizedPageSuggestions.unknown)[0]
+  return [
+    ...AI_QUICK_ACTIONS.slice(0, 4).map(action => ({ label: action.label, text: action.prompt, icon: action.icon })),
+    { label: contextualText, text: contextualText, icon: 'fa-solid fa-lightbulb' }
+  ]
+})
 
 const chatHistory = computed({
   get: () => aiConversationStore.messages,
@@ -1444,7 +1452,9 @@ const openAiFullChat = async () => {
   await router.push({ name: 'AIPage' })
 }
 
-const openAiCreditPurchase = () => router.push('/#pricing')
+const openAiCreditPurchase = () => {
+  aiCreditsModalVisible.value = true
+}
 
 const handleAiComposerKeydown = (event) => {
   if (!isComposerSendKey(event)) return
@@ -2911,7 +2921,7 @@ const handleProjectCreated = (newProject) => {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 18px;
-  box-shadow: 0 24px 70px rgb(15 35 60 / 0.22), 0 1px 0 rgb(255 255 255 / 0.18) inset;
+  box-shadow: 0 24px 70px color-mix(in srgb, var(--color-text-primary) 24%, transparent), 0 1px 0 color-mix(in srgb, var(--color-text-inverse) 14%, transparent) inset;
   z-index: 1500;
   display: flex;
   flex-direction: column;
@@ -3453,7 +3463,7 @@ const handleProjectCreated = (newProject) => {
 
 .ai-attachment-meta small {
   margin-top: 5px;
-  color: #b45309;
+  color: var(--color-warning);
   font-size: 10px;
   font-weight: 700;
 }
@@ -3802,12 +3812,85 @@ const handleProjectCreated = (newProject) => {
   }
 }
 
+/* Keep the note launcher beside the floating AI surface instead of covering it. */
+.global-utility-rail.is-ai-open {
+  right: calc(16px + min(var(--ai-sidebar-width, 456px), 70vw) + 14px);
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--color-border));
+}
+
+.ai-sidebar {
+  background:
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--color-accent) 9%, transparent), transparent 30%),
+    var(--color-surface);
+  border-color: color-mix(in srgb, var(--color-accent) 15%, var(--color-border));
+  box-shadow: 0 24px 70px color-mix(in srgb, var(--color-text-primary) 24%, transparent), 0 1px 0 color-mix(in srgb, var(--color-text-inverse) 14%, transparent) inset;
+}
+
+.ai-hero {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)), var(--color-surface) 68%),
+    var(--color-surface);
+}
+
+.ai-brand-icon {
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 13%, var(--color-surface));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.ai-brand h4 { letter-spacing: -.02em; }
+.ai-hero-copy { max-width: 48ch; color: var(--color-text-secondary); }
+.ai-open-full-chat, .close-ai { background: color-mix(in srgb, var(--color-surface) 78%, var(--color-accent)); }
+.ai-content { background: color-mix(in srgb, var(--color-bg) 82%, var(--color-surface)); }
+
+.quick-action {
+  border-color: color-mix(in srgb, var(--color-border) 88%, var(--color-accent));
+  background: color-mix(in srgb, var(--color-surface) 88%, var(--color-accent));
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+.quick-action:hover { transform: translateY(-1px); }
+.ai-context-card {
+  border-color: color-mix(in srgb, var(--color-accent) 20%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface));
+}
+.ai-context-card button { background: var(--color-surface); transition: background 160ms ease, border-color 160ms ease; }
+.ai-context-card button:hover { border-color: var(--color-accent); background: var(--sa-primary-soft); }
+
+.ai-credit-head > div { flex-wrap: wrap; }
+.ai-credit-head > div > strong { color: var(--color-text-primary); }
+.ai-credit-label { color: var(--color-accent); }
+.ai-credit-buy { background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface)); }
+
+.ai-conversation-toolbar button,
+.ai-history-panel > input,
+.ai-history-item,
+.ai-history-more {
+  border-radius: 9px;
+}
+.ai-conversation-toolbar button:hover,
+.ai-history-more:hover,
+.ai-history-item:hover { border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-border)); background: var(--sa-primary-soft); color: var(--color-accent); }
+.ai-history-panel { background: var(--color-surface); }
+
+@media (max-width: 760px) {
+  .global-utility-rail.is-ai-open {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .ai-sidebar { border-color: var(--color-border); }
+}
+
 .ai-credit-card {
   margin-top: 12px;
   padding: 12px;
-  border: 1px solid var(--color-border);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
   border-radius: 12px;
-  background: var(--color-surface-hover);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--color-accent) 14%, var(--color-surface-hover)), var(--color-surface-hover)),
+    var(--color-surface-hover);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
 .ai-credit-head {
