@@ -88,6 +88,31 @@
         </div>
 
         <!-- Table View -->
+        <WorkItemsListTable
+          v-if="viewMode === 'table' && filteredTeams.length > 0"
+          :columns="teamTableColumns"
+          :rows="filteredTeams"
+          min-width="1080"
+          @row-click="team => goToTeam(team.id)"
+        >
+          <template #cell-team="{ row }">
+            <div class="team-name-cell">
+              <div class="team-avatar-small" :style="{ backgroundColor: '#0052cc' }">{{ row.avatarText }}</div>
+              <span class="team-name-text">{{ row.name }}</span>
+            </div>
+          </template>
+          <template #cell-type="{ row }"><span>{{ row.typeLabel }}</span></template>
+          <template #cell-manager="{ row }">
+            <div v-if="row.managerName !== noManagerLabel" class="manager-cell">
+              <UserAvatar :user="{ fullName: row.managerName, email: row.managerEmail }" :size="24" :fontSize="10" />
+              <span class="manager-name">{{ row.managerName }}</span>
+            </div>
+            <span v-else class="muted-text">{{ noManagerLabel }}</span>
+          </template>
+          <template #cell-members="{ row }"><span class="count-cell">{{ row.memberCount }}</span></template>
+          <template #cell-parent="{ row }"><span class="count-cell">{{ row.parentCount }}</span></template>
+          <template #cell-children="{ row }"><span class="count-cell">{{ row.childrenCount }}</span></template>
+        </WorkItemsListTable>
         <div v-else-if="viewMode === 'table'" class="table-container work-items-table-shell">
         <table v-resizable class="jira-table work-items-style-table">
           <thead>
@@ -204,6 +229,7 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useI18nStore } from '@/store/useI18nStore'
 import { AppModal, AppFormField } from '@/components/common/Foundation'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 import ToolbarFilterMenu from '@/components/common/ToolbarFilterMenu.vue'
 import DropdownFilter from '@/components/common/DropdownFilter.vue'
 import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
@@ -236,6 +262,14 @@ const teamSortOptions = computed(() => {
     { value: 'children', label: isVi ? 'Đội ngũ con' : 'Child teams', icon: 'fa-solid fa-sitemap' }
   ]
 })
+const teamTableColumns = computed(() => [
+  { key: 'team', label: t('homeSite.teams.team'), icon: 'fa-solid fa-people-group', width: '26%', minWidth: '280px', sticky: true },
+  { key: 'type', label: t('homeSite.teams.teamType'), icon: 'fa-solid fa-shapes', width: '20%', minWidth: '190px' },
+  { key: 'manager', label: t('homeSite.teams.manager'), icon: 'fa-solid fa-user-tie', width: '22%', minWidth: '220px' },
+  { key: 'members', label: t('homeSite.teams.members'), icon: 'fa-solid fa-user-group', width: '12%', minWidth: '120px' },
+  { key: 'parent', label: t('homeSite.teams.parentTeam'), icon: 'fa-solid fa-sitemap', width: '10%', minWidth: '120px' },
+  { key: 'children', label: t('homeSite.teams.childTeams'), icon: 'fa-solid fa-network-wired', width: '10%', minWidth: '120px' }
+])
 const filters = ref({
   type: '',
   manager: ''

@@ -3432,20 +3432,10 @@ onUnmounted(() => {
   content: '';
   position: absolute;
   inset: 1px;
-  /* Freeze effect background: wipe from right (white) to left (light tint) */
-  background: linear-gradient(
-    90deg,
-    rgba(59, 130, 246, 0.08) 0%,
-    rgba(59, 130, 246, 0.08) 48%,
-    rgba(59, 130, 246, 0.3) 50%, /* the light beam edge */
-    #ffffff 52%,
-    #ffffff 100%
-  );
-  background-size: 250% 100%;
-  background-position: 100% center;
+  background: #ffffff;
   border-radius: 3px;
   z-index: -1;
-  transition: background-position 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.3s ease;
 }
 
 @keyframes cyber-spin {
@@ -3465,7 +3455,7 @@ onUnmounted(() => {
 }
 
 .cyber-create-task-btn:hover:not(:disabled)::after {
-  background-position: 0% center; /* fill the background */
+  background-color: rgba(59, 130, 246, 0.05); /* separate light background color */
 }
 
 .cyber-create-task-btn:active:not(:disabled) {
