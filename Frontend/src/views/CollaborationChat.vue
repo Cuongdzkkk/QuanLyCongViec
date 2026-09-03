@@ -196,7 +196,7 @@
           <div class="call-prejoin-preview" aria-live="polite">
             <video v-if="preJoinCameraEnabled" ref="preJoinVideo" class="call-prejoin-video" autoplay muted playsinline aria-label="Xem trước camera"></video>
             <div v-else class="call-prejoin-camera-off" aria-label="Camera đang tắt">
-              <el-avatar :size="64" :src="currentUser.avatar">{{ currentUser.name?.charAt(0) || '?' }}</el-avatar>
+              <el-avatar :size="80" :src="currentUser.avatar">{{ (currentUser.name || 'U').charAt(0).toUpperCase() }}</el-avatar>
               <strong>Camera đang tắt</strong>
               <span>Bạn có thể bật camera trước khi tham gia.</span>
             </div>
@@ -212,8 +212,26 @@
             <div class="call-prejoin-group">
               <span class="call-prejoin-group-title">Chọn thiết bị</span>
               <div class="call-prejoin-device-grid">
-                <label for="prejoin-microphone">Microphone<select id="prejoin-microphone" v-model="preJoinMicrophoneId"><option value="">Thiết bị mặc định</option><option v-for="device in audioInputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Microphone' }}</option></select></label>
-                <label for="prejoin-camera">Camera<select id="prejoin-camera" v-model="preJoinCameraId" @change="switchPreJoinCamera"><option value="">Thiết bị mặc định</option><option v-for="device in videoInputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Camera' }}</option></select></label>
+                <label for="prejoin-microphone">Microphone
+                  <div class="call-prejoin-select-wrapper">
+                    <i class="fa-solid fa-microphone call-prejoin-select-icon" aria-hidden="true"></i>
+                    <select id="prejoin-microphone" v-model="preJoinMicrophoneId">
+                      <option value="">Thiết bị mặc định</option>
+                      <option v-for="device in audioInputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Microphone' }}</option>
+                    </select>
+                    <i class="fa-solid fa-chevron-down call-prejoin-select-chevron" aria-hidden="true"></i>
+                  </div>
+                </label>
+                <label for="prejoin-camera">Camera
+                  <div class="call-prejoin-select-wrapper">
+                    <i class="fa-solid fa-video call-prejoin-select-icon" aria-hidden="true"></i>
+                    <select id="prejoin-camera" v-model="preJoinCameraId" @change="switchPreJoinCamera">
+                      <option value="">Thiết bị mặc định</option>
+                      <option v-for="device in videoInputDevices" :key="device.deviceId" :value="device.deviceId">{{ device.label || 'Camera' }}</option>
+                    </select>
+                    <i class="fa-solid fa-chevron-down call-prejoin-select-chevron" aria-hidden="true"></i>
+                  </div>
+                </label>
               </div>
             </div>
             <div class="call-prejoin-actions"><button type="button" class="secondary-button" @click="cancelPreJoin">Hủy</button><button type="button" class="primary-button" :disabled="voiceJoinPending" @click="confirmJoinVoiceChannel">Tham gia</button></div>
@@ -331,8 +349,8 @@
                 ></video>
                 <div v-else class="call-camera-off-state" role="status" :aria-label="`${user.displayName}: camera đang tắt`">
                   <span class="call-camera-off-glow" aria-hidden="true"></span>
-                  <el-avatar :size="88" :src="user.connectionId === callConnectionId ? currentUser.avatar : user.avatarUrl">
-                    {{ (user.connectionId === callConnectionId ? currentUser.name : user.displayName)?.charAt(0) }}
+                  <el-avatar :size="96" :src="user.connectionId === callConnectionId ? (currentUser.avatar || user.avatarUrl) : user.avatarUrl">
+                    {{ ((user.connectionId === callConnectionId ? (currentUser.name || user.displayName) : user.displayName) || 'U').charAt(0).toUpperCase() }}
                   </el-avatar>
                   <strong>{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</strong>
                   <span class="call-camera-off-label"><i class="fa-solid fa-video-slash" aria-hidden="true"></i> Camera đang tắt</span>
@@ -384,8 +402,8 @@
                   autoplay
                   playsinline
                 ></video>
-                <el-avatar v-else :size="44" :src="user.connectionId === callConnectionId ? currentUser.avatar : user.avatarUrl">
-                  {{ (user.connectionId === callConnectionId ? currentUser.name : user.displayName)?.charAt(0) }}
+                <el-avatar v-else :size="44" :src="user.connectionId === callConnectionId ? (currentUser.avatar || user.avatarUrl) : user.avatarUrl">
+                  {{ ((user.connectionId === callConnectionId ? (currentUser.name || user.displayName) : user.displayName) || 'U').charAt(0).toUpperCase() }}
                 </el-avatar>
               </div>
               <div class="call-thumb-caption">
@@ -1807,6 +1825,7 @@ const callLayoutMode = computed(() => {
   if (callViewMode.value === 'tiled') return 'CAMERA_GRID'
   if (callViewMode.value === 'spotlight' && activePresenter.value) return 'PRESENTATION_FOCUS'
   if (callViewMode.value === 'sidebar' && activePresenter.value) return 'PRESENTATION'
+  if (!activePresenter.value && !focusedParticipantConnectionId.value) return 'CAMERA_GRID'
   return getMeetingLayoutMode({
     hasPresenter: Boolean(activePresenter.value),
     presentationFocused: presentationFocused.value,
@@ -6044,13 +6063,20 @@ const fetchProjectMembers = async () => {
   transform: translate(-50%, -58%);
 }
 
-.call-camera-off-state :deep(.el-avatar) {
-  border: 1px solid rgba(216, 239, 244, .2);
-  background: #18364a;
-  box-shadow: 0 16px 36px rgba(1, 8, 17, .24);
-  color: #eef8f7;
-  font-size: 28px;
-  font-weight: 650;
+.call-camera-off-state :deep(.el-avatar),
+.call-camera-off-state .el-avatar {
+  width: 96px !important;
+  height: 96px !important;
+  border: 3px solid rgba(255, 255, 255, 0.2) !important;
+  background: linear-gradient(135deg, #1d4ed8 0%, #0ea5e9 100%) !important;
+  box-shadow: 0 12px 40px rgba(14, 165, 233, 0.35), 0 0 0 10px rgba(14, 165, 233, 0.08) !important;
+  color: #ffffff !important;
+  font-size: 36px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.5px;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 .call-camera-off-state strong {
@@ -6398,8 +6424,7 @@ const fetchProjectMembers = async () => {
   font-size: 11px;
 }
 
-.call-device-select select,
-.call-prejoin-device-grid select {
+.call-device-select select {
   min-width: 180px;
   max-width: 260px;
   min-height: 34px;
@@ -6409,6 +6434,60 @@ const fetchProjectMembers = async () => {
   border: 1px solid #334155;
   border-radius: 7px;
 }
+
+/* Custom styled select wrapper for prejoin device pickers */
+.call-prejoin-select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  background: #1a2d45;
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.call-prejoin-select-icon {
+  flex: 0 0 auto;
+  margin-left: 13px;
+  color: #6490ae;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.call-prejoin-select-wrapper select {
+  flex: 1;
+  min-width: 0;
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 40px;
+  padding: 0 32px 0 10px;
+  color: #e2e8f0;
+  background: transparent;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: none;
+  font-size: 13px;
+  font-weight: 500;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.call-prejoin-select-wrapper select option {
+  background: #111827;
+  color: #e2e8f0;
+}
+
+.call-prejoin-select-chevron {
+  position: absolute;
+  right: 11px;
+  color: #6490ae;
+  font-size: 10px;
+  pointer-events: none;
+  transition: color 150ms ease-out;
+}
+
 
 .call-prejoin-panel {
   display: grid;
@@ -6472,13 +6551,32 @@ const fetchProjectMembers = async () => {
 }
 
 .call-prejoin-camera-off {
-  display: grid;
-  justify-items: center;
-  gap: 8px;
-  max-width: 230px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
   padding: 22px;
   color: #e2e8f0;
   text-align: center;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(48, 96, 160, 0.22), transparent 60%),
+    #020617;
+}
+
+.call-prejoin-camera-off :deep(.el-avatar) {
+  width: 80px !important;
+  height: 80px !important;
+  font-size: 30px !important;
+  font-weight: 700 !important;
+  background: linear-gradient(135deg, #1d4ed8 0%, #0ea5e9 100%) !important;
+  color: #ffffff !important;
+  border: 3px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 8px 32px rgba(14, 165, 233, 0.35), 0 0 0 8px rgba(14, 165, 233, 0.08) !important;
+  letter-spacing: -0.5px;
 }
 
 .call-prejoin-camera-off span {
@@ -7225,11 +7323,19 @@ const fetchProjectMembers = async () => {
 }
 
 .chat-workspace .call-prejoin-toggle,
-.chat-workspace .call-prejoin-actions button,
-.chat-workspace .call-prejoin-device-grid select {
+.chat-workspace .call-prejoin-actions button {
   color: var(--meeting-fg) !important;
   background: var(--meeting-surface-raised);
   border-color: color-mix(in srgb, var(--meeting-fg-secondary) 30%, transparent);
+}
+
+.chat-workspace .call-prejoin-select-wrapper {
+  background: var(--meeting-surface-raised) !important;
+}
+
+.chat-workspace .call-prejoin-select-wrapper select {
+  color: var(--meeting-fg) !important;
+  background: transparent !important;
 }
 
 .chat-workspace .call-prejoin-toggle.active {
@@ -8523,8 +8629,9 @@ background-color: #111c2d !important;
   box-shadow: 0 20px 50px color-mix(in srgb, var(--chat-ink) 12%, transparent) !important;
 }
 .chat-workspace .call-prejoin-copy h2 { color: var(--chat-ink) !important; font-weight: 800 !important; }
-.chat-workspace .call-prejoin-copy p,
-.chat-workspace .call-prejoin-camera-off span { color: var(--chat-muted) !important; }
+.chat-workspace .call-prejoin-copy p { color: var(--chat-muted) !important; }
+.chat-workspace .call-prejoin-camera-off strong { color: #f8fafc !important; }
+.chat-workspace .call-prejoin-camera-off span { color: #cbd5e1 !important; }
 .chat-workspace .call-prejoin-group-title { color: var(--chat-faint) !important; font-size: 11px !important; font-weight: 800 !important; letter-spacing: .05em !important; text-transform: uppercase !important; }
 .chat-workspace .call-prejoin-toggle { border: 1px solid var(--chat-line) !important; background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; font-weight: 600 !important; border-radius: 10px !important; transition: all 0.18s ease !important; }
 .chat-workspace .call-prejoin-toggle:hover { border-color: var(--chat-accent) !important; background: color-mix(in srgb, var(--chat-accent) 14%, var(--chat-surface)) !important; color: var(--chat-ink) !important; }
@@ -8554,13 +8661,15 @@ background-color: #111c2d !important;
 .chat-workspace .ai-secondary-action { border-color: var(--chat-accent) !important; color: var(--chat-accent-hover) !important; }
 .chat-workspace .call-workspace-body { background: var(--chat-bg) !important; }
 .chat-workspace .call-prejoin-panel { background: var(--chat-surface) !important; color: var(--chat-ink) !important; }
-.chat-workspace .call-prejoin-copy p,
-.chat-workspace .call-prejoin-camera-off span { color: var(--chat-muted) !important; }
+.chat-workspace .call-prejoin-copy p { color: var(--chat-muted) !important; }
 .chat-workspace .call-prejoin-group-title { color: var(--chat-muted) !important; }
 .chat-workspace .call-prejoin-toggle,
-.chat-workspace .call-prejoin-actions .secondary-button,
-.chat-workspace .call-prejoin-device-grid select { border-color: var(--chat-line); background: var(--chat-surface-2); color: var(--chat-ink); }
+.chat-workspace .call-prejoin-actions .secondary-button { border-color: var(--chat-line); background: var(--chat-surface-2); color: var(--chat-ink); }
 .chat-workspace .call-prejoin-device-grid label { color: var(--chat-muted); }
+.chat-workspace .call-prejoin-select-wrapper { background: var(--chat-surface-2) !important; }
+.chat-workspace .call-prejoin-select-wrapper select { color: var(--chat-ink) !important; background: transparent !important; }
+.chat-workspace .call-prejoin-select-icon,
+.chat-workspace .call-prejoin-select-chevron { color: var(--chat-muted) !important; }
 .chat-workspace .call-prejoin-toggle:hover,
 .chat-workspace .call-prejoin-toggle:focus-visible { border-color: var(--chat-accent); background: var(--chat-accent-soft); color: var(--chat-accent-hover); }
 .chat-workspace .call-prejoin-toggle.active { border-color: var(--chat-accent); background: var(--chat-accent-soft); color: var(--chat-accent-hover); }
