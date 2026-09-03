@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <ProjectPageContainer class="space-summary-page">
     <div v-if="isForbidden" class="forbidden-overlay">
       <div class="forbidden-content">
@@ -12,21 +12,21 @@
       <ProjectPageHeader
         icon="fa-solid fa-layer-group"
         :title="activeModuleFilterId ? (moduleDetail?.name || tr('Module', 'Module')) : t('Work Items')"
-        :description="activeModuleFilterId ? (moduleDetail?.description || tr('Scoped work items in this module', 'Công việc thuộc Module này')) : t('Manage tasks, bugs, and features')"
+        :description="activeModuleFilterId ? (moduleDetail?.description || tr('Scoped work items in this module', 'CĂ´ng viá»‡c thuá»™c Module nĂ y')) : t('Manage tasks, bugs, and features')"
       >
         <template #actions>
           <div v-if="!activeModuleFilterId" class="toolbar-actions-wrapper">
-            <el-button type="info" plain size="default" @click="showDataImportModal = true" :disabled="!canCurrentUserCreateTask" :title="!canCurrentUserCreateTask ? 'Bạn không có quyền nạp công việc' : ''">
-              <i class="fa-solid fa-file-import mr-1"></i> Nạp dữ liệu công việc
+            <el-button type="info" plain size="default" @click="showDataImportModal = true" :disabled="!canCurrentUserCreateTask" :title="!canCurrentUserCreateTask ? 'Báº¡n khĂ´ng cĂ³ quyá»n náº¡p cĂ´ng viá»‡c' : ''">
+              <i class="fa-solid fa-file-import mr-1"></i> Náº¡p dá»¯ liá»‡u cĂ´ng viá»‡c
             </el-button>
             <el-button type="info" plain size="default" @click="handleExportTasks">
-              <i class="fa-solid fa-file-export mr-1"></i> Xuất Excel/CSV
+              <i class="fa-solid fa-file-export mr-1"></i> Xuáº¥t Excel/CSV
             </el-button>
             <button 
               class="cyber-create-task-btn" 
               @click="openCreateTask('TO DO')" 
               :disabled="!canCurrentUserCreateTask" 
-              :title="!canCurrentUserCreateTask ? 'Bạn không có quyền tạo công việc' : ''"
+              :title="!canCurrentUserCreateTask ? 'Báº¡n khĂ´ng cĂ³ quyá»n táº¡o cĂ´ng viá»‡c' : ''"
             >
               <span class="cyber-btn-content">
                 <span class="cyber-base-text"><i class="fa-solid fa-plus"></i> {{ t('Add work item') }}</span>
@@ -48,19 +48,19 @@
         <div v-if="moduleDetailLoading" class="module-state-panel module-loading-state">
           <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
           <div>
-            <strong>{{ tr('Loading module', 'Đang tải Module') }}</strong>
-            <span>{{ tr('Loading metadata and scoped work items...', 'Đang tải thông tin và danh sách công việc...') }}</span>
+            <strong>{{ tr('Loading module', 'Äang táº£i Module') }}</strong>
+            <span>{{ tr('Loading metadata and scoped work items...', 'Äang táº£i thĂ´ng tin vĂ  danh sĂ¡ch cĂ´ng viá»‡c...') }}</span>
           </div>
         </div>
         <div v-else-if="moduleDetailError" class="module-state-panel module-error-state" role="alert">
           <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
           <div>
-            <strong>{{ tr('Unable to load module', 'Không thể tải Module') }}</strong>
+            <strong>{{ tr('Unable to load module', 'KhĂ´ng thá»ƒ táº£i Module') }}</strong>
             <span>{{ moduleDetailError.message }}</span>
           </div>
           <button type="button" class="module-retry-btn" @click="retryModuleDetail">
             <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
-            {{ tr('Retry', 'Thử lại') }}
+            {{ tr('Retry', 'Thá»­ láº¡i') }}
           </button>
         </div>
         <template v-else-if="moduleDetail">
@@ -69,7 +69,7 @@
               <span class="module-status-label">{{ moduleDetail.status }}</span>
               <strong>{{ moduleDetail.name }}</strong>
             </div>
-            <div class="module-progress" :aria-label="tr(`${moduleDetail.progressPercent}% complete`, `Hoàn thành ${moduleDetail.progressPercent}%`)">
+            <div class="module-progress" :aria-label="tr(`${moduleDetail.progressPercent}% complete`, `HoĂ n thĂ nh ${moduleDetail.progressPercent}%`)">
               <span>{{ moduleDetail.progressPercent }}%</span>
               <div class="module-progress-track">
                 <span :style="{ width: `${Math.min(100, Math.max(0, Number(moduleDetail.progressPercent) || 0))}%` }"></span>
@@ -78,19 +78,19 @@
           </div>
           <div class="module-summary-grid">
             <div class="module-summary-item">
-              <span>{{ tr('Total', 'Tổng số') }}</span>
+              <span>{{ tr('Total', 'Tá»•ng sá»‘') }}</span>
               <strong>{{ moduleDetail.taskCount }}</strong>
             </div>
             <div class="module-summary-item is-complete">
-              <span>{{ tr('Completed', 'Hoàn thành') }}</span>
+              <span>{{ tr('Completed', 'HoĂ n thĂ nh') }}</span>
               <strong>{{ moduleDetail.completedCount }}</strong>
             </div>
             <div class="module-summary-item is-progress">
-              <span>{{ tr('In progress', 'Đang thực hiện') }}</span>
+              <span>{{ tr('In progress', 'Äang thá»±c hiá»‡n') }}</span>
               <strong>{{ moduleDetail.inProgressCount }}</strong>
             </div>
             <div class="module-summary-item is-overdue">
-              <span>{{ tr('Overdue', 'Quá hạn') }}</span>
+              <span>{{ tr('Overdue', 'QuĂ¡ háº¡n') }}</span>
               <strong>{{ moduleDetail.overdueCount }}</strong>
             </div>
           </div>
@@ -100,7 +100,7 @@
         v-if="!activeModuleFilterId"
         :showSearch="true"
         v-model:searchQuery="searchQuery"
-        :searchPlaceholder="tr('Search work items...', 'Tìm kiếm công việc...')"
+        :searchPlaceholder="tr('Search work items...', 'TĂ¬m kiáº¿m cĂ´ng viá»‡c...')"
       >
         <template #left>
           <div class="view-toggles">
@@ -139,7 +139,7 @@
         </template>
         <template #filters>
           <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
-            <button class="timeline-filter-trigger icon-only-trigger" type="button" aria-label="Filters" :title="tr('Filters', 'Bộ lọc')" @click.stop="toggleFilterDropdown" :class="{ active: showFilterDropdown || activeTaskFilters.length }">
+            <button class="timeline-filter-trigger icon-only-trigger" type="button" aria-label="Filters" :title="tr('Filters', 'Bá»™ lá»c')" @click.stop="toggleFilterDropdown" :class="{ active: showFilterDropdown || activeTaskFilters.length }">
             <i class="fa-solid fa-filter"></i>
             <span v-if="activeTaskFilters.length" class="filter-count">{{ activeTaskFilters.length }}</span>
           </button>
@@ -156,7 +156,7 @@
         </div>
           <!-- Decoupled Sort Dropdown -->
           <div v-if="currentTab === 'list' || currentTab === 'board'" class="display-dropdown-wrapper js-toolbar-popup-scope" style="position: relative; display: inline-block;">
-            <button class="timeline-filter-trigger icon-only-trigger" aria-label="Sort" :title="tr('Sort', 'Sắp xếp')" @click.stop="toggleSortDropdown" :class="{ 'active': showSortDropdown }">
+            <button class="timeline-filter-trigger icon-only-trigger" aria-label="Sort" :title="tr('Sort', 'Sáº¯p xáº¿p')" @click.stop="toggleSortDropdown" :class="{ 'active': showSortDropdown }">
               <i class="fa-solid fa-arrow-down-wide-short"></i>
             </button>
             <div class="plane-dropdown-menu" v-show="showSortDropdown" @click.stop style="width: 340px; left: 0; right: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px; max-height: none; overflow: visible;">
@@ -167,14 +167,14 @@
                   v-model="sortSearchQuery"
                   type="text"
                   class="filter-search-input"
-                  :placeholder="tr('Search sort fields...', 'Tìm kiếm trường sắp xếp...')"
+                  :placeholder="tr('Search sort fields...', 'TĂ¬m kiáº¿m trÆ°á»ng sáº¯p xáº¿p...')"
                   @click.stop
                 />
               </div>
 
               <!-- Sort By Combobox -->
               <div class="filter-combobox" style="position: relative;">
-                <span class="filter-label">{{ tr('Sort by', 'Sắp xếp theo') }}</span>
+                <span class="filter-label">{{ tr('Sort by', 'Sáº¯p xáº¿p theo') }}</span>
                 <div class="filter-select-trigger sort-combobox-trigger">
                   <div style="display: flex; align-items: center; gap: 10px; flex: 1; cursor: pointer; min-width: 0;" @click="openSortSelect = (openSortSelect === 'sort' ? null : 'sort')">
                     <i :class="displayOrderOptions.find(o => o.value === displayOrder)?.icon || 'fa-solid fa-hand'" style="font-size: 13px; color: var(--color-text-secondary); width: 15px; text-align: center;"></i>
@@ -241,7 +241,7 @@
 
               <!-- Group By Combobox -->
               <div class="filter-combobox" style="position: relative;">
-                <span class="filter-label">{{ tr('Group by', 'Gom nhóm theo') }}</span>
+                <span class="filter-label">{{ tr('Group by', 'Gom nhĂ³m theo') }}</span>
                 <button
                   class="filter-select-trigger"
                   type="button"
@@ -250,22 +250,22 @@
                 >
                   <i :class="{ status: 'fa-solid fa-square-poll-vertical', priority: 'fa-solid fa-signal', assignee: 'fa-regular fa-user', sprint: 'fa-solid fa-arrows-spin', module: 'fa-solid fa-cubes' }[groupBy] || 'fa-solid fa-layer-group'" aria-hidden="true"></i>
                   <span>{{ [
-                    { value: 'status', label: tr('Status', 'Trạng thái') },
-                    { value: 'priority', label: tr('Priority', 'Độ ưu tiên') },
-                    { value: 'assignee', label: tr('Assignee', 'Người thực hiện') },
-                    { value: 'sprint', label: tr('Sprint', 'Chu kỳ') },
-                    { value: 'module', label: tr('Module', 'Phân hệ') }
+                    { value: 'status', label: tr('Status', 'Tráº¡ng thĂ¡i') },
+                    { value: 'priority', label: tr('Priority', 'Äá»™ Æ°u tiĂªn') },
+                    { value: 'assignee', label: tr('Assignee', 'NgÆ°á»i thá»±c hiá»‡n') },
+                    { value: 'sprint', label: tr('Sprint', 'Chu ká»³') },
+                    { value: 'module', label: tr('Module', 'PhĂ¢n há»‡') }
                   ].find(g => g.value === groupBy)?.label }}</span>
                   <i class="fa-solid fa-chevron-down" style="font-size: 10px; margin-left: auto; transition: transform 0.2s;" :style="openSortSelect === 'groupby' ? { transform: 'rotate(180deg)', color: 'var(--color-accent)' } : {}"></i>
                 </button>
                 <div v-show="openSortSelect === 'groupby'" class="filter-select-menu" style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 200px; z-index: 110;">
                   <button
                     v-for="grp in [
-                      { value: 'status', label: tr('Status', 'Trạng thái'), icon: 'fa-solid fa-square-poll-vertical' },
-                      { value: 'priority', label: tr('Priority', 'Độ ưu tiên'), icon: 'fa-solid fa-signal' },
-                      { value: 'assignee', label: tr('Assignee', 'Người thực hiện'), icon: 'fa-regular fa-user' },
-                      { value: 'sprint', label: tr('Sprint', 'Chu kỳ'), icon: 'fa-solid fa-arrows-spin' },
-                      { value: 'module', label: tr('Module', 'Phân hệ'), icon: 'fa-solid fa-cubes' }
+                      { value: 'status', label: tr('Status', 'Tráº¡ng thĂ¡i'), icon: 'fa-solid fa-square-poll-vertical' },
+                      { value: 'priority', label: tr('Priority', 'Äá»™ Æ°u tiĂªn'), icon: 'fa-solid fa-signal' },
+                      { value: 'assignee', label: tr('Assignee', 'NgÆ°á»i thá»±c hiá»‡n'), icon: 'fa-regular fa-user' },
+                      { value: 'sprint', label: tr('Sprint', 'Chu ká»³'), icon: 'fa-solid fa-arrows-spin' },
+                      { value: 'module', label: tr('Module', 'PhĂ¢n há»‡'), icon: 'fa-solid fa-cubes' }
                     ]"
                     :key="grp.value"
                     class="filter-select-option"
@@ -416,8 +416,8 @@
           <i class="fa-regular fa-folder-open"></i>
         </div>
         <div class="empty-spaces-copy">
-          <h3>Chưa có công việc nào trong dự án này.</h3>
-          <p style="margin-top: 6px;">Hãy tạo công việc đầu tiên hoặc nạp dữ liệu công việc từ Excel/CSV.</p>
+          <h3>ChÆ°a cĂ³ cĂ´ng viá»‡c nĂ o trong dá»± Ă¡n nĂ y.</h3>
+          <p style="margin-top: 6px;">HĂ£y táº¡o cĂ´ng viá»‡c Ä‘áº§u tiĂªn hoáº·c náº¡p dá»¯ liá»‡u cĂ´ng viá»‡c tá»« Excel/CSV.</p>
         </div>
         <div style="display: flex; gap: 12px; justify-content: center; margin-top: 8px;">
           <button
@@ -427,7 +427,7 @@
             @click="openCreateTask('TO DO')"
             :disabled="!canCurrentUserCreateTask"
           >
-            <i class="fa-solid fa-plus mr-1"></i> Tạo công việc mới
+            <i class="fa-solid fa-plus mr-1"></i> Táº¡o cĂ´ng viá»‡c má»›i
           </button>
           <button
             type="button"
@@ -436,14 +436,14 @@
             @click="showDataImportModal = true"
             :disabled="!canCurrentUserCreateTask"
           >
-            <i class="fa-solid fa-file-import mr-1"></i> Nạp dữ liệu công việc
+            <i class="fa-solid fa-file-import mr-1"></i> Náº¡p dá»¯ liá»‡u cĂ´ng viá»‡c
           </button>
         </div>
       </div>
       <div v-if="activeModuleFilterId && moduleDetail && moduleDetail.taskCount === 0 && !moduleDetailLoading && !moduleDetailError" class="module-empty-state">
         <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
-        <strong>{{ tr('This module has no work items yet.', 'Module này chưa có công việc.') }}</strong>
-        <span>{{ tr('Work items assigned to this module will appear here.', 'Công việc được gán vào Module sẽ hiển thị tại đây.') }}</span>
+        <strong>{{ tr('This module has no work items yet.', 'Module nĂ y chÆ°a cĂ³ cĂ´ng viá»‡c.') }}</strong>
+        <span>{{ tr('Work items assigned to this module will appear here.', 'CĂ´ng viá»‡c Ä‘Æ°á»£c gĂ¡n vĂ o Module sáº½ hiá»ƒn thá»‹ táº¡i Ä‘Ă¢y.') }}</span>
       </div>
       <!-- Other Tab Views -->
       <div v-if="currentTab === 'list' && filteredTasksList.length > 0 && !moduleDetailLoading && !moduleDetailError" class="list-wrapper" style="padding: 16px;">
@@ -477,8 +477,8 @@
                    </button>
                    <span class="task-id" style="margin-left: 8px;">{{ task.sequenceId || task.id.substring(0,8).toUpperCase() }}</span>
                    <span class="task-title" :style="group.statusName === 'DONE' ? { textDecoration: 'line-through', color: 'var(--color-text-muted)' } : {}">
-                     <span v-if="task.title && task.title.startsWith('[DỰ PHÒNG]')" class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold mr-1 border border-blue-200 uppercase tracking-wider relative top-[-1px]">Dự phòng</span>
-                     {{ task.title && task.title.startsWith('[DỰ PHÒNG]') ? task.title.substring(11).trim() : task.title }}
+                     <span v-if="task.title && task.title.startsWith('[Dá»° PHĂ’NG]')" class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold mr-1 border border-blue-200 uppercase tracking-wider relative top-[-1px]">Dá»± phĂ²ng</span>
+                     {{ task.title && task.title.startsWith('[Dá»° PHĂ’NG]') ? task.title.substring(11).trim() : task.title }}
                    </span>
                  </div>
                  <div class="tr-right" @click.stop>
@@ -557,7 +557,7 @@
                </div>
                </template>
                <div class="add-row-placeholder" @click="openCreateTask(group.statusName)">
-                 <i class="fa-solid fa-plus"></i> {{ t('New work item', 'Tạo công việc mới') }}
+                 <i class="fa-solid fa-plus"></i> {{ t('New work item', 'Táº¡o cĂ´ng viá»‡c má»›i') }}
                </div>
              </div>
            </div>
@@ -623,7 +623,7 @@
           </div>
           <div v-if="col.isFallback" class="fallback-desc-container" style="padding: 6px 12px; background: rgba(244, 63, 94, 0.05); border-bottom: 1px solid rgba(244, 63, 94, 0.1);">
             <small style="color: #f43f5e; font-size: 11px; font-style: italic;">
-              {{ t('Các công việc có trạng thái không còn tồn tại trong workflow hiện tại.') }}
+              {{ t('CĂ¡c cĂ´ng viá»‡c cĂ³ tráº¡ng thĂ¡i khĂ´ng cĂ²n tá»“n táº¡i trong workflow hiá»‡n táº¡i.') }}
             </small>
           </div>
           <div class="col-body" :class="{ 'is-creating': inlineCreateColId === col.id }">
@@ -650,7 +650,7 @@
                   <div class="inline-assignee-slot">
                     <el-popover placement="bottom" trigger="click" width="260" popper-class="plane-popover" @click.stop>
                     <template #reference>
-                      <button type="button" class="inline-assignee-trigger" :aria-label="tr('Choose assignee', 'Chọn người thực hiện')" :title="tr('Choose assignee', 'Chọn người thực hiện')">
+                      <button type="button" class="inline-assignee-trigger" :aria-label="tr('Choose assignee', 'Chá»n ngÆ°á»i thá»±c hiá»‡n')" :title="tr('Choose assignee', 'Chá»n ngÆ°á»i thá»±c hiá»‡n')">
                         <template v-if="inlineAssigneeIds.length">
                           <UserAvatar v-if="inlineAssigneeIds.length === 1" :user="projectMembers.find(m => (m.userId || m.id) === inlineAssigneeIds[0])" :size="22" :fontSize="10" />
                           <span v-else class="inline-assignee-count">+{{ inlineAssigneeIds.length }}</span>
@@ -685,7 +685,7 @@
                   type="text"
                   class="ic-title-input w-full"
                   v-model="inlineTaskTitle"
-                  placeholder="Nhập tiêu đề công việc..."
+                  placeholder="Nháº­p tiĂªu Ä‘á» cĂ´ng viá»‡c..."
                   @keyup.enter="submitInlineTask(col)"
                   @keyup.esc="inlineCreateColId = null"
                   ref="inlineInput"
@@ -723,9 +723,9 @@
                 </el-dropdown>
               </div>
               <div class="inline-create-actions">
-                <button class="inline-cancel-btn" @click="inlineCreateColId = null">Hủy</button>
+                <button class="inline-cancel-btn" @click="inlineCreateColId = null">Há»§y</button>
                 <button class="inline-submit-btn" @click="submitInlineTask(col)">
-                  <span>Thêm</span>
+                  <span>ThĂªm</span>
                 </button>
               </div>
             </div>
@@ -749,8 +749,8 @@
                     <div class="issue-card-heading-copy">
                       <p v-if="displayProperties.id" class="issue-sequence">{{ element.sequenceId || element.id.substring(0,8).toUpperCase() }}</p>
                       <p class="issue-title" :title="element.title" :style="element.statusName === 'DONE' ? { textDecoration: 'line-through', color: 'var(--color-text-muted)' } : {}">
-                        <span v-if="element.title && element.title.startsWith('[DỰ PHÒNG]')" class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold mr-1 border border-blue-200 uppercase tracking-wider relative top-[-1px]">Dự phòng</span>
-                        {{ element.title && element.title.startsWith('[DỰ PHÒNG]') ? element.title.substring(11).trim() : element.title }}
+                        <span v-if="element.title && element.title.startsWith('[Dá»° PHĂ’NG]')" class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold mr-1 border border-blue-200 uppercase tracking-wider relative top-[-1px]">Dá»± phĂ²ng</span>
+                        {{ element.title && element.title.startsWith('[Dá»° PHĂ’NG]') ? element.title.substring(11).trim() : element.title }}
                       </p>
                     </div>
                     <div class="card-top-right">
@@ -758,7 +758,7 @@
                         v-if="displayProperties.dueDate"
                         class="card-due-badge card-due-compact"
                         :class="{ 'card-due-overdue': (element.plannedEndDate || element.dueDate) && new Date(element.plannedEndDate || element.dueDate) < new Date() && element.statusName !== 'DONE', 'card-due-empty': !(element.plannedStartDate || element.plannedEndDate || element.dueDate) }"
-                        :title="element.plannedEndDate || element.dueDate || element.plannedStartDate ? new Date(element.plannedEndDate || element.dueDate || element.plannedStartDate).toLocaleDateString('vi-VN') : tr('No deadline', 'Chưa có hạn')"
+                        :title="element.plannedEndDate || element.dueDate || element.plannedStartDate ? new Date(element.plannedEndDate || element.dueDate || element.plannedStartDate).toLocaleDateString('vi-VN') : tr('No deadline', 'ChÆ°a cĂ³ háº¡n')"
                       >
                         <i class="fa-regular fa-calendar"></i>
                         <span>{{ element.plannedEndDate || element.dueDate || element.plannedStartDate ? new Date(element.plannedEndDate || element.dueDate || element.plannedStartDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Date' }}</span>
@@ -779,7 +779,7 @@
                             <UserAvatar v-if="getTaskAssigneeIds(element).length === 1" :user="getAssigneeUser(element)" :size="32" :fontSize="12" />
                             <span v-else class="card-assignee-count">+{{ getTaskAssigneeIds(element).length }}</span>
                           </button>
-                          <button type="button" class="card-assignee-trigger is-empty" v-else :title="tr('No assignee', 'Chưa có người thực hiện')" @click.stop>
+                          <button type="button" class="card-assignee-trigger is-empty" v-else :title="tr('No assignee', 'ChÆ°a cĂ³ ngÆ°á»i thá»±c hiá»‡n')" @click.stop>
                             <i class="fa-solid fa-question"></i>
                           </button>
                         </template>
@@ -855,19 +855,19 @@
                   :class="{ 'clickable': col.name !== 'FALLBACK_UNCLASSIFIED' && canCurrentUserCreateTask }"
                   @click="(col.name !== 'FALLBACK_UNCLASSIFIED' && canCurrentUserCreateTask) ? openInlineCreate(col.id) : null"
                 >
-                  <span v-if="col.name === 'FALLBACK_UNCLASSIFIED' || !canCurrentUserCreateTask" style="font-weight: normal; color: var(--color-text-muted);">Chưa có công việc nào</span>
-                  <span v-else class="add-action-text"><i class="fa-solid fa-plus"></i> Thêm công việc</span>
+                  <span v-if="col.name === 'FALLBACK_UNCLASSIFIED' || !canCurrentUserCreateTask" style="font-weight: normal; color: var(--color-text-muted);">ChÆ°a cĂ³ cĂ´ng viá»‡c nĂ o</span>
+                  <span v-else class="add-action-text"><i class="fa-solid fa-plus"></i> ThĂªm cĂ´ng viá»‡c</span>
                 </div>
                 <div 
                   class="col-empty-state col-bottom-add clickable" 
                   v-else-if="col.items.length > 0 && col.name !== 'FALLBACK_UNCLASSIFIED' && canCurrentUserCreateTask && !store.loading && inlineCreateColId !== col.id"
                   @click="openInlineCreate(col.id)"
                 >
-                  <span class="add-action-text"><i class="fa-solid fa-plus"></i> Thêm công việc</span>
+                  <span class="add-action-text"><i class="fa-solid fa-plus"></i> ThĂªm cĂ´ng viá»‡c</span>
                 </div>
               </template>
             </draggable>
-            <!-- Inline create box nâng cấp (date + assignee) -->
+            <!-- Inline create box nĂ¢ng cáº¥p (date + assignee) -->
             <div class="inline-create-box issue-card kanban-card-editor shadow-sm border border-[var(--color-border)] rounded-xl p-3 bg-[var(--color-surface)]" v-if="false && inlineCreateColId === col.id" @click.stop>
                <!-- Top Row: Date Range Picker (Height 34px, radius 9px, no text header) -->
                <div class="mb-2">
@@ -875,8 +875,8 @@
                    v-model="inlineDateRange"
                    type="daterange"
                    range-separator="-"
-                   start-placeholder="Ngày bắt đầu"
-                   end-placeholder="Hạn chót"
+                   start-placeholder="NgĂ y báº¯t Ä‘áº§u"
+                   end-placeholder="Háº¡n chĂ³t"
                    value-format="YYYY-MM-DDTHH:mm:ss.SSS[Z]"
                    format="DD/MM/YYYY"
                    size="default"
@@ -889,7 +889,7 @@
                    type="text"
                    class="ic-title-input w-full"
                    v-model="inlineTaskTitle"
-                   placeholder="Nhập tiêu đề công việc..."
+                   placeholder="Nháº­p tiĂªu Ä‘á» cĂ´ng viá»‡c..."
                    @keyup.enter="submitInlineTask(col)"
                    @keyup.esc="inlineCreateColId = null"
                    ref="inlineInput"
@@ -938,7 +938,7 @@
                            +{{ inlineAssigneeIds.length }}
                          </div>
                        </div>
-                       <div class="avatar-xs cursor-pointer hover:bg-[var(--color-border)]" style="border: 1px dashed var(--color-text-muted); background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;" v-else title="Gán người thực hiện">
+                       <div class="avatar-xs cursor-pointer hover:bg-[var(--color-border)]" style="border: 1px dashed var(--color-text-muted); background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;" v-else title="GĂ¡n ngÆ°á»i thá»±c hiá»‡n">
                          <i class="fa-solid fa-question text-xs"></i>
                        </div>
                      </template>
@@ -968,10 +968,10 @@
                 <!-- Dedicated Action Row (Right aligned, clean separate row) -->
                 <div class="flex items-center justify-end gap-2 pt-2.5 mt-2 border-t border-[color-mix(in_srgb,var(--color-border)_50%,transparent)]">
                   <button class="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-colors" @click="inlineCreateColId = null">
-                    Hủy
+                    Há»§y
                   </button>
                   <button class="text-xs px-3 py-1 font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors flex items-center gap-1" @click="submitInlineTask(col)">
-                    <i class="fa-solid fa-check text-[10px]"></i> Thêm
+                    <i class="fa-solid fa-check text-[10px]"></i> ThĂªm
                   </button>
                 </div>
             </div>
@@ -1001,7 +1001,7 @@
     <div v-if="showAnalyticsSidebar" class="analytics-overlay" @click.self="closeAnalyticsSidebar">
       <div class="analytics-panel" :class="{ 'slide-in': showAnalyticsSidebar, 'is-expanded': isAnalyticsExpanded }">
          <div class="ap-header">
-            <h3>Thống kê {{ project?.name || t('Project') }}</h3>
+            <h3>Thá»‘ng kĂª {{ project?.name || t('Project') }}</h3>
             <div class="ap-actions">
                <button class="icon-btn" @click="toggleAnalyticsExpand"><i :class="isAnalyticsExpanded ? 'fa-solid fa-compress' : 'fa-solid fa-expand'"></i></button>
                <button class="icon-btn" @click="closeAnalyticsSidebar"><i class="fa-solid fa-xmark"></i></button>
@@ -1011,44 +1011,44 @@
             <!-- Stats -->
             <div class="ap-stats-grid">
                <div class="stat-box">
-                  <span class="lbl">Tổng công việc</span>
+                  <span class="lbl">Tá»•ng cĂ´ng viá»‡c</span>
                   <span class="val">{{ visibleTopLevelTasks.length }}</span>
                </div>
                <div class="stat-box">
-                  <span class="lbl">Đang thực hiện</span>
+                  <span class="lbl">Äang thá»±c hiá»‡n</span>
                   <span class="val">{{ visibleTopLevelTasks.filter(t => t.statusName === 'IN PROGRESS').length }}</span>
                </div>
                <div class="stat-box">
-                  <span class="lbl">Chờ xử lý</span>
+                  <span class="lbl">Chá» xá»­ lĂ½</span>
                   <span class="val">{{ visibleTopLevelTasks.filter(t => !t.statusName || t.statusName === 'TO DO' || t.statusName === 'TODO').length }}</span>
                </div>
                <div class="stat-box">
-                  <span class="lbl">Đang đánh giá</span>
+                  <span class="lbl">Äang Ä‘Ă¡nh giĂ¡</span>
                   <span class="val">{{ visibleTopLevelTasks.filter(t => t.statusName === 'IN REVIEW').length }}</span>
                </div>
                <div class="stat-box">
-                  <span class="lbl">Hoàn thành</span>
+                  <span class="lbl">HoĂ n thĂ nh</span>
                   <span class="val">{{ visibleTopLevelTasks.filter(t => t.statusName === 'DONE').length }}</span>
                </div>
             </div>
             <!-- Created vs Resolved Chart Overlay -->
             <div class="ap-chart-card mt-4">
-               <h4>Đã tạo và đã xử lý</h4>
+               <h4>ÄĂ£ táº¡o vĂ  Ä‘Ă£ xá»­ lĂ½</h4>
                <v-chart class="chart-container" :option="createdResolvedOptions" autoresize />
             </div>
             <!-- Customized Insights -->
             <div class="ap-chart-card mt-4">
                <div class="flex-between">
-                  <h4>Phân tích tùy chỉnh</h4>
+                  <h4>PhĂ¢n tĂ­ch tĂ¹y chá»‰nh</h4>
                   <el-dropdown trigger="click" @command="setAnalyticsInsightMode">
                     <button class="filter-btn" type="button">
                       <i class="fa-solid fa-sliders"></i> {{ analyticsInsightLabel }} <i class="fa-solid fa-chevron-down"></i>
                     </button>
                     <template #dropdown>
                       <el-dropdown-menu class="plane-dropdown">
-                        <el-dropdown-item command="priority">Phân bổ độ ưu tiên</el-dropdown-item>
-                        <el-dropdown-item command="status">Phân bổ trạng thái</el-dropdown-item>
-                        <el-dropdown-item command="assignee">Phân bổ người thực hiện</el-dropdown-item>
+                        <el-dropdown-item command="priority">PhĂ¢n bá»• Ä‘á»™ Æ°u tiĂªn</el-dropdown-item>
+                        <el-dropdown-item command="status">PhĂ¢n bá»• tráº¡ng thĂ¡i</el-dropdown-item>
+                        <el-dropdown-item command="assignee">PhĂ¢n bá»• ngÆ°á»i thá»±c hiá»‡n</el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>
@@ -1061,11 +1061,11 @@
                   <span class="text-muted">{{ analyticsBreakdownRows.length }} {{ analyticsTableHeading }}</span>
                   <div class="flex-center gap-1">
                      <i class="fa-solid fa-magnifying-glass text-muted"></i>
-                     <button class="export-btn" @click="exportAnalyticsCsv()"><i class="fa-solid fa-download"></i> Xuất CSV</button>
+                     <button class="export-btn" @click="exportAnalyticsCsv()"><i class="fa-solid fa-download"></i> Xuáº¥t CSV</button>
                   </div>
                </div>
                <table class="ap-table">
-                  <thead><tr><th>{{ analyticsTableHeading }}</th><th style="text-align: right;">Số lượng</th></tr></thead>
+                  <thead><tr><th>{{ analyticsTableHeading }}</th><th style="text-align: right;">Sá»‘ lÆ°á»£ng</th></tr></thead>
                   <tbody>
                      <tr v-for="row in analyticsBreakdownRows" :key="row.label" :style="{ '--row-color': row.color || 'var(--color-accent)' }">
                        <td><span class="analytics-row-label"><span class="analytics-row-dot"></span>{{ row.label }}</span></td>
@@ -1076,21 +1076,21 @@
             </div>
             <div class="ap-table-wrap mt-4">
                <div class="table-head">
-                  <span class="text-muted">{{ assigneeAnalyticsRows.length }} người thực hiện</span>
+                  <span class="text-muted">{{ assigneeAnalyticsRows.length }} ngÆ°á»i thá»±c hiá»‡n</span>
                   <div class="flex-center gap-1">
                      <i class="fa-solid fa-magnifying-glass text-muted"></i>
-                     <button class="export-btn" @click="exportAnalyticsCsv('assignee')"><i class="fa-solid fa-download"></i> Xuất CSV</button>
+                     <button class="export-btn" @click="exportAnalyticsCsv('assignee')"><i class="fa-solid fa-download"></i> Xuáº¥t CSV</button>
                   </div>
                </div>
                <table class="ap-table">
                   <thead>
                      <tr>
-                        <th>Người thực hiện</th>
-                        <th style="text-align: right;">Chờ xử lý</th>
-                        <th style="text-align: right;">Đang làm</th>
-                        <th style="text-align: right;">Đang đánh giá</th>
-                        <th style="text-align: right;">Hoàn thành</th>
-                        <th style="text-align: right;">Đã hủy</th>
+                        <th>NgÆ°á»i thá»±c hiá»‡n</th>
+                        <th style="text-align: right;">Chá» xá»­ lĂ½</th>
+                        <th style="text-align: right;">Äang lĂ m</th>
+                        <th style="text-align: right;">Äang Ä‘Ă¡nh giĂ¡</th>
+                        <th style="text-align: right;">HoĂ n thĂ nh</th>
+                        <th style="text-align: right;">ÄĂ£ há»§y</th>
                      </tr>
                   </thead>
                   <tbody>
@@ -1111,12 +1111,12 @@
   </ProjectPageContainer>
 </template>
 <script setup>
-import PageContainer from '@/components/common/PageContainer.vue'
-import PageHeader from '@/components/common/PageHeader.vue'
-import PageToolbar from '@/components/common/PageToolbar.vue'
+
+
+
 import TaskDataImportModal from '@/components/tasks/TaskDataImportModal.vue'
-// AI 3: CHUYÊN VIÊN GHÉP NỐI LOGIC FRONT-TO-BACK
-import { ref, onMounted, computed, defineAsyncComponent, watch, nextTick, onUnmounted } from 'vue'
+// AI 3: CHUYĂN VIĂN GHĂ‰P Ná»I LOGIC FRONT-TO-BACK
+import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
@@ -1124,7 +1124,7 @@ import { getModuleDetail } from '@/api/moduleApi'
 import { downloadResponseFile, csvWithBom } from '@/utils/downloadFile'
 import { broadcastAdminRealtime, subscribeAdminRealtime } from '@/utils/adminRealtime'
 import { getStoredUserSession } from '@/utils/authSession'
-import { getScopedCurrentProjectId, setScopedCurrentProjectId } from '@/utils/projectContext'
+import { setScopedCurrentProjectId } from '@/utils/projectContext'
 import { buildSpacePath } from '@/utils/spaceRoute'
 import { signalRService } from '@/api/signalrService'
 import { hasSystemAdminAccess, normalizeProjectRole } from '@/utils/permissions'
@@ -1149,7 +1149,7 @@ import { useStarredStore } from '@/store/useStarredStore';
 import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { useI18nStore } from '@/store/useI18nStore';
 import UserAvatar from '@/components/common/UserAvatar.vue'
-import { getProjectBackgroundStyle } from '@/config/projectAppearance'
+
 import { projectAccessRestrictionsEnabled } from '@/config/projectAccess'
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
@@ -1213,9 +1213,9 @@ async function handleExportTasks() {
   try {
     const res = await axiosClient.get(`/projects/${currentProjectId.value}/WorkTasks/export`, { responseType: 'blob' })
     downloadResponseFile(res, `SprintA-Tasks-${currentProjectId.value}.csv`, 'text/csv;charset=utf-8')
-    ElMessage.success('Xuất dữ liệu thành công.')
+    ElMessage.success('Xuáº¥t dá»¯ liá»‡u thĂ nh cĂ´ng.')
   } catch (e) {
-    ElMessage.error('Không thể xuất dữ liệu công việc.')
+    ElMessage.error('KhĂ´ng thá»ƒ xuáº¥t dá»¯ liá»‡u cĂ´ng viá»‡c.')
   }
 }
 const router = useRouter()
@@ -1228,51 +1228,51 @@ const i18nStore = useI18nStore()
 const tr = (en, vi) => i18nStore.locale === 'vi' ? vi : en
 const t = (key) => {
   const map = {
-    'Project': 'Dự án',
-    'Work Items': 'Công việc',
-    'Display': 'Hiển thị',
-    'Display Properties': 'Thuộc tính hiển thị',
-    'Order by': 'Sắp xếp theo',
-    'Manual': 'Thủ công',
-    'Last created': 'Tạo gần nhất',
-    'Last updated': 'Cập nhật gần nhất',
-    'Priority': 'Độ ưu tiên',
-    'Show sub-work items': 'Hiển thị công việc con',
-    'Analytics': 'Thống kê',
-    'Add work item': 'Thêm công việc',
-    'Access Denied': 'Truy cập bị từ chối',
-    'You do not have permission to access this project.': 'Bạn không đủ quyền để truy cập dự án này.',
-    'Back to Home': 'Quay lại trang Home',
-    'List view': 'Xem danh sách',
+    'Project': 'Dá»± Ă¡n',
+    'Work Items': 'CĂ´ng viá»‡c',
+    'Display': 'Hiá»ƒn thá»‹',
+    'Display Properties': 'Thuá»™c tĂ­nh hiá»ƒn thá»‹',
+    'Order by': 'Sáº¯p xáº¿p theo',
+    'Manual': 'Thá»§ cĂ´ng',
+    'Last created': 'Táº¡o gáº§n nháº¥t',
+    'Last updated': 'Cáº­p nháº­t gáº§n nháº¥t',
+    'Priority': 'Äá»™ Æ°u tiĂªn',
+    'Show sub-work items': 'Hiá»ƒn thá»‹ cĂ´ng viá»‡c con',
+    'Analytics': 'Thá»‘ng kĂª',
+    'Add work item': 'ThĂªm cĂ´ng viá»‡c',
+    'Access Denied': 'Truy cáº­p bá»‹ tá»« chá»‘i',
+    'You do not have permission to access this project.': 'Báº¡n khĂ´ng Ä‘á»§ quyá»n Ä‘á»ƒ truy cáº­p dá»± Ă¡n nĂ y.',
+    'Back to Home': 'Quay láº¡i trang Home',
+    'List view': 'Xem danh sĂ¡ch',
     'Kanban view': 'Xem Kanban',
-    'Calendar view': 'Xem lịch',
-    'Spreadsheet view': 'Xem bảng tính',
-    'Gantt chart view': 'Xem biểu đồ Gantt',
-    'Urgent': 'Khẩn cấp',
+    'Calendar view': 'Xem lá»‹ch',
+    'Spreadsheet view': 'Xem báº£ng tĂ­nh',
+    'Gantt chart view': 'Xem biá»ƒu Ä‘á»“ Gantt',
+    'Urgent': 'Kháº©n cáº¥p',
     'High': 'Cao',
-    'Normal': 'Bình thường',
-    'Medium': 'Trung bình',
-    'Low': 'Thấp',
-    'None': 'Không',
-    'Search members': 'Tìm thành viên',
-    'New work item': 'Công việc mới',
-    'Statistics of': 'Thống kê',
-    'Total tasks': 'Tổng công việc',
-    'In progress': 'Đang thực hiện',
-    'Pending': 'Chờ xử lý',
-    'In review': 'Đang đánh giá',
-    'Completed': 'Hoàn thành',
-    'Created and resolved': 'Đã tạo và đã xử lý',
-    'Custom analysis': 'Phân tích tùy chỉnh',
-    'Priority distribution': 'Phân bổ độ ưu tiên',
-    'Status distribution': 'Phân bổ trạng thái',
-    'Assignee distribution': 'Phân bổ người thực hiện',
-    'Export CSV': 'Xuất CSV',
-    'Count': 'Số lượng',
-    'assignees': 'người thực hiện',
-    'Assignee': 'Người thực hiện',
-    'Working': 'Đang làm',
-    'Cancelled': 'Đã hủy'
+    'Normal': 'BĂ¬nh thÆ°á»ng',
+    'Medium': 'Trung bĂ¬nh',
+    'Low': 'Tháº¥p',
+    'None': 'KhĂ´ng',
+    'Search members': 'TĂ¬m thĂ nh viĂªn',
+    'New work item': 'CĂ´ng viá»‡c má»›i',
+    'Statistics of': 'Thá»‘ng kĂª',
+    'Total tasks': 'Tá»•ng cĂ´ng viá»‡c',
+    'In progress': 'Äang thá»±c hiá»‡n',
+    'Pending': 'Chá» xá»­ lĂ½',
+    'In review': 'Äang Ä‘Ă¡nh giĂ¡',
+    'Completed': 'HoĂ n thĂ nh',
+    'Created and resolved': 'ÄĂ£ táº¡o vĂ  Ä‘Ă£ xá»­ lĂ½',
+    'Custom analysis': 'PhĂ¢n tĂ­ch tĂ¹y chá»‰nh',
+    'Priority distribution': 'PhĂ¢n bá»• Ä‘á»™ Æ°u tiĂªn',
+    'Status distribution': 'PhĂ¢n bá»• tráº¡ng thĂ¡i',
+    'Assignee distribution': 'PhĂ¢n bá»• ngÆ°á»i thá»±c hiá»‡n',
+    'Export CSV': 'Xuáº¥t CSV',
+    'Count': 'Sá»‘ lÆ°á»£ng',
+    'assignees': 'ngÆ°á»i thá»±c hiá»‡n',
+    'Assignee': 'NgÆ°á»i thá»±c hiá»‡n',
+    'Working': 'Äang lĂ m',
+    'Cancelled': 'ÄĂ£ há»§y'
   }
   if (i18nStore.locale === 'vi') {
     return map[key] || key
@@ -1317,15 +1317,15 @@ function toggleSortDropdown() {
   }
 }
 const displayOrderOptions = computed(() => [
-  { value: 'manual', label: tr('Manual', 'Thủ công'), icon: 'fa-solid fa-hand' },
-  { value: 'created', label: tr('Created date', 'Ngày tạo'), icon: 'fa-regular fa-calendar-plus' },
-  { value: 'updated', label: tr('Updated date', 'Ngày cập nhật'), icon: 'fa-regular fa-pen-to-square' },
-  { value: 'priority', label: tr('Priority', 'Độ ưu tiên'), icon: 'fa-solid fa-signal' },
-  { value: 'dueDate', label: tr('Due date', 'Ngày hạn'), icon: 'fa-regular fa-clock' },
-  { value: 'title', label: tr('Title', 'Tiêu đề'), icon: 'fa-solid fa-font' },
-  { value: 'assignee', label: tr('Assignee', 'Người thực hiện'), icon: 'fa-regular fa-user' },
-  { value: 'sprint', label: tr('Sprint', 'Chu kỳ'), icon: 'fa-solid fa-arrows-spin' },
-  { value: 'module', label: tr('Module', 'Phân hệ'), icon: 'fa-solid fa-cubes' }
+  { value: 'manual', label: tr('Manual', 'Thá»§ cĂ´ng'), icon: 'fa-solid fa-hand' },
+  { value: 'created', label: tr('Created date', 'NgĂ y táº¡o'), icon: 'fa-regular fa-calendar-plus' },
+  { value: 'updated', label: tr('Updated date', 'NgĂ y cáº­p nháº­t'), icon: 'fa-regular fa-pen-to-square' },
+  { value: 'priority', label: tr('Priority', 'Äá»™ Æ°u tiĂªn'), icon: 'fa-solid fa-signal' },
+  { value: 'dueDate', label: tr('Due date', 'NgĂ y háº¡n'), icon: 'fa-regular fa-clock' },
+  { value: 'title', label: tr('Title', 'TiĂªu Ä‘á»'), icon: 'fa-solid fa-font' },
+  { value: 'assignee', label: tr('Assignee', 'NgÆ°á»i thá»±c hiá»‡n'), icon: 'fa-regular fa-user' },
+  { value: 'sprint', label: tr('Sprint', 'Chu ká»³'), icon: 'fa-solid fa-arrows-spin' },
+  { value: 'module', label: tr('Module', 'PhĂ¢n há»‡'), icon: 'fa-solid fa-cubes' }
 ])
 const filteredDisplayOrderOptions = computed(() => {
   const q = sortSearchQuery.value.trim().toLowerCase()
@@ -1347,11 +1347,11 @@ const defaultDisplayProperties = {
 const displayProperties = ref({ ...defaultDisplayProperties })
 const displayPropertyOptions = computed(() => [
   { key: 'id', label: 'ID', icon: 'fa-solid fa-hashtag' },
-  { key: 'dueDate', label: tr('Due date', 'Ngày hạn'), icon: 'fa-regular fa-calendar' },
-  { key: 'star', label: tr('Star', 'Đánh dấu'), icon: 'fa-regular fa-star' },
-  { key: 'status', label: tr('Status', 'Trạng thái'), icon: 'fa-regular fa-circle-dot' },
-  { key: 'priority', label: tr('Priority', 'Độ ưu tiên'), icon: 'fa-solid fa-signal' },
-  { key: 'assignee', label: tr('Assignee', 'Người thực hiện'), icon: 'fa-regular fa-user' }
+  { key: 'dueDate', label: tr('Due date', 'NgĂ y háº¡n'), icon: 'fa-regular fa-calendar' },
+  { key: 'star', label: tr('Star', 'ÄĂ¡nh dáº¥u'), icon: 'fa-regular fa-star' },
+  { key: 'status', label: tr('Status', 'Tráº¡ng thĂ¡i'), icon: 'fa-regular fa-circle-dot' },
+  { key: 'priority', label: tr('Priority', 'Äá»™ Æ°u tiĂªn'), icon: 'fa-solid fa-signal' },
+  { key: 'assignee', label: tr('Assignee', 'NgÆ°á»i thá»±c hiá»‡n'), icon: 'fa-regular fa-user' }
 ])
 const groupBy = ref('status')
 const analyticsInsightMode = ref('priority')
@@ -1398,7 +1398,7 @@ let moduleDetailRequestId = 0
 let initialDataRequestId = 0
 const activeCarryOverSprintId = computed(() => route.query.carryOverFromSprintId || null)
 const carryOverTaskIds = ref([])
-const projectBadge = computed(() => project.value?.icon || project.value?.identifier?.charAt(0)?.toUpperCase() || project.value?.name?.charAt(0)?.toUpperCase() || 'P')
+ => project.value?.icon || project.value?.identifier?.charAt(0)?.toUpperCase() || project.value?.name?.charAt(0)?.toUpperCase() || 'P')
 const getShowSubtasksStorageKey = (projectId = currentProjectId.value || getProjectId()) => `space-summary:${projectId || 'default'}:show-subtasks`
 const getDisplayPropertiesStorageKey = (projectId = currentProjectId.value || getProjectId()) => `space-summary:${projectId || 'default'}:display-properties`
 const loadShowSubtasksPreference = (projectId = currentProjectId.value || getProjectId()) => {
@@ -1447,10 +1447,10 @@ const getSessionIdentity = () => {
 const getModuleErrorStatus = (error) => Number(error?.response?.status || error?.status || 0)
 const getModuleErrorMessage = (error) => {
   const status = getModuleErrorStatus(error)
-  if (status === 400) return tr('The module request is invalid.', 'Yêu cầu Module không hợp lệ.')
-  if (status === 403) return tr('You do not have permission to view this module.', 'Bạn không có quyền xem Module này.')
-  if (status === 404) return tr('This module does not exist or is no longer accessible.', 'Module không tồn tại hoặc bạn không còn quyền truy cập.')
-  return tr('Module data could not be loaded. Check your connection and try again.', 'Không thể tải dữ liệu Module. Hãy kiểm tra kết nối và thử lại.')
+  if (status === 400) return tr('The module request is invalid.', 'YĂªu cáº§u Module khĂ´ng há»£p lá»‡.')
+  if (status === 403) return tr('You do not have permission to view this module.', 'Báº¡n khĂ´ng cĂ³ quyá»n xem Module nĂ y.')
+  if (status === 404) return tr('This module does not exist or is no longer accessible.', 'Module khĂ´ng tá»“n táº¡i hoáº·c báº¡n khĂ´ng cĂ²n quyá»n truy cáº­p.')
+  return tr('Module data could not be loaded. Check your connection and try again.', 'KhĂ´ng thá»ƒ táº£i dá»¯ liá»‡u Module. HĂ£y kiá»ƒm tra káº¿t ná»‘i vĂ  thá»­ láº¡i.')
 }
 const clearModuleDetailState = ({ keepPage = false } = {}) => {
   moduleDetailAbortController?.abort()
@@ -1553,7 +1553,7 @@ const canAssignTaskMember = () => {
   return canAssignTask(permissionMatrix.value, currentProjectRole.value)
 }
 const notifyAssignmentLock = () => {
-  ElMessage.warning('Chỉ người được giao mới có thể thay đổi công việc này.')
+  ElMessage.warning('Chá»‰ ngÆ°á»i Ä‘Æ°á»£c giao má»›i cĂ³ thá»ƒ thay Ä‘á»•i cĂ´ng viá»‡c nĂ y.')
 }
 const canEditTaskByAssignment = (task) => {
   const canEdit = canEditTaskDetails(task)
@@ -1616,12 +1616,12 @@ const visibleTasks = computed(() => {
 })
 const visibleTopLevelTasks = computed(() => filteredTasksList.value.filter(task => !isSubtask(task)))
 const defaultTaskStatusOptions = computed(() => [
-  { name: 'BACKLOG', label: tr('Backlog', 'Chờ xử lý'), color: '#94A3B8', icon: 'fa-regular fa-circle-dashed' },
-  { name: 'TO DO', label: tr('To Do', 'Cần làm'), color: '#A78BFA', icon: 'fa-regular fa-circle' },
-  { name: 'IN PROGRESS', label: tr('In Progress', 'Đang thực hiện'), color: '#38BDF8', icon: 'fa-solid fa-circle-half-stroke' },
-  { name: 'IN REVIEW', label: tr('In Review', 'Đang đánh giá'), color: '#F59E0B', icon: 'fa-solid fa-eye' },
-  { name: 'DONE', label: tr('Done', 'Hoàn thành'), color: '#22C55E', icon: 'fa-solid fa-circle-check' },
-  { name: 'CANCELLED', label: tr('Cancelled', 'Đã hủy'), color: '#F43F5E', icon: 'fa-regular fa-circle-xmark' }
+  { name: 'BACKLOG', label: tr('Backlog', 'Chá» xá»­ lĂ½'), color: '#94A3B8', icon: 'fa-regular fa-circle-dashed' },
+  { name: 'TO DO', label: tr('To Do', 'Cáº§n lĂ m'), color: '#A78BFA', icon: 'fa-regular fa-circle' },
+  { name: 'IN PROGRESS', label: tr('In Progress', 'Äang thá»±c hiá»‡n'), color: '#38BDF8', icon: 'fa-solid fa-circle-half-stroke' },
+  { name: 'IN REVIEW', label: tr('In Review', 'Äang Ä‘Ă¡nh giĂ¡'), color: '#F59E0B', icon: 'fa-solid fa-eye' },
+  { name: 'DONE', label: tr('Done', 'HoĂ n thĂ nh'), color: '#22C55E', icon: 'fa-solid fa-circle-check' },
+  { name: 'CANCELLED', label: tr('Cancelled', 'ÄĂ£ há»§y'), color: '#F43F5E', icon: 'fa-regular fa-circle-xmark' }
 ])
 const normalizeText = (value) => `${value || ''}`.toLowerCase().trim()
 const normalizeStatus = (value) => `${value || 'BACKLOG'}`.toUpperCase().replace(/\s+/g, ' ').trim()
@@ -1773,7 +1773,7 @@ const toggleTaskStar = async (task) => {
   try {
     await starredStore.toggleStar(STARRED_ENTITY_TYPES.WORK_TASK, task.id)
   } catch {
-    ElMessage.error(starredStore.error || tr('Could not update starred item.', 'Không thể cập nhật mục gắn sao.'))
+    ElMessage.error(starredStore.error || tr('Could not update starred item.', 'KhĂ´ng thá»ƒ cáº­p nháº­t má»¥c gáº¯n sao.'))
   }
 }
 const isTaskStarred = (taskId) => {
@@ -1792,9 +1792,9 @@ const currentProjectRole = computed(() => {
     || project.value?.ProjectRole
   return normalizeProjectRole(role)
 })
-// ────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // SME Permissions Guard State & Computed Guards
-// ────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const permissionMatrix = ref(getDefaultPermissionMatrix())
 const loadProjectPermissionMatrix = async () => {
   const pId = getProjectId()
@@ -2076,7 +2076,7 @@ const createdResolvedOptions = computed(() => {
         borderWidth: 1,
         textStyle: { color: colors.text }
       },
-      legend: { data: [tr('Created', 'Đã tạo'), tr('Resolved', 'Đã xử lý')], bottom: 0, textStyle: { color: colors.muted } },
+      legend: { data: [tr('Created', 'ÄĂ£ táº¡o'), tr('Resolved', 'ÄĂ£ xá»­ lĂ½')], bottom: 0, textStyle: { color: colors.muted } },
       grid: { left: '2%', right: '3%', bottom: '16%', top: '10%', containLabel: true },
       xAxis: {
         type: 'category',
@@ -2092,7 +2092,7 @@ const createdResolvedOptions = computed(() => {
       },
       series: [
          {
-           name: tr('Created', 'Đã tạo'),
+           name: tr('Created', 'ÄĂ£ táº¡o'),
            type: 'line',
            data: buckets.created,
            symbolSize: 8,
@@ -2102,7 +2102,7 @@ const createdResolvedOptions = computed(() => {
            smooth: true
          },
          {
-           name: tr('Resolved', 'Đã xử lý'),
+           name: tr('Resolved', 'ÄĂ£ xá»­ lĂ½'),
            type: 'line',
            data: buckets.resolved,
            symbolSize: 8,
@@ -2130,7 +2130,7 @@ const analyticsBreakdownRows = computed(() => {
       .map(([id, count]) => {
         const member = projectMembers.value.find(item => (item.userId || item.id) === id)
         return {
-          label: id === 'unassigned' ? tr('Unassigned', 'Chưa giao') : (member?.fullName || member?.name || member?.email || tr('Assignee', 'Người thực hiện')),
+          label: id === 'unassigned' ? tr('Unassigned', 'ChÆ°a giao') : (member?.fullName || member?.name || member?.email || tr('Assignee', 'NgÆ°á»i thá»±c hiá»‡n')),
           count,
           color: id === 'unassigned' ? 'var(--color-text-muted)' : '#38BDF8'
         }
@@ -2145,11 +2145,11 @@ const analyticsBreakdownRows = computed(() => {
     }))
   }
   return [
-    { label: tr('Urgent', 'Khẩn cấp'), count: visibleTopLevelTasks.value.filter(task => task.priority === 1).length, color: '#EF4444' },
+    { label: tr('Urgent', 'Kháº©n cáº¥p'), count: visibleTopLevelTasks.value.filter(task => task.priority === 1).length, color: '#EF4444' },
     { label: tr('High', 'Cao'), count: visibleTopLevelTasks.value.filter(task => task.priority === 2).length, color: '#F97316' },
-    { label: tr('Medium', 'Trung bình'), count: visibleTopLevelTasks.value.filter(task => task.priority === 3).length, color: '#3B82F6' },
-    { label: tr('Low', 'Thấp'), count: visibleTopLevelTasks.value.filter(task => task.priority === 4).length, color: '#10B981' },
-    { label: tr('None', 'Không có'), count: visibleTopLevelTasks.value.filter(task => !task.priority).length, color: 'var(--color-text-muted)' }
+    { label: tr('Medium', 'Trung bĂ¬nh'), count: visibleTopLevelTasks.value.filter(task => task.priority === 3).length, color: '#3B82F6' },
+    { label: tr('Low', 'Tháº¥p'), count: visibleTopLevelTasks.value.filter(task => task.priority === 4).length, color: '#10B981' },
+    { label: tr('None', 'KhĂ´ng cĂ³'), count: visibleTopLevelTasks.value.filter(task => !task.priority).length, color: 'var(--color-text-muted)' }
   ]
 })
 const assigneeAnalyticsRows = computed(() => {
@@ -2163,7 +2163,7 @@ const assigneeAnalyticsRows = computed(() => {
         const member = projectMembers.value.find(item => (item.userId || item.id) === id)
         rows.set(id, {
           id,
-          label: id === 'unassigned' ? tr('Unassigned', 'Chưa giao') : (member?.fullName || member?.name || member?.email || tr('Assignee', 'Người thực hiện')),
+          label: id === 'unassigned' ? tr('Unassigned', 'ChÆ°a giao') : (member?.fullName || member?.name || member?.email || tr('Assignee', 'NgÆ°á»i thá»±c hiá»‡n')),
           backlog: 0,
           started: 0,
           unstarted: 0,
@@ -2180,14 +2180,14 @@ const assigneeAnalyticsRows = computed(() => {
   return Array.from(rows.values()).sort((a, b) => b.total - a.total || a.label.localeCompare(b.label))
 })
 const analyticsInsightLabel = computed(() => {
-  if (analyticsInsightMode.value === 'status') return tr('Status Distribution', 'Phân bổ trạng thái')
-  if (analyticsInsightMode.value === 'assignee') return tr('Assignee Distribution', 'Phân bổ người thực hiện')
-  return tr('Priority Distribution', 'Phân bổ độ ưu tiên')
+  if (analyticsInsightMode.value === 'status') return tr('Status Distribution', 'PhĂ¢n bá»• tráº¡ng thĂ¡i')
+  if (analyticsInsightMode.value === 'assignee') return tr('Assignee Distribution', 'PhĂ¢n bá»• ngÆ°á»i thá»±c hiá»‡n')
+  return tr('Priority Distribution', 'PhĂ¢n bá»• Ä‘á»™ Æ°u tiĂªn')
 })
 const analyticsTableHeading = computed(() => {
-  if (analyticsInsightMode.value === 'status') return tr('Status', 'Trạng thái')
-  if (analyticsInsightMode.value === 'assignee') return tr('Assignee', 'Người thực hiện')
-  return tr('Priority', 'Độ ưu tiên')
+  if (analyticsInsightMode.value === 'status') return tr('Status', 'Tráº¡ng thĂ¡i')
+  if (analyticsInsightMode.value === 'assignee') return tr('Assignee', 'NgÆ°á»i thá»±c hiá»‡n')
+  return tr('Priority', 'Äá»™ Æ°u tiĂªn')
 })
 const setAnalyticsInsightMode = (mode) => {
   analyticsInsightMode.value = mode
@@ -2228,7 +2228,7 @@ const insightChartOptions = computed(() => {
   }
 })
 const kanbanColumns = computed(() => {
-  // Map màu nền nhạt cho từng trạng thái (theo design spec)
+  // Map mĂ u ná»n nháº¡t cho tá»«ng tráº¡ng thĂ¡i (theo design spec)
   const statusBgMap = {
     'BACKLOG':     'rgba(148, 163, 184, 0.05)',
     'TO DO':       'rgba(167, 139, 250, 0.06)',
@@ -2240,10 +2240,10 @@ const kanbanColumns = computed(() => {
   const validTasks = filteredTasksList.value || [];
   if (groupBy.value === 'priority') {
     const pGroups = [
-      { id: 'p1', name: 'URGENT', label: tr('Urgent', 'Khẩn cấp'), color: '#EF4444', icon: 'fa-solid fa-angles-up', bgColor: 'rgba(239,68,68,0.05)', priorityValue: 1, items: [] },
+      { id: 'p1', name: 'URGENT', label: tr('Urgent', 'Kháº©n cáº¥p'), color: '#EF4444', icon: 'fa-solid fa-angles-up', bgColor: 'rgba(239,68,68,0.05)', priorityValue: 1, items: [] },
       { id: 'p2', name: 'HIGH', label: tr('High', 'Cao'), color: '#F97316', icon: 'fa-solid fa-chevron-up', bgColor: 'rgba(249,115,22,0.05)', priorityValue: 2, items: [] },
-      { id: 'p3', name: 'NORMAL', label: tr('Normal', 'Bình thường'), color: '#3B82F6', icon: 'fa-solid fa-minus', bgColor: 'rgba(59,130,246,0.05)', priorityValue: 3, items: [] },
-      { id: 'p4', name: 'LOW', label: tr('Low', 'Thấp'), color: '#94A3B8', icon: 'fa-solid fa-chevron-down', bgColor: 'rgba(148,163,184,0.05)', priorityValue: 4, items: [] }
+      { id: 'p3', name: 'NORMAL', label: tr('Normal', 'BĂ¬nh thÆ°á»ng'), color: '#3B82F6', icon: 'fa-solid fa-minus', bgColor: 'rgba(59,130,246,0.05)', priorityValue: 3, items: [] },
+      { id: 'p4', name: 'LOW', label: tr('Low', 'Tháº¥p'), color: '#94A3B8', icon: 'fa-solid fa-chevron-down', bgColor: 'rgba(148,163,184,0.05)', priorityValue: 4, items: [] }
     ];
     validTasks.forEach(t => {
       let col = pGroups.find(g => g.priorityValue === (t.priority || 3));
@@ -2267,7 +2267,7 @@ const kanbanColumns = computed(() => {
     aGroups.push({
       id: 'unassigned',
       name: 'UNASSIGNED',
-      label: tr('Unassigned', 'Chưa phân công'),
+      label: tr('Unassigned', 'ChÆ°a phĂ¢n cĂ´ng'),
       color: '#94A3B8',
       icon: 'fa-solid fa-user-xmark',
       bgColor: 'rgba(148,163,184,0.04)',
@@ -2311,7 +2311,7 @@ const kanbanColumns = computed(() => {
     sGroups.push({
       id: 'no-sprint',
       name: 'NO_SPRINT',
-      label: tr('No Sprint', 'Chưa có chu kỳ'),
+      label: tr('No Sprint', 'ChÆ°a cĂ³ chu ká»³'),
       color: '#94A3B8',
       icon: 'fa-solid fa-ban',
       bgColor: 'rgba(148,163,184,0.04)',
@@ -2354,7 +2354,7 @@ const kanbanColumns = computed(() => {
     mGroups.push({
       id: 'no-module',
       name: 'NO_MODULE',
-      label: tr('No Module', 'Chưa có phân hệ'),
+      label: tr('No Module', 'ChÆ°a cĂ³ phĂ¢n há»‡'),
       color: '#94A3B8',
       icon: 'fa-solid fa-ban',
       bgColor: 'rgba(148,163,184,0.04)',
@@ -2393,7 +2393,7 @@ const kanbanColumns = computed(() => {
     groups.push({
       id: 'fallback-unclassified-col',
       name: 'FALLBACK_UNCLASSIFIED',
-      label: tr('Khác / Chưa phân loại', 'Khác / Chưa phân loại'),
+      label: tr('KhĂ¡c / ChÆ°a phĂ¢n loáº¡i', 'KhĂ¡c / ChÆ°a phĂ¢n loáº¡i'),
       color: '#f43f5e',
       icon: 'fa-solid fa-triangle-exclamation',
       bgColor: 'rgba(244, 63, 94, 0.05)',
@@ -2415,10 +2415,10 @@ const kanbanColumns = computed(() => {
 const listViewGroups = computed(() => {
   if (groupBy.value === 'priority') {
     const pGroups = [
-      { id: 'lp1', name: tr('Urgent', 'Khẩn cấp'), statusName: 'URGENT', icon: 'fa-solid fa-angles-up', color: '#EF4444', priorityValue: 1, items: [] },
+      { id: 'lp1', name: tr('Urgent', 'Kháº©n cáº¥p'), statusName: 'URGENT', icon: 'fa-solid fa-angles-up', color: '#EF4444', priorityValue: 1, items: [] },
       { id: 'lp2', name: tr('High', 'Cao'), statusName: 'HIGH', icon: 'fa-solid fa-chevron-up', color: '#F97316', priorityValue: 2, items: [] },
-      { id: 'lp3', name: tr('Normal', 'Bình thường'), statusName: 'NORMAL', icon: 'fa-solid fa-minus', color: '#3B82F6', priorityValue: 3, items: [] },
-      { id: 'lp4', name: tr('Low', 'Thấp'), statusName: 'LOW', icon: 'fa-solid fa-chevron-down', color: '#94A3B8', priorityValue: 4, items: [] }
+      { id: 'lp3', name: tr('Normal', 'BĂ¬nh thÆ°á»ng'), statusName: 'NORMAL', icon: 'fa-solid fa-minus', color: '#3B82F6', priorityValue: 3, items: [] },
+      { id: 'lp4', name: tr('Low', 'Tháº¥p'), statusName: 'LOW', icon: 'fa-solid fa-chevron-down', color: '#94A3B8', priorityValue: 4, items: [] }
     ];
     filteredTasksList.value.forEach(task => {
       let target = pGroups.find(g => g.priorityValue === (task.priority || 3));
@@ -2439,7 +2439,7 @@ const listViewGroups = computed(() => {
     }));
     aGroups.push({
       id: 'unassigned',
-      name: tr('Unassigned', 'Chưa phân công'),
+      name: tr('Unassigned', 'ChÆ°a phĂ¢n cĂ´ng'),
       statusName: 'UNASSIGNED',
       icon: 'fa-solid fa-user-xmark',
       color: '#94A3B8',
@@ -2479,7 +2479,7 @@ const listViewGroups = computed(() => {
     }));
     sGroups.push({
       id: 'no-sprint',
-      name: tr('No Sprint', 'Chưa có chu kỳ'),
+      name: tr('No Sprint', 'ChÆ°a cĂ³ chu ká»³'),
       statusName: 'NO_SPRINT',
       icon: 'fa-solid fa-ban',
       color: '#94A3B8',
@@ -2518,7 +2518,7 @@ const listViewGroups = computed(() => {
     }));
     mGroups.push({
       id: 'no-module',
-      name: tr('No Module', 'Chưa có phân hệ'),
+      name: tr('No Module', 'ChÆ°a cĂ³ phĂ¢n há»‡'),
       statusName: 'NO_MODULE',
       icon: 'fa-solid fa-ban',
       color: '#94A3B8',
@@ -2631,7 +2631,7 @@ const loadInitialData = async (options = {}) => {
     if (isForbiddenError(error)) {
       isForbidden.value = true
     } else {
-      console.error('Lỗi load dự án:', error)
+      console.error('Lá»—i load dá»± Ă¡n:', error)
     }
   }
 }
@@ -2735,7 +2735,7 @@ const fetchTasks = async (options = {}) => {
         else if (!updatedTask || !canCurrentUserSeeTask(selectedTask.value)) selectedTask.value = null;
       }
   } catch(error) {
-    console.error('Lỗi load tasks:', error)
+    console.error('Lá»—i load tasks:', error)
   }
 }
 const upsertTaskIntoCurrentList = (task) => {
@@ -3033,10 +3033,10 @@ const submitInlineTask = async (col) => {
       inlineAssigneeIds.value = [];
       inlineCreateColId.value = null;
       fetchTasks({ reset: false, preserveExisting: true });
-      ElMessage.success('Đã tạo công việc thành công.');
+      ElMessage.success('ÄĂ£ táº¡o cĂ´ng viá»‡c thĂ nh cĂ´ng.');
    } catch (e) {
       console.error(e);
-      ElMessage.error(e.response?.data?.message || 'Không thể tạo công việc.');
+      ElMessage.error(e.response?.data?.message || 'KhĂ´ng thá»ƒ táº¡o cĂ´ng viá»‡c.');
    }
 }
 const handleListTaskCreate = async (payload) => {
@@ -3071,7 +3071,7 @@ const handleDraggableChange = async (evt, group) => {
       return Number.isFinite(sortOrder) ? sortOrder : fallback;
     };
     if (group.name === 'FALLBACK_UNCLASSIFIED') {
-      ElMessage.warning('Không thể chuyển tác vụ vào cột Khác / Chưa phân loại.');
+      ElMessage.warning('KhĂ´ng thá»ƒ chuyá»ƒn tĂ¡c vá»¥ vĂ o cá»™t KhĂ¡c / ChÆ°a phĂ¢n loáº¡i.');
       fetchTasks();
       return;
     }
@@ -3090,15 +3090,15 @@ const handleDraggableChange = async (evt, group) => {
      }
      element.sortOrder = newSortOrder;
      if (groupBy.value === 'status') {
-        element.statusName = group.name; // Cập nhật Optimistic UI
+        element.statusName = group.name; // Cáº­p nháº­t Optimistic UI
         try {
           await store.reorderTask(getProjectId(), element.id, newSortOrder, group.name);
           await fetchTasks();
         } catch (error) {
           Object.assign(element, previousTask);
           ElMessage.error(error.response?.data?.message || 'Khong the cap nhat bang Kanban');
-          console.error('Lỗi API reorder:', error);
-          fetchTasks(); // Load lại data nếu gặp lỗi
+          console.error('Lá»—i API reorder:', error);
+          fetchTasks(); // Load láº¡i data náº¿u gáº·p lá»—i
         }
      } else if (groupBy.value === 'priority') {
         element.priority = group.priorityValue;
@@ -3111,7 +3111,7 @@ const handleDraggableChange = async (evt, group) => {
          } catch (error) {
            Object.assign(element, previousTask);
            ElMessage.error(error.response?.data?.message || 'Khong the cap nhat do uu tien');
-          console.error('Lỗi API reorder:', error);
+          console.error('Lá»—i API reorder:', error);
           fetchTasks();
         }
      } else if (groupBy.value === 'assignee') {
@@ -3125,7 +3125,7 @@ const handleDraggableChange = async (evt, group) => {
            await fetchTasks();
          } catch (error) {
            Object.assign(element, previousTask);
-           ElMessage.error(error.response?.data?.message || 'Không thể cập nhật người thực hiện');
+           ElMessage.error(error.response?.data?.message || 'KhĂ´ng thá»ƒ cáº­p nháº­t ngÆ°á»i thá»±c hiá»‡n');
            fetchTasks();
          }
      } else if (groupBy.value === 'sprint') {
@@ -3139,7 +3139,7 @@ const handleDraggableChange = async (evt, group) => {
            await fetchTasks();
          } catch (error) {
            Object.assign(element, previousTask);
-           ElMessage.error(error.response?.data?.message || 'Không thể cập nhật chu kỳ');
+           ElMessage.error(error.response?.data?.message || 'KhĂ´ng thá»ƒ cáº­p nháº­t chu ká»³');
            fetchTasks();
          }
      } else if (groupBy.value === 'module') {
@@ -3153,7 +3153,7 @@ const handleDraggableChange = async (evt, group) => {
            await fetchTasks();
          } catch (error) {
            Object.assign(element, previousTask);
-           ElMessage.error(error.response?.data?.message || 'Không thể cập nhật phân hệ');
+           ElMessage.error(error.response?.data?.message || 'KhĂ´ng thá»ƒ cáº­p nháº­t phĂ¢n há»‡');
            fetchTasks();
          }
      }
@@ -3200,11 +3200,11 @@ const hydrateFiltersFromUrl = () => {
 const exportAnalyticsCsv = (mode = analyticsInsightMode.value) => {
   const rows = mode === 'assignee'
     ? [
-        ['Người thực hiện', 'Chờ xử lý', 'Đang làm', 'Đang đánh giá', 'Hoàn thành', 'Đã hủy', 'Tổng'],
+        ['NgÆ°á»i thá»±c hiá»‡n', 'Chá» xá»­ lĂ½', 'Äang lĂ m', 'Äang Ä‘Ă¡nh giĂ¡', 'HoĂ n thĂ nh', 'ÄĂ£ há»§y', 'Tá»•ng'],
         ...assigneeAnalyticsRows.value.map(item => [item.label, item.backlog, item.started, item.unstarted, item.completed, item.cancelled, item.total])
       ]
     : [
-        [analyticsTableHeading.value, 'Số lượng'],
+        [analyticsTableHeading.value, 'Sá»‘ lÆ°á»£ng'],
         ...analyticsBreakdownRows.value.map(item => [item.label, item.count])
       ]
   const csv = csvWithBom(rows)
@@ -3734,7 +3734,7 @@ onUnmounted(() => {
   min-height: 0;
   overflow: hidden;
 }
-/* ── PLANE HEADER ── */
+/* â”€â”€ PLANE HEADER â”€â”€ */
 .plane-space-header {
   min-height: 64px;
   display: flex;
@@ -6372,5 +6372,6 @@ onUnmounted(() => {
   .cyber-create-task-btn, .col-empty-state.clickable, .col-empty-state .add-action-text { transition: none; }
 }
 </style>
- 
+
+ 
  
