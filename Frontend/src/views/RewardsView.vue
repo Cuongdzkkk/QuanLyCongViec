@@ -1185,18 +1185,15 @@ import { ElMessage } from 'element-plus'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { usePeopleStore } from '@/store/usePeopleStore'
-import { useSiteStore } from '@/store/useSiteStore'
 import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import axiosClient from '@/api/axiosClient'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { getScopedCurrentProjectId } from '@/utils/projectContext'
-import { validateRewardForm, validateRewardSeasonForm } from '@/utils/rewardUi'
 import draggable from 'vuedraggable'
 
 const { t } = useI18nStore()
 const authStore = useAuthStore()
 const peopleStore = usePeopleStore()
-const siteStore = useSiteStore()
 const homeProjectStore = useHomeProjectStore()
 const currentUser = authStore.user || {}
 
@@ -1230,8 +1227,6 @@ const ensureActiveProjects = async () => {
   return activeProjects
 }
 
-const isOwner = computed(() => siteStore.activeSite?.workspaceRole === 'Owner' || siteStore.activeSite?.WorkspaceRole === 'Owner')
-
 const loading = ref(false)
 const wallet = ref({
   userId: currentUser.id || currentUser.userId || '',
@@ -1259,15 +1254,6 @@ const managerBusy = ref(false)
 const shopBusy = ref(false)
 const seasonForm = ref({ name: '', type: 'Custom', startAt: '', endAt: '', timeZone: '' })
 const rewardForm = ref({ seasonId: '', name: '', description: '', rewardType: 'Gift', condition: 'PersonalMilestone', threshold: 100, rankTo: 1, requireActiveMember: true, method: 'Redeem', pointCost: 0, quantity: null, claimLimit: null, imageFile: null, imagePreview: null, usePoints: false, useLevel: false, useTop: false, levelRequired: 1, topRequired: 3 })
-const rewardTypes = ['Cash', 'Voucher', 'Gift', 'Privilege', 'Custom']
-const rewardConditions = [
-  { key: 'TopN', label: 'Top N' },
-  { key: 'SeasonPoints', label: 'Season Points ≥ X' },
-  { key: 'OnTimeRate', label: 'On-time rate ≥ X%' },
-  { key: 'ApprovedTasks', label: 'Approved tasks ≥ X' },
-  { key: 'TeamOnTimeRate', label: 'Team on-time rate ≥ X%' }
-]
-
 // New interactive state variables
 const activeTab = ref('history')
 const openShopModal = ref(false)
@@ -1474,7 +1460,6 @@ const toggleRewardInSeason = (seasonId, rewardId) => {
 
   // Persist to localStorage
   localStorage.setItem(`season_rewards_${seasonId}`, JSON.stringify(season.rewards))
-  shopRefreshKey.value++
 }
 
 // Level Config State (Mock)
@@ -1673,17 +1658,6 @@ const selectedUser = ref({
 })
 
 const formatDate = (value) => (value ? new Date(value).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '')
-const seasonTimeRemaining = computed(() => {
-  const end = seasonDashboard.value.currentSeason?.endAt
-  if (!end) return 'No end date'
-  const remaining = new Date(end).getTime() - Date.now()
-  if (remaining <= 0) return 'Expired — close when ready'
-  const days = Math.floor(remaining / 86400000)
-  const hours = Math.floor((remaining % 86400000) / 3600000)
-  return `${days}d ${hours}h remaining`
-})
-const shopRefreshKey = ref(0)
-const managedGrants = computed(() => seasonDashboard.value.openRewards || [])
 const myGrants = computed(() => {
   const history = seasonDashboard.value.rewardHistory || []
   const map = {}
@@ -1703,7 +1677,6 @@ const myGrants = computed(() => {
   return Object.values(map)
 })
 const shopItems = computed(() => {
-  const trigger = shopRefreshKey.value // Reactivity trigger
   const currentSeason = seasonDashboard.value.currentSeason
   if (!currentSeason) return []
 
@@ -1714,7 +1687,7 @@ const shopItems = computed(() => {
     const cached = localStorage.getItem(`season_rewards_${currentSeason.id}`)
     activeRewardsIds = []
     if (cached) {
-      try { activeRewardsIds = JSON.parse(cached) } catch(e) {}
+      try { activeRewardsIds = JSON.parse(cached) } catch (e) { activeRewardsIds = [] }
     }
   }
 
@@ -1856,11 +1829,6 @@ const restLeaders = computed(() => leaderboard.value.slice(3))
 const myRankIndex = computed(() => {
   if (!leaderboard.value || !wallet.value?.userId) return -1
   return leaderboard.value.findIndex(u => String(u.userId || u.Id || u.id) === String(wallet.value.userId))
-})
-const myRankDisplay = computed(() => {
-  if (myRankIndex.value === -1) return '--'
-  const rank = myRankIndex.value + 1
-  return rank < 10 ? `#0${rank}` : `#${rank}`
 })
 const userCanManage = computed(() => true)
 
@@ -2067,11 +2035,6 @@ const loadRewards = async () => {
   }
 }
 
-const showValidationErrors = (errors) => {
-  if (errors.length) ElMessage.warning(errors[0])
-  return errors.length === 0
-}
-
 const createSeason = async () => {
   if (!seasonForm.value.name?.trim()) {
     ElMessage.warning('Vui lòng nhập tên mùa giải.')
@@ -2219,29 +2182,6 @@ const redeemReward = async (item) => {
   }
 }
 
-
-const resolveGrant = async (grant, award) => {
-  const projectId = getScopedCurrentProjectId()
-  if (!projectId || !grant?.id) return
-  try { await axiosClient.post(`/projects/${projectId}/rewards/grants/${grant.id}/resolve`, { award, note: 'Resolved by manager.' }); await loadRewards() } catch (error) { ElMessage.error(error.response?.data?.message || 'Unable to resolve reward tie.') }
-}
-
-const fulfillGrant = async (grant) => {
-  const projectId = getScopedCurrentProjectId()
-  if (!projectId || !grant?.id) return
-  try { await axiosClient.post(`/projects/${projectId}/rewards/grants/${grant.id}/fulfill`); await loadRewards() } catch (error) { ElMessage.error(error.response?.data?.message || 'Unable to fulfill reward.') }
-}
-
-const reviewSeasonEvent = async (event, approve) => {
-  const projectId = getScopedCurrentProjectId()
-  if (!projectId || !event?.id) return
-  try {
-    await axiosClient.post(`/projects/${projectId}/rewards/events/${event.id}/review`, { approve })
-    await loadRewards()
-  } catch (error) {
-    ElMessage.error(error.response?.data?.message || 'Unable to review reward event.')
-  }
-}
 
 onMounted(async () => {
   if (!homeProjectStore.projects || homeProjectStore.projects.length === 0) {
