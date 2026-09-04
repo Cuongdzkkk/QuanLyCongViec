@@ -854,6 +854,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpGet("{id:guid}/comments")]
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectRead, true)]
         public async Task<IActionResult> GetProjectComments(Guid id, [FromServices] ApplicationDbContext context)
         {
             var projectExists = await context.Projects.AnyAsync(p => p.Id == id && !p.IsDeleted);
@@ -894,6 +895,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("{id:guid}/Comments")]
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectRead, true)]
         public async Task<IActionResult> CreateComment(Guid id, [FromBody] CreateCommentRequest request, [FromServices] TaskManagement.Infrastructure.Data.ApplicationDbContext context)
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -1103,15 +1105,12 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpGet("{id:guid}/work-items")]
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectRead, true)]
         public async Task<IActionResult> GetProjectWorkItems(Guid id, [FromQuery] string? search)
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdString, out var userId))
                 return Unauthorized(ApiResponse<object>.Error("Unauthorized.", 401));
-
-            var isMember = await _context.ProjectMembers.AnyAsync(pm => pm.ProjectId == id && pm.UserId == userId && pm.Status);
-            if (!isMember && ProjectAccessPolicy.RestrictionsEnabled)
-                return StatusCode(403, ApiResponse<object>.Error("Forbidden.", 403));
 
             var query = _context.WorkTasks
                 .AsNoTracking()
@@ -1190,6 +1189,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpGet("{id}/lessons")]
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectRead, true)]
         public async Task<IActionResult> GetLessons(Guid id)
         {
             var items = await _projectService.GetLessonsAsync(id);
@@ -1197,6 +1197,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("{id}/lessons")]
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectWrite, true)]
         public async Task<IActionResult> AddLesson(Guid id, [FromBody] CreateTabItemDto dto)
         {
             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
@@ -1207,6 +1208,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpGet("{id}/risks")]
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectRead, true)]
         public async Task<IActionResult> GetRisks(Guid id)
         {
             var items = await _projectService.GetRisksAsync(id);
@@ -1214,6 +1216,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("{id}/risks")]
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectWrite, true)]
         public async Task<IActionResult> AddRisk(Guid id, [FromBody] CreateTabItemDto dto)
         {
             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
@@ -1224,6 +1227,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpGet("{id}/decisions")]
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectRead, true)]
         public async Task<IActionResult> GetDecisions(Guid id)
         {
             var items = await _projectService.GetDecisionsAsync(id);
@@ -1231,6 +1235,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("{id}/decisions")]
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectWrite, true)]
         public async Task<IActionResult> AddDecision(Guid id, [FromBody] CreateTabItemDto dto)
         {
             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
@@ -1241,6 +1246,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpGet("{id}/updates")]
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectRead, true)]
         public async Task<IActionResult> GetUpdates(Guid id)
         {
             var items = await _projectService.GetUpdatesAsync(id);
@@ -1248,6 +1254,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("{id}/updates")]
+        [ProjectAuthorize(ResourcePermissionCodes.ProjectWrite, true)]
         public async Task<IActionResult> AddUpdate(Guid id, [FromBody] CreateTabItemDto dto)
         {
             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());

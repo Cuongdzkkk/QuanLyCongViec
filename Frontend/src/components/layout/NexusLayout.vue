@@ -185,7 +185,7 @@
               :key="prompt.text"
               class="quick-action"
               type="button"
-              @click="useQuickPrompt(prompt.text)"
+              @click="runQuickPrompt(prompt.text)"
             >
               <i :class="prompt.icon"></i>
               <span>{{ prompt.label }}</span>
@@ -194,10 +194,15 @@
 
           <div class="ai-context-card">
             <div>
-              <strong>{{ aiCopy.contextTitle }}</strong>
-              <span>{{ currentRouteLabel }}</span>
+              <span class="ai-context-eyebrow">PHẠM VI AI</span>
+              <strong>Workspace: {{ currentWorkspaceLabel }}</strong>
+              <small>Project: {{ currentProjectLabel }}</small>
+              <div class="ai-page-context">
+                <span>TRANG HIỆN TẠI</span>
+                <strong>{{ currentRouteLabel }}</strong>
+              </div>
             </div>
-            <button type="button" @click="useQuickPrompt(`${aiCopy.currentPagePrompt}: ${currentRouteLabel}`)">
+            <button type="button" @click="runQuickPrompt(`${aiCopy.currentPagePrompt}: ${currentRouteLabel}`)">
               <i class="fa-solid fa-wand-magic-sparkles"></i>
             </button>
           </div>
@@ -674,11 +679,13 @@ import GlobalStickiesDrawer from '@/components/stickies/GlobalStickiesDrawer.vue
 import FloatingStickiesLayer from '@/components/stickies/FloatingStickiesLayer.vue'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
+import { useAiScopeStore } from '@/store/useAiScopeStore'
 import { useAiConversationStore } from '@/store/useAiConversationStore'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useGoalStore } from '@/store/useGoalStore'
 import { useSprintStore } from '@/store/useSprintStore'
+import { useSiteStore } from '@/store/useSiteStore'
 import { useVoiceCallStore } from '@/store/useVoiceCallStore'
 import { AUTH_SESSION_CHANGED, getStoredUserSession } from '@/utils/authSession'
 import { getDefaultPermissionMatrix, hasPermission } from '@/utils/permissionGuard'
@@ -688,8 +695,10 @@ import { getRandomPaletteColor } from '@/utils/colors'
 import { getStickyAccountId } from '@/utils/stickyAccountIsolation'
 import {
   AI_PANEL_DEFAULT_WIDTH,
+  buildAiContextKey,
   clampAiPanelSize,
   isAiPanelResizable,
+  isAiContextMatch,
   isComposerSendKey,
   readAiPanelSize,
   writeAiPanelSize,
@@ -721,11 +730,13 @@ const router = useRouter()
 const i18nStore = useI18nStore()
 const workTaskStore = useWorkTaskStore()
 const projectStore = useProjectStore()
+const siteStore = useSiteStore()
 const goalStore = useGoalStore()
 const sprintStore = useSprintStore()
 const stickyStore = useStickyStore()
 const sidebarVisible = ref(window.innerWidth > 1024)
 const aiPetStore = useAiPetStore()
+const aiScopeStore = useAiScopeStore()
 const aiConversationStore = useAiConversationStore()
 const aiVisible = computed({ get: () => aiPetStore.isPanelOpen, set: value => aiPetStore.setPanelOpen(value) })
 const notesVisible = ref(false)
@@ -1644,6 +1655,15 @@ const startNewConversation = () => {
   clearPendingAttachments()
 }
 
+const handleAiWorkspaceChanged = event => {
+  const workspaceId = event?.detail?.workspaceId
+  if (workspaceId) aiScopeStore.setWorkspace(workspaceId)
+  aiContextRevision.value += 1
+  aiInput.value = ''
+  if (currentConversationId.value) startNewConversation()
+  if (aiVisible.value) void loadConversations(true)
+}
+
 const ensureConversation = async (firstMessage) => {
   return aiConversationStore.ensureConversation({ workspaceId: currentWorkspaceId.value, firstMessage })
 }
@@ -1651,6 +1671,7 @@ const ensureConversation = async (firstMessage) => {
 const releaseMessageAttachmentUrls = () => {
   chatHistory.value.forEach(message => message.attachments?.forEach((attachment) => {
     if (attachment.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(attachment.previewUrl)
+    attachment.previewUrl = ''
   }))
 }
 
@@ -1962,6 +1983,7 @@ onMounted(() => {
   document.addEventListener('keyup', captureSelectedText)
   window.addEventListener('keydown', handleGlobalKeydown)
   window.addEventListener('integration-detail-opened', closeUtilitiesForIntegrationDetail)
+  window.addEventListener('sprinta-workspace-changed', handleAiWorkspaceChanged)
   window.addEventListener('pointermove', movePet)
   window.addEventListener('pointerup', endPetDrag)
   nextTick(() => {
@@ -1981,6 +2003,7 @@ onUnmounted(() => {
   document.removeEventListener('keyup', captureSelectedText)
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('integration-detail-opened', closeUtilitiesForIntegrationDetail)
+  window.removeEventListener('sprinta-workspace-changed', handleAiWorkspaceChanged)
   window.removeEventListener('pointermove', movePet)
   window.removeEventListener('pointerup', endPetDrag)
   window.removeEventListener('pointermove', moveAiPanelResize)
@@ -2029,6 +2052,10 @@ const toggleCreate = () => {
 
 const useQuickPrompt = (prompt) => {
   aiInput.value = prompt
+}
+const runQuickPrompt = (prompt) => {
+  aiInput.value = prompt
+  void sendAiMessage()
 }
 
 const readOnlyActionTypes = new Set([
@@ -2299,8 +2326,14 @@ const confirmDuplicateCreation = async (action) => {
     if (error !== 'cancel' && error !== 'close') ElMessage.error('Không thể xác nhận thao tác.')
   }
 }
-const executeAiAction = async (action) => {
+const executeAiAction = async (action, { navigate = true } = {}) => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
+  if (!isAiContextMatch(action.contextKey, currentWorkspaceId.value, currentProjectId.value)) {
+    action.uiStatus = 'error'
+    action.error = 'Ngữ cảnh AI đã thay đổi. Hãy gửi lại yêu cầu trong project hiện tại.'
+    await persistConversation()
+    return
+  }
   const duplicate = await findDuplicateTask(action)
   if (duplicate) {
     action.duplicateCandidate = duplicate
@@ -2353,7 +2386,7 @@ const executeAiAction = async (action) => {
     action.uiStatus = 'success'
     const navigation = await refreshAfterAiAction(action, result)
     ElMessage.success(result?.message || 'AI đã thực hiện thay đổi thành công.')
-    await navigateToAiEntity(navigation)
+    if (navigate) await navigateToAiEntity(navigation)
   } catch (error) {
     const duplicateCandidate = error.response?.data?.data?.existingTask
     if (error.response?.status === 409 && duplicateCandidate) {
@@ -2382,16 +2415,39 @@ const normalizeAiText = (value = '') =>
     .toLowerCase()
 
 const currentProjectId = computed(() => {
+  if (aiScopeStore.projectId) {
+    const scopedProject = projectStore.allProjects.find(item => `${item.id || item.Id}` === `${aiScopeStore.projectId}`)
+    const scopedWorkspaceId = scopedProject?.workspaceId || scopedProject?.WorkspaceId
+    if (!scopedWorkspaceId || !aiScopeStore.workspaceId || `${scopedWorkspaceId}` === `${aiScopeStore.workspaceId}`) return aiScopeStore.projectId
+    return null
+  }
   const routeId = route.params?.id
   if (typeof routeId === 'string' && routeId.length >= 30) return routeId
   return projectStore.currentProject?.id || projectStore.currentProject?.Id || workTaskStore.currentProjectId || null
 })
 
 const currentWorkspaceId = computed(() => {
+  if (aiScopeStore.workspaceId) return aiScopeStore.workspaceId
   const routeWorkspaceId = route.params?.workspaceId || route.params?.spaceId
   if (typeof routeWorkspaceId === 'string' && routeWorkspaceId.length >= 30) return routeWorkspaceId
-  const project = projectStore.currentProject
+  const project = projectStore.allProjects.find(item => `${item.id || item.Id}` === `${currentProjectId.value || ''}`)
+    || projectStore.currentProject
   return project?.workspaceId || project?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null
+})
+
+const aiContextKey = computed(() => buildAiContextKey(currentWorkspaceId.value, currentProjectId.value))
+const aiContextRevision = ref(0)
+
+const currentProjectLabel = computed(() => {
+  const project = projectStore.allProjects.find(item => `${item.id || item.Id}` === `${currentProjectId.value || ''}`)
+    || projectStore.currentProject
+  return project?.name || project?.Name || (currentProjectId.value ? 'Project hiện tại' : 'Chưa chọn project')
+})
+
+const currentWorkspaceLabel = computed(() => {
+  const workspaceId = currentWorkspaceId.value
+  const workspace = siteStore.sites.find(item => `${item.id || item.Id}` === `${workspaceId || ''}`)
+  return workspace?.name || workspace?.Name || (workspaceId ? 'Workspace hiện tại' : 'Chưa chọn workspace')
 })
 
 const stickyContext = computed(() => ({
@@ -2500,6 +2556,19 @@ watch(currentProjectId, async (newVal) => {
     await loadPermissionMatrix()
   }
 }, { immediate: true })
+
+watch([currentWorkspaceId, currentProjectId], async ([workspaceId, projectId], previous = []) => {
+  const [previousWorkspaceId, previousProjectId] = previous
+  if (workspaceId === previousWorkspaceId && projectId === previousProjectId) return
+
+  aiContextRevision.value += 1
+  if (currentConversationId.value) {
+    startNewConversation()
+  }
+  if (aiVisible.value) {
+    await loadConversations(true)
+  }
+}, { flush: 'post' })
 
 const currentTasks = computed(() => Array.isArray(workTaskStore.tasks) ? workTaskStore.tasks : [])
 
@@ -2671,7 +2740,7 @@ const createRealTasks = async (message) => {
       storyPoints: 0
     }
     if (dueDate) payload.dueDate = dueDate
-    created.push(await workTaskStore.createTask(projectId, payload))
+    created.push({ ...payload, projectId, pendingConfirmation: true })
   }
 
   window.dispatchEvent(new CustomEvent('sprinta-ai-task-created', { detail: { projectId, tasks: created } }))
@@ -2698,8 +2767,7 @@ const moveTaskByPrompt = async (message) => {
     return 'Mình chưa tìm thấy task cần chuyển. Hãy ghi rõ mã task hoặc đặt tên task trong dấu ngoặc kép, ví dụ: chuyển "Bug Bash" sang Done.'
   }
 
-  await workTaskStore.updateTaskStatus(projectId, task.id, statusName)
-  return `Đã chuyển task "${task.title}" sang trạng thái ${statusName}.`
+  return `Đã tạo đề xuất chuyển task "${task.title}" sang trạng thái ${statusName}. Vui lòng xác nhận qua action preview.`
 }
 
 const tryHandleLocalAiCommand = async (message) => {
@@ -2771,7 +2839,7 @@ const tryHandleLocalAiCommand = async (message) => {
   return null
 }
 
-const createSuggestedTask = async (task, messageItem) => {
+const createSuggestedTask = async (task) => {
   if (!canCreateTaskInProject.value) {
     ElMessage.error("Bạn không có quyền tạo công việc trong dự án này.")
     return
@@ -2779,21 +2847,32 @@ const createSuggestedTask = async (task, messageItem) => {
 
   task.loading = true
   try {
-    const created = await workTaskStore.createTask(currentProjectId.value, {
-      title: task.title,
-      description: task.description || "Được tạo từ gợi ý của SprintA AI",
-      priority: task.priority || 3,
-      dueDate: task.dueDate || null,
-      typeName: "Task",
-      storyPoints: 0
-    })
-    task.created = true
-    task.createdTask = created
-    ElMessage.success(`Đã tạo thành công task: "${created.title || created.Title}"`)
-    // Refresh lists
-    window.dispatchEvent(new CustomEvent('sprinta-ai-task-created', {
-      detail: { projectId: currentProjectId.value, task: created }
-    }))
+    const action = {
+      type: 'create_task',
+      contextKey: aiContextKey.value,
+      payload: {
+        projectId: currentProjectId.value,
+        title: task.title,
+        description: task.description || 'Được tạo từ gợi ý của SprintA AI',
+        priority: task.priority || 3,
+        dueDate: task.dueDate || null,
+        typeName: 'Task',
+        storyPoints: 0
+      },
+      uiStatus: 'pending',
+      loading: false,
+      error: '',
+      result: null,
+      duplicateCandidate: null
+    }
+    await executeAiAction(action, { navigate: false })
+    if (action.uiStatus === 'success') {
+      task.created = true
+      task.createdTask = action.result?.task || action.result
+      ElMessage.success(`Đã tạo thành công task: "${task.createdTask?.title || task.createdTask?.Title || task.title}"`)
+    } else if (action.duplicateCandidate) {
+      task.error = 'Đã tìm thấy task tương tự. Không tạo task mới.'
+    }
   } catch (e) {
     ElMessage.error(e.response?.data?.message || "Không thể tạo task gợi ý.")
   } finally {
@@ -2823,17 +2902,27 @@ const confirmSuggestedAction = async (action) => {
       return
     }
 
-    action.loading = true
     try {
-      await workTaskStore.updateTaskStatus(currentProjectId.value, action.taskId, action.statusName)
+      const guardedAction = {
+        type: 'update_task_status',
+        contextKey: aiContextKey.value,
+        payload: {
+          projectId: currentProjectId.value,
+          taskId: action.taskId,
+          statusName: action.statusName
+        },
+        uiStatus: 'pending',
+        loading: false,
+        error: '',
+        result: null,
+        duplicateCandidate: null
+      }
+      await executeAiAction(guardedAction, { navigate: false })
+      if (guardedAction.uiStatus !== 'success') return
       action.completed = true
       ElMessage.success(`Đã chuyển task "${action.taskTitle}" sang trạng thái ${action.statusName}.`)
-      // Refresh list
-      await workTaskStore.fetchTasks(currentProjectId.value)
     } catch (e) {
       ElMessage.error(e.response?.data?.message || "Không thể chuyển trạng thái task.")
-    } finally {
-      action.loading = false
     }
   }
 }
@@ -2913,6 +3002,7 @@ const sendAiMessage = async () => {
   if ((!outgoing && !hasAttachments) || aiSending.value) return
 
   aiSending.value = true
+  const requestRevision = aiContextRevision.value
   let loadingAdded = false
   let userMessageAdded = false
 
@@ -2920,6 +3010,7 @@ const sendAiMessage = async () => {
     const titleSeed = outgoing || pendingAttachments.value.map(item => item.name).join(', ')
     const conversationId = await ensureConversation(titleSeed)
     const uploadedAttachments = hasAttachments ? await uploadPendingAttachments(conversationId) : []
+    if (requestRevision !== aiContextRevision.value) return
 
     if (uploadedAttachments.length) pendingAttachments.value = []
     aiInput.value = ''
@@ -2940,6 +3031,7 @@ const sendAiMessage = async () => {
         attachmentIds: uploadedAttachments.map(item => item.id),
         message: outgoing
       })
+      if (requestRevision !== aiContextRevision.value) return
       const responseData = apiPayload(response)
       chatHistory.value.pop()
       loadingAdded = false
@@ -2968,6 +3060,7 @@ const sendAiMessage = async () => {
         extra: {}
       }
     })
+    if (requestRevision !== aiContextRevision.value) return
     const responseData = apiPayload(response)
 
     chatHistory.value.pop()
@@ -2983,6 +3076,7 @@ const sendAiMessage = async () => {
         type: String(action.type || '').toLowerCase(),
         payload: action.payload || {},
         duplicateCandidate: null,
+        contextKey: aiContextKey.value,
         uiStatus: 'pending',
         loading: false,
         error: '',
@@ -4585,6 +4679,218 @@ const handleProjectCreated = (newProject) => {
 .ai-credit-card.is-low .ai-credit-progress > span { background: #d9a441; }
 .ai-credit-card.is-empty { border-color: #d25b5b; }
 .ai-credit-card.is-empty .ai-credit-progress > span { width: 0 !important; background: #d25b5b; }
+
+/* Shared floating panel polish. Keep it visually related to the full AI page
+   while preserving the existing conversation, action and upload contracts. */
+.ai-sidebar {
+  border-radius: 22px;
+  border-color: color-mix(in srgb, #0b8fd3 28%, var(--color-border));
+  background: radial-gradient(circle at 100% 0, color-mix(in srgb, #0b8fd3 13%, transparent), transparent 32%), var(--color-surface);
+  box-shadow: 0 28px 80px color-mix(in srgb, var(--color-text-primary) 30%, transparent), 0 0 0 1px color-mix(in srgb, var(--color-text-inverse) 8%, transparent) inset;
+}
+.ai-hero {
+  padding: 22px 22px 18px;
+  border-bottom-color: color-mix(in srgb, #0b8fd3 20%, var(--color-border));
+  background: linear-gradient(145deg, color-mix(in srgb, #0b8fd3 14%, var(--color-surface)), var(--color-surface) 72%);
+}
+.ai-brand-icon { width: 44px; height: 44px; border-radius: 14px; background: color-mix(in srgb, #0b8fd3 15%, var(--color-surface)); border-color: color-mix(in srgb, #0b8fd3 32%, var(--color-border)); }
+.ai-brand h4 { font-size: 18px; letter-spacing: -.03em; }
+.ai-hero-copy { margin-top: 14px; line-height: 1.6; }
+.ai-credit-card { margin-top: 16px; padding: 15px; border-radius: 16px; border-color: color-mix(in srgb, #0b8fd3 38%, var(--color-border)); background: linear-gradient(145deg, color-mix(in srgb, #0b8fd3 18%, var(--color-surface-hover)), var(--color-surface-hover) 76%); box-shadow: 0 12px 26px color-mix(in srgb, #0b8fd3 13%, transparent); }
+.ai-credit-label { color: #0b8fd3; font-size: 10px; letter-spacing: .1em; }
+.ai-credit-progress { height: 7px; margin-top: 12px; }
+.ai-credit-progress > span { background: linear-gradient(90deg, #0b8fd3, #41c0f2); }
+.ai-credit-buy { min-height: 34px; border-radius: 10px; }
+.ai-conversation-toolbar { margin-top: 14px; grid-template-columns: 36px 36px minmax(0, 1fr); gap: 7px; }
+.ai-conversation-toolbar button { width: 36px; height: 36px; border-radius: 10px; }
+.ai-conversation-toolbar span { padding-inline: 4px; font-size: 11px; }
+.ai-content { padding: 18px 20px 22px; background: color-mix(in srgb, var(--color-bg) 74%, var(--color-surface)); }
+.quick-actions { gap: 9px; margin-top: 0; margin-bottom: 15px; }
+.quick-action { flex: 1 1 calc(50% - 5px); justify-content: flex-start; min-height: 42px; padding: 8px 10px; border-radius: 12px; border-color: color-mix(in srgb, #0b8fd3 21%, var(--color-border)); background: color-mix(in srgb, var(--color-surface) 84%, #0b8fd3); font-size: 11px; line-height: 1.3; }
+.quick-action i { width: 17px; color: #0b8fd3; text-align: center; }
+.quick-action:hover { transform: translateY(-1px); box-shadow: 0 8px 18px color-mix(in srgb, #0b8fd3 13%, transparent); }
+.ai-context-card { margin-bottom: 18px; padding: 14px; border-radius: 14px; border-color: color-mix(in srgb, #0b8fd3 24%, var(--color-border)); background: color-mix(in srgb, #0b8fd3 8%, var(--color-surface)); }
+.ai-context-card button { width: 36px; height: 36px; border-radius: 10px; }
+.ai-content :deep(.ai-composer) { margin-top: 0; }
+.ai-sidebar > :deep(.ai-composer) { margin: 0 16px 16px; width: auto; flex: 0 0 auto; }
+.ai-sidebar > :deep(.ai-composer) .ai-input-foot { padding-inline: 3px; }
+.global-utility-rail.is-ai-open { right: calc(16px + min(var(--ai-sidebar-width, 456px), 70vw) + 18px); border-color: color-mix(in srgb, #0b8fd3 30%, var(--color-border)); box-shadow: 0 14px 30px color-mix(in srgb, var(--color-text-primary) 18%, transparent); }
+
+@media (max-width: 760px) {
+  .ai-sidebar { border-radius: 20px 20px 0 0; }
+  .ai-hero { padding: 18px 16px 15px; }
+  .ai-content { padding: 15px 14px 18px; }
+  .ai-sidebar > :deep(.ai-composer) { margin: 0 12px calc(12px + env(safe-area-inset-bottom)); }
+}
+
+/* Focused floating-panel pass: reserve the panel's viewport for interaction;
+   passive metadata stays compact and the content owns the scroll. */
+.ai-sidebar {
+  min-height: 0;
+}
+
+.ai-hero {
+  flex: 0 0 auto;
+  padding: 14px 16px 12px;
+}
+
+.ai-brand {
+  gap: 9px;
+}
+
+.ai-brand-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+}
+
+.ai-brand-icon img {
+  width: 29px;
+  height: 29px;
+}
+
+.ai-brand p {
+  font-size: 10px;
+}
+
+.ai-brand h4 {
+  font-size: 16px;
+}
+
+.ai-hero-copy {
+  max-width: 54ch;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ai-open-full-chat,
+.close-ai {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.ai-credit-card {
+  margin-top: 9px;
+  padding: 9px 10px;
+  border-radius: 11px;
+  box-shadow: none;
+}
+
+.ai-credit-head {
+  gap: 8px;
+}
+
+.ai-credit-head > div {
+  gap: 6px;
+}
+
+.ai-credit-label,
+.ai-credit-head strong,
+.ai-credit-message {
+  font-size: 10px;
+}
+
+.ai-credit-progress {
+  height: 5px;
+  margin-top: 7px;
+}
+
+.ai-credit-message {
+  margin-top: 6px;
+  line-height: 1.3;
+}
+
+.ai-credit-buy {
+  min-height: 28px;
+  margin-top: 6px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font-size: 10px;
+}
+
+.ai-pin-toggle {
+  min-height: 26px;
+  margin-top: 7px;
+  padding: 4px 8px;
+  font-size: 10px;
+}
+
+.ai-conversation-toolbar {
+  grid-template-columns: 30px 30px minmax(0, 1fr);
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.ai-conversation-toolbar button {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.ai-conversation-toolbar span {
+  font-size: 10px;
+}
+
+.ai-content {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ai-context-card small {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-context-card > div {
+  min-width: 0;
+}
+.ai-context-eyebrow,
+.ai-page-context > span {
+  margin-top: 0 !important;
+  color: var(--color-accent) !important;
+  font-size: 9px !important;
+  font-weight: 850;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.ai-page-context {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+}
+.ai-page-context strong {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-sidebar,
+.ai-hero,
+.ai-content,
+.ai-history-panel,
+.ai-content :deep(.ai-composer) {
+  min-width: 0;
+}
+.ai-content {
+  overflow-x: hidden;
+}
+
+@media (max-width: 760px) {
+  .ai-hero {
+    padding: 13px 14px 11px;
+  }
+}
 
 .persistent-call-overlay {
   position: fixed;

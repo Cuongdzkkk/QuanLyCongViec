@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using TaskManagement.API.Hubs;
 using TaskManagement.API.Realtime;
+using TaskManagement.Application.Interfaces;
 using TaskManagement.Application.DTOs.Common;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
@@ -16,11 +17,16 @@ namespace TaskManagement.API.Controllers
     public class KudosController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IResourceAuthorizationService _authorization;
         private readonly IHubContext<KanbanHub>? _hub;
 
-        public KudosController(ApplicationDbContext context, IHubContext<KanbanHub>? hub = null)
+        public KudosController(
+            ApplicationDbContext context,
+            IResourceAuthorizationService authorization,
+            IHubContext<KanbanHub>? hub = null)
         {
             _context = context;
+            _authorization = authorization;
             _hub = hub;
         }
 
@@ -32,7 +38,12 @@ namespace TaskManagement.API.Controllers
             if (userId == Guid.Empty) return Unauthorized();
 
             var teamIds = await _context.DepartmentMembers
-                .Where(dm => dm.UserId == userId)
+                .Where(dm =>
+                    dm.UserId == userId &&
+                    dm.Department.IsActive &&
+                    !dm.Department.IsDeleted &&
+                    dm.User.IsActive &&
+                    !dm.User.IsDeleted)
                 .Select(dm => dm.DepartmentId)
                 .ToListAsync();
 
@@ -66,6 +77,10 @@ namespace TaskManagement.API.Controllers
         [HttpGet("team/{departmentId}")]
         public async Task<IActionResult> GetByTeam(Guid departmentId)
         {
+            if (!TryGetUserId(out var userId)) return Unauthorized();
+            if (!await CanAccessDepartmentAsync(userId, departmentId))
+                return NotFound(AccessDeniedResponse());
+
             var kudos = await _context.Kudos
                 .Include(k => k.Sender)
                 .Include(k => k.Receiver)
@@ -95,16 +110,24 @@ namespace TaskManagement.API.Controllers
         [HttpGet("user/{userId}")]
         public async Task<IActionResult> GetByUser(Guid userId)
         {
-            var teamIds = await _context.DepartmentMembers
-                .Where(dm => dm.UserId == userId)
-                .Select(dm => dm.DepartmentId)
-                .ToListAsync();
+            if (!TryGetUserId(out var callerId)) return Unauthorized();
+            var visibleTeamIds = await _authorization.GetSharedActiveDepartmentIdsAsync(callerId, userId);
+            if (callerId != userId && visibleTeamIds.Count == 0)
+                return NotFound(AccessDeniedResponse());
 
             var kudos = await _context.Kudos
                 .Include(k => k.Sender)
                 .Include(k => k.Receiver)
                 .Include(k => k.Department)
-                .Where(k => k.ReceiverId == userId || (k.DepartmentId.HasValue && teamIds.Contains(k.DepartmentId.Value)))
+                .Where(k =>
+                    (k.DepartmentId.HasValue && visibleTeamIds.Contains(k.DepartmentId.Value)) ||
+                    (k.ReceiverId == userId &&
+                        (callerId == userId ||
+                         k.SenderId == callerId ||
+                         k.Sender.DepartmentMemberships.Any(member =>
+                             visibleTeamIds.Contains(member.DepartmentId) &&
+                             member.Department.IsActive &&
+                             !member.Department.IsDeleted))))
                 .OrderByDescending(k => k.CreatedAt)
                 .Select(k => new
                 {
@@ -129,6 +152,9 @@ namespace TaskManagement.API.Controllers
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CreateKudoDto dto)
         {
+            if (dto == null)
+                return BadRequest(ApiResponse<object>.Error("Invalid Kudos request."));
+
             var senderClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             var senderId = Guid.TryParse(senderClaim, out var parsedSenderId) ? parsedSenderId : Guid.Empty;
             if (senderId == Guid.Empty) return Unauthorized();
@@ -141,17 +167,25 @@ namespace TaskManagement.API.Controllers
 
             if (dto.DepartmentId.HasValue)
             {
-                var departmentExists = await _context.Departments
-                    .AnyAsync(d => d.Id == dto.DepartmentId.Value && !d.IsDeleted);
-                if (!departmentExists)
-                    return NotFound(ApiResponse<object>.Error("Team khong ton tai.", 404));
+                if (!await CanAccessDepartmentAsync(senderId, dto.DepartmentId.Value))
+                    return NotFound(AccessDeniedResponse());
             }
 
             if (dto.ReceiverId.HasValue)
             {
-                var receiverExists = await _context.Users.AnyAsync(u => u.Id == dto.ReceiverId.Value);
+                var receiverExists = await _context.Users.AnyAsync(u =>
+                    u.Id == dto.ReceiverId.Value && u.IsActive && !u.IsDeleted);
                 if (!receiverExists)
                     return NotFound(ApiResponse<object>.Error("Nguoi nhan khong ton tai.", 404));
+
+                if (!dto.DepartmentId.HasValue &&
+                    dto.ReceiverId.Value != senderId &&
+                    (await _authorization.GetSharedActiveDepartmentIdsAsync(senderId, dto.ReceiverId.Value)).Count == 0)
+                    return NotFound(AccessDeniedResponse());
+
+                if (dto.DepartmentId.HasValue &&
+                    !await IsActiveDepartmentMemberAsync(dto.DepartmentId.Value, dto.ReceiverId.Value))
+                    return BadRequest(ApiResponse<object>.Error("Nguoi nhan phai la thanh vien cua team."));
             }
 
             var kudo = new Kudo
@@ -236,6 +270,31 @@ namespace TaskManagement.API.Controllers
 
             return Ok(ApiResponse<object>.Success(new { id = kudo.Id }, "Da gui loi khen ngoi."));
         }
+
+        private async Task<bool> CanAccessDepartmentAsync(Guid userId, Guid departmentId)
+        {
+            var authorization = await _authorization.AuthorizeDepartmentAsync(userId, departmentId);
+            return authorization.Succeeded;
+        }
+
+        private Task<bool> IsActiveDepartmentMemberAsync(Guid departmentId, Guid userId) =>
+            _context.DepartmentMembers.AnyAsync(member =>
+                member.DepartmentId == departmentId &&
+                member.Department.IsActive &&
+                !member.Department.IsDeleted &&
+                member.UserId == userId &&
+                member.User.IsActive &&
+                !member.User.IsDeleted);
+
+        private bool TryGetUserId(out Guid userId)
+        {
+            return Guid.TryParse(
+                User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+                out userId) && userId != Guid.Empty;
+        }
+
+        private static ApiResponse<object> AccessDeniedResponse() =>
+            ApiResponse<object>.Error("Kudos target is not accessible.", 404);
     }
 
     public class CreateKudoDto

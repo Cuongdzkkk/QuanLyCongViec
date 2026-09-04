@@ -33,39 +33,75 @@ namespace TaskManagement.API.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAll(Guid workspaceId)
         {
-            var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
-            var result = await _followerService.GetAllFollowedAsync(userId);
-            return Ok(ApiResponse<object>.Success(result));
+            if (!TryGetUserId(out var userId)) return Unauthorized();
+            try
+            {
+                var result = await _followerService.GetAllFollowedAsync(userId, workspaceId);
+                return Ok(ApiResponse<object>.Success(result));
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
         }
 
         [HttpGet("entity")]
         public async Task<IActionResult> GetEntityFollowers(Guid workspaceId, [FromQuery] string entityType, [FromQuery] Guid entityId)
         {
-            var result = await _followerService.GetFollowersAsync(entityType, entityId);
-            return Ok(ApiResponse<object>.Success(result));
+            if (!TryGetUserId(out var userId)) return Unauthorized();
+            try
+            {
+                var result = await _followerService.GetFollowersAsync(userId, workspaceId, entityType, entityId);
+                return Ok(ApiResponse<object>.Success(result));
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
         }
 
         [HttpPost("entity")]
         public async Task<IActionResult> AddEntityFollowers(Guid workspaceId, [FromQuery] string entityType, [FromQuery] Guid entityId, [FromBody] AddFollowersRequest request)
         {
-            var actorUserId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
-            var result = await _followerService.AddFollowersAsync(actorUserId, entityType, entityId, request.UserIds);
-            if (_hub != null)
+            if (!TryGetUserId(out var actorUserId)) return Unauthorized();
+            try
             {
-                foreach (var userId in request.UserIds.Distinct())
-                    await _hub.PublishUserEntityChangedAsync(userId, "Follower", "updated", entityId, new { entityType, entityId });
+                var result = await _followerService.AddFollowersAsync(actorUserId, workspaceId, entityType, entityId, request.UserIds);
+                if (_hub != null)
+                {
+                    foreach (var userId in request.UserIds.Distinct())
+                        await _hub.PublishUserEntityChangedAsync(userId, "Follower", "updated", entityId, new { entityType, entityId });
+                }
+                return Ok(ApiResponse<object>.Success(result));
             }
-            return Ok(ApiResponse<object>.Success(result));
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
         }
 
         [HttpPost("toggle")]
         public async Task<IActionResult> ToggleFollow(Guid workspaceId, [FromQuery] string entityType, [FromQuery] Guid entityId)
         {
-            var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
-            var result = await _followerService.ToggleFollowAsync(userId, entityType, entityId);
-            if (_hub != null)
-                await _hub.PublishUserEntityChangedAsync(userId, "Follower", "updated", entityId, new { workspaceId, entityType, entityId, result });
-            return Ok(ApiResponse<object>.Success(result));
+            if (!TryGetUserId(out var userId)) return Unauthorized();
+            try
+            {
+                var result = await _followerService.ToggleFollowAsync(userId, workspaceId, entityType, entityId);
+                if (_hub != null)
+                    await _hub.PublishUserEntityChangedAsync(userId, "Follower", "updated", entityId, new { workspaceId, entityType, entityId, result });
+                return Ok(ApiResponse<object>.Success(result));
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound();
+            }
+        }
+
+        private bool TryGetUserId(out Guid userId)
+        {
+            return Guid.TryParse(
+                User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+                out userId) && userId != Guid.Empty;
         }
     }
 }
