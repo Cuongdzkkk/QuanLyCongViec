@@ -1,143 +1,43 @@
 <template>
   <section class="rewards-page">
     <header class="page-header app-shell-page-header">
-      <div class="title-with-filter">
-        <h1>{{ t('rewards.title') }}</h1>
-        <div class="sprint-filter-badge">
-          <span>Sprint hiện tại</span>
-          <i class="fa-solid fa-chevron-down text-xs ml-1"></i>
-        </div>
-      </div>
-      <button class="refresh-btn" type="button" :disabled="loading" @click="loadRewards">
-        <i class="fa-solid fa-rotate" :class="{ 'fa-spin': loading }"></i> {{ loading ? t('rewards.refreshing') : t('rewards.refresh') }}
-      </button>
-    </header>
-
-    <section v-if="seasonDashboard.currentSeason" class="season-v1-panel panel">
-      <div class="season-v1-heading">
-        <div>
-          <span class="season-v1-eyebrow">SprintA Reward System V1</span>
-          <h2>{{ seasonDashboard.currentSeason.name }}</h2>
-          <p>{{ seasonDashboard.currentSeason.status }} · {{ formatDate(seasonDashboard.currentSeason.startAt) }} — {{ formatDate(seasonDashboard.currentSeason.endAt) }} · {{ seasonTimeRemaining }}</p>
-        </div>
-        <div class="season-v1-xp"><strong>{{ seasonDashboard.careerXp }}</strong><span>career XP</span></div>
-      </div>
-      <div class="season-v1-grid">
-        <div>
-          <h3>Season leaderboard</h3>
-          <div v-if="seasonDashboard.leaderboard.length === 0" class="empty-list-small">No finalized events yet.</div>
-          <div v-for="entry in seasonDashboard.leaderboard.slice(0, 5)" :key="entry.userId" class="season-v1-row">
-            <span>#{{ entry.rank }} {{ entry.userName }}</span><strong>{{ entry.seasonPoints }} pts</strong>
+      <div class="title-with-filter" style="display: flex; align-items: center; gap: 16px; flex: 1;">
+        <h1 style="white-space: nowrap; margin-right: 8px;">{{ t('rewards.title') }}</h1>
+        
+        <!-- Active Season Banner (Marquee) -->
+        <div v-if="seasonDashboard.currentSeason" class="active-season-banner" style="flex: 1; padding: 6px 12px; background: linear-gradient(to right, #f0f9ff, #e0f2fe); border: 1px solid #bae6fd; border-radius: 8px; display: flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; box-sizing: border-box; min-width: 0;">
+          <div style="width: 24px; height: 24px; background: #38bdf8; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; flex-shrink: 0; z-index: 2;">
+            <i class="fa-solid fa-bullhorn"></i>
           </div>
-        </div>
-        <div class="season-v1-stats">
-          <h3>My progress</h3>
-          <div class="season-v1-stat-grid">
-            <span>Rank <strong>#{{ seasonDashboard.myRank || '—' }}</strong></span>
-            <span>Season points <strong>{{ seasonDashboard.mySeasonPoints }}</strong></span>
-            <span>XP / level <strong>{{ seasonDashboard.careerXp }} / {{ seasonDashboard.careerLevel }}</strong></span>
-            <span>On-time rate <strong>{{ Math.round(Number(seasonDashboard.myOnTimeRate || 0)) }}%</strong></span>
-          </div>
-        </div>
-        <div>
-          <h3>{{ seasonDashboard.canManage ? 'Pending manager review' : 'Open rewards' }}</h3>
-          <div v-if="seasonDashboard.canManage && seasonDashboard.pendingEvents.length" class="season-v1-review-list">
-            <div v-for="event in seasonDashboard.pendingEvents" :key="event.id" class="season-v1-row">
-              <span>{{ event.userName }} · {{ event.points }} pts</span>
-              <span class="season-v1-actions">
-                <button type="button" @click="reviewSeasonEvent(event, true)">Approve</button>
-                <button type="button" class="reject" @click="reviewSeasonEvent(event, false)">Reject</button>
+          <div class="marquee-container" style="flex: 1; margin: 0; padding: 0; overflow: hidden; display: flex; align-items: center; white-space: nowrap;">
+            <div class="marquee-content" style="display: inline-block;">
+              <span style="color: #0369a1; font-size: 13px; font-weight: 700; margin-right: 24px;">Mùa giải đang hoạt động: {{ seasonDashboard.currentSeason.name }}</span>
+              <span style="color: #0284c7; font-size: 12px;">
+                <i class="fa-regular fa-clock" style="margin-right: 4px;"></i> {{ formatDate(seasonDashboard.currentSeason.startAt) }} — {{ seasonDashboard.currentSeason.endAt ? formatDate(seasonDashboard.currentSeason.endAt) : 'Không giới hạn' }}
               </span>
             </div>
           </div>
-          <div v-else-if="seasonDashboard.openRewards.length" class="season-v1-review-list">
-            <div v-for="grant in seasonDashboard.openRewards" :key="grant.id" class="season-v1-row"><span>{{ grant.rewardName }}</span><strong>{{ grant.status }}</strong></div>
-          </div>
-          <div v-else class="empty-list-small">Nothing pending.</div>
         </div>
       </div>
-      <div v-if="seasonDashboard.rewardProgress.length" class="season-v1-progress">
-        <h3>Reward conditions</h3>
-        <div v-for="reward in seasonDashboard.rewardProgress" :key="reward.rewardDefinitionId" class="season-v1-progress-row">
-          <span>{{ reward.name }} · {{ reward.conditionLabel }}</span>
-          <span>{{ reward.currentValue }} / {{ reward.goalValue }}</span>
-          <div class="season-v1-progress-track"><div class="season-v1-progress-fill" :style="{ width: `${reward.progressPercent}%` }"></div></div>
-        </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="primary-btn" type="button" @click="openShopModal = true">
+          <i class="fa-solid fa-shop"></i> Reward Shop
+        </button>
+        <button class="refresh-btn" type="button" :disabled="loading" @click="loadRewards">
+          <i class="fa-solid fa-rotate" :class="{ 'fa-spin': loading }"></i> {{ loading ? t('rewards.refreshing') : t('rewards.refresh') }}
+        </button>
       </div>
-      <div v-if="!seasonDashboard.canManage && seasonDashboard.rewardHistory.length" class="season-v1-history">
-        <h3>My rewards</h3>
-        <div v-for="grant in seasonDashboard.rewardHistory" :key="grant.id" class="season-v1-row">
-          <span>{{ grant.rewardName }} · {{ grant.rewardType }}</span><strong>{{ grant.status }}</strong>
-        </div>
-      </div>
-    </section>
+    </header>
 
-    <section v-if="seasonDashboard.canManage" class="reward-manager-panel panel">
-      <div class="manager-panel-heading">
-        <div><span class="season-v1-eyebrow">Manager controls</span><h2>Reward operations</h2></div>
-        <span class="manager-note">Cash rewards are descriptive only. No wallet or payout is connected.</span>
-      </div>
-      <div class="manager-columns">
-        <div>
-          <h3>Seasons</h3>
-          <div v-if="managerSeasons.length" class="manager-season-list">
-            <div v-for="season in managerSeasons" :key="season.id" class="manager-season-row">
-              <div><strong>{{ season.name }}</strong><small>{{ season.type }} · {{ formatDate(season.startAt) }} — {{ formatDate(season.endAt) }}</small></div>
-              <div class="manager-row-actions">
-                <span class="status-pill">{{ season.status }}</span>
-                <button v-if="season.status === 'Draft'" type="button" @click="activateSeason(season)">Activate</button>
-                <button v-if="season.status === 'Active'" type="button" class="danger" @click="closeSeason(season)">Close</button>
-              </div>
-            </div>
-          </div>
-          <div v-else class="empty-list-small">No seasons yet.</div>
-          <form class="manager-form" @submit.prevent="createSeason">
-            <h4>Create season</h4>
-            <input v-model="seasonForm.name" placeholder="Season name" aria-label="Season name" />
-            <select v-model="seasonForm.type" aria-label="Season type">
-              <option value="Sprint">Sprint</option><option value="Month">Month</option><option value="EntireProject">Entire Project</option><option value="Custom">Custom</option>
-            </select>
-            <input v-model="seasonForm.startAt" type="date" aria-label="Season start" />
-            <input v-if="seasonForm.type === 'Custom'" v-model="seasonForm.endAt" type="date" aria-label="Season end" />
-            <input v-model="seasonForm.timeZone" placeholder="Workspace timezone (optional)" aria-label="Timezone" />
-            <button type="submit" :disabled="managerBusy">Create season</button>
-          </form>
-        </div>
-        <div>
-          <h3>Rewards</h3>
-          <form class="manager-form" @submit.prevent="createReward">
-            <h4>Create reward</h4>
-            <select v-model="rewardForm.seasonId" aria-label="Reward season"><option value="">Choose season</option><option v-for="season in managerSeasons" :key="season.id" :value="season.id">{{ season.name }}</option></select>
-            <input v-model="rewardForm.name" placeholder="Reward name" aria-label="Reward name" />
-            <textarea v-model="rewardForm.description" placeholder="Description" aria-label="Reward description" rows="2"></textarea>
-            <select v-model="rewardForm.rewardType" aria-label="Reward type"><option v-for="type in rewardTypes" :key="type" :value="type">{{ type }}</option></select>
-            <select v-model="rewardForm.condition" aria-label="Reward condition"><option v-for="condition in rewardConditions" :key="condition.key" :value="condition.key">{{ condition.label }}</option></select>
-            <input v-if="rewardForm.condition === 'TopN'" v-model.number="rewardForm.rankTo" type="number" min="1" step="1" placeholder="Top N" aria-label="Top N" />
-            <input v-else v-model.number="rewardForm.threshold" type="number" min="0" step="0.01" placeholder="Threshold" aria-label="Reward threshold" />
-            <label class="manager-checkbox"><input v-model="rewardForm.requireActiveMember" type="checkbox" /> Require active member at settlement</label>
-            <button type="submit" :disabled="managerBusy">Create reward</button>
-          </form>
-          <div class="manager-grants">
-            <h4>Qualifying recipients</h4>
-            <template v-if="managedGrants.length">
-              <div v-for="grant in managedGrants" :key="grant.id" class="manager-grant-row">
-                <span><strong>{{ grant.rewardName }}</strong> · {{ grant.recipientName }}<small>{{ grant.status }}</small></span>
-                <span class="manager-row-actions">
-                  <button v-if="grant.requiresManagerResolution" type="button" @click="resolveGrant(grant, true)">Award tie</button>
-                  <button v-if="grant.requiresManagerResolution" type="button" class="danger" @click="resolveGrant(grant, false)">Decline</button>
-                  <button v-else-if="grant.status === 'PendingFulfillment' || grant.status === 'Earned'" type="button" @click="fulfillGrant(grant)">Mark fulfilled</button>
-                </span>
-              </div>
-            </template>
-            <div v-else class="empty-list-small">Settle a closed season to see recipients.</div>
-          </div>
-        </div>
-      </div>
-    </section>
+
+
 
     <div class="rewards-dashboard-container">
+
+
       <!-- Left Column: Leaderboard Card -->
       <div class="leaderboard-main-area">
+
         <!-- Top 3 section (Outside panel) -->
         <div class="top-three-section">
           <!-- Rank #2 (Silver) -->
@@ -147,6 +47,9 @@
                 <i class="fa-solid fa-crown"></i>
               </div>
               <UserAvatar :user="{ ...top2, fullName: top2.userName, id: top2.userId }" :size="80" :fontSize="24" class="card-avatar" />
+              <div class="user-level-badge" style="position: absolute; top: -5px; right: -10px; background: #0f172a; color: #38bdf8; padding: 2px 6px; border-radius: 8px; font-size: 11px; font-weight: 900; border: 2px solid #38bdf8; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+                Lv.{{ top2.level || 1 }}
+              </div>
               <div class="rank-badge silver-badge">
                 <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
@@ -212,6 +115,9 @@
                 <i class="fa-solid fa-crown"></i>
               </div>
               <UserAvatar :user="{ ...top1, fullName: top1.userName, id: top1.userId }" :size="96" :fontSize="28" class="card-avatar" />
+              <div class="user-level-badge" style="position: absolute; top: 0; right: -12px; background: #0f172a; color: #f59e0b; padding: 3px 8px; border-radius: 8px; font-size: 13px; font-weight: 900; border: 2px solid #f59e0b; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+                Lv.{{ top1.level || 1 }}
+              </div>
               <div class="rank-badge gold-badge">
                 <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
@@ -279,6 +185,9 @@
                 <i class="fa-solid fa-crown"></i>
               </div>
               <UserAvatar :user="{ ...top3, fullName: top3.userName, id: top3.userId }" :size="68" :fontSize="20" class="card-avatar" />
+              <div class="user-level-badge" style="position: absolute; top: -5px; right: -10px; background: #0f172a; color: #f97316; padding: 2px 6px; border-radius: 8px; font-size: 11px; font-weight: 900; border: 2px solid #f97316; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+                Lv.{{ top3.level || 1 }}
+              </div>
               <div class="rank-badge bronze-badge">
                 <svg viewBox="0 0 100 36" class="ribbon-svg" xmlns="http://www.w3.org/2000/svg">
                   <defs>
@@ -342,8 +251,29 @@
         <div class="leaderboard-card panel">
           <!-- Rankings Table -->
           <div class="rankings-table-container">
-            <div v-if="restLeaders.length === 0" class="empty">
-              Không có thành viên xếp hạng tiếp theo.
+            <div v-if="!seasonDashboard.currentSeason" class="empty-spaces-flat" style="flex: 1; background: transparent; box-shadow: none;">
+              <div class="empty-spaces-icon" aria-hidden="true">
+                <i class="fa-solid fa-trophy"></i>
+              </div>
+              <div class="empty-spaces-copy">
+                <h3>Chưa có mùa giải nào</h3>
+                <p>Bắt đầu một mùa giải để xếp hạng thành viên.</p>
+              </div>
+              <button v-if="seasonDashboard.canManage" class="empty-spaces-btn" style="margin-top: 16px;" @click="openSettingsModal = true">
+                Cấu hình ngay
+              </button>
+            </div>
+            <div v-else-if="restLeaders.length === 0" class="empty-spaces-flat" style="flex: 1; background: transparent; box-shadow: none;">
+              <div class="empty-spaces-icon" aria-hidden="true">
+                <i class="fa-solid fa-trophy"></i>
+              </div>
+              <div class="empty-spaces-copy">
+                <h3>Chưa có thành viên xếp hạng</h3>
+                <p>Hãy hoàn thành công việc để tích lũy điểm số.</p>
+              </div>
+              <router-link :to="`/space/${$route.params.spaceId}/tasks`" class="empty-spaces-btn" style="margin-top: 16px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none;">
+                Đi tới Công việc
+              </router-link>
             </div>
             <table v-else class="rankings-table">
               <tbody>
@@ -352,9 +282,14 @@
                     <span class="rank-number">#{{ index + 4 < 10 ? '0' + (index + 4) : index + 4 }}</span>
                   </td>
                   <td class="col-user">
-                    <div class="user-cell">
-                      <UserAvatar :user="{ ...item, fullName: item.userName, id: item.userId }" :size="28" :fontSize="10" />
-                      <span class="user-name">{{ item.userName }}</span>
+                    <div class="user-cell" style="position: relative; display: inline-flex; align-items: center;">
+                      <div style="position: relative; display: inline-block;">
+                        <UserAvatar :user="{ ...item, fullName: item.userName, id: item.userId }" :size="28" :fontSize="10" />
+                        <div class="user-level-badge" style="position: absolute; top: -6px; right: -6px; background: #1e293b; color: white; padding: 1px 4px; border-radius: 4px; font-size: 8px; font-weight: 800; border: 1px solid #94a3b8; z-index: 10;">
+                          Lv.{{ item.level || 1 }}
+                        </div>
+                      </div>
+                      <span class="user-name" style="margin-left: 12px;">{{ item.userName }}</span>
                       <span v-if="item.userId === wallet.userId" class="me-tag">Bạn</span>
                     </div>
                   </td>
@@ -375,68 +310,51 @@
       <div class="profile-details-sidebar">
         <!-- If selected user is the logged-in user -->
         <template v-if="selectedUser && selectedUser.isMe">
-          <!-- YOUR PROGRESS Card -->
-          <div class="panel progress-card">
-            <div class="card-header">
-              <h3>HẠNG CỦA BẠN</h3>
-              <span class="sub-label">Sprint này</span>
-            </div>
-            
-            <div class="progress-hero-vertical">
-              <!-- RANK -->
-              <div class="hero-primary-rank">
-                <span class="rank-label">HẠNG SPRINT</span>
-                <div class="rank-val" :class="{ 'not-ranked': myRankIndex === -1 }">
-                  {{ myRankIndex !== -1 ? myRankDisplay : '—' }}
-                </div>
-                <div class="rank-status" :class="{ 'not-ranked': myRankIndex === -1 }">
-                  {{ myRankIndex !== -1 ? 'Đang xếp hạng' : 'Chưa xếp hạng' }}
-                </div>
-                <div class="rank-desc">
-                  {{ wallet.totalPoints }} pts trong sprint này
+          <div class="gamification-sidebar" style="display: flex; flex-direction: column; gap: 20px;">
+            <!-- Premium User Rank Card -->
+            <div class="premium-card cyber-rank-card" style="padding: 20px;">
+              <div style="margin-bottom: 20px; display: flex; align-items: baseline; gap: 12px;">
+                <div style="font-size: 24px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">{{ myRankIndex >= 0 ? '#' + (myRankIndex + 1) : 'Chưa xếp hạng' }}</div>
+                <div style="font-size: 15px; font-weight: 700; color: #10b981;" :title="'Ví của bạn: ' + (wallet.totalPoints || 0) + ' pts'">
+                  {{ seasonDashboard.currentSeason ? seasonDashboard.mySeasonPoints : wallet.totalPoints || 0 }} pts
                 </div>
               </div>
               
-              <div class="divider-line"></div>
+              <div style="height: 1px; background: #e2e8f0; margin: 0 -20px 20px; border-bottom: 1px dashed #cbd5e1;"></div>
               
-              <!-- LEVEL -->
-              <div class="hero-level-section">
-                <span class="level-label">CẤP ĐỘ</span>
-                <div class="level-val">{{ career.title || 'Contributor' }}</div>
-              </div>
-              
-              <!-- LEVEL & PROGRESS -->
-              <div class="progress-bar-section">
-                <div class="bar-info">
-                  <span class="bar-level-remaining">{{ pointsToNext }} pts đến cấp tiếp theo</span>
-                  <span class="bar-percentage">{{ career.progressPercent }}%</span>
+              <div>
+                <h4 style="margin: 0 0 8px; font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px;">Cấp độ hiện tại</h4>
+                <div style="font-size: 18px; font-weight: 800; color: #0f172a; display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                  <span><i class="fa-solid fa-meteor" style="color: #f59e0b; margin-right: 6px;"></i>{{ career.title || 'Contributor' }}</span>
+                  <span style="font-size: 12px; color: #64748b; background: #f1f5f9; padding: 2px 8px; border-radius: 12px; font-weight: 800;">Lv. {{ career.level || 1 }}</span>
                 </div>
-                <div class="bar-track">
-                  <div class="bar-fill" :style="{ width: `${career.progressPercent}%` }"></div>
+                <!-- Premium XP Bar with text inside -->
+                <div style="height: 24px; background: #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1); position: relative; margin-top: 10px;">
+                  <div :style="{ width: `${career.progressPercent || 0}%` }" style="height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899); border-radius: 12px; transition: width 0.5s ease; box-shadow: 0 0 10px rgba(139,92,246,0.5);"></div>
+                  <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #0f172a; text-shadow: 0 0 4px rgba(255,255,255,0.8); pointer-events: none;">
+                    {{ wallet.totalPoints || 0 }} / {{ (wallet.totalPoints || 0) + pointsToNext }}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- SPRINT SUMMARY Card -->
-          <div class="panel summary-card">
-            <div class="card-header">
-              <h3>TÓM TẮT SPRINT</h3>
-              <span class="sub-label">Chu kỳ này</span>
-            </div>
-            
-            <div class="summary-grid">
-              <div class="summary-item">
-                <span class="label">ĐÃ HOÀN THÀNH</span>
-                <strong class="value">{{ summary.completedTasks }}</strong>
-              </div>
-              <div class="summary-item">
-                <span class="label">THƯỞNG TIẾN ĐỘ</span>
-                <strong class="value">{{ summary.earlyBonuses }}</strong>
-              </div>
-              <div class="summary-item">
-                <span class="label">TỔNG ĐIỂM NHẬN</span>
-                <strong class="value">{{ summary.basePoints + summary.bonusPoints }}</strong>
+            <!-- Premium Sprint Summary -->
+            <div class="premium-card cyber-summary-card" style="padding: 20px;">
+              <h4 style="margin: 0 0 16px; font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px;">Tóm tắt Sprint</h4>
+              
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                <div style="text-align: center; padding: 12px; background: #f8fafc; border-radius: 10px; border: 1px solid #f1f5f9;">
+                  <div style="font-size: 10px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Hoàn thành</div>
+                  <div style="font-size: 20px; font-weight: 900; color: #10b981;">{{ seasonDashboard.currentSeason ? (leaderboard.find(u => String(u.userId) === String(wallet.userId))?.completedTasks || 0) : (summary.completedTasks || 0) }}</div>
+                </div>
+                <div style="text-align: center; padding: 12px; background: #f8fafc; border-radius: 10px; border: 1px solid #f1f5f9;">
+                  <div style="font-size: 10px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Thưởng mốc</div>
+                  <div style="font-size: 20px; font-weight: 900; color: #8b5cf6;">{{ seasonDashboard.currentSeason ? 0 : (summary.earlyBonuses || 0) }}</div>
+                </div>
+                <div style="text-align: center; padding: 12px; background: #f8fafc; border-radius: 10px; border: 1px solid #f1f5f9;">
+                  <div style="font-size: 10px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Tổng điểm</div>
+                  <div style="font-size: 20px; font-weight: 900; color: #f59e0b;">{{ seasonDashboard.currentSeason ? (seasonDashboard.mySeasonPoints || 0) : (summary.basePoints + summary.bonusPoints || 0) }}</div>
+                </div>
               </div>
             </div>
           </div>
@@ -444,25 +362,12 @@
           <!-- YOUR ACTIVITIES Card -->
           <div class="panel activities-card">
             <div class="custom-tabs-header">
-              <button class="tab-btn" :class="{ active: activeTab === 'tasks' }" @click="activeTab = 'tasks'">Công việc</button>
               <button class="tab-btn" :class="{ active: activeTab === 'history' }" @click="activeTab = 'history'">Lịch sử điểm</button>
+              <button class="tab-btn" :class="{ active: activeTab === 'inventory' }" @click="activeTab = 'inventory'">Túi đồ</button>
             </div>
             
             <div class="custom-tabs-content">
-              <div v-if="activeTab === 'tasks'" class="tab-pane">
-                <div v-if="spotlightTasks.length === 0" class="empty-list-small">Chưa có công việc tiêu biểu.</div>
-                <div class="mini-task-list" v-else>
-                  <div v-for="task in spotlightTasks" :key="task.id" class="mini-task-item">
-                    <div class="task-info">
-                      <strong>{{ task.sequenceId }}</strong>
-                      <div class="task-title">{{ task.title }}</div>
-                    </div>
-                    <span class="pts-badge">+{{ task.fairPoints }}đ</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div v-else-if="activeTab === 'history'" class="tab-pane">
+              <div v-if="activeTab === 'history'" class="tab-pane">
                 <div v-if="transactions.length === 0" class="empty-list-small">Chưa có giao dịch điểm nào.</div>
                 <div class="mini-tx-list" v-else>
                   <div v-for="tx in transactions" :key="tx.id" class="mini-tx-item">
@@ -472,6 +377,21 @@
                     </div>
                     <strong class="tx-pts" :class="{ negative: tx.amount < 0 }">
                       {{ tx.amount > 0 ? '+' : '' }}{{ tx.amount }}đ
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else-if="activeTab === 'inventory'" class="tab-pane">
+                <div v-if="myGrants.length === 0" class="empty-list-small">Chưa có phần thưởng nào.</div>
+                <div class="mini-tx-list" v-else>
+                  <div v-for="grant in myGrants" :key="grant.id" class="mini-tx-item">
+                    <div class="tx-info">
+                      <div class="tx-title">{{ grant.rewardName }}</div>
+                      <time>{{ formatDate(grant.earnedAt) }}</time>
+                    </div>
+                    <strong class="tx-pts" style="color: #f59e0b;">
+                      {{ grant.quantity }}x {{ grant.rewardType }}
                     </strong>
                   </div>
                 </div>
@@ -544,24 +464,768 @@
         </template>
       </div>
     </div>
+
+    <!-- Modals -->
+    <el-dialog v-model="openShopModal" width="85%" top="5vh" class="reward-shop-modal">
+      <template #header>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-right: 24px;">
+          <span style="font-size: 18px; font-weight: 700; color: #0f172a;">Reward Shop</span>
+          <div style="font-size: 14px; font-weight: 700; background: #fef08a; padding: 6px 16px; border-radius: 20px; color: #a16207; display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-coins"></i> {{ shopPoints }} pts
+          </div>
+        </div>
+      </template>
+
+      <el-tabs v-model="shopActiveTab" class="reward-settings-tabs" style="padding: 0 24px 24px;">
+        <el-tab-pane label="Cửa hàng" name="store">
+          <div class="shop-grid">
+            <div v-if="shopItems.length === 0" class="empty-spaces-flat" style="flex: 1; background: transparent; box-shadow: none; grid-column: 1 / -1; min-height: 295px; margin: auto; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+              <div class="empty-spaces-icon" aria-hidden="true">
+                <i class="fa-solid fa-gift" style="color: var(--color-icon); margin-bottom: 12px;"></i>
+              </div>
+              <div class="empty-spaces-copy" style="text-align: center;">
+                <h3 style="font-size: 16px; font-weight: 700; margin: 0 0 8px;">Chưa có phần thưởng</h3>
+                <p style="font-size: 13px; color: var(--color-text-muted); margin: 0;">Shop hiện tại chưa có món quà nào để đổi.</p>
+              </div>
+            </div>
+            <div v-for="item in shopItems" :key="item.id" class="premium-card cyber-reward-card" style="display: flex; flex-direction: column; height: 295px; padding: 0; box-sizing: border-box; overflow: hidden; position: relative; border-radius: 12px; background: white; border: 1px solid #cbd5e1;">
+              <div class="cyber-image-area" style="height: 140px; border-radius: 8px 8px 0 0; background: #f8fafc; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; border-bottom: 1px solid #e2e8f0; flex-shrink: 0;">
+                <img v-if="getRewardImage(item.id)" :src="getRewardImage(item.id)" style="width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0;" />
+                <div v-else style="display: flex; flex-direction: column; align-items: center; justify-content: center; color: #cbd5e1; height: 100%; width: 100%;">
+                  <i class="fa-solid fa-image" style="font-size: 32px; margin-bottom: 8px;"></i>
+                  <span style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Chưa có ảnh</span>
+                </div>
+              </div>
+              <div style="padding: 12px; display: flex; flex-direction: column; flex: 1;">
+                <strong style="font-size: 15px; color: #0f172a; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; letter-spacing: -0.3px;">{{ item.name }}</strong>
+                <p v-if="getRewardConfig(item).text" style="margin: 6px 0 12px; color: #475569; font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; flex: 1;">{{ getRewardConfig(item).text }}</p>
+                <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: center;">
+                  <button class="reward-redeem-btn" :disabled="shopPoints < (getRewardConfig(item).pointCost ?? item.pointCost) || shopBusy" @click="redeemReward(item)">
+                    <i class="fa-solid fa-spinner fa-spin" v-if="shopBusy"></i>
+                    <template v-else>
+                      <i class="fa-solid fa-cart-shopping" style="font-size: 14px;"></i>
+                      <span>{{ getRewardConfig(item).pointCost ?? item.pointCost }} pts</span>
+                    </template>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="Giỏ hàng của tôi" name="cart">
+          <div v-if="myGrants.length === 0" class="empty-list-small" style="text-align: center; padding: 40px; color: #64748b;">Chưa có phần thưởng nào.</div>
+          <div class="shop-grid" v-else>
+            <div v-for="grant in myGrants" :key="grant.id" class="premium-card cyber-reward-card" style="display: flex; flex-direction: column; height: 295px; padding: 0; box-sizing: border-box; overflow: hidden; position: relative; border-radius: 12px; background: white; border: 1px solid #cbd5e1;">
+              <div class="cyber-image-area" style="height: 140px; border-radius: 8px 8px 0 0; background: #f8fafc; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; border-bottom: 1px solid #e2e8f0; flex-shrink: 0;">
+                <img v-if="getRewardImage(grant.rewardDefinitionId)" :src="getRewardImage(grant.rewardDefinitionId)" style="width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0;" />
+                <div v-else style="display: flex; flex-direction: column; align-items: center; justify-content: center; color: #cbd5e1; height: 100%; width: 100%;">
+                  <i class="fa-solid fa-image" style="font-size: 32px; margin-bottom: 8px;"></i>
+                  <span style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Chưa có ảnh</span>
+                </div>
+                <div style="position: absolute; top: 8px; right: 8px; background: #ef4444; color: white; padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: 900; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 2px solid white; z-index: 10;">
+                  x{{ grant.quantity }}
+                </div>
+              </div>
+              <div style="padding: 12px; display: flex; flex-direction: column; flex: 1;">
+                <strong style="font-size: 15px; color: #0f172a; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; letter-spacing: -0.3px;">{{ grant.rewardName }}</strong>
+                <p style="margin: 6px 0 12px; color: #475569; font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; flex: 1;">
+                  {{ getRewardConfig(getRewardDefById(grant.rewardDefinitionId))?.text || '' }}
+                </p>
+                <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between;">
+                  <span style="font-size: 11px; font-weight: 600; color: #94a3b8;">{{ formatDate(grant.earnedAt) }}</span>
+                  <div style="background: #fef08a; padding: 4px 10px; border-radius: 20px; color: #a16207; font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                    <i class="fa-solid fa-coins"></i> 
+                    <span>{{ getRewardConfig(getRewardDefById(grant.rewardDefinitionId))?.pointCost ?? 0 }} pts</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </el-dialog>
+
+    <el-drawer v-model="openSettingsModal" :title="t('Gamification.RewardConfiguration', 'Cấu hình phần thưởng')" size="800px" custom-class="reward-settings-drawer" destroy-on-close direction="rtl">
+      <el-tabs v-model="settingsActiveTab" class="reward-settings-tabs">
+        <el-tab-pane :label="t('Gamification.CyclesSeasons', 'Mùa giải')" name="seasons">
+          <div class="manager-columns" style="display: block; padding: 4px 0;">
+            <div style="margin-bottom: 24px;">
+              <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--reward-text);">Danh sách mùa giải</h3>
+              <div class="manager-season-list" style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- Placeholder / Form Add Season -->
+                <div v-if="!isCreatingSeason" @click="isCreatingSeason = true" class="premium-form-wrapper" style="margin-top: 12px; margin-bottom: 12px; display: flex; flex-direction: column; cursor: pointer;">
+                  <div style="margin-left: 24px; margin-bottom: -2px; position: relative; z-index: 2; width: fit-content; background: #e2e8f0; color: #94a3b8; padding: 6px 36px 8px; font-size: 12px; font-weight: 800; display: flex; align-items: center; gap: 8px; clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 100%, 0 100%); letter-spacing: 0.5px; text-transform: uppercase;">
+                    <i class="fa-solid fa-store" style="font-size: 14px;"></i> Shop mùa giải
+                  </div>
+                  <div class="premium-form-body" style="padding: 20px 16px 16px; border: 2px dashed #cbd5e1; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: #f8fafc; position: relative; z-index: 1; min-height: 72px; transition: all 0.2s;">
+                    <span style="color: #64748b; font-weight: 600; font-size: 14px;"><i class="fa-solid fa-plus" style="margin-right: 8px;"></i> Tạo mùa giải mới</span>
+                  </div>
+                </div>
+                <div v-else class="premium-form-wrapper" style="margin-top: 12px; margin-bottom: 12px; display: flex; flex-direction: column;">
+                  <el-popover placement="bottom-start" :width="540" trigger="click" popper-class="shop-popover">
+                    <template #reference>
+                      <div style="margin-left: 24px; margin-bottom: -2px; position: relative; z-index: 2; width: fit-content; background: #16a34a; color: white; padding: 6px 36px 8px; font-size: 12px; font-weight: 800; display: flex; align-items: center; gap: 8px; clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 100%, 0 100%); letter-spacing: 0.5px; text-transform: uppercase; cursor: pointer;">
+                        <i class="fa-solid fa-store" style="color: #4ade80; font-size: 14px; text-shadow: 0 0 8px rgba(74, 222, 128, 0.5);"></i> Shop mùa giải
+                      </div>
+                    </template>
+                    <div class="shop-popover-content" style="padding: 4px;">
+                      <el-input v-model="shopSearch" placeholder="Tìm kiếm phần thưởng..." clearable style="width: 100%; margin-bottom: 16px;">
+                        <template #prefix>
+                          <i class="fa-solid fa-magnifying-glass"></i>
+                        </template>
+                      </el-input>
+                      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-height: 310px; overflow-y: auto; padding-right: 4px;">
+                        <div v-for="reward in filteredShopRewards" :key="reward.id" class="shop-reward-card" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; align-items: center; padding-bottom: 8px; position: relative;" @click="toggleRewardInSeason('new', reward.id)">
+                          <div style="width: 100%; height: 110px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; position: relative;">
+                            <img v-if="reward.imageUrl" :src="reward.imageUrl" style="width: 100%; height: 100%; object-fit: cover;" />
+                            <i v-else class="fa-solid fa-gift" style="font-size: 24px; color: #94a3b8;"></i>
+                            <div v-if="isRewardInSeason('new', reward.id)" style="position: absolute; inset: 0; background: rgba(34, 197, 94, 0.2); border: 2px solid #22c55e;">
+                              <i class="fa-solid fa-circle-check" style="position: absolute; top: 4px; right: 4px; color: #22c55e; font-size: 16px; background: white; border-radius: 50%;"></i>
+                            </div>
+                          </div>
+                          <span style="font-size: 11px; font-weight: 600; text-align: center; margin-top: 8px; padding: 0 4px; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: #0f172a;">{{ reward.name }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </el-popover>
+                  <div class="premium-form-body" style="padding: 20px 16px 16px; border: 2px solid #16a34a; border-radius: 12px; display: flex; align-items: center; background: #ffffff; position: relative; z-index: 1; box-shadow: 0 8px 20px -4px rgba(22, 163, 74, 0.15);">
+                    <form @submit.prevent="createSeason" style="display: flex; gap: 12px; width: 100%; align-items: center;">
+                      <div style="flex: 2; position: relative;">
+                        <i class="fa-solid fa-trophy" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--color-text-muted); font-size: 13px;"></i>
+                        <input v-model="seasonForm.name" placeholder="Tên mùa giải..." required class="reward-nexus-input reward-nexus-search" />
+                      </div>
+                      <input v-model="seasonForm.startAt" type="date" title="Ngày bắt đầu" class="reward-nexus-input" style="flex: 1;" />
+                      <input v-model="seasonForm.endAt" type="date" title="Ngày kết thúc" class="reward-nexus-input" style="flex: 1;" />
+                      <div style="display: flex; gap: 8px;">
+                        <button type="button" @click="isCreatingSeason = false" class="secondary-btn" style="height: 32px; padding: 0 14px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; color: #475569; font-weight: 600; font-size: 13px; box-sizing: border-box;">Hủy</button>
+                        <button type="submit" :disabled="managerBusy" class="primary-btn" style="height: 32px; padding: 0 16px; border-radius: 6px; font-weight: 600; font-size: 13px; box-shadow: 0 2px 4px rgba(37,99,235,0.2); box-sizing: border-box;">Lưu</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+
+                <!-- Existing Seasons -->
+                <div v-for="season in managerSeasons" :key="season.id" class="premium-form-wrapper" style="margin-top: 12px; margin-bottom: 12px; display: flex; flex-direction: column;">
+                  <el-popover placement="bottom-start" :width="540" trigger="click" popper-class="shop-popover">
+                    <template #reference>
+                      <div style="margin-left: 24px; margin-bottom: -2px; position: relative; z-index: 2; width: fit-content; background: #16a34a; color: white; padding: 6px 36px 8px; font-size: 12px; font-weight: 800; display: flex; align-items: center; gap: 8px; clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 100%, 0 100%); letter-spacing: 0.5px; text-transform: uppercase; cursor: pointer;">
+                        <i class="fa-solid fa-store" style="color: #4ade80; font-size: 14px; text-shadow: 0 0 8px rgba(74, 222, 128, 0.5);"></i> Shop mùa giải
+                      </div>
+                    </template>
+                    <div class="shop-popover-content" style="padding: 4px;">
+                      <el-input v-model="shopSearch" placeholder="Tìm kiếm phần thưởng..." clearable style="width: 100%; margin-bottom: 16px;">
+                        <template #prefix>
+                          <i class="fa-solid fa-magnifying-glass"></i>
+                        </template>
+                      </el-input>
+                      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-height: 310px; overflow-y: auto; padding-right: 4px;">
+                        <div v-for="reward in filteredShopRewards" :key="reward.id" class="shop-reward-card" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; align-items: center; padding-bottom: 8px; position: relative;" @click="toggleRewardInSeason(season.id, reward.id)">
+                          <div style="width: 100%; height: 110px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; position: relative; border-radius: 6px; overflow: hidden;">
+                            <img v-if="getRewardImage(reward.id)" :src="getRewardImage(reward.id)" style="width: 100%; height: 100%; object-fit: cover;" />
+                            <div v-else style="display: flex; flex-direction: column; align-items: center; justify-content: center; color: #cbd5e1; height: 100%; width: 100%;">
+                              <i class="fa-solid fa-image" style="font-size: 20px;"></i>
+                            </div>
+                            <div v-if="isRewardInSeason(season.id, reward.id)" style="position: absolute; inset: 0; background: rgba(34, 197, 94, 0.2); border: 2px solid #22c55e;">
+                              <i class="fa-solid fa-circle-check" style="position: absolute; top: 4px; right: 4px; color: #22c55e; font-size: 16px; background: white; border-radius: 50%;"></i>
+                            </div>
+                          </div>
+                          <span style="font-size: 11px; font-weight: 600; text-align: center; margin-top: 8px; padding: 0 4px; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: #0f172a;">{{ reward.name }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </el-popover>
+                  <div class="premium-card manager-season-row" style="display: flex; justify-content: space-between; align-items: center; padding: 16px; position: relative; z-index: 1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 2px solid #16a34a; border-radius: 12px; background: #ffffff;">
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                      <div class="season-icon-wrapper" style="width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #f0fdf4, #dcfce7); color: #16a34a; display: flex; align-items: center; justify-content: center; font-size: 20px;">
+                        <i class="fa-solid fa-flag-checkered"></i>
+                      </div>
+                      <div>
+                        <strong style="font-size: 15px; color: #0f172a; font-weight: 600;">{{ season.name }}</strong>
+                        <small style="display: block; color: #64748b; font-size: 12.5px; margin-top: 4px; font-weight: 500;">
+                          <i class="fa-regular fa-calendar" style="margin-right: 4px;"></i>
+                          {{ formatDate(season.startAt) }} {{ season.endAt ? '— ' + formatDate(season.endAt) : '— Không giới hạn' }}
+                        </small>
+                      </div>
+                    </div>
+                    <div class="manager-row-actions" style="display: flex; gap: 10px; align-items: center;">
+                      <button v-if="season.status !== 'Active' && season.status !== 'Paused'" type="button" class="empty-spaces-btn" @click="activateSeason(season)">Bắt đầu</button>
+                      <button v-if="season.status === 'Paused'" type="button" class="empty-spaces-btn" @click="activateSeason(season)">Tiếp tục</button>
+                      <button v-if="season.status === 'Active'" type="button" class="empty-spaces-btn" @click="pauseSeason(season)">Tạm dừng</button>
+                      <el-popconfirm v-if="season.status === 'Active' || season.status === 'Paused'" title="Chắc chắn kết thúc mùa giải?" confirm-button-text="Đồng ý" cancel-button-text="Hủy" @confirm="closeSeason(season)">
+                        <template #reference>
+                          <button type="button" class="empty-spaces-btn" style="color: #ef4444; border-color: #ef4444;">Kết thúc</button>
+                        </template>
+                      </el-popconfirm>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane :label="t('Gamification.RewardCatalog', 'Danh mục phần thưởng')" name="catalog">
+          <div class="manager-columns" style="display: block; padding: 4px 0;">
+            <div style="margin-bottom: 24px;">
+              <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--reward-text);">Danh mục phần thưởng đã tạo</h3>
+              <div class="manager-grants" style="margin-bottom: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start;">
+                <!-- Placeholder Add Reward -->
+                <div v-if="!isCreatingReward" @click="isCreatingReward = true" class="premium-placeholder cyber-reward-card" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 295px; padding: 10px; box-sizing: border-box; border: 2px dashed #cbd5e1; border-radius: 12px; background: transparent; cursor: pointer;">
+                  <div class="cyber-icon-wrapper" style="background: transparent; color: #94a3b8; font-size: 28px; margin-bottom: 12px;">
+                    <i class="fa-solid fa-plus-circle"></i>
+                  </div>
+                  <span style="font-size: 14px; font-weight: 600; color: #94a3b8;">Thêm phần thưởng</span>
+                  <input type="file" ref="quickImageInputRef" @change="handleQuickImageSelect" style="display: none" accept="image/*" />
+                </div>
+
+                <!-- Form Add Reward (Compact, Fits 1 cell) -->
+                <div v-else class="premium-form cyber-reward-card" style="display: flex; flex-direction: column; overflow: hidden; height: 295px; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 12px; background: white;">
+                  <form @submit.prevent="createReward" style="display: flex; flex-direction: column; height: 100%;">
+                    <!-- Select Image Area -->
+                    <input type="file" ref="rewardImageInput" @change="handleRewardImageSelect" style="display: none" accept="image/*" />
+                    <div class="cyber-image-area" @click="!rewardForm.imagePreview && triggerImageSelect()" @mousedown="startDrag" @mousemove="onDrag" @mouseup="stopDrag" @mouseleave="stopDrag" style="height: 140px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; flex-shrink: 0; user-select: none;">
+                      <img v-if="rewardForm.imagePreview" ref="imageRef" :src="rewardForm.imagePreview" :style="{ transform: `translateY(${cropState.offsetY}px)`, cursor: cropState.isDragging ? 'grabbing' : 'grab' }" style="width: 100%; height: auto; position: absolute; top: 0; left: 0;" draggable="false" />
+                      
+                      <div v-if="!rewardForm.imagePreview" style="display: flex; flex-direction: column; align-items: center; color: #94a3b8; z-index: 1; cursor: pointer;">
+                        <i class="fa-solid fa-gift" style="font-size: 24px; margin-bottom: 4px;"></i>
+                        <span style="font-size: 11px; font-weight: 600;">Tải ảnh bìa</span>
+                      </div>
+                      <div v-else style="position: absolute; top: 8px; left: 8px; z-index: 10;" @click.stop="triggerImageSelect" title="Đổi ảnh">
+                        <div style="width: 28px; height: 28px; border-radius: 6px; background: rgba(15, 23, 42, 0.7); display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.2); color: white;">
+                          <i class="fa-solid fa-image" style="font-size: 13px;"></i>
+                        </div>
+                      </div>
+
+                      <!-- Settings Gear (Create Mode) -->
+                      <div style="position: absolute; top: 8px; right: 8px; z-index: 10;" @click.stop>
+                        <el-popover placement="left-start" :width="280" trigger="click">
+                          <template #reference>
+                            <div style="width: 28px; height: 28px; border-radius: 6px; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.2); color: white; transition: all 0.2s;">
+                              <i class="fa-solid fa-gear" style="font-size: 13px;"></i>
+                            </div>
+                          </template>
+                          <div style="padding: 4px;">
+                            <h4 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">Cài đặt phần thưởng</h4>
+                            <div style="display: flex; flex-direction: column;">
+                              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
+                                <input type="checkbox" v-model="rewardForm.usePoints" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-coins" style="color: #eab308; width: 16px;"></i> Đổi bằng điểm
+                              </label>
+                              <input v-if="rewardForm.usePoints" v-model="rewardForm.pointCost" type="number" placeholder="Số điểm..." class="reward-nexus-input" style="width: calc(100% - 20px); height: 28px !important; margin-bottom: 12px; margin-left: 20px;" />
+                              
+                              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
+                                <input type="checkbox" v-model="rewardForm.useLevel" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-arrow-up-right-dots" style="color: #3b82f6; width: 16px;"></i> Đạt mốc Cấp độ
+                              </label>
+                              <input v-if="rewardForm.useLevel" v-model="rewardForm.levelRequired" type="number" placeholder="Cấp độ tối thiểu..." class="reward-nexus-input" style="width: calc(100% - 20px); height: 28px !important; margin-bottom: 12px; margin-left: 20px;" />
+                              
+                              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
+                                <input type="checkbox" v-model="rewardForm.useTop" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-crown" style="color: #f59e0b; width: 16px;"></i> Đạt Top xếp hạng
+                              </label>
+                              <input v-if="rewardForm.useTop" v-model="rewardForm.topRequired" type="number" placeholder="Top N (vd: 3)..." class="reward-nexus-input" style="width: calc(100% - 20px); height: 28px !important; margin-left: 20px; margin-bottom: 12px;" />
+                              
+                              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
+                                <input type="checkbox" v-model="rewardForm.deductLeaderboard" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-chart-line" style="color: #ef4444; width: 16px;"></i> Trừ điểm Bảng xếp hạng
+                              </label>
+                            </div>
+                          </div>
+                        </el-popover>
+                      </div>
+
+                      <div class="cyber-overlay-hover"></div>
+                    </div>
+                    
+                    <div style="padding: 12px; display: flex; flex-direction: column; flex: 1; box-sizing: border-box;">
+                      <input v-model="rewardForm.name" placeholder="Tên quà (vd: Discord Nitro)" required class="reward-nexus-input" style="margin-bottom: 6px; font-weight: 600;" />
+                      <textarea v-model="rewardForm.description" placeholder="Mô tả..." rows="1" class="reward-nexus-input" style="margin-bottom: 8px; flex: 1;"></textarea>
+                      
+                      <div style="display: flex; justify-content: space-between; gap: 8px; margin-top: auto;">
+                        <button type="button" @click="isCreatingReward = false" class="secondary-btn" style="flex: 1; padding: 4px 0; background: transparent; color: #ef4444; border: 1px solid #ef4444; border-radius: 6px; font-weight: 600; font-size: 11px; cursor: pointer;">Hủy</button>
+                        <button type="submit" :disabled="managerBusy" class="secondary-btn" style="flex: 1; padding: 4px 0; background: transparent; color: #3b82f6; border: 1px solid #3b82f6; border-radius: 6px; font-weight: 600; font-size: 11px; cursor: pointer;">Lưu</button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+
+                <!-- Existing Rewards -->
+                <div v-for="reward in seasonDashboard.availableRewards" :key="reward.id">
+                  
+                  <!-- EDIT MODE -->
+                  <div v-if="editingRewardId === reward.id" class="premium-form cyber-reward-card" style="display: flex; flex-direction: column; overflow: hidden; height: 295px; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 12px; background: white;">
+                    <form @submit.prevent="saveEditReward(reward)" style="display: flex; flex-direction: column; height: 100%;">
+                      <div class="cyber-image-area" @click="triggerImageUpdate(reward)" style="height: 140px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; flex-shrink: 0; cursor: pointer;">
+                        <img v-if="getRewardImage(reward.id)" :src="getRewardImage(reward.id)" style="width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0;" />
+                        <div v-else style="display: flex; flex-direction: column; align-items: center; color: #cbd5e1; z-index: 1;">
+                          <i class="fa-solid fa-image" style="font-size: 32px; margin-bottom: 8px;"></i>
+                          <span style="font-size: 11px; font-weight: 600; text-transform: uppercase;">Đổi ảnh</span>
+                        </div>
+                      </div>
+                      <div style="padding: 12px; display: flex; flex-direction: column; flex: 1; box-sizing: border-box;">
+                        <input v-model="editRewardForm.name" placeholder="Tên quà (vd: Discord Nitro)" required class="reward-nexus-input" style="margin-bottom: 6px; font-weight: 600;" />
+                        <textarea v-model="editRewardForm.description" placeholder="Mô tả..." rows="1" class="reward-nexus-input" style="margin-bottom: 8px; flex: 1;"></textarea>
+                        <input v-model.number="editRewardForm.pointCost" type="number" min="0" step="1" placeholder="Giá đổi bằng điểm" class="reward-nexus-input" style="margin-bottom: 8px;" />
+                        <div style="display: flex; justify-content: space-between; gap: 8px; margin-top: auto;">
+                          <button type="button" @click="cancelEditReward" class="secondary-btn" style="flex: 1; padding: 4px 0; background: transparent; color: #ef4444; border: 1px solid #ef4444; border-radius: 6px; font-weight: 600; font-size: 11px; cursor: pointer;">Hủy</button>
+                          <button type="submit" class="secondary-btn" style="flex: 1; padding: 4px 0; background: transparent; color: #3b82f6; border: 1px solid #3b82f6; border-radius: 6px; font-weight: 600; font-size: 11px; cursor: pointer;">Lưu</button>
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+
+                  <!-- DISPLAY MODE -->
+                  <div v-else class="premium-card cyber-reward-card" style="display: flex; flex-direction: column; height: 295px; padding: 0; box-sizing: border-box; overflow: hidden; position: relative; border-radius: 12px; border: 1px solid #cbd5e1;">
+                    <!-- Top Image Area -->
+                    <div class="cyber-image-area" @click="triggerImageUpdate(reward)" style="height: 140px; border-radius: 8px 8px 0 0; background: #f8fafc; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; cursor: pointer;">
+                      <img v-if="getRewardImage(reward.id)" :src="getRewardImage(reward.id)" style="width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0;" />
+                      <div v-else style="display: flex; flex-direction: column; align-items: center; justify-content: center; color: #cbd5e1; height: 100%; width: 100%;">
+                        <i class="fa-solid fa-image" style="font-size: 32px; margin-bottom: 8px;"></i>
+                        <span style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Chưa có ảnh</span>
+                      </div>
+
+                      <!-- Settings Gear -->
+                      <div style="position: absolute; top: 8px; right: 8px; z-index: 10;" @click.stop>
+                        <el-popover placement="left-start" :width="280" trigger="click">
+                          <template #reference>
+                            <div style="width: 28px; height: 28px; border-radius: 6px; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.2); color: white; transition: all 0.2s;">
+                              <i class="fa-solid fa-gear" style="font-size: 13px;"></i>
+                            </div>
+                          </template>
+                          <div style="padding: 4px;">
+                            <h4 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">Cài đặt phần thưởng</h4>
+                            <div style="display: flex; flex-direction: column;">
+                              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
+                                <input type="checkbox" v-model="getRewardConfig(reward).usePoints" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-coins" style="color: #eab308; width: 16px;"></i> Đổi bằng điểm
+                              </label>
+                              <input v-if="getRewardConfig(reward).usePoints" v-model="getRewardConfig(reward).pointCost" type="number" placeholder="Số điểm..." class="reward-nexus-input" style="width: calc(100% - 20px); height: 28px !important; margin-bottom: 12px; margin-left: 20px;" />
+                              
+                              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
+                                <input type="checkbox" v-model="getRewardConfig(reward).useLevel" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-arrow-up-right-dots" style="color: #3b82f6; width: 16px;"></i> Đạt mốc Cấp độ
+                              </label>
+                              <input v-if="getRewardConfig(reward).useLevel" v-model="getRewardConfig(reward).levelRequired" type="number" placeholder="Cấp độ tối thiểu..." class="reward-nexus-input" style="width: calc(100% - 20px); height: 28px !important; margin-bottom: 12px; margin-left: 20px;" />
+                              
+                              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
+                                <input type="checkbox" v-model="getRewardConfig(reward).useTop" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-crown" style="color: #f59e0b; width: 16px;"></i> Đạt Top xếp hạng
+                              </label>
+                              <input v-if="getRewardConfig(reward).useTop" v-model="getRewardConfig(reward).topRequired" type="number" placeholder="Top N (vd: 3)..." class="reward-nexus-input" style="width: calc(100% - 20px); height: 28px !important; margin-left: 20px; margin-bottom: 12px;" />
+                              
+                              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; cursor: pointer;">
+                                <input type="checkbox" v-model="getRewardConfig(reward).deductLeaderboard" style="accent-color: var(--color-accent);" /> <i class="fa-solid fa-chart-line" style="color: #ef4444; width: 16px;"></i> Trừ điểm Bảng xếp hạng
+                              </label>
+                              <button type="button" class="reward-nexus-btn btn-primary" style="width: 100%; margin-top: 12px; height: 32px !important; font-size: 13px;" @click="saveEditReward(reward)">Lưu cài đặt</button>
+                            </div>
+                          </div>
+                        </el-popover>
+                      </div>
+                    </div>
+                    <!-- Bottom Text Area -->
+                    <div style="padding: 12px; display: flex; flex-direction: column; flex: 1; cursor: pointer;" @click="startEditReward(reward)">
+                      <strong style="font-size: 15px; color: #0f172a; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; letter-spacing: -0.3px; margin-bottom: 6px;" title="Sửa thông tin">{{ reward.name }}</strong>
+                      <p v-if="parseDescription(reward.description).text" style="margin: 0 0 12px; color: #475569; font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; flex: 1;" title="Sửa thông tin">{{ parseDescription(reward.description).text }}</p>
+                      <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between;" @click.stop>
+                        <span style="font-size: 10px; font-weight: 800; color: #16a34a; background: #f0fdf4; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid #dcfce7;">{{ reward.rewardType || 'GIFT' }}</span>
+                        <span style="font-size: 11px; font-weight: 600; color: #94a3b8;"><i class="fa-regular fa-clock" style="margin-right: 4px;"></i>{{ formatDate(reward.startAt || Date.now()) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane :label="t('Gamification.PointRules', 'Quy tắc điểm')" name="rules">
+          <div class="manager-columns" style="display: block; padding: 4px 0;">
+            <div style="margin-bottom: 24px;">
+              <el-tabs type="card" class="premium-tabs">
+                <!-- ================= TAB CẤU HÌNH ĐIỂM (POINTS) ================= -->
+                <el-tab-pane label="Cấu Hình Điểm (Points)">
+                  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                      <strong style="color: #0f172a;">Công thức cốt lõi (Points):</strong>
+                      <el-button :type="pointFormulaEditMode ? 'primary' : 'default'" size="small" @click="pointFormulaEditMode = !pointFormulaEditMode">
+                        <i class="fa-solid fa-pen-to-square" style="margin-right: 6px;"></i>
+                        {{ pointFormulaEditMode ? 'Lưu Công Thức' : 'Chỉnh Sửa' }}
+                      </el-button>
+                    </div>
+                    
+                    <div class="formula-builder" :class="{ 'edit-mode': pointFormulaEditMode }" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 14px; font-weight: 600;">
+                      <div class="formula-prefix">Tổng Điểm =</div>
+                      
+                      <draggable 
+                        v-model="pointRules.PointConfig.sequence" 
+                        class="formula-sequence" 
+                        style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" 
+                        :disabled="!pointFormulaEditMode" 
+                        draggable=".formula-block" 
+                        animation="200"
+                        @end="cleanupSequence(pointRules.PointConfig)"
+                      >
+                        <template #item="{ element, index }">
+                          <div v-if="['+', '*', '-'].includes(element)" class="formula-op" :style="pointFormulaEditMode ? 'cursor: pointer; padding: 4px 8px; font-weight: bold; color: #3b82f6;' : 'padding: 4px 8px;'" @click="pointFormulaEditMode && toggleOperator(pointRules.PointConfig, index)">
+                            {{ element === '*' ? 'x' : element }}
+                          </div>
+                          <div v-else class="formula-block" :style="pointFormulaEditMode ? 'cursor: grab; box-shadow: 0 2px 4px rgba(0,0,0,0.1);' : ''" style="background: #dbeafe; color: #1e40af; padding: 6px 12px; border-radius: 6px; border: 1px solid #bfdbfe; display: flex; align-items: center; gap: 6px;">
+                            <i v-if="pointFormulaEditMode" class="fa-solid fa-grip-vertical" style="opacity: 0.5;"></i>
+                            {{ getBlockName(element) }}
+                          </div>
+                        </template>
+                      </draggable>
+                      
+                      <div v-if="pointRules.PointConfig.sequence.length === 0" style="color: #94a3b8; font-style: italic; font-weight: normal; margin-left: 8px;">(Chưa có thành phần nào)</div>
+                    </div>
+                    <div v-if="pointFormulaEditMode" style="margin-top: 12px; font-size: 12px; color: #ef4444; font-weight: 500;">* Chế độ chỉnh sửa: Kéo thả các khối để thay đổi vị trí. Click vào các dấu toán học (+, -, x) để thay đổi.</div>
+                  </div>
+
+                  <div class="premium-card" style="padding: 20px;">
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                      
+                      <!-- Phần 1: Độ khó -->
+                      <div style="margin-bottom: 8px;">
+                        <div style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">1. Điểm Độ Khó</div>
+                        
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                          <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <el-switch v-model="pointRules.PointConfig.enableStoryPoints" size="small" @change="v => toggleBlock(pointRules.PointConfig, 'storyPoints', v)" />
+                              <strong style="color: #0f172a; font-size: 14px; font-weight: 600;">Hệ số Story Points</strong>
+                            </div>
+                            <div style="color: #64748b; font-size: 12px; margin-top: 4px;">Nếu Task CÓ Story Point, điểm = (Số SP) x (Hệ số này).</div>
+                          </div>
+                          <div style="width: 120px;" v-if="pointRules.PointConfig.enableStoryPoints">
+                            <el-input-number v-model="pointRules.storyPointMultiplier" :min="0" :step="5" size="large" style="width: 100%" />
+                          </div>
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                          <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <el-switch v-model="pointRules.PointConfig.enableBase" size="small" @change="v => toggleBlock(pointRules.PointConfig, 'base', v)" />
+                              <strong style="color: #0f172a; font-size: 14px; font-weight: 600;">Điểm Cơ Bản (Base)</strong>
+                            </div>
+                            <div style="color: #64748b; font-size: 12px; margin-top: 4px;">Nếu Task KHÔNG CÓ SP, sẽ nhận mức điểm cố định này.</div>
+                          </div>
+                          <div style="width: 120px;" v-if="pointRules.PointConfig.enableBase">
+                            <el-input-number v-model="pointRules.basePoints" :min="0" :step="10" size="large" style="width: 100%" />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <el-divider style="margin: 4px 0;" />
+                      
+                      <!-- Phần 2: Thưởng Ưu Tiên -->
+                      <div style="margin-bottom: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                          <el-switch v-model="pointRules.PointConfig.enablePriorityBonus" size="small" @change="v => toggleBlock(pointRules.PointConfig, 'priorityBonus', v)" />
+                          <div style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 1px;">2. Thưởng Mức độ Ưu tiên</div>
+                        </div>
+                        
+                        <div v-if="pointRules.PointConfig.enablePriorityBonus" style="display: flex; flex-direction: column; gap: 12px;">
+                          <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div style="color: #0f172a; font-size: 14px; font-weight: 500;">Thấp (Low)</div>
+                            <div style="width: 120px;"><el-input-number v-model="pointRules.priorityBonus.Low" :min="0" :step="5" size="small" style="width: 100%" /></div>
+                          </div>
+                          <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div style="color: #0f172a; font-size: 14px; font-weight: 500;">Trung bình (Medium)</div>
+                            <div style="width: 120px;"><el-input-number v-model="pointRules.priorityBonus.Normal" :min="0" :step="5" size="small" style="width: 100%" /></div>
+                          </div>
+                          <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div style="color: #0f172a; font-size: 14px; font-weight: 500;">Cao (High)</div>
+                            <div style="width: 120px;"><el-input-number v-model="pointRules.priorityBonus.High" :min="0" :step="5" size="small" style="width: 100%" /></div>
+                          </div>
+                          <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div style="color: #0f172a; font-size: 14px; font-weight: 500;">Khẩn cấp (Urgent)</div>
+                            <div style="width: 120px;"><el-input-number v-model="pointRules.priorityBonus.Urgent" :min="0" :step="5" size="small" style="width: 100%" /></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <el-divider style="margin: 4px 0;" />
+                      
+                      <!-- Phần 3: Thưởng Hoàn Thành Sớm -->
+                      <div style="margin-bottom: 8px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                          <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <el-switch v-model="pointRules.PointConfig.enableEarlyBonus" size="small" @change="v => toggleBlock(pointRules.PointConfig, 'earlyBonus', v)" />
+                              <strong style="color: #0f172a; font-size: 14px; font-weight: 600;">Thưởng Hoàn Thành Sớm (%)</strong>
+                            </div>
+                            <div style="color: #64748b; font-size: 12px; margin-top: 4px;">Cộng thêm % tổng điểm nếu hoàn thành trước Deadline 24h.</div>
+                          </div>
+                          <div style="width: 120px;" v-if="pointRules.PointConfig.enableEarlyBonus">
+                            <el-input-number v-model="pointRules.earlyBonusPercent" :min="0" :max="100" :step="5" size="large" style="width: 100%" />
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                </el-tab-pane>
+
+                <!-- ================= TAB CẤU HÌNH KINH NGHIỆM (EXP) ================= -->
+                <el-tab-pane label="Cấu Hình Kinh Nghiệm (EXP)">
+                  <div style="background: #fdf4ff; border: 1px solid #fbcfe8; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                      <strong style="color: #9f1239;">Công thức cốt lõi (EXP):</strong>
+                      <el-button :type="expFormulaEditMode ? 'danger' : 'default'" size="small" @click="expFormulaEditMode = !expFormulaEditMode">
+                        <i class="fa-solid fa-pen-to-square" style="margin-right: 6px;"></i>
+                        {{ expFormulaEditMode ? 'Lưu Công Thức' : 'Chỉnh Sửa' }}
+                      </el-button>
+                    </div>
+                    
+                    <div class="formula-builder exp-builder" :class="{ 'edit-mode': expFormulaEditMode }" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 14px; font-weight: 600;">
+                      <div class="formula-prefix" style="color: #9f1239;">Tổng EXP =</div>
+                      
+                      <draggable 
+                        v-model="pointRules.ExpConfig.sequence" 
+                        class="formula-sequence" 
+                        style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" 
+                        :disabled="!expFormulaEditMode" 
+                        draggable=".formula-block" 
+                        animation="200"
+                        @end="cleanupSequence(pointRules.ExpConfig)"
+                      >
+                        <template #item="{ element, index }">
+                          <div v-if="['+', '*', '-'].includes(element)" class="formula-op op-exp" :style="expFormulaEditMode ? 'cursor: pointer; padding: 4px 8px; font-weight: bold; color: #e11d48;' : 'padding: 4px 8px; color: #be185d;'" @click="expFormulaEditMode && toggleOperator(pointRules.ExpConfig, index)">
+                            {{ element === '*' ? 'x' : element }}
+                          </div>
+                          <div v-else class="formula-block block-exp" :style="expFormulaEditMode ? 'cursor: grab; box-shadow: 0 2px 4px rgba(0,0,0,0.1);' : ''" style="background: #fce7f3; color: #9f1239; padding: 6px 12px; border-radius: 6px; border: 1px solid #fbcfe8; display: flex; align-items: center; gap: 6px;">
+                            <i v-if="expFormulaEditMode" class="fa-solid fa-grip-vertical" style="opacity: 0.5;"></i>
+                            {{ getBlockName(element) }}
+                          </div>
+                        </template>
+                      </draggable>
+                      
+                      <div v-if="pointRules.ExpConfig.sequence.length === 0" style="color: #f43f5e; font-style: italic; font-weight: normal; margin-left: 8px;">(Chưa có thành phần nào)</div>
+                    </div>
+                    <div v-if="expFormulaEditMode" style="margin-top: 12px; font-size: 12px; color: #ef4444; font-weight: 500;">* Chế độ chỉnh sửa: Kéo thả các khối để thay đổi vị trí. Click vào các dấu toán học (+, -, x) để thay đổi.</div>
+                  </div>
+
+                  <div class="premium-card" style="padding: 20px; border-top: 4px solid #fecdd3;">
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                      
+                      <!-- Phần 1: EXP Độ Khó -->
+                      <div style="margin-bottom: 8px;">
+                        <div style="font-size: 11px; font-weight: 800; color: #9f1239; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">1. EXP Độ Khó</div>
+                        
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                          <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <el-switch v-model="pointRules.ExpConfig.enableStoryPoints" size="small" @change="v => toggleBlock(pointRules.ExpConfig, 'storyPoints', v)" />
+                              <strong style="color: #0f172a; font-size: 14px; font-weight: 600;">Hệ số Story Points (EXP)</strong>
+                            </div>
+                            <div style="color: #64748b; font-size: 12px; margin-top: 4px;">Nếu Task CÓ Story Point, EXP = (Số SP) x (Hệ số này).</div>
+                          </div>
+                          <div style="width: 120px;" v-if="pointRules.ExpConfig.enableStoryPoints">
+                            <el-input-number v-model="pointRules.storyExpMultiplier" :min="0" :step="5" size="large" style="width: 100%" />
+                          </div>
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                          <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <el-switch v-model="pointRules.ExpConfig.enableBase" size="small" @change="v => toggleBlock(pointRules.ExpConfig, 'base', v)" />
+                              <strong style="color: #0f172a; font-size: 14px; font-weight: 600;">Kinh Nghiệm Cơ Bản (Base EXP)</strong>
+                            </div>
+                            <div style="color: #64748b; font-size: 12px; margin-top: 4px;">Nếu Task KHÔNG CÓ SP, sẽ nhận mức EXP cố định này.</div>
+                          </div>
+                          <div style="width: 120px;" v-if="pointRules.ExpConfig.enableBase">
+                            <el-input-number v-model="pointRules.baseExp" :min="0" :step="5" size="large" style="width: 100%" />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <el-divider style="margin: 4px 0;" />
+                      
+                      <!-- Phần 2: Thưởng Ưu Tiên EXP -->
+                      <div style="margin-bottom: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                          <el-switch v-model="pointRules.ExpConfig.enablePriorityBonus" size="small" @change="v => toggleBlock(pointRules.ExpConfig, 'priorityBonus', v)" />
+                          <div style="font-size: 11px; font-weight: 800; color: #9f1239; text-transform: uppercase; letter-spacing: 1px;">2. Thưởng Mức độ Ưu tiên (EXP)</div>
+                        </div>
+                        
+                        <div v-if="pointRules.ExpConfig.enablePriorityBonus" style="display: flex; flex-direction: column; gap: 12px;">
+                          <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div style="color: #0f172a; font-size: 14px; font-weight: 500;">Thấp (Low)</div>
+                            <div style="width: 120px;"><el-input-number v-model="pointRules.expPriorityBonus.Low" :min="0" :step="5" size="small" style="width: 100%" /></div>
+                          </div>
+                          <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div style="color: #0f172a; font-size: 14px; font-weight: 500;">Trung bình (Medium)</div>
+                            <div style="width: 120px;"><el-input-number v-model="pointRules.expPriorityBonus.Normal" :min="0" :step="5" size="small" style="width: 100%" /></div>
+                          </div>
+                          <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div style="color: #0f172a; font-size: 14px; font-weight: 500;">Cao (High)</div>
+                            <div style="width: 120px;"><el-input-number v-model="pointRules.expPriorityBonus.High" :min="0" :step="5" size="small" style="width: 100%" /></div>
+                          </div>
+                          <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div style="color: #0f172a; font-size: 14px; font-weight: 500;">Khẩn cấp (Urgent)</div>
+                            <div style="width: 120px;"><el-input-number v-model="pointRules.expPriorityBonus.Urgent" :min="0" :step="5" size="small" style="width: 100%" /></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <el-divider style="margin: 4px 0;" />
+                      
+                      <!-- Phần 3: Thưởng Hoàn Thành Sớm EXP -->
+                      <div style="margin-bottom: 8px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                          <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <el-switch v-model="pointRules.ExpConfig.enableEarlyBonus" size="small" @change="v => toggleBlock(pointRules.ExpConfig, 'earlyBonus', v)" />
+                              <strong style="color: #0f172a; font-size: 14px; font-weight: 600;">Thưởng Hoàn Thành Sớm (% EXP)</strong>
+                            </div>
+                            <div style="color: #64748b; font-size: 12px; margin-top: 4px;">Cộng thêm % tổng EXP nếu hoàn thành trước Deadline 24h.</div>
+                          </div>
+                          <div style="width: 120px;" v-if="pointRules.ExpConfig.enableEarlyBonus">
+                            <el-input-number v-model="pointRules.expEarlyBonusPercent" :min="0" :max="100" :step="5" size="large" style="width: 100%" />
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                </el-tab-pane>
+              </el-tabs>
+
+              <div style="margin-top: 24px; text-align: right;">
+                <button type="button" @click="savePointRules" class="primary-btn" style="padding: 10px 24px; border-radius: 8px; font-weight: 600; box-shadow: 0 4px 6px rgba(37,99,235,0.2);">
+                  <i class="fa-solid fa-save" style="margin-right: 8px;"></i> Lưu Cấu Hình
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <!-- NEW: Cấp độ & Kinh nghiệm Tab -->
+        <el-tab-pane label="Cấp độ & Kinh nghiệm" name="levels">
+          <div class="manager-columns" style="display: block; padding: 4px 0;">
+            <div style="margin-bottom: 24px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="font-size: 14px; font-weight: 600; color: var(--reward-text); margin: 0;">Tiến trình thăng cấp (Levels)</h3>
+              </div>
+              <p style="font-size: 13px; color: #64748b; margin-bottom: 16px;">Thiết lập các mốc điểm kinh nghiệm (XP) để người dùng thăng cấp và nhận quà tặng đặc biệt khi đạt cấp độ mới.</p>
+              
+              <div class="level-config-list" style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- Placeholder / Form Add Level -->
+                <div v-if="!isCreatingLevel" @click="isCreatingLevel = true" class="premium-placeholder" style="padding: 12px; min-height: 72px;">
+                  <i class="fa-solid fa-plus" style="margin-right: 8px;"></i> Thêm mốc Cấp độ mới
+                </div>
+                <div v-else class="premium-form" style="padding: 12px; min-height: 72px; display: flex; align-items: center; border: 1px solid #3b82f6; border-radius: 12px; background: #eff6ff;">
+                  <form @submit.prevent="createLevelConfig" style="display: flex; gap: 12px; width: 100%; align-items: center;">
+                    <div class="level-badge" style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #1e293b, #0f172a); color: #38bdf8; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.15); border: 2px solid #38bdf8; flex-shrink: 0; font-weight: 900; font-size: 16px;">
+                      {{ levelForm.level || '?' }}
+                    </div>
+                    <div style="flex: 1; display: grid; grid-template-columns: 0.8fr 1.5fr 1fr; gap: 12px; align-items: center;">
+                      <div>
+                        <input v-model.number="levelForm.level" type="number" placeholder="Mốc cấp độ (VD: 60)" required class="sa-input" style="width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 600;" />
+                      </div>
+                      <div>
+                        <input v-model="levelForm.title" placeholder="Danh hiệu (VD: Hạng mới)" required class="sa-input" style="width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 600;" />
+                      </div>
+                      <div>
+                        <input v-model.number="levelForm.requiredXpPerLevel" type="number" placeholder="XP (VD: 1000)" required class="sa-input" style="width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 600;" />
+                      </div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                      <button type="button" @click="isCreatingLevel = false" class="secondary-btn" style="padding: 6px 12px; background: transparent; color: #ef4444; border: 1px solid #ef4444; border-radius: 6px; font-weight: 600; font-size: 12px;">Hủy</button>
+                      <button type="submit" class="secondary-btn" style="padding: 6px 12px; background: transparent; color: #3b82f6; border: 1px solid #3b82f6; border-radius: 6px; font-weight: 600; font-size: 12px;">Thêm</button>
+                    </div>
+                  </form>
+                </div>
+
+                <div v-for="(lv, index) in levelConfigs" :key="index" class="premium-card level-row" style="padding: 12px 16px; display: flex; align-items: center; gap: 16px;">
+                  <!-- Level Badge -->
+                  <div class="level-badge" style="width: 54px; height: 54px; border-radius: 50%; background: linear-gradient(135deg, #1e293b, #0f172a); color: #38bdf8; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.15); border: 2px solid #38bdf8; flex-shrink: 0; font-weight: 900; font-size: 20px;">
+                    {{ lv.level }}
+                  </div>
+                  
+                  <!-- Config Inputs -->
+                  <div style="flex: 1; display: grid; grid-template-columns: 0.8fr 1.5fr 1fr 2fr; gap: 12px; align-items: center;">
+                    <div>
+                      <label style="display: block; font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Mốc cấp độ</label>
+                      <input v-model.number="lv.level" type="number" class="sa-input" style="width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 600; color: #0f172a;" />
+                    </div>
+                    <div>
+                      <label style="display: block; font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Huy hiệu / Danh hiệu</label>
+                      <input v-model="lv.title" class="sa-input" placeholder="VD: Intern" style="width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 600; color: #0f172a;" />
+                    </div>
+                    <div>
+                      <label style="display: block; font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">XP / Cấp</label>
+                      <input v-model.number="lv.requiredXpPerLevel" type="number" class="sa-input" style="width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 600; color: #2563eb;" />
+                    </div>
+                    <div>
+                      <label style="display: block; font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Phần thưởng thăng hạng</label>
+                      <select v-model="lv.rewardId" class="sa-input" style="width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; color: #475569; outline: none; background: #f8fafc;">
+                        <option value="">-- Không có quà --</option>
+                        <option v-for="r in seasonDashboard.availableRewards" :key="r.id" :value="r.id">{{ r.name }}</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div style="flex-shrink: 0; padding-left: 8px; border-left: 1px dashed #e2e8f0;">
+                    <i class="fa-solid fa-trash-can" style="color: #ef4444; font-size: 16px; cursor: pointer; padding: 8px; transition: transform 0.2s;" @click="removeLevelConfig(index)" title="Xóa nhóm cấp độ này"></i>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-top: 16px; display: flex; justify-content: flex-end;">
+                <button type="button" class="primary-btn" style="padding: 8px 24px; border-radius: 8px; font-weight: 600; font-size: 13px;" @click="saveLevelConfig">
+                  Lưu cấu hình
+                </button>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </el-drawer>
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { usePeopleStore } from '@/store/usePeopleStore'
+import { useHomeProjectStore } from '@/store/useHomeProjectStore'
 import axiosClient from '@/api/axiosClient'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { getScopedCurrentProjectId } from '@/utils/projectContext'
-import { validateRewardForm, validateRewardSeasonForm } from '@/utils/rewardUi'
+import draggable from 'vuedraggable'
 
 const { t } = useI18nStore()
 const authStore = useAuthStore()
 const peopleStore = usePeopleStore()
+const homeProjectStore = useHomeProjectStore()
 const currentUser = authStore.user || {}
+
+const getFirstActiveProjectId = () => {
+  let pid = getScopedCurrentProjectId()
+  if (pid) return pid
+  
+  const activeProjects = homeProjectStore.projects?.filter(p => !p.isArchived) || []
+  if (activeProjects.length > 0) {
+    return activeProjects[0].id
+  }
+  return null
+}
+
+// Reward Shop must use the same points shown on the current season leaderboard.
+// Fall back to the wallet only when no season is active.
+const shopPoints = computed(() => seasonDashboard.value?.currentSeason
+  ? Number(seasonDashboard.value.mySeasonPoints || 0)
+  : Number(wallet.value?.totalPoints || 0))
+
+const ensureActiveProjects = async () => {
+  if (!homeProjectStore.projects || homeProjectStore.projects.length === 0) {
+    await homeProjectStore.fetchProjects()
+  }
+  
+  let activeProjects = []
+  const ctxProj = getScopedCurrentProjectId()
+  if (ctxProj) activeProjects.push({ id: ctxProj })
+  else activeProjects = homeProjectStore.projects?.filter(p => !p.isArchived) || []
+
+  return activeProjects
+}
 
 const loading = ref(false)
 const wallet = ref({
@@ -587,19 +1251,404 @@ const leaderboard = ref([])
 const seasonDashboard = ref({ currentSeason: null, careerXp: 0, careerLevel: 1, mySeasonPoints: 0, myRank: 0, myOnTimeRate: 0, leaderboard: [], pendingEvents: [], openRewards: [], rewardHistory: [], availableRewards: [], rewardProgress: [], canManage: false })
 const managerSeasons = ref([])
 const managerBusy = ref(false)
-const seasonForm = ref({ name: '', type: 'Sprint', startAt: '', endAt: '', timeZone: '' })
-const rewardForm = ref({ seasonId: '', name: '', description: '', rewardType: 'Gift', condition: 'TopN', threshold: 100, rankTo: 1, requireActiveMember: true })
-const rewardTypes = ['Cash', 'Voucher', 'Gift', 'Privilege', 'Custom']
-const rewardConditions = [
-  { key: 'TopN', label: 'Top N' },
-  { key: 'SeasonPoints', label: 'Season Points ≥ X' },
-  { key: 'OnTimeRate', label: 'On-time rate ≥ X%' },
-  { key: 'ApprovedTasks', label: 'Approved tasks ≥ X' },
-  { key: 'TeamOnTimeRate', label: 'Team on-time rate ≥ X%' }
-]
-
+const shopBusy = ref(false)
+const seasonForm = ref({ name: '', type: 'Custom', startAt: '', endAt: '', timeZone: '' })
+const rewardForm = ref({ seasonId: '', name: '', description: '', rewardType: 'Gift', condition: 'PersonalMilestone', threshold: 100, rankTo: 1, requireActiveMember: true, method: 'Redeem', pointCost: 0, quantity: null, claimLimit: null, imageFile: null, imagePreview: null, usePoints: false, useLevel: false, useTop: false, levelRequired: 1, topRequired: 3 })
 // New interactive state variables
-const activeTab = ref('tasks')
+const activeTab = ref('history')
+const openShopModal = ref(false)
+const shopActiveTab = ref('store')
+const openSettingsModal = ref(false)
+const settingsActiveTab = ref('seasons')
+const isCreatingSeason = ref(false)
+const isCreatingReward = ref(false)
+
+const parseDescription = (desc) => {
+  if (!desc) return { text: '', usePoints: true, pointCost: 0, useLevel: false, useTop: false, deductLeaderboard: true }
+  try {
+    const obj = JSON.parse(desc)
+    if (obj.text !== undefined) {
+      if (obj.deductLeaderboard === undefined) obj.deductLeaderboard = true
+      return obj
+    }
+    return { text: desc, usePoints: true, pointCost: 0, useLevel: false, useTop: false, deductLeaderboard: true }
+  } catch(e) {
+    return { text: desc, usePoints: true, pointCost: 0, useLevel: false, useTop: false, deductLeaderboard: true }
+  }
+}
+
+const imageRefreshKey = ref(0)
+const quickImageInputRef = ref(null)
+const quickImageRewardId = ref(null)
+
+const editingRewardId = ref(null)
+const editRewardForm = ref({ name: '', description: '' })
+
+const startEditReward = (reward) => {
+  editingRewardId.value = reward.id
+  editRewardForm.value = {
+    name: reward.name,
+    description: parseDescription(reward.description).text,
+    pointCost: Number(parseDescription(reward.description).pointCost ?? reward.pointCost ?? 0)
+  }
+}
+
+const cancelEditReward = () => {
+  editingRewardId.value = null
+}
+
+const saveEditReward = async (reward) => {
+  const r = seasonDashboard.value.availableRewards.find(x => x.id === reward.id)
+  if (r) {
+    const pid = getFirstActiveProjectId()
+    if (!pid || !seasonDashboard.value.currentSeason) return
+    
+    managerBusy.value = true
+    try {
+      const currentConfig = getRewardConfig(r)
+      
+      // If we are saving from the Edit Form, update the text and name
+      if (editRewardForm.value && editRewardForm.value.name) {
+        currentConfig.text = editRewardForm.value.description
+      }
+      if (editRewardForm.value?.pointCost !== undefined) {
+        currentConfig.pointCost = Math.max(0, Number(editRewardForm.value.pointCost) || 0)
+        currentConfig.usePoints = true
+      }
+      
+      const payloadName = (editRewardForm.value && editRewardForm.value.name) ? editRewardForm.value.name : r.name
+      
+      await axiosClient.put(`/projects/${pid}/rewards/seasons/${seasonDashboard.value.currentSeason.id}/definitions/${r.id}`, {
+        name: payloadName,
+        description: JSON.stringify(currentConfig),
+        rewardType: r.rewardType || 'Gift',
+        conditionType: r.conditionType || 'PersonalMilestone',
+        conditionMetric: r.conditionMetric || 'SeasonPoints',
+        threshold: r.threshold || 0,
+        rankTo: r.rankTo || 1,
+        method: currentConfig.usePoints ? 'Redeem' : 'Gift',
+        pointCost: Number(currentConfig.pointCost) || 0,
+        quantity: r.quantity || null,
+        claimLimit: r.claimLimit || null,
+        requireActiveMemberAtSettlement: r.requireActiveMemberAtSettlement ?? false
+      })
+      
+      r.name = payloadName
+      r.description = JSON.stringify(currentConfig)
+      r.method = currentConfig.usePoints ? 'Redeem' : 'Gift'
+      r.pointCost = Number(currentConfig.pointCost) || 0
+      ElMessage.success('Đã lưu cấu hình phần thưởng vào CSDL thành công!')
+    } catch (err) {
+      ElMessage.error('Không thể lưu phần thưởng.')
+    } finally {
+      managerBusy.value = false
+      editingRewardId.value = null
+    }
+  } else {
+    editingRewardId.value = null
+  }
+}
+
+const triggerImageUpdate = (reward) => {
+  quickImageRewardId.value = reward.id
+  if (quickImageInputRef.value) quickImageInputRef.value.click()
+}
+
+const handleQuickImageSelect = (event) => {
+  const file = event.target.files[0]
+  if (file && quickImageRewardId.value) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        const width = 250
+        const height = 140
+        canvas.width = width
+        canvas.height = height
+        const scale = width / img.width
+        const scaledHeight = img.height * scale
+        ctx.fillStyle = '#f1f5f9'
+        ctx.fillRect(0, 0, width, height)
+        ctx.drawImage(img, 0, (height - scaledHeight) / 2, width, scaledHeight)
+        const base64 = canvas.toDataURL('image/jpeg', 0.85)
+        
+        const targetReward = seasonDashboard.value.availableRewards.find(r => r.id === quickImageRewardId.value)
+        if (targetReward) {
+          const pid = getFirstActiveProjectId()
+          if (pid && seasonDashboard.value.currentSeason) {
+            managerBusy.value = true
+            axiosClient.put(`/projects/${pid}/rewards/seasons/${seasonDashboard.value.currentSeason.id}/definitions/${targetReward.id}`, {
+              displayValue: base64
+            }).then(() => {
+              targetReward.displayValue = base64
+              ElMessage.success('Đã cập nhật ảnh thành công!')
+            }).catch(() => {
+              ElMessage.error('Lỗi khi lưu ảnh lên máy chủ.')
+            }).finally(() => {
+              managerBusy.value = false
+            })
+          }
+        }
+        quickImageRewardId.value = null
+        if (quickImageInputRef.value) quickImageInputRef.value.value = ''
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
+  }
+}
+
+const getRewardImage = (id) => {
+  const r = seasonDashboard.value.availableRewards.find(x => x.id === id)
+  if (r) {
+    if (r.displayValue && r.displayValue.startsWith('data:image')) return r.displayValue
+    if (r.imageUrl && r.imageUrl.startsWith('data:image')) return r.imageUrl
+  }
+  return ''
+}
+
+const isCreatingLevel = ref(false)
+const levelForm = ref({ level: null, title: '', requiredXpPerLevel: 100, rewardId: '' })
+
+// Shop Rewards UI state
+const localRewardConfigs = ref({})
+const getRewardConfig = (reward) => {
+  if (!localRewardConfigs.value[reward.id]) {
+    localRewardConfigs.value[reward.id] = parseDescription(reward.description)
+  }
+  return localRewardConfigs.value[reward.id]
+}
+
+const getRewardDefById = (id) => {
+  return seasonDashboard.value.availableRewards?.find(r => r.id === id) || { id, name: '' }
+}
+
+const shopSearch = ref('')
+const newSeasonRewards = ref([])
+
+const filteredShopRewards = computed(() => {
+  const query = shopSearch.value.trim().toLowerCase()
+  const rewards = seasonDashboard.value.availableRewards || []
+  const pointRewards = rewards.filter(r => getRewardConfig(r).usePoints === true)
+  if (!query) return pointRewards
+  return pointRewards.filter(r => (r.name || '').toLowerCase().includes(query))
+})
+
+const isRewardInSeason = (seasonId, rewardId) => {
+  if (seasonId === 'new') {
+    return newSeasonRewards.value.some(id => id == rewardId)
+  }
+  const season = managerSeasons.value.find(s => s.id == seasonId)
+  return season?.rewards?.some(id => id == rewardId) || false
+}
+
+const toggleRewardInSeason = (seasonId, rewardId) => {
+  if (seasonId === 'new') {
+    const idx = newSeasonRewards.value.indexOf(rewardId)
+    if (idx > -1) newSeasonRewards.value.splice(idx, 1)
+    else newSeasonRewards.value.push(rewardId)
+    return
+  }
+  const season = managerSeasons.value.find(s => s.id == seasonId)
+  if (!season) return
+  if (!season.rewards) season.rewards = []
+  const idx = season.rewards.findIndex(id => id == rewardId)
+  if (idx > -1) season.rewards.splice(idx, 1)
+  else season.rewards.push(rewardId)
+
+  // Persist to localStorage
+  localStorage.setItem(`season_rewards_${seasonId}`, JSON.stringify(season.rewards))
+}
+
+// Level Config State (Mock)
+const levelConfigs = ref([
+  { level: 1, title: 'Intern', requiredXpPerLevel: 100, rewardId: '' },
+  { level: 16, title: 'Junior', requiredXpPerLevel: 250, rewardId: '' },
+  { level: 31, title: 'Senior', requiredXpPerLevel: 600, rewardId: '' },
+  { level: 51, title: 'Master', requiredXpPerLevel: 1500, rewardId: '' }
+])
+const createLevelConfig = () => {
+  if (!levelForm.value.level || !levelForm.value.title) return
+  
+  if (levelConfigs.value.some(lv => lv.level === levelForm.value.level)) {
+    ElMessage.error(`Mốc cấp độ ${levelForm.value.level} đã tồn tại!`)
+    return
+  }
+
+  levelConfigs.value.push({ ...levelForm.value })
+  levelConfigs.value.sort((a, b) => a.level - b.level)
+  isCreatingLevel.value = false
+  levelForm.value = { level: null, title: '', requiredXpPerLevel: 100, rewardId: '' }
+}
+const removeLevelConfig = (index) => {
+  levelConfigs.value.splice(index, 1)
+}
+
+const saveLevelConfig = async () => {
+  const pid = getFirstActiveProjectId()
+  if (!pid) return
+  managerBusy.value = true
+  try {
+    const payload = {
+      configs: levelConfigs.value.map(lv => ({
+        level: lv.level,
+        title: lv.title,
+        requiredXpPerLevel: lv.requiredXpPerLevel,
+        rewardId: lv.rewardId || '00000000-0000-0000-0000-000000000000'
+      }))
+    }
+    await axiosClient.put(`/projects/${pid}/rewards/levels`, payload)
+    ElMessage.success('Đã lưu cấu hình cấp độ thành công!')
+  } catch (error) {
+    ElMessage.error('Không thể lưu cấu hình cấp độ.')
+  } finally {
+    managerBusy.value = false
+  }
+}
+
+const loadLevelConfigs = async () => {
+  const pid = getFirstActiveProjectId()
+  if (!pid) return
+  managerBusy.value = true
+  try {
+    const res = await axiosClient.get(`/projects/${pid}/rewards/levels`)
+    if (res.data && res.data.data) {
+      levelConfigs.value = res.data.data.map(item => ({
+        level: item.level,
+        title: item.title,
+        requiredXpPerLevel: item.requiredXpPerLevel,
+        rewardId: item.rewardId
+      }))
+      levelConfigs.value.sort((a, b) => a.level - b.level)
+    }
+  } catch (error) {
+    console.error('Lỗi khi tải cấu hình level:', error)
+  } finally {
+    managerBusy.value = false
+  }
+}
+
+const activateSeason = async (season) => {
+  const pid = getFirstActiveProjectId()
+  if (!pid) return
+  managerBusy.value = true
+  try {
+    await axiosClient.post(`/projects/${pid}/rewards/seasons/${season.id}/activate`)
+    ElMessage.success(`Mùa giải ${season.name} đã bắt đầu.`)
+    await loadRewards()
+  } catch (error) {
+    ElMessage.error('Không thể bắt đầu mùa giải.')
+  } finally {
+    managerBusy.value = false
+  }
+}
+
+const pauseSeason = async (season) => {
+  const pid = getFirstActiveProjectId()
+  if (!pid) return
+  managerBusy.value = true
+  try {
+    await axiosClient.post(`/projects/${pid}/rewards/seasons/${season.id}/pause`)
+    ElMessage.success(`Mùa giải ${season.name} đã tạm dừng.`)
+    await loadRewards()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Không thể tạm dừng mùa giải.')
+  } finally {
+    managerBusy.value = false
+  }
+}
+
+const closeSeason = async (season) => {
+  const pid = getFirstActiveProjectId()
+  if (!pid) return
+  managerBusy.value = true
+  try {
+    await axiosClient.post(`/projects/${pid}/rewards/seasons/${season.id}/close`)
+    ElMessage.success(`Mùa giải ${season.name} đã kết thúc.`)
+    await loadRewards()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || 'Không thể kết thúc mùa giải.')
+  } finally {
+    managerBusy.value = false
+  }
+}
+
+const rewardImageInput = ref(null)
+
+const triggerImageSelect = () => {
+  if (rewardImageInput.value) {
+    rewardImageInput.value.click()
+  }
+}
+
+const handleRewardImageSelect = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    rewardForm.value.imageFile = file
+    rewardForm.value.imagePreview = URL.createObjectURL(file)
+    cropState.value.offsetY = 0
+  }
+}
+
+const imageRef = ref(null)
+const cropState = ref({
+  isDragging: false,
+  startY: 0,
+  offsetY: 0
+})
+
+const startDrag = (e) => {
+  if (!rewardForm.value.imagePreview) return
+  cropState.value.isDragging = true
+  cropState.value.startY = e.clientY - cropState.value.offsetY
+}
+
+const onDrag = (e) => {
+  if (!cropState.value.isDragging) return
+  const y = e.clientY - cropState.value.startY
+  const containerHeight = 100
+  const imgElement = imageRef.value
+  if (!imgElement) return
+  const imgHeight = imgElement.clientHeight || 100
+  const minY = Math.min(0, containerHeight - imgHeight)
+  cropState.value.offsetY = Math.max(minY, Math.min(0, y))
+}
+
+const stopDrag = () => {
+  cropState.value.isDragging = false
+}
+
+const generateCroppedBase64 = async () => {
+  if (!rewardForm.value.imagePreview || !imageRef.value) return null
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    const width = 250 // standard card width
+    const height = 140
+    canvas.width = width
+    canvas.height = height
+    
+    const img = new Image()
+    img.onload = () => {
+      const scale = width / img.width
+      const scaledHeight = img.height * scale
+      
+      const containerWidth = imageRef.value.parentElement.clientWidth || 250
+      const ratio = width / containerWidth
+      const dy = cropState.value.offsetY * ratio
+      
+      ctx.fillStyle = '#f1f5f9'
+      ctx.fillRect(0, 0, width, height)
+      ctx.drawImage(img, 0, dy, width, scaledHeight)
+      resolve(canvas.toDataURL('image/jpeg', 0.85))
+    }
+    img.onerror = () => resolve(null)
+    img.src = rewardForm.value.imagePreview
+  })
+}
+
 const selectedUser = ref({
   userId: wallet.value.userId,
   userName: wallet.value.userName,
@@ -609,16 +1658,167 @@ const selectedUser = ref({
 })
 
 const formatDate = (value) => (value ? new Date(value).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '')
-const seasonTimeRemaining = computed(() => {
-  const end = seasonDashboard.value.currentSeason?.endAt
-  if (!end) return 'No end date'
-  const remaining = new Date(end).getTime() - Date.now()
-  if (remaining <= 0) return 'Expired — close when ready'
-  const days = Math.floor(remaining / 86400000)
-  const hours = Math.floor((remaining % 86400000) / 3600000)
-  return `${days}d ${hours}h remaining`
+const myGrants = computed(() => {
+  const history = seasonDashboard.value.rewardHistory || []
+  const map = {}
+  history.forEach(grant => {
+    if (!map[grant.rewardDefinitionId]) {
+      map[grant.rewardDefinitionId] = {
+        ...grant,
+        quantity: 1
+      }
+    } else {
+      map[grant.rewardDefinitionId].quantity += 1
+      if (new Date(grant.earnedAt) > new Date(map[grant.rewardDefinitionId].earnedAt)) {
+        map[grant.rewardDefinitionId].earnedAt = grant.earnedAt
+      }
+    }
+  })
+  return Object.values(map)
 })
-const managedGrants = computed(() => seasonDashboard.value.openRewards || [])
+const shopItems = computed(() => {
+  const currentSeason = seasonDashboard.value.currentSeason
+  if (!currentSeason) return []
+
+  const managerSeason = managerSeasons.value.find(s => s.id == currentSeason.id)
+  let activeRewardsIds = managerSeason ? managerSeason.rewards : null
+  
+  if (!activeRewardsIds) {
+    const cached = localStorage.getItem(`season_rewards_${currentSeason.id}`)
+    activeRewardsIds = []
+    if (cached) {
+      try { activeRewardsIds = JSON.parse(cached) } catch (e) { activeRewardsIds = [] }
+    }
+  }
+
+  return (seasonDashboard.value.availableRewards || []).filter(item => {
+    return (activeRewardsIds || []).some(id => id == item.id)
+  })
+})
+
+// Point Rules Settings
+const pointRules = ref({
+  PointConfig: {
+    sequence: ["base", "+", "storyPoints", "+", "priorityBonus"],
+    enableBase: true,
+    enableStoryPoints: true,
+    enablePriorityBonus: true,
+    enableEarlyBonus: false
+  },
+  ExpConfig: {
+    sequence: ["base", "+", "storyPoints", "+", "priorityBonus"],
+    enableBase: true,
+    enableStoryPoints: true,
+    enablePriorityBonus: true,
+    enableEarlyBonus: false
+  },
+  basePoints: 10,
+  storyPointMultiplier: 5,
+  priorityBonus: {
+    Low: 0,
+    Normal: 0,
+    High: 5,
+    Urgent: 10
+  },
+  earlyBonusPercent: 10,
+  baseExp: 15,
+  storyExpMultiplier: 5,
+  expPriorityBonus: {
+    Low: 0,
+    Normal: 0,
+    High: 5,
+    Urgent: 10
+  },
+  expEarlyBonusPercent: 10
+})
+
+const pointFormulaEditMode = ref(false)
+const expFormulaEditMode = ref(false)
+
+const getBlockName = (node) => {
+  if (node === 'base') return 'Điểm Cơ Bản'
+  if (node === 'storyPoints') return 'Story Points'
+  if (node === 'priorityBonus') return 'Thưởng Ưu Tiên'
+  if (node === 'earlyBonus') return 'Thưởng Sớm (%)'
+  return node
+}
+
+const toggleOperator = (config, index) => {
+  if (config.sequence[index] === '+') config.sequence[index] = '*'
+  else if (config.sequence[index] === '*') config.sequence[index] = '-'
+  else if (config.sequence[index] === '-') config.sequence[index] = '+'
+}
+
+const cleanupSequence = (config) => {
+  const blocks = config.sequence.filter(x => !['+', '-', '*'].includes(x))
+  const ops = config.sequence.filter(x => ['+', '-', '*'].includes(x))
+  const newSeq = []
+  for (let i = 0; i < blocks.length; i++) {
+    newSeq.push(blocks[i])
+    if (i < blocks.length - 1) {
+      newSeq.push(ops[i] || '+')
+    }
+  }
+  config.sequence = newSeq
+}
+
+const toggleBlock = (config, blockKey, enabled) => {
+  if (enabled) {
+    if (config.sequence.length > 0) config.sequence.push('+')
+    config.sequence.push(blockKey)
+  } else {
+    const idx = config.sequence.indexOf(blockKey)
+    if (idx > -1) {
+      if (idx > 0 && ['+', '*', '-'].includes(config.sequence[idx - 1])) {
+        config.sequence.splice(idx - 1, 2)
+      } else if (idx < config.sequence.length - 1 && ['+', '*', '-'].includes(config.sequence[idx + 1])) {
+        config.sequence.splice(idx, 2)
+      } else {
+        config.sequence.splice(idx, 1)
+      }
+    }
+  }
+}
+
+const savePointRules = async () => {
+  const pid = getFirstActiveProjectId()
+  if (!pid) return
+  managerBusy.value = true
+  try {
+    const rulesConfig = JSON.stringify(pointRules.value)
+    await axiosClient.put(`/settings/GamificationRules:${pid}`, {
+      settings: {
+        'Rules': rulesConfig
+      }
+    })
+    ElMessage.success('Lưu cấu hình điểm thành công!')
+  } catch (error) {
+    ElMessage.error('Không thể lưu cấu hình điểm.')
+  } finally {
+    managerBusy.value = false
+  }
+}
+
+const loadPointRules = async () => {
+  const pid = getFirstActiveProjectId()
+  if (!pid) return
+  try {
+    const res = await axiosClient.get(`/settings/GamificationRules:${pid}`)
+    if (res.data?.data?.Rules) {
+      const savedRules = JSON.parse(res.data.data.Rules)
+      pointRules.value = { ...pointRules.value, ...savedRules }
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+// Load point rules on mount
+onMounted(() => {
+  loadPointRules()
+  loadLevelConfigs()
+})
+
 const pointsToNext = computed(() => Math.max(0, Number(career.value?.nextThreshold || 0) - Number(wallet.value?.totalPoints || 0)))
 
 const top1 = computed(() => leaderboard.value[0] || null)
@@ -629,11 +1829,6 @@ const restLeaders = computed(() => leaderboard.value.slice(3))
 const myRankIndex = computed(() => {
   if (!leaderboard.value || !wallet.value?.userId) return -1
   return leaderboard.value.findIndex(u => String(u.userId || u.Id || u.id) === String(wallet.value.userId))
-})
-const myRankDisplay = computed(() => {
-  if (myRankIndex.value === -1) return '--'
-  const rank = myRankIndex.value + 1
-  return rank < 10 ? `#0${rank}` : `#${rank}`
 })
 const calculateClientCareer = (points) => {
   let level = 1
@@ -718,8 +1913,8 @@ const loadRewards = async () => {
       promises.push(peopleStore.fetchPeople('', 1, 100))
     }
 
-    const projectId = getScopedCurrentProjectId()
-    if (projectId) promises.push(axiosClient.get(`/projects/${projectId}/rewards/dashboard`).catch(() => null))
+    const projectId = getFirstActiveProjectId()
+    if (projectId) promises.push(axiosClient.get(`/projects/${projectId}/rewards/dashboard?t=${new Date().getTime()}`).catch(() => null))
 
     const results = await Promise.all(promises)
     const mine = results[0]
@@ -766,17 +1961,52 @@ const loadRewards = async () => {
     spotlightTasks.value = data.spotlightTasks || []
     recentAchievements.value = data.recentAchievements || []
     transactions.value = data.transactions || []
-    leaderboard.value = leaders.data?.data || []
+    
     const seasonResponse = projectId ? results[results.length - 1] : null
-    if (seasonResponse?.data) seasonDashboard.value = { ...seasonDashboard.value, ...(seasonResponse.data?.data || seasonResponse.data) }
+    if (seasonResponse?.data) {
+      seasonDashboard.value = { ...seasonDashboard.value, ...(seasonResponse.data?.data || seasonResponse.data) }
+      // Load Base64 Image from localStorage
+      if (seasonDashboard.value.availableRewards) {
+        seasonDashboard.value.availableRewards.forEach(r => {
+          const cachedImg = localStorage.getItem(`reward_img_${r.id}`)
+          if (cachedImg) r.imageUrl = cachedImg
+        })
+      }
+    } else {
+      seasonDashboard.value = { ...seasonDashboard.value, currentSeason: null, leaderboard: [], openRewards: [], availableRewards: [] }
+    }
+
+    if (seasonDashboard.value.currentSeason && seasonDashboard.value.currentSeason.status === 'Active') {
+      const rawBoard = seasonDashboard.value.leaderboard || leaders.data?.data || []
+      const activeBoard = rawBoard.filter(u => (u.seasonPoints || u.totalPoints || u.points || 0) >= 1)
+      leaderboard.value = activeBoard.map(u => ({
+        userId: u.userId,
+        userName: u.userName || u.name,
+        totalPoints: u.seasonPoints || u.totalPoints || u.points || 0,
+        completedTasks: u.finalizedTasks ?? u.completedTasks ?? u.tasksCompleted ?? u.tasks ?? 0,
+        rank: u.rank
+      }))
+    } else {
+      leaderboard.value = []
+    }
+
     if (projectId && seasonDashboard.value.canManage) {
-      const seasonsResponse = await axiosClient.get(`/projects/${projectId}/rewards/seasons`)
-      managerSeasons.value = seasonsResponse.data?.data || seasonsResponse.data || []
+      const seasonsResponse = await axiosClient.get(`/projects/${projectId}/rewards/seasons`).catch(() => null)
+      managerSeasons.value = seasonsResponse?.data?.data || seasonsResponse?.data || []
     } else if (seasonDashboard.value.currentSeason) {
       managerSeasons.value = [seasonDashboard.value.currentSeason]
     }
+    
+    // Load persisted season-reward mappings
+    managerSeasons.value.forEach(s => {
+      const cached = localStorage.getItem(`season_rewards_${s.id}`)
+      if (cached) {
+        try { s.rewards = JSON.parse(cached) } catch(e) { s.rewards = [] }
+      } else {
+        s.rewards = []
+      }
+    })
 
-    // Initialize selectedUser
     if (selectedUser.value) {
       if (selectedUser.value.isMe) {
         resetToMe()
@@ -798,23 +2028,40 @@ const loadRewards = async () => {
   }
 }
 
-const showValidationErrors = (errors) => {
-  if (errors.length) ElMessage.warning(errors[0])
-  return errors.length === 0
-}
-
 const createSeason = async () => {
-  if (!showValidationErrors(validateRewardSeasonForm(seasonForm.value))) return
-  const projectId = getScopedCurrentProjectId()
-  if (!projectId) return
+  if (!seasonForm.value.name?.trim()) {
+    ElMessage.warning('Vui lòng nhập tên mùa giải.')
+    return
+  }
+  
+  if (!seasonForm.value.startAt) {
+    seasonForm.value.startAt = new Date().toISOString().split('T')[0]
+  }
+  if (!seasonForm.value.type) {
+    seasonForm.value.type = 'Custom'
+  }
+  
+  const activeProjects = await ensureActiveProjects()
+  if (activeProjects.length === 0) {
+    ElMessage.error(t('Gamification.RequireActiveProject', 'Vui lòng tạo ít nhất 1 Dự án trước khi tạo mùa giải.'))
+    return
+  }
+
+  const projectId = activeProjects[0].id
+
   managerBusy.value = true
   try {
     await axiosClient.post(`/projects/${projectId}/rewards/seasons`, {
-      name: seasonForm.value.name.trim(), type: seasonForm.value.type, startAt: `${seasonForm.value.startAt}T00:00:00+00:00`,
-      endAt: seasonForm.value.type === 'Custom' && seasonForm.value.endAt ? `${seasonForm.value.endAt}T23:59:59.9999999+00:00` : null,
-      timeZone: seasonForm.value.timeZone.trim() || null
+      name: seasonForm.value.name.trim(),
+      type: seasonForm.value.type,
+      startAt: `${seasonForm.value.startAt}T00:00:00+00:00`,
+      endAt: seasonForm.value.endAt ? `${seasonForm.value.endAt}T23:59:59.9999999+00:00` : null,
+      timeZone: seasonForm.value.timeZone?.trim() || null
     })
-    seasonForm.value = { name: '', type: 'Sprint', startAt: '', endAt: '', timeZone: '' }
+
+    seasonForm.value = { name: '', type: 'Custom', startAt: '', endAt: '', timeZone: '' }
+    isCreatingSeason.value = false
+    ElMessage.success('Tạo mùa giải thành công!')
     await loadRewards()
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Unable to create season.')
@@ -824,66 +2071,126 @@ const createSeason = async () => {
 }
 
 const createReward = async () => {
-  if (!showValidationErrors(validateRewardForm(rewardForm.value))) return
-  const projectId = getScopedCurrentProjectId()
-  if (!projectId) return
-  const topN = rewardForm.value.condition === 'TopN'
-  managerBusy.value = true
+  if (!rewardForm.value.name?.trim()) {
+    ElMessage.warning('Vui lòng nhập tên phần thưởng.')
+    return
+  }
+
   try {
-    await axiosClient.post(`/projects/${projectId}/rewards/seasons/${rewardForm.value.seasonId}/definitions`, {
-      name: rewardForm.value.name.trim(), description: rewardForm.value.description.trim() || null, rewardType: rewardForm.value.rewardType,
-      displayValue: null, currency: null, conditionType: topN ? 'Ranking' : rewardForm.value.condition === 'TeamOnTimeRate' ? 'TeamGoal' : 'PersonalMilestone',
-      conditionMetric: topN ? 'SeasonPoints' : rewardForm.value.condition === 'ApprovedTasks' ? 'FinalizedTaskCount' : rewardForm.value.condition.includes('OnTimeRate') ? 'OnTimeRate' : 'SeasonPoints',
-      threshold: topN ? 0 : Number(rewardForm.value.threshold), rankFrom: topN ? 1 : null, rankTo: topN ? Number(rewardForm.value.rankTo) : null,
-      requireActiveMemberAtSettlement: rewardForm.value.requireActiveMember
+    managerBusy.value = true
+    const activeProjects = await ensureActiveProjects()
+    if (activeProjects.length === 0) {
+      ElMessage.error(t('Gamification.RequireActiveProject', 'Vui lòng tạo ít nhất 1 Dự án trước khi tạo phần thưởng.'))
+      return
+    }
+
+    const projectId = activeProjects[0].id
+
+    let seasonId = rewardForm.value.seasonId
+    if (!seasonId && seasonDashboard.value.currentSeason) {
+      seasonId = seasonDashboard.value.currentSeason.id
+    }
+    if (!seasonId && managerSeasons.value.length > 0) {
+      seasonId = managerSeasons.value[0].id
+    }
+    if (!seasonId) {
+      const uniqueName = `Mùa Giải ${new Date().getTime().toString().slice(-4)}`
+      const newSeason = await axiosClient.post(`/projects/${projectId}/rewards/seasons`, {
+        name: uniqueName,
+        type: 'Sprint',
+        startAt: `${new Date().toISOString().split('T')[0]}T00:00:00+00:00`
+      })
+      const sData = newSeason.data?.data || newSeason.data
+      seasonId = sData?.id
+    }
+
+    const croppedImage = await generateCroppedBase64()
+
+    const config = {
+      text: rewardForm.value.description || '',
+      usePoints: rewardForm.value.usePoints,
+      pointCost: rewardForm.value.pointCost || 0,
+      useLevel: rewardForm.value.useLevel,
+      levelRequired: rewardForm.value.levelRequired || 1,
+      useTop: rewardForm.value.useTop,
+      topRequired: rewardForm.value.topRequired || 3,
+      deductLeaderboard: rewardForm.value.deductLeaderboard ?? true
+    }
+    const descriptionJson = JSON.stringify(config)
+
+    const res = await axiosClient.post(`/projects/${projectId}/rewards/seasons/${seasonId}/definitions`, {
+      name: rewardForm.value.name.trim(),
+      description: descriptionJson,
+      rewardType: rewardForm.value.rewardType || 'Gift',
+      conditionType: rewardForm.value.condition || 'PersonalMilestone',
+      conditionMetric: 'SeasonPoints',
+      threshold: rewardForm.value.threshold || 0,
+      rankTo: rewardForm.value.rankTo || 1,
+      method: rewardForm.value.usePoints ? 'Redeem' : 'Gift',
+      pointCost: rewardForm.value.pointCost || 0,
+      quantity: rewardForm.value.quantity || null,
+      claimLimit: rewardForm.value.claimLimit || null,
+      requireActiveMemberAtSettlement: false
     })
-    rewardForm.value = { seasonId: rewardForm.value.seasonId, name: '', description: '', rewardType: 'Gift', condition: 'TopN', threshold: 100, rankTo: 1, requireActiveMember: true }
+
+    const responseData = res.data?.data || res.data
+    if (croppedImage && responseData?.id) {
+      localStorage.setItem(`reward_img_${responseData.id}`, croppedImage)
+      imageRefreshKey.value++
+    }
+
+    rewardForm.value = { seasonId: '', name: '', description: '', rewardType: 'Gift', condition: 'PersonalMilestone', threshold: 100, rankTo: 1, requireActiveMember: false, method: 'Redeem', pointCost: 0, quantity: null, claimLimit: null, imageFile: null, imagePreview: null }
+    isCreatingReward.value = false
+    ElMessage.success('Tạo phần thưởng thành công!')
     await loadRewards()
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || 'Unable to create reward.')
+    console.error("Create reward error:", error.response || error)
+    const errorMsg = error.response?.data?.message || error.response?.data?.title || error.message || 'Unable to create reward.'
+    ElMessage.error(`Lỗi tạo phần thưởng: ${errorMsg}`)
   } finally {
     managerBusy.value = false
   }
 }
 
-const activateSeason = async (season) => {
-  const projectId = getScopedCurrentProjectId()
-  if (!projectId || !season?.id) return
-  managerBusy.value = true
-  try { await axiosClient.post(`/projects/${projectId}/rewards/seasons/${season.id}/activate`); await loadRewards() } catch (error) { ElMessage.error(error.response?.data?.message || 'Unable to activate season.') } finally { managerBusy.value = false }
-}
-
-const closeSeason = async (season) => {
-  const projectId = getScopedCurrentProjectId()
-  if (!projectId || !season?.id) return
-  managerBusy.value = true
-  try { await axiosClient.post(`/projects/${projectId}/rewards/seasons/${season.id}/close`); await loadRewards() } catch (error) { ElMessage.error(error.response?.data?.message || 'Unable to close season.') } finally { managerBusy.value = false }
-}
-
-const resolveGrant = async (grant, award) => {
-  const projectId = getScopedCurrentProjectId()
-  if (!projectId || !grant?.id) return
-  try { await axiosClient.post(`/projects/${projectId}/rewards/grants/${grant.id}/resolve`, { award, note: 'Resolved by manager.' }); await loadRewards() } catch (error) { ElMessage.error(error.response?.data?.message || 'Unable to resolve reward tie.') }
-}
-
-const fulfillGrant = async (grant) => {
-  const projectId = getScopedCurrentProjectId()
-  if (!projectId || !grant?.id) return
-  try { await axiosClient.post(`/projects/${projectId}/rewards/grants/${grant.id}/fulfill`); await loadRewards() } catch (error) { ElMessage.error(error.response?.data?.message || 'Unable to fulfill reward.') }
-}
-
-const reviewSeasonEvent = async (event, approve) => {
-  const projectId = getScopedCurrentProjectId()
-  if (!projectId || !event?.id) return
+const redeemReward = async (item) => {
+  if (!item || shopBusy.value) return
   try {
-    await axiosClient.post(`/projects/${projectId}/rewards/events/${event.id}/review`, { approve })
+    shopBusy.value = true
+    const projectId = getFirstActiveProjectId()
+    if (!projectId) return
+    const res = await axiosClient.post(`/projects/${projectId}/rewards/redeem`, {
+      rewardDefinitionId: item.id
+    })
+    
+    ElMessage.success(res.data?.message || 'Đổi quà thành công!')
+    if (res.data?.data) {
+      wallet.value.totalPoints = res.data.data.remainingPoints
+      item.quantity = res.data.data.remainingQuantity
+    }
     await loadRewards()
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || 'Unable to review reward event.')
+    ElMessage.error(error.response?.data?.message || 'Không thể đổi quà.')
+  } finally {
+    shopBusy.value = false
   }
 }
 
-onMounted(loadRewards)
+
+onMounted(async () => {
+  if (!homeProjectStore.projects || homeProjectStore.projects.length === 0) {
+    await homeProjectStore.fetchProjects()
+  }
+  loadRewards()
+  window.addEventListener('open-reward-settings', () => {
+    openSettingsModal.value = true
+  })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('open-reward-settings', () => {
+    openSettingsModal.value = true
+  })
+})
 </script>
 
 <style scoped>
@@ -1020,7 +2327,6 @@ onMounted(loadRewards)
   display: flex;
   gap: 20px;
   padding: 20px var(--sa-page-x, 24px);
-  align-items: start;
 }
 
 @media (max-width: 1024px) {
@@ -1051,6 +2357,7 @@ onMounted(loadRewards)
 .leaderboard-card {
   display: flex;
   flex-direction: column;
+  flex: 1;
 }
 
 .leaderboard-header {
@@ -1306,6 +2613,9 @@ onMounted(loadRewards)
 .rankings-table-container {
   overflow-x: auto;
   margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 .rankings-table {
@@ -1687,7 +2997,6 @@ onMounted(loadRewards)
 .tab-btn.active::after {
   background: var(--reward-accent);
 }
-
 .custom-tabs-content {
   min-height: 120px;
 }
@@ -1860,11 +3169,497 @@ onMounted(loadRewards)
   color: var(--reward-muted);
   font-size: 13px;
 }
+
+.inline-creation-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: var(--color-surface-hover, #FAFBFC);
+  padding: 12px;
+  border: 1px dashed var(--color-border, #DFE1E6);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+.inline-creation-row:focus-within {
+  border-color: var(--sa-primary, #0052cc);
+  background: var(--color-background-soft, #FFFFFF);
+}
+.inline-creation-row input, .inline-creation-row select {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border, #DFE1E6);
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+  background: var(--color-background, #fff);
+  color: var(--color-text, #172B4D);
+}
+.inline-creation-row input:focus, .inline-creation-row select:focus {
+  border-color: var(--sa-primary, #0052cc);
+}
+
+.add-placeholder-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px dashed var(--color-border, #DFE1E6);
+  border-radius: 6px;
+  color: var(--color-text-secondary, #5E6C84);
+  cursor: pointer;
+  background: transparent;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+.add-placeholder-btn:hover {
+  background: var(--color-background-soft, #F4F5F7);
+  color: var(--color-text, #172B4D);
+  border-color: #C1C7D0;
+}
+
+.reward-creation-card {
+  border: 1px solid var(--color-border, #DFE1E6);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-background, #FFFFFF);
+  width: 280px;
+  box-shadow: 0 4px 12px rgba(9, 30, 66, 0.1);
+  margin-bottom: 16px;
+}
+.reward-card-header {
+  height: 100px;
+  background: linear-gradient(135deg, #E5F0FF, #B3D4FF);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.reward-card-image-placeholder {
+  width: 48px;
+  height: 48px;
+  background: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #0052cc;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.reward-card-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.reward-card-input-name {
+  border: none;
+  border-bottom: 1px solid var(--color-border, #DFE1E6);
+  font-size: 16px;
+  font-weight: 600;
+  padding: 4px 0;
+  outline: none;
+  background: transparent;
+}
+.reward-card-input-name:focus {
+  border-bottom-color: var(--sa-primary, #0052cc);
+}
+.reward-card-cost-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #f5cd47;
+}
+.reward-card-cost-row input {
+  flex: 1;
+  border: 1px solid var(--color-border, #DFE1E6);
+  border-radius: 4px;
+  padding: 6px 10px;
+  outline: none;
+  font-size: 14px;
+}
+.reward-card-select-season {
+  border: 1px solid var(--color-border, #DFE1E6);
+  border-radius: 4px;
+  padding: 6px 10px;
+  outline: none;
+  font-size: 13px;
+  width: 100%;
+}
+.reward-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.input-with-icon {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--color-border, #DFE1E6);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--color-background, #fff);
+  transition: border-color 0.2s;
+}
+.input-with-icon:focus-within {
+  border-color: var(--sa-primary, #0052cc);
+}
+.input-with-icon .icon-left {
+  padding: 0 10px;
+  color: #f5cd47;
+  font-size: 16px;
+}
+.input-with-icon input {
+  flex: 1;
+  border: none;
+  padding: 8px 10px 8px 0;
+  outline: none;
+  font-size: 14px;
+  background: transparent;
+}
+.reward-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
 </style>
 
 <style>
+/* Shop Modal Height adjustment to make top and bottom margins exactly 5vh */
+.reward-shop-modal {
+  height: 90vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  margin-bottom: 0 !important;
+}
+
+.reward-shop-modal .el-dialog__body {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  padding: 24px;
+}
 /* Hide the global AI mascot on the Rewards page to maintain premium SaaS aesthetics */
 .dashboard-layout:has(.rewards-page) .ai-floating-btn.ai-pet {
   display: none !important;
+}
+
+/* Modals */
+.shop-header {
+  text-align: center;
+  padding: 24px;
+  background: var(--color-surface-hover);
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+.shop-balance {
+  font-size: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.shop-balance span {
+  font-size: 16px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+.shop-subtitle {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  min-height: 50vh;
+}
+.shop-item-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-background-soft);
+}
+.shop-item-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--sa-primary) 10%, transparent);
+  color: var(--sa-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+.shop-item-info h4 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.shop-item-info p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+.shop-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.shop-item-meta .price {
+  color: #f5cd47;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.shop-item-meta .stock {
+  color: var(--color-text-muted);
+}
+.reward-redeem-btn {
+  width: 100%;
+  height: 36px;
+  padding: 0 16px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  border-radius: 8px;
+  background: #fef08a;
+  color: #a16207;
+  border: 1px solid #fde047;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 700;
+}
+.reward-redeem-btn:hover:not(:disabled) {
+  background: #fde047;
+  border-color: #facc15;
+}
+.reward-redeem-btn:active:not(:disabled) {
+  background: #facc15;
+}
+.reward-redeem-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+/* Premium Styles for Gamification Admin UI */
+.premium-card {
+  background: linear-gradient(145deg, #ffffff, #f8fafc);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px -2px rgba(15, 23, 42, 0.05), inset 0 1px 0 rgba(255,255,255,0.6);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+.premium-card:hover {
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: 0 10px 20px -5px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+  border-color: rgba(37, 99, 235, 0.3);
+}
+.premium-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--sa-primary, #2563eb), #60a5fa);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.premium-card:hover::before {
+  opacity: 1;
+}
+
+.premium-placeholder {
+  border: 2px dashed rgba(226, 232, 240, 0.9);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.5);
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+.premium-placeholder:hover {
+  background: #f1f5f9;
+  border-color: var(--sa-primary, #2563eb);
+  color: var(--sa-primary, #2563eb);
+  transform: translateY(-1px);
+}
+
+.premium-form {
+  background: #ffffff;
+  border: 1px solid var(--sa-primary, #2563eb);
+  border-radius: 12px;
+  box-shadow: 0 8px 20px -4px rgba(37, 99, 235, 0.15);
+  animation: slideDown 0.2s ease-out;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-5px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.cyber-reward-card {
+  border-radius: 12px;
+}
+.cyber-image-area {
+  position: relative;
+}
+.cyber-grid-bg {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-position: center;
+  opacity: 0.5;
+}
+.cyber-overlay-hover {
+  position: absolute;
+  inset: 0;
+  background: rgba(37, 99, 235, 0.05);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.cyber-image-area:hover .cyber-overlay-hover {
+  opacity: 1;
+}
+.sa-input:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+
+.add-placeholder:hover {
+  background-color: var(--color-background-soft, #f8fafc) !important;
+  border-color: var(--sa-primary, #2563eb) !important;
+  color: var(--sa-primary, #2563eb) !important;
+}
+
+/* Standardized Input from Work Items */
+.reward-nexus-input,
+input.reward-nexus-input,
+.el-popover input.reward-nexus-input,
+.el-popover input.reward-nexus-input:not(.el-range-input) {
+  width: 100%;
+  height: 34px !important;
+  padding: 0 12px !important;
+  border-radius: 9px !important;
+  border: 1px solid #e2e8f0 !important;
+  background-color: #ffffff !important;
+  color: #334155 !important;
+  font-size: 13.5px !important;
+  transition: border-color 0.2s, box-shadow 0.2s !important;
+  box-sizing: border-box !important;
+  outline: none !important;
+}
+.reward-nexus-input:focus,
+input.reward-nexus-input:focus,
+.el-popover input.reward-nexus-input:focus,
+.el-popover input.reward-nexus-input:not(.el-range-input):focus {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important;
+}
+.reward-nexus-input::placeholder,
+input.reward-nexus-input::placeholder,
+.el-popover input.reward-nexus-input::placeholder {
+  color: var(--color-text-muted) !important;
+}
+textarea.reward-nexus-input {
+  height: auto !important;
+  min-height: 34px !important;
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+  resize: none;
+}
+.reward-nexus-search {
+  padding-left: 36px !important;
+}
+
+@keyframes scroll-left {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+.marquee-content {
+  display: inline-block;
+  padding-left: 100%;
+  animation: scroll-left 15s linear infinite;
+}
+
+.filter-search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: white;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 6px;
+  overflow: hidden;
+  height: 32px;
+  transition: all 0.2s ease;
+}
+.filter-search-field:focus-within {
+  border-color: var(--primary-color, #3b82f6);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+.filter-search-icon {
+  position: absolute;
+  left: 10px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+.filter-search-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  padding: 0 12px 0 32px;
+  font-size: 13px;
+  outline: none;
+  background: transparent;
+  color: #0f172a;
+}
+.filter-search-input::placeholder {
+  color: #94a3b8;
+}.empty-spaces-btn {
+  background: white;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.empty-spaces-btn:hover {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+[data-theme='dark'] .empty-spaces-btn {
+  background: rgba(30, 41, 59, 0.5);
+  border-color: #334155;
+  color: #cbd5e1;
+}
+[data-theme='dark'] .empty-spaces-btn:hover {
+  background: #1e293b;
+  color: #f8fafc;
+  border-color: #475569;
 }
 </style>

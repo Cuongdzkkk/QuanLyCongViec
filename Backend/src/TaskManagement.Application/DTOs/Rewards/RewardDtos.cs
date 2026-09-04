@@ -23,6 +23,12 @@ public sealed record CreateRewardDefinitionRequest(
     decimal Threshold,
     int? RankFrom,
     int? RankTo,
+    string Method = "Ranking",
+    int? PointCost = null,
+    int? Quantity = null,
+    int? ClaimLimit = null,
+    DateTimeOffset? StartAt = null,
+    DateTimeOffset? EndAt = null,
     bool RequireActiveMemberAtSettlement = true);
 
 public sealed record RewardSeasonDto(
@@ -37,7 +43,10 @@ public sealed record RewardPointEventDto(
 public sealed record RewardDefinitionDto(
     Guid Id, string Name, string? Description, string RewardType, decimal? DisplayValue,
     string? Currency, string ConditionType, string ConditionMetric, decimal Threshold,
-    int? RankFrom, int? RankTo, bool RequireActiveMemberAtSettlement, bool IsEnabled);
+    int? RankFrom, int? RankTo, 
+    string Method, int? PointCost, int? Quantity, int? ClaimLimit, 
+    DateTimeOffset? StartAt, DateTimeOffset? EndAt,
+    bool RequireActiveMemberAtSettlement, bool IsEnabled);
 
 public sealed record RewardGrantDto(
     Guid Id, Guid RewardDefinitionId, Guid RecipientUserId, string RecipientName,
@@ -65,3 +74,18 @@ public sealed record RewardDashboardDto(
     public decimal MyOnTimeRate { get; init; }
     public decimal TeamOnTimeRate { get; init; }
 }
+
+public sealed record RedeemRewardRequest(Guid RewardDefinitionId);
+
+public sealed record RedeemRewardResponse(
+    bool Success, 
+    string Message, 
+    Guid? GrantId, 
+    Guid RewardDefinitionId, 
+    string RewardName, 
+    int SpentPoints, 
+    int RemainingPoints, 
+    int? RemainingQuantity);
+
+public sealed record LevelConfigDto(Guid Id, Guid ProjectId, int Level, string Title, int RequiredXpPerLevel, Guid? RewardId);
+public sealed record UpdateLevelConfigsRequest(IReadOnlyList<LevelConfigDto> Configs);

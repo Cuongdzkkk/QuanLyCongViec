@@ -18,6 +18,15 @@ public class RewardDefinition
     public decimal Threshold { get; set; }
     public int? RankFrom { get; set; }
     public int? RankTo { get; set; }
+    
+    // New fields for Shop and advanced rules
+    public string Method { get; set; } = "Ranking"; // Redeem, Ranking, Milestone, Team
+    public int? PointCost { get; set; }
+    public int? Quantity { get; set; }
+    public int? ClaimLimit { get; set; }
+    public DateTimeOffset? StartAt { get; set; }
+    public DateTimeOffset? EndAt { get; set; }
+
     public bool RequireActiveMemberAtSettlement { get; set; } = true;
     public bool IsEnabled { get; set; } = true;
     public Guid CreatedBy { get; set; }

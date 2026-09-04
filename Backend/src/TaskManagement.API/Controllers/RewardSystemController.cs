@@ -30,6 +30,10 @@ public sealed class RewardSystemController : ControllerBase
     [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,SM,PROJECT_ADMIN,Admin")]
     public Task<RewardSeasonDto> ActivateSeason(Guid projectId, Guid seasonId) => _service.ActivateSeasonAsync(projectId, seasonId, CurrentUser());
 
+    [HttpPost("seasons/{seasonId:guid}/pause")]
+    [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,SM,PROJECT_ADMIN,Admin")]
+    public Task<RewardSeasonDto> PauseSeason(Guid projectId, Guid seasonId) => _service.PauseSeasonAsync(projectId, seasonId, CurrentUser());
+
     [HttpPost("seasons/{seasonId:guid}/close")]
     [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,SM,PROJECT_ADMIN,Admin")]
     public Task<RewardSeasonDto> CloseSeason(Guid projectId, Guid seasonId) => _service.CloseSeasonAsync(projectId, seasonId, CurrentUser());
@@ -37,6 +41,10 @@ public sealed class RewardSystemController : ControllerBase
     [HttpPost("seasons/{seasonId:guid}/definitions")]
     [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,SM,PROJECT_ADMIN,Admin")]
     public Task<RewardDefinitionDto> CreateDefinition(Guid projectId, Guid seasonId, [FromBody] CreateRewardDefinitionRequest request) => _service.CreateDefinitionAsync(projectId, seasonId, CurrentUser(), request);
+
+    [HttpPut("seasons/{seasonId:guid}/definitions/{definitionId:guid}")]
+    [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,SM,PROJECT_ADMIN,Admin")]
+    public Task<RewardDefinitionDto> UpdateDefinition(Guid projectId, Guid seasonId, Guid definitionId, [FromBody] CreateRewardDefinitionRequest request) => _service.UpdateDefinitionAsync(projectId, seasonId, definitionId, CurrentUser(), request);
 
     [HttpPost("events/{eventId:guid}/review")]
     [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,SM,PROJECT_ADMIN,Admin")]
@@ -57,6 +65,29 @@ public sealed class RewardSystemController : ControllerBase
     [HttpPost("grants/{grantId:guid}/resolve")]
     [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,SM,PROJECT_ADMIN,Admin")]
     public Task<RewardGrantDto> Resolve(Guid projectId, Guid grantId, [FromBody] ResolveRewardGrantRequest request) => _service.ResolveGrantAsync(projectId, grantId, CurrentUser(), request.Award, request.Note);
+
+    [HttpPost("redeem")]
+    public async Task<IActionResult> Redeem(Guid projectId, [FromBody] RedeemRewardRequest request)
+    {
+        var result = await _service.RedeemRewardAsync(projectId, CurrentUser(), request);
+        return Ok(new { statusCode = 200, message = result.Message, data = result });
+    }
+
+    [HttpGet("levels")]
+    public async Task<IActionResult> GetLevelConfigs(Guid projectId)
+    {
+        var result = await _service.GetLevelConfigsAsync(projectId, CurrentUser());
+        return Ok(new { statusCode = 200, message = "Success", data = result });
+    }
+
+    [HttpPut("levels")]
+    [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,SM,PROJECT_ADMIN,Admin")]
+    public async Task<IActionResult> UpdateLevelConfigs(Guid projectId, [FromBody] UpdateLevelConfigsRequest request)
+    {
+        var result = await _service.UpdateLevelConfigsAsync(projectId, CurrentUser(), request);
+        return Ok(new { statusCode = 200, message = "Level configs updated.", data = result });
+    }
+
 
     private Guid CurrentUser()
     {
