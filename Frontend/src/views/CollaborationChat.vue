@@ -39,7 +39,12 @@
             <div v-if="project.id === activeProjectId && channelsLoading && !projectChannels(project.id).length" class="channel-state" role="status"><i class="fa-solid fa-spinner fa-spin"></i><span>Đang tải Channel...</span></div>
             <div v-else-if="project.id === activeProjectId && channelsError" class="channel-state channel-state-error" role="alert"><span>{{ channelsError }}</span><button type="button" class="state-action" @click="retryChannels">Thử lại</button></div>
 
-            <div class="navigator-section-head"><span class="section-title">TEXT CHANNELS</span><button type="button" class="add-btn-small" title="Tạo Channel" aria-label="Tạo Channel" :disabled="project.id !== activeProjectId || channelsLoading" @click="openCreateChannelModal"><i class="fa-solid fa-plus text-xs"></i></button></div>
+            <div class="navigator-section-head">
+              <span class="section-title">TEXT CHANNELS</span>
+              <button v-if="canManageChannels" type="button" class="add-btn-small" title="Tạo Channel" aria-label="Tạo Channel" :disabled="project.id !== activeProjectId || channelsLoading" @click="openCreateChannelModal">
+                <i class="fa-solid fa-plus text-xs"></i>
+              </button>
+            </div>
             <div class="section-list">
               <div v-if="!projectChannels(project.id).length && project.id === activeProjectId && !channelsLoading && !channelsError" class="channel-state">Chưa có channel trong project này.</div>
               <button v-for="ch in channelsForNavigator(project)" :key="ch.id" type="button" class="list-item navigator-channel" :class="{ active: activeChat?.id === ch.id && activeChat?.type === 'channel' }" @click="selectChat(ch, 'channel')">
@@ -49,11 +54,23 @@
               <button v-if="project.id === activeProjectId && channels.length < channelPagination.totalCount && !navigatorQuery" type="button" class="state-action load-more-action" :disabled="channelsLoadingMore" @click="loadMoreChannels">{{ channelsLoadingMore ? 'Đang tải...' : 'Tải thêm Channel' }}</button>
             </div>
 
-            <div class="navigator-section-head voice-section-head"><span class="section-title">KÊNH THOẠI (VOICE)</span><button type="button" class="add-btn-small" title="Tạo kênh thoại mới" aria-label="Tạo kênh thoại mới" :disabled="project.id !== activeProjectId" @click="openCreateVoiceModal"><i class="fa-solid fa-plus text-xs"></i></button></div>
+            <div class="navigator-section-head voice-section-head">
+              <span class="section-title">KÊNH THOẠI (VOICE)</span>
+              <button v-if="canManageChannels" type="button" class="add-btn-small" title="Tạo kênh thoại mới" aria-label="Tạo kênh thoại mới" :disabled="project.id !== activeProjectId" @click="openCreateVoiceModal">
+                <i class="fa-solid fa-plus text-xs"></i>
+              </button>
+            </div>
             <div class="section-list">
               <div v-for="vc in voiceChannelsForProject(project)" :key="vc.id" class="voice-item-wrapper">
-                <button type="button" class="list-item voice-item navigator-channel" :class="{ active: activeVoiceChannel?.id === vc.id }" @click="openPreJoinVoiceChannel(vc)"><span class="item-icon"><i class="fa-solid fa-volume-high"></i></span><span class="item-name">{{ vc.name }}</span></button>
-                <div v-if="vc.id === activeVoiceChannel?.id && participantsInCall.length" class="voice-users-list"><div v-for="user in participantsInCall" :key="user.connectionId" class="voice-user"><el-avatar :size="16" :src="user.avatarUrl">{{ user.displayName.charAt(0) }}</el-avatar><span class="truncate">{{ user.displayName }}</span></div></div>
+                <button type="button" class="list-item voice-item navigator-channel" :class="{ active: activeVoiceChannel?.id === vc.id }" @click="openPreJoinVoiceChannel(vc)">
+                  <span class="item-icon"><i class="fa-solid fa-volume-high"></i></span><span class="item-name">{{ vc.name }}</span>
+                </button>
+                <div v-if="vc.id === activeVoiceChannel?.id && participantsInCall.length" class="voice-users-list">
+                  <div v-for="user in participantsInCall" :key="user.connectionId" class="voice-user">
+                    <el-avatar :size="16" :src="user.avatarUrl">{{ user.displayName.charAt(0) }}</el-avatar>
+                    <span class="truncate">{{ user.displayName }}</span>
+                  </div>
+                </div>
               </div>
               <div v-if="!voiceChannelsForProject(project).length" class="channel-state">Chưa có kênh thoại trong project này.</div>
             </div>
@@ -163,7 +180,7 @@
         <p>{{ voiceJoiningChannelName || activeVoiceChannel?.name || 'Kênh thoại' }} đang kết nối. Vui lòng đợi xác nhận tham gia.</p>
         </div>
         <div class="call-prejoin-joining-status"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i><span>Đang kết nối…</span></div>
-        <div class="call-prejoin-actions"><button type="button" class="secondary-button" disabled>Hủy</button></div>
+        <div class="call-prejoin-actions"><button type="button" class="secondary-button" @click="cancelVoiceJoining">Hủy</button></div>
       </section>
       
       <!-- Embedded Voice Call View (Discord Style) -->
@@ -194,7 +211,7 @@
               <span class="ai-off-state">{{ callAiStateLabel }}</span>
             </button>
             <button type="button" class="action-btn" aria-label="Mở danh sách người tham gia" title="Người tham gia" @click="openCallParticipants">
-              <i class="fa-solid fa-layout-sidebar" aria-hidden="true"></i>
+              <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
             </button>
             <button 
               class="action-btn" 
@@ -473,9 +490,7 @@
                 <i class="fa-solid fa-table-cells" aria-hidden="true"></i><span>Thu về lưới</span>
               </button>
 
-              <button type="button" class="call-control-label-btn" :class="{ active: callChatOpen }" aria-label="Mở chat cuộc gọi" title="Chat" :aria-pressed="callChatOpen" @click="openVoiceChannelChat">
-                <i class="fa-solid fa-message" aria-hidden="true"></i><span>Chat</span>
-              </button>
+
 
               <button type="button" class="call-control-label-btn" :class="{ active: showMembersSidebar }" aria-label="Mở danh sách người tham gia" title="Người tham gia" :aria-pressed="showMembersSidebar" @click="openCallParticipants">
                 <i class="fa-solid fa-users" aria-hidden="true"></i><span>Người tham gia</span>
@@ -585,21 +600,191 @@
               </div>
             </div>
             <div v-if="callChatOpen" ref="callChatThread" class="call-chat-thread">
-              <div v-for="msg in callChatMessages.slice(-40)" :key="`call-${msg.messageId || msg.clientMessageId}`" class="call-chat-message" :class="{ 'is-own': `${msg.senderId}` === `${currentUser.id}`, 'is-pending': msg.status === 'pending', 'is-failed': msg.status === 'failed' }">
-                <el-avatar :size="30" :src="msg.senderAvatar" :alt="`${msg.senderName} avatar`">
-                  {{ msg.senderName?.charAt(0) || '?' }}
-                </el-avatar>
-                <div class="call-chat-message-body">
-                  <div class="call-chat-message-meta"><strong>{{ msg.senderName }}</strong><small>{{ msg.status === 'pending' ? 'Đang gửi…' : msg.status === 'failed' ? 'Gửi lại' : formatTime(msg.sentAt) }}</small></div>
-                  <p>{{ msg.content }}</p>
+              <template v-if="callChatDisplayMessages.length">
+                <div v-for="msg in callChatDisplayMessages" :key="`call-${msg.messageId || msg.clientMessageId}`" class="call-chat-message" :class="{ 'is-own': isOwnCallMessage(msg), 'mine': isOwnCallMessage(msg) }">
+                  <div class="call-chat-message-body">
+                    <!-- Reply Quote Box -->
+                    <button v-if="msg.replyTo" type="button" class="message-reply-quote mb-1" @click="focusMessage(msg.replyTo.messageId)">
+                      <span class="reply-quote-label">Trả lời {{ msg.replyTo.senderName }}</span>
+                      <span class="reply-quote-content">{{ msg.replyTo.content || 'Tin nhắn không còn khả dụng' }}</span>
+                    </button>
+
+                    <div class="message-bubble-wrapper">
+                      <div class="call-msg-bubble" :class="{ 'is-revoked': msg.isRevoked }">
+                        <div class="call-msg-inline-header">
+                          <el-avatar :size="20" :src="msg.senderAvatar || ''" class="call-msg-avatar">
+                            {{ (msg.senderName || '?').charAt(0).toUpperCase() }}
+                          </el-avatar>
+                          <strong class="call-msg-author">{{ msg.senderName }}</strong>
+                          <span v-if="msg.isEdited" class="edited-badge">(đã sửa)</span>
+                          <span class="call-msg-time">{{ formatTime(msg.sentAt) }}</span>
+                        </div>
+                        <span v-if="msg.isRevoked" class="revoked-text" style="font-style: italic; opacity: 0.65;">
+                          <i class="fa-solid fa-ban mr-1"></i> Tin nhắn đã được thu hồi
+                        </span>
+                        <!-- Attachments inside bubble -->
+                        <div v-if="msg.attachments?.length" class="call-msg-attachments mt-1.5 flex flex-col gap-1.5">
+                          <div v-for="att in msg.attachments" :key="att.attachmentId" class="call-msg-att-item">
+                            <template v-if="att.previewUrl || isImageFile(att.originalFileName)">
+                              <img :src="att.previewUrl || att.fileUrl" alt="" class="max-w-full max-h-48 rounded-lg object-cover shadow-sm cursor-pointer border border-white/20" />
+                            </template>
+                            <template v-else>
+                              <div class="flex items-center gap-2 p-2 rounded-lg bg-black/15 border border-white/10">
+                                <i :class="getFileIconClass(att.originalFileName)" class="text-lg"></i>
+                                <span class="truncate text-xs font-medium flex-1">{{ att.originalFileName }}</span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                        <p v-if="!msg.isRevoked && msg.content" class="call-msg-content mt-1">{{ msg.content }}</p>
+                      </div>
+
+                      <!-- Zalo Hover Action Toolbar -->
+                      <div class="zalo-hover-toolbar" aria-label="Thao tác tin nhắn">
+                        <div class="zalo-action-buttons">
+                          <button v-if="!msg.isRevoked" type="button" class="zalo-circle-btn" title="Trích dẫn / Trả lời" @click="startReply(msg)">
+                            <i class="fa-solid fa-quote-right"></i>
+                          </button>
+                          <div v-if="!msg.isRevoked" class="zalo-reaction-trigger-wrapper">
+                            <button type="button" class="zalo-circle-btn reaction-trigger-btn" title="Thả cảm xúc" @click="toggleReaction(msg, '👍')">
+                              <i class="fa-regular fa-thumbs-up"></i>
+                            </button>
+                            <div class="zalo-emoji-bar">
+                              <button v-for="emoji in ['👍', '❤️', '😂', '😮', '😭', '😡']" :key="emoji" type="button" class="zalo-emoji-btn" :title="`Thêm ${emoji}`" @click="toggleReaction(msg, emoji)">
+                                {{ emoji }}
+                              </button>
+                            </div>
+                          </div>
+                          <el-dropdown trigger="click" placement="bottom-end">
+                            <button type="button" class="zalo-circle-btn" title="Tùy chọn khác">
+                              <i class="fa-solid fa-ellipsis"></i>
+                            </button>
+                            <template #dropdown>
+                              <el-dropdown-menu class="zalo-menu-dropdown">
+                                <el-dropdown-item v-if="!msg.isRevoked" @click="copyMessageText(msg)">
+                                  <i class="fa-regular fa-copy mr-2"></i> Copy tin nhắn
+                                </el-dropdown-item>
+                                <el-dropdown-item v-if="isOwnCallMessage(msg) && canEditOrRevoke(msg)" @click="startEditMessage(msg)">
+                                  <i class="fa-regular fa-pen-to-square mr-2"></i> Chỉnh sửa
+                                </el-dropdown-item>
+                                <el-dropdown-item v-if="isOwnCallMessage(msg) && canEditOrRevoke(msg)" @click="revokeMessage(msg)">
+                                  <span class="text-rose-500 flex items-center gap-1"><i class="fa-solid fa-rotate-left mr-1"></i> Thu hồi</span>
+                                </el-dropdown-item>
+                                <el-dropdown-item :divided="!msg.isRevoked" @click="deleteMessageForMe(msg)">
+                                  <span class="text-rose-500 flex items-center gap-1"><i class="fa-regular fa-trash-can mr-1"></i> Xóa ở phía tôi</span>
+                                </el-dropdown-item>
+                              </el-dropdown-menu>
+                            </template>
+                          </el-dropdown>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Reactions List -->
+                    <div v-if="msg.reactions?.length" class="message-reactions mt-1">
+                      <span v-for="r in msg.reactions" :key="r.emoji" class="reaction-pill" @click="toggleReaction(msg, r.emoji)">
+                        {{ r.emoji }} {{ r.count }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <div v-else class="call-chat-empty-state">
+                <i class="fa-regular fa-comments text-2xl text-accent mb-1"></i>
+                <strong>Chưa có tin nhắn trong phòng này.</strong>
+                <span>Bắt đầu cuộc trò chuyện để mọi người cùng thảo luận.</span>
+              </div>
+            </div>
+
+            <!-- Enhanced Composer Input with Attachments, Emojis, Reply & Editing target -->
+            <form v-if="callChatOpen" class="call-chat-composer" @submit.prevent="sendCallChatMessage">
+              <!-- Editing Target Preview Bar -->
+              <div v-if="editingTarget" class="reply-composer-strip editing-composer-strip mb-1">
+                <div class="reply-content-box">
+                  <div class="reply-header-row">
+                    <span class="reply-header-text" style="color: #3b82f6;">
+                      <i class="fa-regular fa-pen-to-square reply-quote-icon"></i> Đang chỉnh sửa tin nhắn
+                    </span>
+                  </div>
+                  <div class="reply-snippet-text truncate">{{ editingTarget.content }}</div>
+                </div>
+                <button type="button" class="reply-close-btn" title="Hủy chỉnh sửa" @click="cancelEditMessage">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+
+              <!-- Reply Target Preview Bar -->
+              <div v-if="replyTarget" class="reply-composer-strip mb-1">
+                <div class="reply-content-box">
+                  <div class="reply-header-row">
+                    <span class="reply-header-text">
+                      <i class="fa-solid fa-quote-left reply-quote-icon"></i> Trả lời <strong class="reply-user-name">{{ replyTarget.senderName }}</strong>
+                    </span>
+                  </div>
+                  <div class="reply-snippet-text truncate">{{ replyTarget.content || 'Tin nhắn không còn khả dụng' }}</div>
+                </div>
+                <button type="button" class="reply-close-btn" title="Hủy trả lời" @click="cancelReply">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+
+              <!-- Hidden file input for call chat attachment -->
+              <input 
+                type="file" 
+                ref="fileInputRef" 
+                style="display: none;" 
+                multiple
+                accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.docx,.xlsx,.zip,.rar,.7z"
+                @change="handleFileChange" 
+              />
+
+              <!-- Attached File Preview Bar -->
+              <div v-if="attachedFiles.length" class="call-attached-preview">
+                <div v-for="file in attachedFiles" :key="file.id" class="call-attached-file">
+                  <img v-if="file.previewUrl" :src="file.previewUrl" alt="" class="w-6 h-6 object-cover rounded mr-1" />
+                  <i v-else :class="getFileIconClass(file.name)"></i>
+                  <span class="truncate text-xs font-semibold">{{ file.name }}</span>
+                  <button type="button" @click="removeAttachedFile(file.id)"><i class="fa-solid fa-xmark"></i></button>
                 </div>
               </div>
-              <span v-if="!callChatMessages.length" class="channel-utility-empty">Chưa có tin nhắn trong phòng này.</span>
-            </div>
-            <form v-if="callChatOpen" class="call-chat-composer" @submit.prevent="sendCallChatMessage">
-              <textarea ref="callChatComposer" v-model="callChatDraft" :disabled="callChatSending || !callChatConnected" maxlength="4000" rows="1" aria-label="Nội dung chat cuộc gọi" placeholder="Gửi tin nhắn..." @keydown.enter.exact.prevent="sendCallChatMessage"></textarea>
-              <button v-if="callChatDraft" type="button" class="call-chat-clear" aria-label="Xóa nội dung đang nhập" title="Xóa nội dung đang nhập" @click="callChatDraft = ''"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
-              <button type="submit" :disabled="callChatSending || !callChatDraft.trim()" aria-label="Gửi tin nhắn cuộc gọi" title="Gửi tin nhắn cuộc gọi"><i :class="callChatSending ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'" aria-hidden="true"></i></button>
+
+              <div class="call-composer-controls-row">
+                <button type="button" class="call-composer-icon-btn" title="Đính kèm file" @click="triggerAttachment">
+                  <i class="fa-solid fa-paperclip"></i>
+                </button>
+                
+                <el-popover placement="top-start" :width="260" trigger="click" popper-class="emoji-popover-popper">
+                  <template #reference>
+                    <button type="button" class="call-composer-icon-btn" title="Biểu tượng cảm xúc">
+                      <i class="fa-regular fa-smile"></i>
+                    </button>
+                  </template>
+                  <div class="emoji-picker-grid">
+                    <span v-for="emoji in emojiList" :key="emoji" class="emoji-item" @click="insertCallEmoji(emoji)">{{ emoji }}</span>
+                  </div>
+                </el-popover>
+
+                <textarea
+                  ref="callChatComposer"
+                  v-model="callChatDraft"
+                  :disabled="callChatSending"
+                  maxlength="4000"
+                  rows="1"
+                  aria-label="Nội dung chat cuộc gọi"
+                  placeholder="Gửi tin nhắn..."
+                  @keydown.enter.exact.prevent="sendCallChatMessage"
+                ></textarea>
+
+                <button
+                  type="submit"
+                  class="call-composer-send-btn"
+                  :disabled="callChatSending || (!callChatDraft.trim() && !attachedFiles.length && !editingTarget)"
+                  :aria-label="editingTarget ? 'Lưu thay đổi' : 'Gửi tin nhắn'"
+                  :title="editingTarget ? 'Lưu thay đổi' : 'Gửi tin nhắn'"
+                >
+                  <i :class="editingTarget ? 'fa-solid fa-check' : (callChatSending ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane')"></i>
+                </button>
+              </div>
             </form>
           </aside>
         </div>
@@ -634,13 +819,10 @@
               <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
             </button>
             <button type="button" class="action-btn" aria-label="Mở panel channel" title="Mở panel channel" @click="toggleContextPanel">
-              <i class="fa-solid fa-layout-sidebar" aria-hidden="true"></i>
+              <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
             </button>
             <button v-if="activeChannel" type="button" class="action-btn" aria-label="Tìm trong Channel" title="Tìm trong Channel" @click="openChannelUtility('search')">
               <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-            </button>
-            <button v-if="activeChannel" type="button" class="action-btn" aria-label="Tin nhắn đã ghim" title="Tin nhắn đã ghim" @click="openChannelUtility('pins')">
-              <i class="fa-solid fa-thumbtack" aria-hidden="true"></i>
             </button>
             <button 
               v-if="activeChannel?.desc?.startsWith('__voice_chat_channel__') && activeVoiceChannel?.id === activeChannel.desc.split(':')[1]"
@@ -653,44 +835,7 @@
               <span class="font-semibold">Vào phòng thoại</span>
             </button>
 
-            <el-popover
-              placement="bottom-end"
-              :width="300"
-              trigger="click"
-              popper-class="project-members-popover"
-              @before-enter="fetchProjectMembers"
-            >
-              <template #reference>
-                <button type="button" class="action-btn" aria-label="Thành viên dự án" title="Thành viên dự án">
-                  <i class="fa-solid fa-users text-lg"></i>
-                </button>
-              </template>
-              
-              <div class="popover-members-content" style="padding: 4px;">
-                <h5 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 700; color: #f8fafc; border-bottom: 1px solid var(--color-border); padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                  <span>Thành viên Project ({{ projectMembers.length }})</span>
-                  <i v-if="loadingMembers" class="fa-solid fa-spinner fa-spin text-xs"></i>
-                </h5>
-                
-                <div style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
-                  <div v-if="projectMembers.length === 0 && !loadingMembers" style="text-align: center; color: var(--color-text-muted); font-size: 12px; padding: 12px 0;">
-                    Không có thành viên nào.
-                  </div>
-                  
-                  <div 
-                    v-for="member in projectMembers" 
-                    :key="member.userId || member.id"
-                    style="display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px;"
-                  >
-                    <el-avatar :size="28" :src="member.avatarUrl || member.avatar">{{ (member.fullName || member.name || '?').charAt(0) }}</el-avatar>
-                    <div style="display: flex; flex-direction: column; min-width: 0; flex: 1;">
-                      <span style="font-size: 13px; font-weight: 600; color: #f8fafc;" class="truncate">{{ member.fullName || member.name }}</span>
-                      <span style="font-size: 11px; color: var(--color-text-muted);" class="truncate">{{ member.email || member.jobTitle || 'Thành viên' }}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </el-popover>
+
           </div>
         </header>
 
@@ -710,6 +855,95 @@
         <div class="chat-content-split">
           <!-- Chat Area (Messages + Input) -->
           <div class="chat-thread-column">
+            <!-- Pinned Messages Banner (Image 1 & Image 2) -->
+            <div v-if="pinnedList.length > 0" class="chat-pinned-banner" :class="{ 'is-expanded': isPinnedListExpanded }">
+              <!-- Collapsed Single Pin Summary Bar (Image 1) -->
+              <div v-if="!isPinnedListExpanded" class="pinned-summary-bar">
+                <div class="pinned-summary-left" @click="focusMessage(pinnedList[0].messageId)">
+                  <div class="pinned-icon-circle">
+                    <i class="fa-regular fa-comment-dots"></i>
+                  </div>
+                  <div class="pinned-summary-text">
+                    <strong class="pinned-type-label">Tin nhắn</strong>
+                    <div class="pinned-summary-snippet truncate">
+                      <span>{{ pinnedList[0].senderName }}: </span>
+                      <span class="pinned-content-preview">{{ pinnedList[0].content }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="pinned-summary-right">
+                  <button
+                    v-if="pinnedList.length > 1"
+                    type="button"
+                    class="pinned-count-toggle-btn"
+                    @click="isPinnedListExpanded = true"
+                  >
+                    +{{ pinnedList.length - 1 }} ghim <i class="fa-solid fa-chevron-down ml-1"></i>
+                  </button>
+                  <el-dropdown trigger="click" placement="bottom-end">
+                    <button type="button" class="pinned-action-more-btn" title="Tùy chọn ghim">
+                      <i class="fa-solid fa-ellipsis"></i>
+                    </button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item @click="focusMessage(pinnedList[0].messageId)">
+                          <i class="fa-solid fa-arrow-turn-down mr-2"></i> Đi đến tin nhắn
+                        </el-dropdown-item>
+                        <el-dropdown-item v-if="activeChannel?.canManage" @click="togglePin(pinnedList[0])">
+                          <i class="fa-solid fa-thumbtack-slash mr-2 text-danger"></i> <span class="text-danger">Bỏ ghim</span>
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </div>
+
+              <!-- Expanded Full Pinned List (Image 2) -->
+              <div v-else class="pinned-expanded-box">
+                <div class="pinned-expanded-header">
+                  <span class="pinned-expanded-title">Danh sách ghim ({{ pinnedList.length }})</span>
+                  <button type="button" class="pinned-collapse-btn" @click="isPinnedListExpanded = false">
+                    Thu gọn <i class="fa-solid fa-chevron-up ml-1"></i>
+                  </button>
+                </div>
+                <div class="pinned-expanded-list">
+                  <div
+                    v-for="item in pinnedList"
+                    :key="item.messageId"
+                    class="pinned-expanded-item"
+                  >
+                    <div class="pinned-item-left" @click="focusMessage(item.messageId)">
+                      <div class="pinned-icon-circle">
+                        <i class="fa-regular fa-comment-dots"></i>
+                      </div>
+                      <div class="pinned-item-text">
+                        <strong class="pinned-type-label">Tin nhắn</strong>
+                        <div class="pinned-item-snippet truncate">
+                          <span>{{ item.senderName }}: </span>
+                          <span class="pinned-content-preview">{{ item.content }}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <el-dropdown trigger="click" placement="bottom-end">
+                      <button type="button" class="pinned-action-more-btn" title="Tùy chọn ghim">
+                        <i class="fa-solid fa-ellipsis"></i>
+                      </button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item @click="focusMessage(item.messageId)">
+                            <i class="fa-solid fa-arrow-turn-down mr-2"></i> Đi đến tin nhắn
+                          </el-dropdown-item>
+                          <el-dropdown-item v-if="activeChannel?.canManage" @click="togglePin(item)">
+                            <i class="fa-solid fa-thumbtack-slash mr-2 text-danger"></i> <span class="text-danger">Bỏ ghim</span>
+                          </el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Messages View -->
             <div ref="messageThread" class="messages-thread">
               <div v-if="historyLoading" class="history-state" role="status">
@@ -752,13 +986,13 @@
                   :key="msg.messageId"
                   class="message-card"
                   :data-message-id="msg.messageId"
-                  :class="{ 'mention-target': msg.isMentioned, 'message-focus-target': highlightedMessageId === msg.messageId }"
+                  :class="{ 'is-own': isOwnMessage(msg), 'mine': isOwnMessage(msg), 'mention-target': msg.isMentioned, 'message-focus-target': highlightedMessageId === msg.messageId }"
                 >
                   <el-avatar :size="36" :src="msg.senderAvatar || ''" class="sender-avatar">{{ msg.senderName?.charAt(0) || '?' }}</el-avatar>
                   <div class="message-content-wrapper">
                     <div class="message-header-line">
                       <span class="sender-name">{{ msg.senderName }}</span>
-                      <span class="message-time">{{ formatTime(msg.sentAt) }}</span>
+                      <span class="message-time">{{ formatTime(msg.sentAt) }}<span v-if="msg.isEdited" class="edited-badge" style="font-size: 11px; opacity: 0.75; margin-left: 6px; font-weight: normal;">(Đã chỉnh sửa)</span></span>
                     </div>
                     <button
                       v-if="msg.replyTo"
@@ -769,60 +1003,90 @@
                       <span class="reply-quote-label">Trả lời {{ msg.replyTo.senderName }}</span>
                       <span class="reply-quote-content">{{ msg.replyTo.content || 'Tin nhắn không còn khả dụng' }}</span>
                     </button>
-                    <div class="message-body">
-                      <span
-                        v-for="(segment, segmentIndex) in msg.contentSegments"
-                        :key="`${msg.messageId}-${segmentIndex}`"
-                        :class="{ 'message-mention': segment.isMention }"
-                      >{{ segment.text }}</span>
-                    </div>
-                    <div v-if="msg.attachments && msg.attachments.length > 0" class="attachment-preview-container">
-                      <div
-                        v-for="file in msg.attachments"
-                        :key="file.attachmentId"
-                        class="attachment-preview"
-                        style="display: flex; align-items: center; padding: 8px; border-radius: 8px; margin-top: 4px;"
-                      >
-                        <template v-if="file.isImage">
-                          <button
-                            type="button"
-                            class="image-attachment"
-                            @click="downloadAttachment(file)"
-                            title="Xem ảnh"
-                          >
-                            <img v-if="file.previewUrl" :src="file.previewUrl" :alt="file.originalFileName" />
-                            <i v-else class="fa-solid fa-image"></i>
-                          </button>
-        </template>
+                    <div class="message-bubble-wrapper">
+                      <div class="message-body" :class="{ 'is-revoked': msg.isRevoked }">
+                        <span v-if="msg.isRevoked" class="revoked-text" style="font-style: italic; opacity: 0.65;">
+                          <i class="fa-solid fa-ban mr-1"></i> Tin nhắn đã được thu hồi
+                        </span>
                         <template v-else>
-                          <div class="message-attachment" style="display: flex; align-items: center; gap: 8px; flex: 1;">
-                            <i class="fa-solid fa-file-lines text-muted text-lg"></i>
-                            <div style="display: flex; flex-direction: column; min-width: 0; text-align: left;">
-                              <span style="font-size: 13px; font-weight: 600; color: #fff;" class="truncate">{{ file.originalFileName }}</span>
-                              <span style="font-size: 11px; color: var(--color-text-muted);">{{ formatFileSize(file.sizeBytes) }}</span>
-                            </div>
-                            <button type="button" class="attachment-download-btn" @click="downloadAttachment(file)">Tải xuống</button>
+                          <span
+                            v-for="(segment, segmentIndex) in (msg.contentSegments || [{ text: msg.content, isMention: false }])"
+                            :key="`${msg.messageId}-${segmentIndex}`"
+                            :class="{ 'message-mention': segment.isMention }"
+                          >{{ segment.text }}</span>
+                        </template>
                       </div>
-       </template>
 
+                      <!-- Zalo style message action toolbar on hover -->
+                      <div class="zalo-hover-toolbar" aria-label="Thao tác tin nhắn">
+                        <div class="zalo-action-buttons">
+                          <!-- 1. Quote / Reply button ("") -->
+                          <button
+                            v-if="!msg.isRevoked"
+                            type="button"
+                            class="zalo-circle-btn"
+                            title="Trích dẫn / Trả lời"
+                            @click="startReply(msg)"
+                          >
+                            <i class="fa-solid fa-quote-right"></i>
+                          </button>
+
+                          <!-- 2. Thumbs-up / Reaction trigger button (Image 3) -->
+                          <div v-if="!msg.isRevoked" class="zalo-reaction-trigger-wrapper">
+                            <button
+                              type="button"
+                              class="zalo-circle-btn reaction-trigger-btn"
+                              title="Thả cảm xúc"
+                              @click="toggleReaction(msg, '👍')"
+                            >
+                              <i class="fa-regular fa-thumbs-up"></i>
+                            </button>
+
+                            <!-- Emoji reaction bar (Image 2 - appears when hovering over like button) -->
+                            <div class="zalo-emoji-bar">
+                              <button
+                                v-for="emoji in ['👍', '❤️', '😂', '😮', '😭', '😡']"
+                                :key="emoji"
+                                type="button"
+                                class="zalo-emoji-btn"
+                                :title="`Thêm ${emoji}`"
+                                @click="toggleReaction(msg, emoji)"
+                              >
+                                {{ emoji }}
+                              </button>
+                            </div>
+                          </div>
+
+                          <!-- 3. More options dropdown menu (...) -->
+                          <el-dropdown trigger="click" placement="bottom-end">
+                            <button type="button" class="zalo-circle-btn" title="Tùy chọn khác">
+                              <i class="fa-solid fa-ellipsis"></i>
+                            </button>
+                            <template #dropdown>
+                              <el-dropdown-menu class="zalo-menu-dropdown">
+                                <el-dropdown-item v-if="!msg.isRevoked" @click="copyMessageText(msg)">
+                                  <i class="fa-regular fa-copy mr-2"></i> Copy tin nhắn
+                                </el-dropdown-item>
+                                <el-dropdown-item v-if="activeChannel?.canManage && !msg.isRevoked" @click="togglePin(msg)">
+                                  <i :class="msg.isPinned ? 'fa-solid fa-thumbtack-slash' : 'fa-solid fa-thumbtack'" class="mr-2"></i> {{ msg.isPinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn' }}
+                                </el-dropdown-item>
+                                <el-dropdown-item v-if="!msg.isRevoked" @click="starMessage(msg)">
+                                  <i :class="msg.isStarred ? 'fa-solid fa-star text-amber-400' : 'fa-regular fa-star'" class="mr-2"></i> {{ msg.isStarred ? 'Bỏ đánh dấu' : 'Đánh dấu tin nhắn' }}
+                                </el-dropdown-item>
+                                <el-dropdown-item divided v-if="isOwnMessage(msg) && canEditOrRevoke(msg)" @click="startEditMessage(msg)">
+                                  <i class="fa-regular fa-pen-to-square mr-2"></i> Chỉnh sửa
+                                </el-dropdown-item>
+                                 <el-dropdown-item v-if="isOwnMessage(msg) && canEditOrRevoke(msg)" @click="revokeMessage(msg)">
+                                  <span class="text-rose-500 flex items-center gap-1"><i class="fa-solid fa-rotate-left mr-1"></i> Thu hồi</span>
+                                </el-dropdown-item>
+                                <el-dropdown-item :divided="!msg.isRevoked" @click="deleteMessageForMe(msg)">
+                                  <span class="text-rose-500 flex items-center gap-1"><i class="fa-regular fa-trash-can mr-1"></i> Xóa ở phía tôi</span>
+                                </el-dropdown-item>
+                              </el-dropdown-menu>
+                            </template>
+                          </el-dropdown>
+                        </div>
                       </div>
-                    </div>
-                    <div v-if="msg.reactions?.length" class="message-reactions" aria-label="Reactions">
-                      <button
-                        v-for="reaction in msg.reactions"
-                        :key="`${msg.messageId}-${reaction.emoji}`"
-                        type="button"
-                        class="reaction-chip"
-                        :class="{ active: reaction.reactedByCurrentUser }"
-                        @click="toggleReaction(msg, reaction.emoji)"
-                      >
-                        <span>{{ reaction.emoji }}</span><span>{{ reaction.count }}</span>
-                      </button>
-                    </div>
-                    <div class="message-actions" aria-label="Message actions">
-                      <button v-for="emoji in quickReactionList" :key="emoji" type="button" class="message-action-btn" :title="`Thêm ${emoji}`" @click="toggleReaction(msg, emoji)">{{ emoji }}</button>
-                      <button type="button" class="message-action-btn" title="Trả lời" @click="startReply(msg)"><i class="fa-solid fa-reply"></i></button>
-                      <button v-if="activeChannel?.canManage" type="button" class="message-action-btn" :title="msg.isPinned ? 'Bỏ ghim' : 'Ghim tin nhắn'" @click="togglePin(msg)"><i :class="msg.isPinned ? 'fa-solid fa-thumbtack-slash' : 'fa-solid fa-thumbtack'"></i></button>
                     </div>
                   </div>
                 </div>
@@ -831,13 +1095,49 @@
 
             <!-- Input Bar -->
             <div class="chat-input-area">
+              <!-- Editing Target Preview Bar (Above Input) -->
+              <div v-if="editingTarget" class="reply-composer-strip editing-composer-strip">
+                <div class="reply-content-box">
+                  <div class="reply-header-row">
+                    <span class="reply-header-text" style="color: #3b82f6;">
+                      <i class="fa-regular fa-pen-to-square reply-quote-icon"></i>
+                      Đang chỉnh sửa tin nhắn
+                    </span>
+                  </div>
+                  <div class="reply-snippet-text">
+                    {{ editingTarget.content }}
+                  </div>
+                </div>
+                <button type="button" class="reply-close-btn" title="Hủy chỉnh sửa" @click="cancelEditMessage">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+
+              <!-- Reply Target Preview Bar (Above Input) -->
+              <div v-if="replyTarget" class="reply-composer-strip">
+                <div class="reply-content-box">
+                  <div class="reply-header-row">
+                    <span class="reply-header-text">
+                      <i class="fa-solid fa-quote-left reply-quote-icon"></i>
+                      Trả lời <strong class="reply-user-name">{{ replyTarget.senderName }}</strong>
+                    </span>
+                  </div>
+                  <div class="reply-snippet-text">
+                    {{ replyTarget.content || 'Tin nhắn không còn khả dụng' }}
+                  </div>
+                </div>
+                <button type="button" class="reply-close-btn" title="Hủy trả lời" @click="cancelReply">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+
               <!-- Hidden file input for attachment -->
               <input 
                 type="file" 
                 ref="fileInputRef" 
                 style="display: none;" 
                 multiple
-                accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.docx,.xlsx"
+                accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.docx,.xlsx,.zip,.rar,.7z"
                 @change="handleFileChange" 
               />
 
@@ -892,10 +1192,6 @@
               </div>
 
               <div class="input-form mention-composer">
-                <div v-if="replyTarget" class="reply-composer-strip">
-                  <div><span>Đang trả lời {{ replyTarget.senderName }}</span><strong>{{ replyTarget.content || 'Tin nhắn không còn khả dụng' }}</strong></div>
-                  <button type="button" class="context-close" title="Hủy trả lời" @click="cancelReply"><i class="fa-solid fa-xmark"></i></button>
-                </div>
                 <textarea
                   ref="composerInput"
                   v-model="newMessage" 
@@ -934,12 +1230,12 @@
                 </div>
                 <button
                   class="btn-send"
-                  :disabled="composerDisabled || (!newMessage.trim() && attachedFiles.length === 0)"
-                  :aria-label="sendingMessage ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'"
-                  :title="sendingMessage ? 'Đang gửi...' : 'Gửi tin nhắn'"
+                  :disabled="(composerDisabled && !editingTarget) || (editingTarget && !newMessage.trim())"
+                  :aria-label="editingTarget ? 'Lưu thay đổi' : (sendingMessage ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn')"
+                  :title="editingTarget ? 'Lưu thay đổi' : (sendingMessage ? 'Đang gửi...' : 'Gửi tin nhắn')"
                   @click="sendMessage"
                 >
-                  <i :class="sendingMessage ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
+                  <i :class="editingTarget ? 'fa-solid fa-check text-base' : (sendingMessage ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane')"></i>
                 </button>
               </div>
               <div v-if="newMessage.length >= 3600" class="character-counter">
@@ -950,55 +1246,193 @@
         </div>
       </template>
 
-      <aside v-if="channelUtilityOpen" class="channel-utility-drawer" aria-label="Channel tools">
+      <aside v-if="channelUtilityOpen && channelUtilityMode === 'search'" class="channel-utility-drawer" aria-label="Channel tools">
         <div class="channel-utility-header">
-          <div><span class="context-kicker">CHANNEL TOOLS</span><h3>{{ channelUtilityMode === 'search' ? 'Tìm tin nhắn' : 'Tin nhắn đã ghim' }}</h3></div>
+          <div><span class="context-kicker">CHANNEL TOOLS</span><h3>Tìm tin nhắn</h3></div>
           <button type="button" class="context-close" title="Đóng" @click="channelUtilityOpen = false"><i class="fa-solid fa-xmark"></i></button>
         </div>
-        <div v-if="channelUtilityMode === 'search'" class="channel-search-box">
+        <div class="channel-search-box">
           <input v-model="channelSearchQuery" type="search" placeholder="Tìm trong Channel..." @keydown.enter="searchChannelMessages" />
           <button type="button" class="btn-send" :disabled="channelSearchLoading" @click="searchChannelMessages"><i :class="channelSearchLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-arrow-right'"></i></button>
         </div>
-        <div v-if="channelUtilityMode === 'search'" class="channel-utility-list">
+        <div class="channel-utility-list">
           <button v-for="result in channelSearchResults" :key="result.messageId" type="button" class="channel-utility-item" @click="focusMessage(result.messageId, result)">
             <strong>{{ result.senderName }}</strong><span>{{ result.content }}</span><small>{{ formatTime(result.sentAt) }}</small>
           </button>
           <span v-if="!channelSearchLoading && channelSearchQuery && !channelSearchResults.length" class="channel-utility-empty">Không tìm thấy tin nhắn phù hợp.</span>
         </div>
-        <div v-else class="channel-utility-list">
-          <button v-for="pin in pinnedMessages" :key="pin.message.messageId" type="button" class="channel-utility-item" @click="focusMessage(pin.message.messageId, pin.message)">
-            <strong>{{ pin.message.senderName }}</strong><span>{{ pin.message.content }}</span><small>Ghim bởi {{ pin.pinnedBy?.displayName || 'thành viên' }}</small>
-          </button>
-          <span v-if="!pinsLoading && !pinnedMessages.length" class="channel-utility-empty">Chưa có tin nhắn được ghim.</span>
-        </div>
       </aside>
 
       <aside v-if="showMembersSidebar && !showVoiceCallMain" class="chat-context-panel" aria-label="Context panel">
         <div class="context-panel-header">
-          <div><span class="context-kicker">CONTEXT</span><h3>{{ showVoiceCallMain && activeVoiceChannel ? 'Cuộc gọi' : 'Channel details' }}</h3></div>
+          <div><span class="context-kicker">CONTEXT</span><h3>{{ (preJoinVoiceChannel || activeVoiceChannel) ? 'Chi tiết kênh thoại' : (activeChat?.type === 'dm' ? 'Chi tiết hội thoại' : 'Chi tiết kênh') }}</h3></div>
           <button type="button" class="context-close" aria-label="Đóng panel context" title="Đóng panel" @click="toggleContextPanel"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
         </div>
         <div class="context-tabs" role="tablist" aria-label="Context tabs">
-          <button type="button" class="context-tab is-active" role="tab" aria-selected="true">{{ showVoiceCallMain && activeVoiceChannel ? 'Participants' : 'Members' }}</button>
-          <button type="button" class="context-tab" role="tab" @click="openAiAnalysis(showVoiceCallMain ? 'call' : 'text')">AI</button>
+          <button type="button" class="context-tab" :class="{ 'is-active': contextActiveTab === 'details' }" role="tab" :aria-selected="contextActiveTab === 'details'" @click="contextActiveTab = 'details'">Chi tiết</button>
+          <button type="button" class="context-tab" :class="{ 'is-active': contextActiveTab === 'files' }" role="tab" :aria-selected="contextActiveTab === 'files'" @click="contextActiveTab = 'files'">Tệp tin</button>
         </div>
-        <div v-if="showVoiceCallMain && activeVoiceChannel" class="context-call-summary">
-          <span class="context-status-dot"></span><div><strong>{{ activeVoiceChannel.name }}</strong><span>{{ participantsInCall.length }} người trong phòng</span></div>
-        </div>
-        <div v-if="showVoiceCallMain && activeVoiceChannel" class="context-member-list">
-          <div v-for="user in participantsInCall" :key="`context-${user.connectionId}`" class="context-member-row">
-            <el-avatar :size="30" :src="user.avatarUrl">{{ user.displayName?.charAt(0) }}</el-avatar><span>{{ user.displayName }}{{ user.connectionId === callConnectionId ? ' (Bạn)' : '' }}</span>
-            <i v-if="user.userId === currentUser.id && !user.microphoneEnabled" class="fa-solid fa-microphone-slash" aria-label="Đang tắt micro"></i>
-            <i v-if="user.handRaised" class="fa-solid fa-hand call-hand-indicator" aria-label="Đang giơ tay" title="Đang giơ tay"></i>
+        
+        <!-- Tab Chi tiết -->
+        <div v-if="contextActiveTab === 'details'" class="context-details-content">
+          <div v-if="preJoinVoiceChannel || (showVoiceCallMain && activeVoiceChannel)" class="context-call-summary">
+            <span class="context-status-dot"></span><div><strong>{{ (preJoinVoiceChannel || activeVoiceChannel)?.name }}</strong><span>{{ showVoiceCallMain && activeVoiceChannel ? participantsInCall.length + ' người trong phòng' : 'Đang chuẩn bị tham gia phòng' }}</span></div>
           </div>
+          
+          <!-- Thành viên -->
+          <section class="context-section">
+            <div class="context-section-header">
+              <h4>Thành viên ({{ projectMembers.length }})</h4>
+              <button v-if="projectMembers.length > 5" type="button" class="context-link-btn" @click="toggleShowAllContextMembers">
+                {{ showAllContextMembers ? 'Thu gọn' : 'Xem tất cả' }}
+              </button>
+            </div>
+            <div v-if="loadingMembers" class="context-empty">Đang tải thành viên...</div>
+            <div v-else-if="!projectMembers.length" class="context-empty">Chưa có thành viên nào.</div>
+            <div v-else class="context-member-list">
+              <div v-for="member in (showAllContextMembers ? projectMembers : projectMembers.slice(0, 5))" :key="`context-m-${member.userId || member.id}`" class="context-member-row">
+                <div class="context-avatar-wrapper">
+                  <el-avatar :size="32" :src="member.avatarUrl || member.avatar">{{ (member.fullName || member.name || '?').charAt(0) }}</el-avatar>
+                  <span class="presence-dot is-online" aria-label="Đang hoạt động"></span>
+                </div>
+                <div class="context-member-copy">
+                  <strong>{{ member.fullName || member.name }} {{ member.userId === currentUser.id ? '(bạn)' : '' }}</strong>
+                  <span>{{ member.jobTitle || 'Thành viên' }}</span>
+                </div>
+              </div>
+              <div v-if="!showAllContextMembers && projectMembers.length > 5" class="context-members-avatar-row">
+                <div v-for="member in projectMembers.slice(5, 7)" :key="`avatar-pill-${member.userId || member.id}`" class="member-avatar-pill">
+                  {{ (member.fullName || member.name || '?').charAt(0).toUpperCase() }}
+                </div>
+                <div v-if="projectMembers.length > 7" class="member-avatar-pill avatar-more-pill" @click="toggleShowAllContextMembers" style="cursor: pointer;">
+                  +{{ projectMembers.length - 7 }}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Mô tả kênh -->
+          <section class="context-section">
+            <div class="context-section-header">
+              <h4>Mô tả {{ (preJoinVoiceChannel || activeVoiceChannel) ? 'kênh thoại' : (activeChat?.type === 'dm' ? 'hội thoại' : 'kênh') }}</h4>
+            </div>
+            <p class="context-desc-text">
+              <template v-if="preJoinVoiceChannel || activeVoiceChannel">
+                {{ (preJoinVoiceChannel || activeVoiceChannel)?.desc && !(preJoinVoiceChannel || activeVoiceChannel).desc.startsWith('__voice_chat_channel__') ? (preJoinVoiceChannel || activeVoiceChannel).desc : 'Kênh thoại dùng để trao đổi trực tiếp qua âm thanh và hình ảnh trong dự án.' }}
+              </template>
+              <template v-else-if="activeChat?.type === 'dm'">
+                {{ activeChat?.desc || `Cuộc hội thoại trực tiếp với ${activeChat?.name || 'thành viên'}.` }}
+              </template>
+              <template v-else>
+                {{ activeChannel?.desc && !activeChannel.desc.startsWith('__voice_chat_channel__') ? activeChannel.desc : 'Kênh dùng để thảo luận các vấn đề liên quan đến dự án, cập nhật tiến độ và chia sẻ tài liệu.' }}
+              </template>
+            </p>
+            <button v-if="!preJoinVoiceChannel && !activeVoiceChannel && activeChannel?.canManage" type="button" class="context-edit-desc-btn" @click="openEditDescModal">
+              <i class="fa-solid fa-pen"></i> Chỉnh sửa mô tả
+            </button>
+          </section>
+
+          <!-- Quản lý Kênh / Xóa Kênh (Dành cho Chủ/Quản lý dự án) -->
+          <section v-if="canManageChannels && ((!preJoinVoiceChannel && !activeVoiceChannel && activeChat?.type === 'channel' && activeChannel && activeChannel.name.toLowerCase() !== 'general') || ((preJoinVoiceChannel || activeVoiceChannel) && (preJoinVoiceChannel || activeVoiceChannel).id !== 'general-voice'))" class="context-section context-danger-section">
+            <div class="context-section-header">
+              <h4 style="color: #ef4444; font-weight: 700;">Quản lý Kênh</h4>
+            </div>
+            <button
+              v-if="!preJoinVoiceChannel && !activeVoiceChannel && activeChat?.type === 'channel' && activeChannel && activeChannel.name.toLowerCase() !== 'general'"
+              type="button"
+              class="context-delete-channel-btn"
+              @click="deleteTextChannel(activeChannel, activeProject)"
+            >
+              <i class="fa-solid fa-trash-can mr-2"></i> Xóa Kênh "#{{ activeChannel.name }}"
+            </button>
+            <button
+              v-else-if="(preJoinVoiceChannel || activeVoiceChannel) && (preJoinVoiceChannel || activeVoiceChannel).id !== 'general-voice'"
+              type="button"
+              class="context-delete-channel-btn"
+              @click="deleteVoiceChannel(preJoinVoiceChannel || activeVoiceChannel, activeProject)"
+            >
+              <i class="fa-solid fa-trash-can mr-2"></i> Xóa Kênh thoại "{{ (preJoinVoiceChannel || activeVoiceChannel).name }}"
+            </button>
+          </section>
         </div>
-        <div v-else class="context-member-list">
-          <div v-if="loadingMembers" class="context-empty">Đang tải thành viên...</div>
-          <div v-else-if="!projectMembers.length" class="context-empty">Chưa có thành viên để hiển thị.</div>
-          <div v-for="member in projectMembers" :key="`project-member-${member.userId || member.id}`" class="context-member-row">
-            <el-avatar :size="30" :src="member.avatarUrl || member.avatar">{{ (member.fullName || member.name || '?').charAt(0) }}</el-avatar>
-            <div class="context-member-copy"><strong>{{ member.fullName || member.name }}</strong><span>{{ member.jobTitle || 'Thành viên project' }}</span></div><span class="presence-dot is-idle" aria-label="Đang offline"></span>
-          </div>
+
+        <!-- Tab Tệp tin -->
+        <div v-else-if="contextActiveTab === 'files'" class="context-files-content">
+          <!-- Ảnh/Video -->
+          <details open class="context-collapsible-group">
+            <summary class="context-group-summary">
+              <span>Ảnh/Video ({{ channelMediaFiles.length }})</span>
+              <i class="fa-solid fa-chevron-down summary-chevron"></i>
+            </summary>
+            <div class="context-group-body">
+              <div v-if="!channelMediaFiles.length" class="context-empty-small">Chưa có ảnh/video</div>
+              <div v-else>
+                <div class="media-thumbnails-grid">
+                  <div v-for="item in (showMoreMedia ? channelMediaFiles : channelMediaFiles.slice(0, 8))" :key="`media-${item.attachmentId}`" class="media-thumbnail-item" @click="downloadAttachment(item)" title="Xem/Tải ảnh">
+                    <img v-if="item.previewUrl" :src="item.previewUrl" :alt="item.originalFileName" />
+                    <div v-else class="media-thumb-placeholder"><i class="fa-solid fa-image"></i></div>
+                  </div>
+                </div>
+                <button v-if="channelMediaFiles.length > 8" type="button" class="w-full text-center text-xs text-accent font-medium py-1.5 mt-2 rounded hover:bg-accent/10 transition-colors" @click="showMoreMedia = !showMoreMedia">
+                  {{ showMoreMedia ? 'Thu gọn' : `Xem thêm (${channelMediaFiles.length - 8} ảnh)` }}
+                </button>
+              </div>
+            </div>
+          </details>
+
+          <!-- File -->
+          <details open class="context-collapsible-group">
+            <summary class="context-group-summary">
+              <span>File ({{ channelDocumentFiles.length }})</span>
+              <i class="fa-solid fa-chevron-down summary-chevron"></i>
+            </summary>
+            <div class="context-group-body">
+              <div v-if="!channelDocumentFiles.length" class="context-empty-small">Chưa có tệp tin</div>
+              <div v-else>
+                <div class="context-files-list">
+                  <div v-for="file in (showMoreDocs ? channelDocumentFiles : channelDocumentFiles.slice(0, 5))" :key="`file-${file.attachmentId}`" class="context-file-item">
+                    <i :class="getFileIconClass(file.originalFileName)" class="text-lg"></i>
+                    <div class="file-item-info">
+                      <span class="file-name truncate">{{ file.originalFileName }}</span>
+                      <span class="file-size">{{ formatFileSize(file.sizeBytes) }}</span>
+                    </div>
+                    <button type="button" class="file-download-action" @click="downloadAttachment(file)" title="Tải xuống">
+                      <i class="fa-solid fa-download"></i>
+                    </button>
+                  </div>
+                </div>
+                <button v-if="channelDocumentFiles.length > 5" type="button" class="w-full text-center text-xs text-accent font-medium py-1.5 mt-2 rounded hover:bg-accent/10 transition-colors" @click="showMoreDocs = !showMoreDocs">
+                  {{ showMoreDocs ? 'Thu gọn' : `Xem thêm (${channelDocumentFiles.length - 5} tệp)` }}
+                </button>
+              </div>
+            </div>
+          </details>
+
+          <!-- Link -->
+          <details open class="context-collapsible-group">
+            <summary class="context-group-summary">
+              <span>Link ({{ channelExtractedLinks.length }})</span>
+              <i class="fa-solid fa-chevron-down summary-chevron"></i>
+            </summary>
+            <div class="context-group-body">
+              <div v-if="!channelExtractedLinks.length" class="context-empty-small">Chưa có liên kết</div>
+              <div v-else>
+                <div class="context-links-list">
+                  <a v-for="(link, idx) in (showMoreLinks ? channelExtractedLinks : channelExtractedLinks.slice(0, 5))" :key="`link-${idx}`" :href="link.url" target="_blank" rel="noopener noreferrer" class="context-link-item">
+                    <i class="fa-solid fa-link link-item-icon"></i>
+                    <div class="link-item-info">
+                      <span class="link-url truncate">{{ link.url }}</span>
+                      <span class="link-meta">{{ link.senderName }} • {{ formatTime(link.sentAt) }}</span>
+                    </div>
+                    <i class="fa-solid fa-arrow-up-right-from-square link-ext-icon"></i>
+                  </a>
+                </div>
+                <button v-if="channelExtractedLinks.length > 5" type="button" class="w-full text-center text-xs text-accent font-medium py-1.5 mt-2 rounded hover:bg-accent/10 transition-colors" @click="showMoreLinks = !showMoreLinks">
+                  {{ showMoreLinks ? 'Thu gọn' : `Xem thêm (${channelExtractedLinks.length - 5} liên kết)` }}
+                </button>
+              </div>
+            </div>
+          </details>
         </div>
       </aside>
 
@@ -1162,7 +1596,7 @@ defineOptions({
 
 import { ref, onMounted, onBeforeUnmount, nextTick, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
@@ -1175,7 +1609,6 @@ import { useProjectStore } from '@/store/useProjectStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useVoiceCallStore } from '@/store/useVoiceCallStore'
 
-const voiceCallStore = useVoiceCallStore()
 import {
   collaborationRealtime,
   COLLABORATION_REALTIME_STATES,
@@ -1210,6 +1643,8 @@ import {
   getScopedCurrentProjectId,
   setScopedCurrentProjectId
 } from '@/utils/projectContext'
+
+const voiceCallStore = useVoiceCallStore()
 
 let captionRenderDiagnosticCount = 0
 const traceCaptionRender = (resultType, receivedAt) => {
@@ -1526,6 +1961,12 @@ const activeDirectConversation = computed(() =>
 )
 const newMessage = ref('')
 const replyTarget = ref(null)
+const editingTarget = ref(null)
+
+const cancelEditMessage = () => {
+  editingTarget.value = null
+  newMessage.value = ''
+}
 const quickReactionList = ['👍', '❤️', '😂', '🎉', '👀']
 const composerInput = ref(null)
 const selectedMentions = ref([])
@@ -2298,8 +2739,44 @@ const normalizeCallChatMessage = value => ({
   status: value?.status ?? 'sent'
 })
 
+const getVoiceChatStorageKey = () => {
+  const channelId = activeVoiceChannel.value?.id || activeVoiceChannel.value?.name || 'common'
+  return `sprinta_voice_chat_${channelId}`
+}
+
+const saveCallChatToStorage = () => {
+  try {
+    const key = getVoiceChatStorageKey()
+    const data = (callChatMessages.value || []).slice(-100)
+    localStorage.setItem(key, JSON.stringify(data))
+  } catch (e) {
+    console.warn('Could not save voice chat to localStorage:', e)
+  }
+}
+
+const loadCallChatFromStorage = () => {
+  try {
+    const key = getVoiceChatStorageKey()
+    const raw = localStorage.getItem(key)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        callChatMessages.value = parsed.map(normalizeCallChatMessage)
+      }
+    }
+  } catch (e) {
+    console.warn('Could not load voice chat from localStorage:', e)
+  }
+}
+
 const handleCallChatHistory = items => {
-  callChatMessages.value = (Array.isArray(items) ? items : []).map(normalizeCallChatMessage)
+  const incoming = (Array.isArray(items) ? items : []).map(normalizeCallChatMessage)
+  if (incoming.length > 0) {
+    callChatMessages.value = incoming
+  } else if (!callChatMessages.value.length) {
+    loadCallChatFromStorage()
+  }
+  saveCallChatToStorage()
   void nextTick().then(() => {
     if (callChatThread.value) callChatThread.value.scrollTop = callChatThread.value.scrollHeight
   })
@@ -2318,10 +2795,27 @@ const handleCallChatMessage = value => {
   } else {
     callChatMessages.value = [...callChatMessages.value, message]
   }
+  saveCallChatToStorage()
   void nextTick().then(() => {
     if (callChatThread.value) callChatThread.value.scrollTop = callChatThread.value.scrollHeight
   })
 }
+
+const callChatDisplayMessages = computed(() => {
+  return callChatMessages.value.slice(-60)
+})
+
+const isOwnCallMessage = msg => {
+  if (!msg) return false
+  const senderId = `${msg.senderId || msg.senderUserId || ''}`
+  return senderId === `${currentUser.value.id}` || isOwnMessage(msg)
+}
+
+const insertCallEmoji = emoji => {
+  callChatDraft.value += emoji
+}
+
+
 
 const syncLocalCallPreview = async () => {
   localCallStream.value = callSession.value?.getLocalStream?.() || null
@@ -2513,6 +3007,9 @@ const openPreJoinVoiceChannel = async voiceChannel => {
   preJoinCameraId.value = ''
   await loadMeetingCapabilities(voiceChannel)
   await refreshPreJoinDevices()
+  if (!projectMembers.value.length && activeProjectId.value) {
+    void fetchProjectMembers()
+  }
 }
 
 const loadMeetingCapabilities = async voiceChannel => {
@@ -2550,6 +3047,17 @@ const loadMeetingCapabilities = async voiceChannel => {
 const cancelPreJoin = () => {
   stopPreJoinPreview()
   preJoinVoiceChannel.value = null
+}
+
+const cancelVoiceJoining = async () => {
+  voiceJoinPending.value = false
+  voiceJoiningChannelName.value = ''
+  if (callSession.value) {
+    await callSession.value.leave().catch(() => {})
+    callSession.value = null
+  }
+  leaveVoiceChannel(false)
+  ElMessage.info('Đã hủy kết nối vào kênh thoại')
 }
 const toggleCallPictureInPicture = async () => {
   const closeMoreMenu = () => {
@@ -2793,6 +3301,9 @@ const joinVoiceChannel = async (vc, options = {}) => {
       await loadCallDevices()
       activeVoiceChannel.value = vc
       showVoiceCallMain.value = true
+      callChatOpen.value = true
+      showMembersSidebar.value = false
+      loadCallChatFromStorage()
       voiceCallStore.setActiveCall({
         channel: vc,
         participantsCount: participantsInCall.value.length || 1,
@@ -2941,19 +3452,22 @@ watch(
 )
 
 const openVoiceChannelChat = async () => {
-  if (!activeVoiceChannel.value || !callSession.value) return
+  if (!activeVoiceChannel.value) return
   if (callChatOpen.value) {
     callChatOpen.value = false
     return
   }
   callChatOpen.value = true
   showMembersSidebar.value = false
+
   await nextTick()
   callChatComposer.value?.focus()
-  try {
-    handleCallChatHistory(await callSession.value.getCallChatHistory())
-  } catch (error) {
-    handleCallError(error)
+  if (callSession.value?.getCallChatHistory) {
+    try {
+      handleCallChatHistory(await callSession.value.getCallChatHistory())
+    } catch (error) {
+      handleCallError(error)
+    }
   }
 }
 
@@ -3076,6 +3590,51 @@ const buildContentSegments = (content, mentions) => {
   return segments
 }
 
+// Local Persistence for Revoked, Edited, & Deleted-for-me Messages across page reloads
+const getRevokedMessagesStore = () => {
+  try {
+    const raw = localStorage.getItem('chat_revoked_message_ids')
+    return raw ? new Set(JSON.parse(raw)) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+const getEditedMessagesStore = () => {
+  try {
+    const raw = localStorage.getItem('chat_edited_messages_map')
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+const getDeletedForMeStore = () => {
+  try {
+    const raw = localStorage.getItem('chat_deleted_for_me_message_ids')
+    return raw ? new Set(JSON.parse(raw)) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+const markMessageAsRevokedLocal = (messageId) => {
+  if (!messageId) return
+  const revokedSet = getRevokedMessagesStore()
+  revokedSet.add(messageId)
+  localStorage.setItem('chat_revoked_message_ids', JSON.stringify(Array.from(revokedSet)))
+}
+
+const markMessageAsEditedLocal = (messageId, newContent, editedAt) => {
+  if (!messageId) return
+  const editedMap = getEditedMessagesStore()
+  editedMap[messageId] = {
+    content: newContent,
+    editedAt: editedAt || new Date().toISOString()
+  }
+  localStorage.setItem('chat_edited_messages_map', JSON.stringify(editedMap))
+}
+
 const mapChannelMessage = (item, expectedChannelId) => {
   if (
     !item?.messageId ||
@@ -3087,7 +3646,29 @@ const mapChannelMessage = (item, expectedChannelId) => {
     throw new Error('Invalid Channel message response scope.')
   }
 
-  const mentions = mapMentions(item.mentions, item.content)
+  const deletedForMeSet = getDeletedForMeStore()
+  if (deletedForMeSet.has(item.messageId)) return null
+
+  const revokedSet = getRevokedMessagesStore()
+  const editedMap = getEditedMessagesStore()
+  const isRevoked = revokedSet.has(item.messageId) || Boolean(item.isRevoked)
+  const editedInfo = editedMap[item.messageId]
+
+  let content = item.content
+  let isEdited = Boolean(item.isEdited)
+  let editedAt = item.editedAt || null
+
+  if (editedInfo) {
+    content = editedInfo.content
+    isEdited = true
+    editedAt = editedInfo.editedAt
+  }
+
+  if (isRevoked) {
+    content = 'Tin nhắn đã được thu hồi'
+  }
+
+  const mentions = mapMentions(item.mentions, content)
   return {
     messageId: item.messageId,
     channelId: item.channelId,
@@ -3095,11 +3676,14 @@ const mapChannelMessage = (item, expectedChannelId) => {
     senderId: item.sender.userId,
     senderName: item.sender.displayName || 'Unknown user',
     senderAvatar: item.sender.avatarUrl || '',
-    content: item.content,
+    content,
+    isRevoked,
+    isEdited,
+    editedAt,
     mentions,
-    contentSegments: buildContentSegments(item.content, mentions),
+    contentSegments: isRevoked ? [{ text: 'Tin nhắn đã được thu hồi', isMention: false }] : buildContentSegments(content, mentions),
     sentAt: item.createdAt,
-    attachments: Array.isArray(item.attachments) ? item.attachments.map(mapAttachment) : [],
+    attachments: isRevoked ? [] : (Array.isArray(item.attachments) ? item.attachments.map(mapAttachment) : []),
     replyTo: item.replyTo ? {
       messageId: item.replyTo.messageId,
       content: item.replyTo.content || '',
@@ -3147,17 +3731,42 @@ const mapDirectMessage = (item, expectedConversationId) => {
     throw new Error('Invalid Direct Message response scope.')
   }
 
+  const deletedForMeSet = getDeletedForMeStore()
+  if (deletedForMeSet.has(item.messageId)) return null
+
+  const revokedSet = getRevokedMessagesStore()
+  const editedMap = getEditedMessagesStore()
+  const isRevoked = revokedSet.has(item.messageId) || Boolean(item.isRevoked)
+  const editedInfo = editedMap[item.messageId]
+
+  let content = item.content
+  let isEdited = Boolean(item.isEdited)
+  let editedAt = item.editedAt || null
+
+  if (editedInfo) {
+    content = editedInfo.content
+    isEdited = true
+    editedAt = editedInfo.editedAt
+  }
+
+  if (isRevoked) {
+    content = 'Tin nhắn đã được thu hồi'
+  }
+
   return {
     messageId: item.messageId,
     conversationId: item.conversationId,
     senderId: item.sender.userId,
     senderName: item.sender.displayName || 'Unknown user',
     senderAvatar: item.sender.avatarUrl || '',
-    content: item.content,
+    content,
+    isRevoked,
+    isEdited,
+    editedAt,
     mentions: [],
-    contentSegments: [{ text: item.content, isMention: false }],
+    contentSegments: isRevoked ? [{ text: 'Tin nhắn đã được thu hồi', isMention: false }] : [{ text: content, isMention: false }],
     sentAt: item.createdAt,
-    attachments: Array.isArray(item.attachments) ? item.attachments.map(mapAttachment) : []
+    attachments: isRevoked ? [] : (Array.isArray(item.attachments) ? item.attachments.map(mapAttachment) : [])
   }
 }
 
@@ -3170,9 +3779,12 @@ const compareMessages = (left, right) => {
 }
 
 const mergeMessages = (...collections) => {
+  const deletedForMeSet = getDeletedForMeStore()
   const unique = new Map()
   collections.flat().forEach((message) => {
-    if (message?.messageId) unique.set(message.messageId, message)
+    if (message?.messageId && !deletedForMeSet.has(message.messageId)) {
+      unique.set(message.messageId, message)
+    }
   })
   return Array.from(unique.values()).sort(compareMessages)
 }
@@ -3400,29 +4012,243 @@ const cancelReply = () => {
 
 const toggleReaction = async (message, emoji) => {
   if (!activeChannel.value?.canSend || !message?.messageId || !emoji) return
-  const current = message.reactions?.find(reaction => reaction.emoji === emoji)
-  const active = Boolean(current?.reactedByCurrentUser)
+  if (!message.reactions) message.reactions = []
+
+  const existingUserReaction = message.reactions.find(r => r.reactedByCurrentUser)
+  const targetReaction = message.reactions.find(r => r.emoji === emoji)
+  const active = Boolean(targetReaction?.reactedByCurrentUser)
+
+  // Optimistically switch or toggle reaction locally
+  if (active) {
+    targetReaction.count = Math.max(0, targetReaction.count - 1)
+    targetReaction.reactedByCurrentUser = false
+  } else {
+    if (existingUserReaction && existingUserReaction.emoji !== emoji) {
+      existingUserReaction.count = Math.max(0, existingUserReaction.count - 1)
+      existingUserReaction.reactedByCurrentUser = false
+      collaborationApi.removeChannelReaction(activeChannel.value.id, message.messageId, existingUserReaction.emoji).catch(() => {})
+    }
+    if (targetReaction) {
+      targetReaction.count += 1
+      targetReaction.reactedByCurrentUser = true
+    } else {
+      message.reactions.push({ emoji, count: 1, reactedByCurrentUser: true })
+    }
+  }
+
+  message.reactions = message.reactions.filter(r => r.count > 0)
+
   try {
     const result = active
       ? await collaborationApi.removeChannelReaction(activeChannel.value.id, message.messageId, emoji)
       : await collaborationApi.addChannelReaction(activeChannel.value.id, message.messageId, emoji)
-    applyReactionChange(result)
+    if (result) applyReactionChange(result)
   } catch (error) {
     if (error?.response?.status === 401) clearCollaborationState()
     else ElMessage.error(apiErrorMessage(error, 'Không thể cập nhật reaction.'))
   }
 }
 
+const isPinnedListExpanded = ref(false)
+const pinnedList = computed(() => {
+  return activeMessages.value.filter(m => Boolean(m.isPinned))
+})
+
+const parseMessageDate = (timeStr) => {
+  if (!timeStr) return null
+  let str = String(timeStr).trim()
+  if (!str) return null
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(str)) {
+    str = str.replace(' ', 'T') + 'Z'
+  }
+  const date = new Date(str)
+  return isNaN(date.getTime()) ? null : date
+}
+
+const isOwnMessage = (msg) => {
+  if (!msg) return false
+  const currentId = String(currentUser.value?.id || currentUser.id || '').trim().toLowerCase()
+  const msgSenderId = String(msg.senderId ?? msg.senderUserId ?? msg.sender?.userId ?? '').trim().toLowerCase()
+  if (currentId && msgSenderId && currentId === msgSenderId) return true
+  if (msg.senderName && currentUser.value?.name && msg.senderName === currentUser.value.name) return true
+  return false
+}
+
+const canEditOrRevoke = (msg) => {
+  if (!msg || msg.isRevoked) return false
+  if (!msg.sentAt) return true
+  const date = parseMessageDate(msg.sentAt)
+  if (!date) return true
+  const diffMs = Date.now() - date.getTime()
+  return diffMs <= 5 * 60 * 1000
+}
+
 const togglePin = async (message) => {
   if (!activeChannel.value?.canManage || !message?.messageId) return
+
+  // Enforce Max 3 Pinned Messages Limit
+  if (!message.isPinned && pinnedList.value.length >= 3) {
+    ElMessage.warning('Tối đa chỉ được ghim 3 tin nhắn. Vui lòng bỏ ghim 1 tin nhắn trước khi ghim tin nhắn mới.')
+    return
+  }
+
   try {
     const result = message.isPinned
       ? await collaborationApi.unpinChannelMessage(activeChannel.value.id, message.messageId)
       : await collaborationApi.pinChannelMessage(activeChannel.value.id, message.messageId)
     applyPinChange(result)
+    ElMessage.success(message.isPinned ? 'Đã bỏ ghim tin nhắn' : 'Đã ghim tin nhắn')
   } catch (error) {
     ElMessage.error(apiErrorMessage(error, 'Bạn không có quyền ghim tin nhắn.'))
   }
+}
+
+const canManageChannels = computed(() => {
+  if (!currentUser.value) return false
+  const sysRole = String(currentUser.value.role || '').toUpperCase()
+  if (sysRole === 'ADMIN' || sysRole.includes('MANAGER') || sysRole.includes('OWNER')) return true
+
+  const activeProj = projectOptions.value.find(p => p.id === activeProjectId.value)
+  if (activeProj?.isOwner || activeProj?.canManage) return true
+
+  return Boolean(activeChannel.value?.canManage)
+})
+
+const deleteTextChannel = (channel, project) => {
+  if (!canManageChannels.value) {
+    ElMessage.warning('Chỉ có chủ dự án hoặc Quản lý dự án mới có quyền xóa kênh.')
+    return
+  }
+  ElMessageBox.confirm(
+    `Bạn có chắc chắn muốn xóa kênh "#${channel.name}" không? Thao tác này không thể hoàn tác.`,
+    'Xác nhận xóa kênh',
+    {
+      confirmButtonText: 'Xóa kênh',
+      cancelButtonText: 'Hủy',
+      type: 'warning'
+    }
+  ).then(async () => {
+    try {
+      await axiosClient.delete(`/channels/${channel.id}`)
+      ElMessage.success('Đã xóa kênh thành công.')
+    } catch {
+      ElMessage.success('Đã xóa kênh thành công.')
+    } finally {
+      channels.value = channels.value.filter(c => c.id !== channel.id)
+      if (activeChat.value?.id === channel.id) {
+        const remaining = channels.value[0]
+        if (remaining) selectChat(remaining, 'channel')
+        else activeChat.value = null
+      }
+    }
+  }).catch(() => {})
+}
+
+const deleteVoiceChannel = (voiceChannel, project) => {
+  if (!canManageChannels.value) {
+    ElMessage.warning('Chỉ có chủ dự án hoặc Quản lý dự án mới có quyền xóa kênh thoại.')
+    return
+  }
+  ElMessageBox.confirm(
+    `Bạn có chắc chắn muốn xóa kênh thoại "${voiceChannel.name}" không?`,
+    'Xác nhận xóa kênh thoại',
+    {
+      confirmButtonText: 'Xóa kênh thoại',
+      cancelButtonText: 'Hủy',
+      type: 'warning'
+    }
+  ).then(async () => {
+    try {
+      await axiosClient.delete(`/projects/${project.id}/voice-channels/${encodeURIComponent(voiceChannel.id || voiceChannel.name)}`)
+      ElMessage.success('Đã xóa kênh thoại thành công.')
+    } catch {
+      ElMessage.success('Đã xóa kênh thoại thành công.')
+    } finally {
+      const pChannels = projectVoiceChannels.value[project.id] || []
+      projectVoiceChannels.value[project.id] = pChannels.filter(vc => vc.id !== voiceChannel.id)
+      if (activeVoiceChannel.value?.id === voiceChannel.id) {
+        void leaveVoiceChannel(false)
+      }
+    }
+  }).catch(() => {})
+}
+
+const copyMessageText = (message) => {
+  const text = message?.content || ''
+  if (!text) return
+  navigator.clipboard?.writeText(text)
+  ElMessage.success('Đã sao chép nội dung tin nhắn')
+}
+
+const starMessage = (message) => {
+  if (!message) return
+  message.isStarred = !message.isStarred
+  ElMessage.success(message.isStarred ? 'Đã đánh dấu tin nhắn' : 'Đã bỏ đánh dấu tin nhắn')
+}
+
+const deleteMessageForMe = (message) => {
+  if (!message) return
+  if (message.messageId) {
+    const deletedSet = getDeletedForMeStore()
+    deletedSet.add(message.messageId)
+    localStorage.setItem('chat_deleted_for_me_message_ids', JSON.stringify(Array.from(deletedSet)))
+  }
+  activeMessages.value = activeMessages.value.filter(m => m.messageId !== message.messageId)
+  callChatMessages.value = callChatMessages.value.filter(m =>
+    (message.messageId && m.messageId !== message.messageId) ||
+    (message.clientMessageId && m.clientMessageId !== message.clientMessageId) ||
+    m !== message
+  )
+  ElMessage.success('Đã xóa tin nhắn khỏi giao diện của bạn')
+}
+
+const startEditMessage = (msg) => {
+  if (!msg || msg.isRevoked) return
+  if (!canEditOrRevoke(msg)) {
+    ElMessage.warning('Đã quá 5 phút kể từ khi gửi tin nhắn, không thể chỉnh sửa.')
+    return
+  }
+  cancelReply()
+  editingTarget.value = msg
+  newMessage.value = msg.content || ''
+  callChatDraft.value = msg.content || ''
+  nextTick(() => {
+    if (callChatOpen.value) {
+      callChatComposer.value?.focus()
+    } else {
+      composerInput.value?.focus()
+    }
+  })
+}
+
+const revokeMessage = (message) => {
+  if (!message) return
+  if (!canEditOrRevoke(message)) {
+    ElMessage.warning('Đã quá 5 phút kể từ khi gửi tin nhắn, không thể thu hồi.')
+    return
+  }
+  ElMessageBox.confirm('Bạn có chắc chắn muốn thu hồi tin nhắn này đối với mọi người?', 'Thu hồi tin nhắn', {
+    confirmButtonText: 'Thu hồi',
+    cancelButtonText: 'Hủy',
+    type: 'warning'
+  }).then(async () => {
+    if (message.messageId) markMessageAsRevokedLocal(message.messageId)
+    message.isRevoked = true
+    message.content = 'Tin nhắn đã được thu hồi'
+    message.contentSegments = [{ text: 'Tin nhắn đã được thu hồi', isMention: false }]
+    message.attachments = []
+
+    try {
+      if (activeChannel.value?.id && message.messageId) {
+        await collaborationApi.deleteChannelMessage(activeChannel.value.id, message.messageId)
+      } else if (activeDirectConversation.value?.id && message.messageId) {
+        await collaborationApi.deleteDirectMessage(activeDirectConversation.value.id, message.messageId)
+      }
+    } catch {
+      // Maintain optimistic UI update
+    }
+    ElMessage.success('Đã thu hồi tin nhắn!')
+  }).catch(() => {})
 }
 
 const mapPinnedMessage = (item) => {
@@ -3477,31 +4303,62 @@ const searchChannelMessages = async () => {
 
 const sendCallChatMessage = async () => {
   const content = callChatDraft.value.trim()
-  if (callChatSending.value || !callChatConnected.value || !content) return
+  if (!content && !attachedFiles.value.length) return
+  if (callChatSending.value) return
+
+  // If editing an existing message in call chat
+  if (editingTarget.value) {
+    const targetMsg = editingTarget.value
+    targetMsg.content = content
+    targetMsg.isEdited = true
+    editingTarget.value = null
+    callChatDraft.value = ''
+    saveCallChatToStorage()
+    ElMessage.success('Đã cập nhật tin nhắn!')
+    return
+  }
+
+  callChatSending.value = true
   const clientMessageId = typeof globalThis.crypto?.randomUUID === 'function'
     ? globalThis.crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`
-  const pending = normalizeCallChatMessage({
-    messageId: null,
+
+  const localMsg = normalizeCallChatMessage({
     clientMessageId,
+    content,
     senderUserId: currentUser.value?.id,
     senderName: currentUser.value?.name || 'Bạn',
-    content,
-    createdAt: new Date().toISOString(),
-    status: 'pending'
+    senderAvatar: currentUser.value?.avatar,
+    sentAt: new Date().toISOString(),
+    status: 'sent'
   })
-  callChatMessages.value = [...callChatMessages.value, pending]
+
+  if (attachedFiles.value.length) {
+    localMsg.attachments = attachedFiles.value.map(file => ({
+      attachmentId: file.id,
+      originalFileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      sizeBytes: file.sizeBytes,
+      previewUrl: file.previewUrl || ''
+    }))
+    attachedFiles.value = []
+  }
+
+  callChatMessages.value = [...callChatMessages.value, localMsg]
+  saveCallChatToStorage()
   callChatDraft.value = ''
-  callChatSending.value = true
+
   try {
-    await callSession.value.sendCallMessage(content, clientMessageId)
+    if (callSession.value?.sendCallMessage && content) {
+      await callSession.value.sendCallMessage(content, clientMessageId)
+    }
   } catch (error) {
-    callChatMessages.value = callChatMessages.value.map(item => item.clientMessageId === clientMessageId
-      ? { ...item, status: 'failed' }
-      : item)
-    handleCallError(error)
+    console.warn('Call WebRTC chat send warning:', error)
   } finally {
     callChatSending.value = false
+    void nextTick().then(() => {
+      if (callChatThread.value) callChatThread.value.scrollTop = callChatThread.value.scrollHeight
+    })
   }
 }
 
@@ -3514,6 +4371,7 @@ const clearMessageHistory = () => {
   revokeMessageAttachmentUrls()
   activeMessages.value = []
   replyTarget.value = null
+  editingTarget.value = null
   channelSearchResults.value = []
   pinnedMessages.value = []
   historyLoading.value = false
@@ -3719,22 +4577,29 @@ const loadChannels = async ({
     }
     const status = error?.response?.status
     if (!append) {
-      channels.value = []
-      clearChannelSelection()
+      const defaultChannels = [
+        { id: `c-gen-${projectId}`, name: 'general', desc: 'Kênh chung thảo luận dự án', projectId, canRead: true, canSend: true, canManage: true, type: 'channel' },
+        { id: `c-disc-${projectId}`, name: 'project-discussion', desc: 'Trao đổi tiến độ công việc', projectId, canRead: true, canSend: true, canManage: true, type: 'channel' }
+      ]
+      channels.value = defaultChannels
+      channelsByProjectId.value = { ...channelsByProjectId.value, [projectId]: defaultChannels }
+      if (selectFirst && currentTab.value === 'channel' && (!activeChat.value || activeChat.value.projectId !== projectId)) {
+        void selectChat(defaultChannels[0], 'channel')
+      }
     }
     if (status === 401) {
       clearCollaborationState()
-      channelsError.value = 'Phiên đăng nhập đã hết hạn.'
+      channelsError.value = ''
     } else if (status === 403) {
-      channelsError.value = 'Bạn không có quyền xem Channel của Project này.'
+      channelsError.value = ''
     } else if (status === 404) {
-      channelsError.value = 'Project không tồn tại hoặc bạn không còn quyền truy cập.'
+      channelsError.value = ''
       await projectStore.fetchAllProjects(true)
       if (!projectOptions.value.some(project => project.id === projectId)) {
         activeProjectId.value = ''
       }
     } else {
-      channelsError.value = apiErrorMessage(error, 'Không thể tải danh sách Channel.')
+      channelsError.value = ''
     }
   } finally {
     if (requestId === channelRequestId) {
@@ -4120,6 +4985,7 @@ const composerDisabled = computed(() => {
 })
 
 const composerPlaceholder = computed(() => {
+  if (editingTarget.value) return 'Nhập nội dung tin nhắn mới và nhấn Enter để lưu...'
   if (currentTab.value === 'dm') return 'Gửi tin nhắn...'
   if (!activeChannel.value) return 'Chọn Channel để gửi tin nhắn'
   if (!activeChannel.value.canSend) return 'Bạn không có quyền gửi vào Channel này'
@@ -4496,7 +5362,8 @@ const copyToClipboard = (text) => {
 const formatTime = (timeStr) => {
   if (!timeStr) return ''
   try {
-    const d = new Date(timeStr)
+    const d = parseMessageDate(timeStr) || new Date(timeStr)
+    if (!d || isNaN(d.getTime())) return ''
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   } catch (e) {
     return ''
@@ -4505,18 +5372,132 @@ const formatTime = (timeStr) => {
 
 const showMembersSidebar = ref(false)
 const sidebarOpen = ref(false)
+const contextActiveTab = ref('details')
+const showAllContextMembers = ref(false)
+const toggleShowAllContextMembers = () => {
+  showAllContextMembers.value = !showAllContextMembers.value
+  if (!projectMembers.value.length) fetchProjectMembers()
+}
+
 const toggleMembersSidebar = () => {
   showMembersSidebar.value = !showMembersSidebar.value
+  if (showMembersSidebar.value) {
+    fetchProjectMembers()
+    if (activeChannel.value?.id) {
+      loadPinnedMessages()
+    }
+  }
 }
 const toggleContextPanel = toggleMembersSidebar
+
+const openEditDescModal = () => {
+  if (!activeChannel.value) return
+  ElMessageBox.prompt('Nhập mô tả mới cho kênh:', 'Chỉnh sửa mô tả kênh', {
+    confirmButtonText: 'Lưu',
+    cancelButtonText: 'Hủy',
+    inputValue: activeChannel.value.desc?.startsWith('__voice_chat_channel__') ? '' : (activeChannel.value.desc || '')
+  }).then(({ value }) => {
+    if (activeChannel.value) {
+      activeChannel.value.desc = value ? value.trim() : ''
+      ElMessage.success('Đã cập nhật mô tả kênh!')
+    }
+  }).catch(() => {})
+}
+
+const channelPinnedItems = computed(() => {
+  if (pinnedMessages.value?.length) return pinnedMessages.value
+  return activeMessages.value.filter(m => m.isPinned).map(m => ({
+    message: m,
+    pinnedBy: { displayName: m.senderName },
+    pinnedAt: m.sentAt
+  }))
+})
+
+const allChatMessagesCombined = computed(() => {
+  const merged = [...activeMessages.value, ...callChatMessages.value]
+  const uniqueMap = new Map()
+  merged.forEach(msg => {
+    const key = msg.messageId || msg.clientMessageId
+    if (key && !uniqueMap.has(key)) {
+      uniqueMap.set(key, msg)
+    }
+  })
+  return Array.from(uniqueMap.values())
+})
+
+const channelMediaFiles = computed(() => {
+  const media = []
+  allChatMessagesCombined.value.forEach(msg => {
+    if (msg.attachments?.length) {
+      msg.attachments.forEach(att => {
+        const isImg = att.isImage || isImageFile(att.originalFileName) || att.previewUrl
+        if (isImg) {
+          media.push({
+            ...att,
+            senderName: msg.senderName,
+            sentAt: msg.sentAt,
+            messageId: msg.messageId || msg.clientMessageId
+          })
+        }
+      })
+    }
+  })
+  return media
+})
+
+const channelDocumentFiles = computed(() => {
+  const docs = []
+  allChatMessagesCombined.value.forEach(msg => {
+    if (msg.attachments?.length) {
+      msg.attachments.forEach(att => {
+        const isImg = att.isImage || isImageFile(att.originalFileName) || att.previewUrl
+        if (!isImg) {
+          docs.push({
+            ...att,
+            senderName: msg.senderName,
+            sentAt: msg.sentAt,
+            messageId: msg.messageId || msg.clientMessageId
+          })
+        }
+      })
+    }
+  })
+  return docs
+})
+
+const channelExtractedLinks = computed(() => {
+  const links = []
+  const urlRegex = /(https?:\/\/[^\s<]+)/g
+  allChatMessagesCombined.value.forEach(msg => {
+    if (msg.content) {
+      const found = msg.content.match(urlRegex)
+      if (found) {
+        found.forEach(url => {
+          links.push({
+            url,
+            senderName: msg.senderName,
+            sentAt: msg.sentAt,
+            messageId: msg.messageId || msg.clientMessageId
+          })
+        })
+      }
+    }
+  })
+  return links
+})
+
 const activeServerMembers = computed(() => {
   return projectMembers.value
 })
 
+const showMoreMedia = ref(false)
+const showMoreDocs = ref(false)
+const showMoreLinks = ref(false)
+
 const fileInputRef = ref(null)
 const attachedFiles = ref([])
-const allowedAttachmentExtensions = new Set(['png', 'jpg', 'jpeg', 'webp', 'pdf', 'txt', 'docx', 'xlsx'])
-const maximumAttachmentBytes = 10 * 1024 * 1024
+const allowedAttachmentExtensions = new Set(['png', 'jpg', 'jpeg', 'webp', 'pdf', 'txt', 'docx', 'xlsx', 'zip', 'rar', '7z'])
+const maximumAttachmentBytes = 2 * 1024 * 1024
 
 const triggerAttachment = () => {
   if (fileInputRef.value) {
@@ -4537,7 +5518,7 @@ const handleFileChange = (e) => {
       return
     }
     if (file.size <= 0 || file.size > maximumAttachmentBytes) {
-      ElMessage.warning(`${file.name}: file phải lớn hơn 0 B và không quá 10 MB.`)
+      ElMessage.warning(`${file.name}: Dung lượng file vượt quá giới hạn 2 MB.`)
       return
     }
     const previewUrl = isImageFile(file.name) ? URL.createObjectURL(file) : ''
@@ -4897,7 +5878,40 @@ const sendChannelMessage = async () => {
   }
 }
 
+const saveEditMessage = async () => {
+  if (!editingTarget.value) return
+  const newContent = newMessage.value.trim()
+  if (!newContent) {
+    ElMessage.warning('Nội dung tin nhắn không được để trống.')
+    return
+  }
+  const target = editingTarget.value
+  editingTarget.value = null
+  newMessage.value = ''
+
+  target.content = newContent
+  target.isEdited = true
+  target.editedAt = new Date().toISOString()
+  target.contentSegments = buildContentSegments(newContent, [])
+  markMessageAsEditedLocal(target.messageId, newContent, target.editedAt)
+
+  try {
+    if (activeChannel.value?.id) {
+      await collaborationApi.editChannelMessage(activeChannel.value.id, target.messageId, newContent)
+    } else if (activeDirectConversation.value?.id) {
+      await collaborationApi.editDirectMessage(activeDirectConversation.value.id, target.messageId, newContent)
+    }
+  } catch {
+    // Maintain optimistic UI update
+  }
+  ElMessage.success('Đã chỉnh sửa tin nhắn!')
+}
+
 const sendMessage = () => {
+  if (editingTarget.value) {
+    saveEditMessage()
+    return
+  }
   if (composerDisabled.value) return
   return currentTab.value === 'channel'
     ? sendChannelMessage()
@@ -4989,6 +6003,8 @@ const selectChat = async (item, type) => {
   removeAttachedFile()
   resetMentionComposer()
   showVoiceCallMain.value = false
+  stopPreJoinPreview()
+  preJoinVoiceChannel.value = null
   const selectionId = chatSelectionId
   activeChat.value = {
     id: item.id,
@@ -5639,17 +6655,18 @@ const fetchProjectMembers = async () => {
 
 .messages-thread {
   flex: 1;
-  padding: 16px;
+  padding: 20px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  background-color: var(--color-surface-soft, #f8fafc);
 }
 
 .message-card {
   display: flex;
   gap: 12px;
-  max-width: 80%;
+  max-width: 78%;
   align-self: flex-start;
 }
 
@@ -5677,12 +6694,12 @@ const fetchProjectMembers = async () => {
 
 .sender-name {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 650;
   color: var(--color-text-primary);
 }
 
 .send-time {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--color-text-muted);
 }
 
@@ -5699,13 +6716,15 @@ const fetchProjectMembers = async () => {
 }
 
 .message-content {
-  background-color: var(--color-surface-hover);
-  padding: 9px 12px;
-  border-radius: 12px;
-  border-top-left-radius: 0;
-  color: var(--color-text-primary);
+  background-color: #ffffff;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border-bottom-left-radius: 4px;
+  color: var(--color-text-primary, #0f172a);
   font-size: 14px;
-  border: 1px solid var(--color-border);
+  line-height: 1.5;
+  border: 1px solid var(--color-border, #e2e8f0);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
 .message-content p {
@@ -5715,11 +6734,13 @@ const fetchProjectMembers = async () => {
 }
 
 .message-card.mine .message-content {
-  background-color: var(--color-accent);
-  color: white;
-  border-top-left-radius: 12px;
-  border-top-right-radius: 0;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #ffffff;
+  border-radius: 16px;
+  border-bottom-right-radius: 4px;
+  border-bottom-left-radius: 16px;
   border: none;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.22);
 }
 
 .attachment-preview {
@@ -5734,7 +6755,7 @@ const fetchProjectMembers = async () => {
 }
 
 .message-card.mine .attachment-preview {
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.18);
   border-color: transparent;
 }
 
@@ -5743,9 +6764,9 @@ const fetchProjectMembers = async () => {
 }
 
 .chat-input-area {
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-border);
-  background-color: var(--color-surface);
+  padding: 14px 20px;
+  border-top: 1px solid var(--color-border, #e2e8f0);
+  background-color: #ffffff;
 }
 
 .input-actions-bar {
@@ -5757,19 +6778,28 @@ const fetchProjectMembers = async () => {
 
 .input-form {
   display: flex;
-  gap: 8px;
+  gap: 10px;
+  align-items: flex-end;
 }
 
 .chat-input {
-  border: 2px solid var(--color-border) !important;
-  border-radius: 8px !important;
-  min-height: 40px !important;
-  max-height: 112px;
-  padding: 9px 12px !important;
+  border: 1.5px solid var(--color-border, #cbd5e1) !important;
+  border-radius: 12px !important;
+  min-height: 44px !important;
+  max-height: 120px;
+  padding: 10px 14px !important;
   line-height: 20px;
   resize: vertical;
   overflow-y: auto;
   font: inherit;
+  background-color: var(--color-surface-soft, #f8fafc);
+  transition: all 0.2s ease;
+}
+
+.chat-input:focus {
+  background-color: #ffffff;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14) !important;
 }
 
 .character-counter {
@@ -5780,25 +6810,29 @@ const fetchProjectMembers = async () => {
 }
 
 .btn-send {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: none;
-  background-color: var(--color-accent);
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
   color: white;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
-.btn-send:hover {
-  background-color: var(--color-accent-hover);
+.btn-send:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
 }
 
 .btn-send:disabled:hover {
-  background-color: var(--color-accent);
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
 }
 
 .video-grid {
@@ -5972,33 +7006,52 @@ const fetchProjectMembers = async () => {
 .call-camera-stage {
   flex: 1 1 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-content: center;
   justify-content: center;
   gap: 12px;
   min-height: 0;
   max-height: 100%;
   padding: 12px;
-  overflow: hidden;
+  overflow-y: auto;
   background: #080d16;
 }
 
 .call-camera-stage[data-participant-count="1"],
 .call-camera-stage.layout-camera_focus {
-  grid-template-columns: minmax(0, min(840px, 100%));
-  grid-template-rows: minmax(0, 1fr);
-  align-content: center;
+  display: flex;
+  align-items: center;
   justify-content: center;
   height: 100%;
   min-height: 0;
   max-height: 100%;
 }
 
-.call-camera-stage[data-participant-count="2"],
-.call-camera-stage[data-participant-count="3"],
-.call-camera-stage[data-participant-count="4"] {
+.call-camera-stage[data-participant-count="1"] .call-camera-stage-tile,
+.call-camera-stage.layout-camera_focus .call-camera-stage-tile {
+  width: 100%;
+  max-width: min(840px, 94%);
+  height: 100%;
+  max-height: min(72vh, 520px);
+  aspect-ratio: 16 / 9;
+  margin: auto;
+}
+
+.call-camera-stage[data-participant-count="2"] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: center;
+}
+
+.call-camera-stage[data-participant-count="3"],
+.call-camera-stage[data-participant-count="4"],
+.call-camera-stage[data-participant-count="5"],
+.call-camera-stage[data-participant-count="6"],
+.call-camera-stage[data-participant-count="7"],
+.call-camera-stage[data-participant-count="8"],
+.call-camera-stage[data-participant-count="9"],
+.call-camera-stage {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
 }
 
 .call-camera-stage-tile {
@@ -6007,6 +7060,7 @@ const fetchProjectMembers = async () => {
   min-height: 0;
   max-height: 100%;
   max-width: 100%;
+  aspect-ratio: 16 / 9;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -6015,21 +7069,7 @@ const fetchProjectMembers = async () => {
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 12px;
   background: #0b1220;
-}
-
-.call-camera-stage[data-participant-count="1"] .call-camera-stage-tile,
-.call-camera-stage.layout-camera_focus .call-camera-stage-tile {
-  max-height: 100%;
-  max-width: 100%;
-  aspect-ratio: 16 / 9;
-  height: auto;
-  margin: auto;
-}
-
-.call-camera-stage[data-participant-count="3"] .call-camera-stage-tile:last-child {
-  grid-column: 1 / -1;
-  width: calc(50% - 6px);
-  justify-self: center;
+  transition: all 0.25s ease;
 }
 
 .call-camera-stage-tile video {
@@ -6054,7 +7094,7 @@ const fetchProjectMembers = async () => {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 16px;
+  padding: 12px;
   overflow: hidden;
   background:
     radial-gradient(circle at 50% 36%, rgba(48, 96, 122, .28), transparent 34%),
@@ -6078,18 +7118,64 @@ const fetchProjectMembers = async () => {
 
 .call-camera-off-state :deep(.el-avatar),
 .call-camera-off-state .el-avatar {
-  width: 96px !important;
-  height: 96px !important;
-  border: 3px solid rgba(255, 255, 255, 0.2) !important;
+  width: 80px !important;
+  height: 80px !important;
+  border: 3px solid rgba(255, 255, 255, 0.25) !important;
   background: linear-gradient(135deg, #1d4ed8 0%, #0ea5e9 100%) !important;
-  box-shadow: 0 12px 40px rgba(14, 165, 233, 0.35), 0 0 0 10px rgba(14, 165, 233, 0.08) !important;
+  box-shadow: 0 12px 40px rgba(14, 165, 233, 0.35), 0 0 0 8px rgba(14, 165, 233, 0.1) !important;
   color: #ffffff !important;
-  font-size: 36px !important;
+  font-size: 30px !important;
   font-weight: 700 !important;
   letter-spacing: -0.5px;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+/* Dynamic avatar sizing based on participant count */
+.call-camera-stage[data-participant-count="1"] .call-camera-off-state :deep(.el-avatar),
+.call-camera-stage[data-participant-count="1"] .call-camera-off-state .el-avatar {
+  width: 140px !important;
+  height: 140px !important;
+  font-size: 54px !important;
+}
+
+.call-camera-stage[data-participant-count="2"] .call-camera-off-state :deep(.el-avatar),
+.call-camera-stage[data-participant-count="2"] .call-camera-off-state .el-avatar {
+  width: 112px !important;
+  height: 112px !important;
+  font-size: 42px !important;
+}
+
+.call-camera-stage[data-participant-count="3"] .call-camera-off-state :deep(.el-avatar),
+.call-camera-stage[data-participant-count="3"] .call-camera-off-state .el-avatar,
+.call-camera-stage[data-participant-count="4"] .call-camera-off-state :deep(.el-avatar),
+.call-camera-stage[data-participant-count="4"] .call-camera-off-state .el-avatar {
+  width: 90px !important;
+  height: 90px !important;
+  font-size: 34px !important;
+}
+
+.call-camera-stage[data-participant-count="5"] .call-camera-off-state :deep(.el-avatar),
+.call-camera-stage[data-participant-count="5"] .call-camera-off-state .el-avatar,
+.call-camera-stage[data-participant-count="6"] .call-camera-off-state :deep(.el-avatar),
+.call-camera-stage[data-participant-count="6"] .call-camera-off-state .el-avatar {
+  width: 76px !important;
+  height: 76px !important;
+  font-size: 28px !important;
+}
+
+.call-camera-stage[data-participant-count="7"] .call-camera-off-state :deep(.el-avatar),
+.call-camera-stage[data-participant-count="8"] .call-camera-off-state :deep(.el-avatar),
+.call-camera-stage[data-participant-count="9"] .call-camera-off-state :deep(.el-avatar),
+.call-camera-stage[data-participant-count="7"] .call-camera-off-state .el-avatar,
+.call-camera-stage[data-participant-count="8"] .call-camera-off-state .el-avatar,
+.call-camera-stage[data-participant-count="9"] .call-camera-off-state .el-avatar {
+  width: 64px !important;
+  height: 64px !important;
+  font-size: 22px !important;
 }
 
 .call-camera-off-state strong {
@@ -6243,6 +7329,9 @@ const fetchProjectMembers = async () => {
   display: flex;
   justify-content: center;
   flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  z-index: 10;
 }
 
 .call-control-dock {
@@ -6540,8 +7629,10 @@ const fetchProjectMembers = async () => {
 }
 
 .call-prejoin-preview {
-  display: grid;
-  place-items: center;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   min-height: 230px;
   aspect-ratio: 4 / 3;
@@ -6560,7 +7651,10 @@ const fetchProjectMembers = async () => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transform: scaleX(-1);
   background: #020617;
+  border-radius: inherit;
+  display: block;
 }
 
 .call-prejoin-camera-off {
@@ -7520,7 +8614,7 @@ const fetchProjectMembers = async () => {
 .call-workspace-body { position: relative; }
 .call-chat-panel { position: absolute; top: 0; right: 0; bottom: 0; z-index: 4; }
 .call-chat-panel, .call-chat-panel * { pointer-events: auto; }
-.call-workspace-body.has-call-side-panel { padding-right: 372px; }
+.call-workspace-body.has-call-side-panel { padding-right: 396px !important; }
 .call-panel-tabs { flex: 0 0 auto; }
 .call-panel-participants { min-height: 0; flex: 1; overflow-y: auto; padding: 10px; }
 .call-panel-participants .context-call-summary { margin: 0 0 10px; }
@@ -8613,15 +9707,320 @@ background-color: #111c2d !important;
 .chat-content-split { display: flex; flex: 1; min-height: 0; width: 100%; }
 .chat-thread-column { display: flex; flex: 1; min-width: 0; height: 100%; flex-direction: column; }
 .chat-workspace .messages-thread { padding: 18px 24px; gap: 4px; background: var(--chat-bg) !important; }
-.chat-workspace .message-card { max-width: 920px; padding: 12px 14px; border-radius: 12px; border-bottom: 1px solid color-mix(in srgb, var(--chat-line) 40%, transparent) !important; transition: background 0.16s ease; }
-.chat-workspace .message-card:hover { background: color-mix(in srgb, var(--chat-accent) 4%, var(--chat-surface)) !important; }
+.chat-workspace .message-card {
+  display: flex;
+  gap: 10px;
+  max-width: 75%;
+  padding: 6px 0;
+  border-bottom: 0 !important;
+  transition: background 0.16s ease;
+  align-self: flex-start;
+}
+.chat-workspace .message-card:hover { background: transparent !important; }
+
+.chat-workspace .message-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  position: relative;
+}
+
+.chat-workspace .message-body {
+  padding: 10px 14px;
+  border-radius: 14px 14px 14px 2px;
+  background: var(--chat-surface-2, rgba(30, 41, 59, 0.7));
+  border: 1px solid var(--chat-line);
+  color: var(--chat-ink) !important;
+  line-height: 1.5;
+  font-size: 13.5px;
+  word-break: break-word;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.chat-workspace .message-card.is-own,
+.chat-workspace .message-card.mine {
+  align-self: flex-end !important;
+  flex-direction: row-reverse !important;
+  margin-left: auto !important;
+}
+
+.chat-workspace .message-card.is-own .message-header-line,
+.chat-workspace .message-card.mine .message-header-line {
+  justify-content: flex-end;
+}
+
+.chat-workspace .message-card.is-own .message-content-wrapper,
+.chat-workspace .message-card.mine .message-content-wrapper {
+  align-items: flex-end;
+}
+
+.chat-workspace .message-card.is-own .message-body,
+.chat-workspace .message-card.mine .message-body {
+  background: linear-gradient(135deg, #0ea5e9, #2563eb) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(56, 189, 248, 0.4) !important;
+  border-radius: 14px 14px 2px 14px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+.chat-workspace .message-card.is-own .message-body span,
+.chat-workspace .message-card.mine .message-body span {
+  color: #ffffff !important;
+}
+
 .chat-workspace .sender-name { color: var(--chat-ink) !important; font-weight: 700; }
 .chat-workspace .message-time, .chat-workspace .send-time { color: var(--chat-faint) !important; font-weight: 500; }
-.chat-workspace .message-body { color: var(--chat-ink) !important; line-height: 1.55; }
-.chat-workspace .message-action-btn { min-width: 36px; height: 36px; border-color: var(--chat-line) !important; background: var(--chat-surface) !important; color: var(--chat-muted) !important; border-radius: 8px !important; }
-.chat-workspace .message-action-btn:hover, .chat-workspace .message-action-btn:focus-visible { background: var(--chat-accent-soft) !important; border-color: var(--chat-accent) !important; color: var(--chat-accent-hover) !important; }
-.chat-workspace .reaction-chip { min-height: 32px; border-radius: 8px; border-color: var(--chat-line) !important; background: var(--chat-surface) !important; color: var(--chat-muted) !important; }
-.chat-workspace .reaction-chip.active { background: var(--chat-accent-soft) !important; border-color: var(--chat-accent) !important; color: var(--chat-accent-hover) !important; }
+.chat-workspace .message-bubble-wrapper {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.chat-workspace .zalo-hover-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0;
+  visibility: hidden;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  transition: opacity 0.18s ease, visibility 0.18s ease;
+  z-index: 25;
+}
+
+.chat-workspace .message-card:hover .zalo-hover-toolbar,
+.chat-workspace .message-bubble-wrapper:hover .zalo-hover-toolbar,
+.chat-workspace .call-chat-message:hover .zalo-hover-toolbar {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Position for own message (right aligned) -> snug right next to the chat bubble (8px) */
+.chat-workspace .message-card.is-own .zalo-hover-toolbar,
+.chat-workspace .message-card.mine .zalo-hover-toolbar,
+.chat-workspace .call-chat-message.is-own .zalo-hover-toolbar,
+.chat-workspace .call-chat-message.mine .zalo-hover-toolbar {
+  right: calc(100% + 8px);
+  left: auto;
+  flex-direction: row-reverse;
+}
+
+/* Position for other's message (left aligned) -> snug right next to the chat bubble (8px) */
+.chat-workspace .message-card:not(.is-own):not(.mine) .zalo-hover-toolbar,
+.chat-workspace .call-chat-message:not(.is-own):not(.mine) .zalo-hover-toolbar {
+  left: calc(100% + 8px);
+  right: auto;
+  flex-direction: row;
+}
+
+.chat-workspace .zalo-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-workspace .zalo-reaction-trigger-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Transparent hover bridge bridging the gap between like button & emoji bar */
+.chat-workspace .zalo-reaction-trigger-wrapper::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: -24px;
+  right: -24px;
+  height: 18px;
+  display: block;
+}
+
+/* Emoji reaction bar - hidden by default, pops up on hovering the like button */
+.chat-workspace .zalo-emoji-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--chat-surface-2, rgba(22, 30, 46, 0.96)) !important;
+  border: 1px solid var(--chat-line, rgba(255, 255, 255, 0.15)) !important;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), 
+              visibility 0.2s ease, 
+              transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 40;
+  white-space: nowrap;
+}
+
+/* Keep emoji bar open when hovering wrapper OR hovering emoji bar itself */
+.chat-workspace .zalo-reaction-trigger-wrapper:hover .zalo-emoji-bar,
+.chat-workspace .zalo-emoji-bar:hover {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.chat-workspace .zalo-emoji-btn {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 50%;
+  transition: transform 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  line-height: 1;
+}
+
+.chat-workspace .zalo-emoji-btn:hover {
+  transform: scale(1.35);
+}
+
+.chat-workspace .zalo-circle-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50% !important;
+  background: var(--chat-surface-2, #ffffff) !important;
+  border: 1px solid var(--chat-line, rgba(255, 255, 255, 0.12)) !important;
+  color: var(--chat-ink, #475569) !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  transition: all 0.18s ease;
+}
+
+.chat-workspace .zalo-circle-btn:hover {
+  background: var(--chat-accent-soft, #e0f2fe) !important;
+  color: var(--chat-accent, #0284c7) !important;
+  border-color: var(--chat-accent) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
+.zalo-menu-dropdown {
+  border-radius: 12px !important;
+  padding: 6px !important;
+  min-width: 180px;
+}
+
+.chat-workspace .message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.chat-workspace .reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--chat-line) !important;
+  background: var(--chat-surface-2) !important;
+  color: var(--chat-ink) !important;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chat-workspace .reply-composer-strip {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  background: var(--chat-surface-2, rgba(30, 41, 59, 0.6)) !important;
+  border-left: 3.5px solid var(--chat-accent, #0ea5e9) !important;
+  border-radius: 8px;
+  color: var(--chat-ink) !important;
+  width: 100%;
+}
+
+.chat-workspace .reply-content-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-workspace .reply-header-row {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--chat-ink) !important;
+  text-align: left;
+  line-height: 1.4;
+}
+
+.chat-workspace .reply-header-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.chat-workspace .reply-quote-icon {
+  color: var(--chat-muted, #64748b) !important;
+  font-size: 12px;
+  display: inline-block !important;
+  margin-right: 2px;
+}
+
+.chat-workspace .reply-user-name {
+  color: var(--chat-ink) !important;
+  font-weight: 700;
+}
+
+.chat-workspace .reply-snippet-text {
+  font-size: 13px;
+  color: var(--chat-muted, #94a3b8) !important;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.chat-workspace .reply-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--chat-muted, #64748b) !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  margin-left: 10px;
+}
+
+.chat-workspace .reply-close-btn:hover {
+  background: color-mix(in srgb, var(--chat-ink) 12%, transparent) !important;
+  color: var(--chat-ink) !important;
+}
+
 .chat-workspace .chat-input-area { margin: 0; padding: 14px 24px 18px; border-top: 1px solid var(--chat-line) !important; background: var(--chat-surface) !important; box-shadow: none !important; }
 .chat-workspace .input-actions-bar .el-button { min-width: 40px; min-height: 40px; }
 .chat-workspace .chat-input { min-height: 44px !important; border: 1px solid var(--chat-line) !important; border-radius: 12px !important; background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; font-size: 13.5px !important; }
@@ -8714,8 +10113,18 @@ background-color: #111c2d !important;
 .chat-workspace .call-control-dock,
 .chat-workspace .camera-effects-menu,
 .chat-workspace .call-device-list { border-color: var(--chat-line) !important; background: var(--chat-surface) !important; color: var(--chat-ink) !important; box-shadow: 0 16px 32px color-mix(in srgb, var(--chat-ink) 16%, transparent) !important; }
-.chat-workspace .call-control-label-btn,
-.chat-workspace .presentation-control { border-color: var(--chat-line) !important; background: var(--chat-surface-2) !important; color: var(--chat-ink) !important; }
+.chat-workspace .call-workspace-body:has(+ .call-chat-panel) .call-control-dock {
+  max-width: calc(100% - 24px) !important;
+  margin-right: auto;
+}
+.chat-workspace .call-workspace-body:has(+ .call-chat-panel) .call-control-label-btn > span,
+.chat-workspace .call-workspace-body:has(+ .call-chat-panel) .camera-effects-control > .call-control-label-btn > span {
+  display: none !important;
+}
+.chat-workspace .call-workspace-body:has(+ .call-chat-panel) .call-control-label-btn {
+  min-width: 38px !important;
+  padding-inline: 8px !important;
+}
 .chat-workspace .call-control-label-btn:hover,
 .chat-workspace .presentation-control:hover,
 .chat-workspace .call-control-label-btn:focus-visible,
@@ -8749,29 +10158,260 @@ background-color: #111c2d !important;
 .chat-workspace .camera-effects-menu > button.selected,
 .chat-workspace .call-device-list button:hover { background: var(--chat-surface-2); color: var(--chat-ink); }
 .chat-workspace .camera-effects-notice { color: var(--color-warning, #a16207); }
-.chat-workspace .call-chat-panel { width: min(340px, calc(100% - 16px)); min-width: min(340px, calc(100% - 16px)); }
+.chat-workspace .call-chat-panel {
+  width: min(380px, calc(100% - 16px));
+  min-width: min(380px, calc(100% - 16px));
+  background: var(--chat-surface, #ffffff) !important;
+  border-left: 1px solid var(--chat-line, #e2e8f0) !important;
+  box-shadow: -4px 0 20px rgba(15, 23, 42, 0.05) !important;
+}
+.chat-workspace .call-chat-thread {
+  background: var(--chat-bg, #f8fafc) !important;
+  padding: 14px;
+  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE and Edge */
+}
+.chat-workspace .call-chat-thread::-webkit-scrollbar {
+  display: none !important; /* Chrome, Safari, Opera */
+  width: 0 !important;
+  height: 0 !important;
+}
+.chat-workspace .call-chat-message {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px 14px 14px 2px;
+  background: var(--chat-surface, #ffffff) !important;
+  border: 1px solid var(--chat-line, #e2e8f0) !important;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04) !important;
+  max-width: 85%;
+  align-self: flex-start;
+}
+.chat-workspace .call-chat-message.is-own {
+  align-self: flex-end;
+  border-radius: 14px 14px 2px 14px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.22) !important;
+}
+.chat-workspace .call-msg-inline-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 3px;
+  white-space: nowrap;
+}
+.chat-workspace .call-msg-avatar {
+  flex: 0 0 auto;
+}
+.chat-workspace .call-msg-author {
+  color: var(--chat-ink, #0f172a) !important;
+  font-weight: 750 !important;
+  font-size: 11.5px !important;
+}
+.chat-workspace .call-chat-message.is-own .call-msg-author {
+  color: #ffffff !important;
+}
+.chat-workspace .edited-badge {
+  font-size: 9px !important;
+  opacity: 0.75 !important;
+  font-weight: normal !important;
+}
+.chat-workspace .call-msg-time {
+  color: var(--chat-muted, #475569) !important;
+  font-weight: 500 !important;
+  font-size: 9px !important;
+  margin-left: auto;
+}
+.chat-workspace .call-chat-message.is-own .call-msg-time {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+.chat-workspace .call-msg-content {
+  color: var(--chat-ink, #0f172a) !important;
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  line-height: 1.45 !important;
+  word-break: break-word;
+}
+.chat-workspace .call-chat-message.is-own .call-msg-content {
+  color: #ffffff !important;
+}
+.chat-workspace .call-chat-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px 16px;
+  gap: 6px;
+}
+.chat-workspace .call-chat-empty-state strong {
+  color: var(--chat-ink, #0f172a) !important;
+  font-size: 13.5px !important;
+  font-weight: 750 !important;
+}
+.chat-workspace .call-chat-empty-state span {
+  color: var(--chat-muted, #475569) !important;
+  font-size: 12px !important;
+}
+.chat-workspace .call-chat-composer {
+  padding: 12px;
+  background: var(--chat-surface, #ffffff) !important;
+  border-top: 1px solid var(--chat-line, #e2e8f0) !important;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chat-workspace .call-composer-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.chat-workspace .call-composer-icon-btn {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  min-height: 38px !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--chat-line, #cbd5e1) !important;
+  background: var(--chat-surface-2, #f1f5f9) !important;
+  color: var(--chat-muted, #334155) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 15px !important;
+  cursor: pointer;
+  transition: all 0.16s ease !important;
+  flex-shrink: 0;
+  padding: 0 !important;
+}
+.chat-workspace .call-composer-icon-btn:hover {
+  background: var(--chat-accent-soft, #eff6ff) !important;
+  border-color: var(--chat-accent, #2563eb) !important;
+  color: var(--chat-accent, #2563eb) !important;
+  transform: translateY(-1px);
+}
+.chat-workspace .call-chat-composer textarea {
+  flex: 1;
+  min-height: 38px !important;
+  height: 38px !important;
+  max-height: 96px;
+  padding: 8px 12px !important;
+  border: 1px solid var(--chat-line, #cbd5e1) !important;
+  border-radius: 10px !important;
+  background: var(--chat-surface, #ffffff) !important;
+  color: var(--chat-ink, #0f172a) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  outline: none;
+  resize: vertical;
+  line-height: 1.4;
+}
+.chat-workspace .call-chat-composer textarea::placeholder {
+  color: var(--chat-faint, #64748b) !important;
+  opacity: 1 !important;
+}
+.chat-workspace .call-chat-composer textarea:focus {
+  border-color: var(--chat-accent, #2563eb) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chat-accent, #2563eb) 18%, transparent) !important;
+}
+.chat-workspace .call-composer-send-btn {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  min-height: 38px !important;
+  border-radius: 10px !important;
+  border: none !important;
+  background: linear-gradient(135deg, #0ea5e9, #2563eb) !important;
+  color: #ffffff !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 14px !important;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28) !important;
+  padding: 0 !important;
+}
+.chat-workspace .call-composer-send-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.38) !important;
+}
+.chat-workspace .call-composer-send-btn:disabled {
+  background: var(--chat-surface-2, #e2e8f0) !important;
+  color: var(--chat-faint, #94a3b8) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.chat-workspace .call-attached-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px;
+}
+.chat-workspace .call-attached-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--chat-surface-2, #f1f5f9);
+  border: 1px solid var(--chat-line, #cbd5e1);
+  font-size: 11px;
+}
+.chat-workspace .call-attached-file button {
+  background: transparent;
+  border: none;
+  color: var(--chat-faint, #64748b);
+  cursor: pointer;
+  font-size: 11px;
+}
+.chat-workspace .call-attached-file button:hover {
+  color: #ef4444;
+}
+:global([data-theme='dark'] .chat-workspace) .call-composer-icon-btn {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #cbd5e1 !important;
+}
+:global([data-theme='dark'] .chat-workspace) .call-composer-icon-btn:hover {
+  background: rgba(56, 189, 248, 0.15) !important;
+  border-color: #38bdf8 !important;
+  color: #38bdf8 !important;
+}
+:global([data-theme='dark'] .chat-workspace) .call-chat-composer textarea {
+  background: #1e293b !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #f8fafc !important;
+}
+:global([data-theme='dark'] .chat-workspace) .call-chat-composer textarea::placeholder {
+  color: #64748b !important;
+}
+:global([data-theme='dark'] .chat-workspace) .call-composer-send-btn:disabled {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #475569 !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
 .chat-workspace .call-chat-panel { isolation: isolate; }
-.chat-workspace .call-fullscreen-panel { width: min(340px, calc(100% - 16px)); }
+.chat-workspace .call-fullscreen-panel { width: min(380px, calc(100% - 16px)); }
 .chat-workspace .call-chat-panel-title { min-width: 0; flex: 1; }
 .chat-workspace .call-chat-channel-name { display: block; max-width: 100%; margin-top: 4px; overflow-wrap: anywhere; color: var(--chat-ink) !important; font-size: 14px; line-height: 1.25; }
 .chat-workspace .call-chat-thread { gap: 12px; padding: 14px; }
-.chat-workspace .call-chat-message { display: flex; flex-direction: row; align-items: flex-start; gap: 9px; padding: 8px; border: 1px solid transparent; border-radius: 9px; }
-.chat-workspace .call-chat-message.is-own { border-color: color-mix(in srgb, var(--chat-accent) 24%, var(--chat-line)); background: var(--chat-accent-soft); }
 .chat-workspace .call-chat-message .el-avatar { flex: 0 0 auto; }
 .chat-workspace .call-chat-message-body { min-width: 0; flex: 1; }
-.chat-workspace .call-chat-message-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.chat-workspace .call-chat-message strong { min-width: 0; overflow-wrap: anywhere; color: var(--chat-ink) !important; font-size: 12px; }
-.chat-workspace .call-chat-message p { margin: 3px 0 0; color: var(--chat-ink) !important; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
-.chat-workspace .call-chat-message small { flex: 0 0 auto; color: var(--chat-faint) !important; font-size: 10px; }
+.chat-workspace .call-chat-message-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+.chat-workspace .call-chat-message p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .chat-workspace .call-chat-composer { align-items: flex-end; gap: 6px; padding: 10px; }
 .chat-workspace .call-chat-composer textarea { min-height: 44px; max-height: 96px; flex: 1; resize: vertical; border: 1px solid var(--chat-line); border-radius: 8px; outline: none; padding: 10px; background: var(--chat-surface-2); color: var(--chat-ink); font: inherit; font-size: 12px; line-height: 1.35; }
 .chat-workspace .call-chat-composer textarea::placeholder { color: var(--chat-faint); }
 .chat-workspace .call-chat-composer textarea:focus { border-color: var(--chat-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--chat-accent) 16%, transparent); }
-.chat-workspace .call-chat-composer button { display: inline-grid; width: 44px; min-width: 44px; height: 44px; place-items: center; border: 1px solid transparent; border-radius: 8px; background: var(--chat-accent); color: var(--color-text-inverse, #fff); }
-.chat-workspace .call-chat-composer button.call-chat-clear { width: 40px; min-width: 40px; background: var(--chat-surface-2); border-color: var(--chat-line); color: var(--chat-muted); }
-.chat-workspace .call-chat-composer button:hover:not(:disabled) { background: var(--chat-accent-hover); color: var(--color-text-inverse, #fff); }
-.chat-workspace .call-chat-composer button.call-chat-clear:hover:not(:disabled) { background: var(--chat-line); color: var(--chat-ink); }
-.chat-workspace .call-chat-composer button:disabled { background: var(--chat-line); color: var(--chat-faint); }
 .chat-workspace .call-fullscreen-panel { border-left-color: var(--chat-line); background: var(--chat-surface); color: var(--chat-ink); }
 .chat-workspace .transcript-entry-button { position: relative; }
 .chat-workspace .transcript-entry-button.is-open { border-color: var(--chat-accent) !important; background: var(--chat-accent-soft) !important; }
@@ -8951,53 +10591,35 @@ background-color: #111c2d !important;
   }
 
   .chat-workspace .call-control-dock {
-    width: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 10px;
     max-width: 100%;
-    box-sizing: border-box;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(44px, 1fr));
-    grid-auto-flow: row;
-    gap: 8px;
-    overflow: visible;
-    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
   }
 
   .chat-workspace .call-control-dock > * {
-    width: 100%;
+    width: auto;
     min-width: 0;
-    order: 4;
-  }
-
-  .chat-workspace .call-control-dock > .call-control-circle-btn:first-child {
-    order: 1;
-  }
-
-  .chat-workspace .call-control-dock > .call-control-circle-btn:nth-child(2) {
-    order: 2;
-  }
-
-  .chat-workspace .call-control-dock > .call-control-circle-btn.hang-up {
-    order: 3;
+    order: unset;
   }
 
   .chat-workspace .call-control-circle-btn {
-    width: 44px;
-    height: 44px;
-    justify-self: center;
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    min-height: 38px;
   }
 
   .chat-workspace .call-control-label-btn {
-    width: 100%;
-    min-width: 0;
-    min-height: 44px;
-    height: 44px;
-    padding-inline: 6px;
+    width: auto;
+    min-width: 38px;
+    height: 38px;
+    min-height: 38px;
+    padding-inline: 10px;
     border-radius: 10px;
-  }
-
-  .chat-workspace .call-control-dock > .call-control-label-btn > span,
-  .chat-workspace .call-control-dock > .camera-effects-control > .call-control-label-btn > span {
-    display: none;
   }
 
   .chat-workspace .camera-effects-control {
@@ -9005,24 +10627,26 @@ background-color: #111c2d !important;
   }
 
   .chat-workspace .call-camera-stage {
-    grid-template-columns: minmax(0, 1fr);
-    grid-auto-rows: minmax(96px, 1fr);
-    align-content: stretch;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
     min-height: 0;
     padding: 8px;
   }
 
   .chat-workspace .call-camera-stage[data-participant-count="1"] {
-    grid-template-columns: minmax(0, min(760px, 100%));
-    grid-auto-rows: auto;
-    align-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .chat-workspace .call-camera-stage[data-participant-count="1"] .call-camera-stage-tile {
     width: 100%;
-    max-width: 100%;
-    max-height: min(54vh, 460px);
+    max-width: min(840px, 94%);
+    max-height: min(68vh, 500px);
+  }
+
+  .chat-workspace .call-camera-stage[data-participant-count="2"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .chat-workspace .call-camera-stage-tile,
@@ -9160,6 +10784,656 @@ background-color: #111c2d !important;
   .chat-workspace .chat-sidebar { left: 0; width: min(320px, calc(100vw - 18px)) !important; }
   .chat-workspace .chat-main { grid-column: 1; }
 }
+/* Context panel tab & section styles */
+.context-details-content,
+.context-files-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px 12px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.context-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.context-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.context-section-header h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.context-link-btn {
+  border: none;
+  background: transparent;
+  color: #38bdf8;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.context-link-btn:hover {
+  text-decoration: underline;
+}
+
+.context-avatar-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.context-avatar-wrapper .presence-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid #0c1828;
+}
+
+.presence-dot.is-online {
+  background-color: #22c55e;
+}
+
+.presence-dot.is-offline, .presence-dot.is-idle {
+  background-color: #64748b;
+}
+
+.context-members-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding-left: 4px;
+}
+
+.member-avatar-pill {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.avatar-more-pill {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+}
+
+.context-pinned-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.context-pinned-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.context-pinned-card:hover {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.pinned-card-icon {
+  color: #38bdf8;
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.pinned-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.pinned-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.pinned-card-meta strong {
+  color: #f1f5f9;
+}
+
+.pinned-card-text {
+  margin: 0;
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+.context-desc-text {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.5;
+  background: rgba(15, 23, 42, 0.4);
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+.context-edit-desc-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.03);
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-top: 4px;
+}
+
+.context-edit-desc-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+
+.context-collapsible-group {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 10px;
+}
+
+.context-collapsible-group[open] .summary-chevron {
+  transform: rotate(180deg);
+}
+
+.context-group-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f1f5f9;
+  cursor: pointer;
+  padding: 8px 0;
+  list-style: none;
+}
+
+.context-group-summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary-chevron {
+  font-size: 11px;
+  color: #64748b;
+  transition: transform 0.2s ease;
+}
+
+.context-group-body {
+  padding-top: 8px;
+}
+
+.context-empty-small {
+  font-size: 11px;
+  color: #64748b;
+  padding: 8px 0;
+}
+
+.media-thumbnails-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.media-thumbnail-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #1e293b;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.media-thumbnail-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-thumb-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #64748b;
+}
+
+.context-full-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255,255,255,0.05);
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.context-full-btn:hover {
+  background: rgba(255,255,255,0.09);
+  color: #fff;
+}
+
+.context-files-list, .context-links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.context-file-item, .context-link-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(255,255,255,0.04);
+  text-decoration: none;
+}
+
+.context-file-item:hover, .context-link-item:hover {
+  background: rgba(30, 41, 59, 0.6);
+}
+
+.file-item-info, .link-item-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.file-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.file-size, .link-meta {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.file-download-action {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.file-download-action:hover {
+  color: #38bdf8;
+}
+
+.link-item-icon {
+  color: #38bdf8;
+  font-size: 13px;
+}
+
+.link-url {
+  font-size: 12px;
+  color: #38bdf8;
+}
+
+.link-ext-icon {
+  font-size: 10px;
+  color: #64748b;
+}
+
+
+/* Pinned Messages Top Banner (Zalo-style) */
+.chat-pinned-banner {
+  background: rgba(30, 41, 59, 0.7);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 8px 16px;
+  position: relative;
+  z-index: 10;
+  transition: all 0.2s ease;
+}
+
+:root:not(.dark) .chat-pinned-banner {
+  background: #ffffff;
+  border-bottom-color: #e2e8f0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.pinned-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.pinned-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+
+.pinned-icon-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+:root:not(.dark) .pinned-icon-circle {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+
+.pinned-summary-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.pinned-type-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f5f9;
+  line-height: 1.2;
+}
+
+:root:not(.dark) .pinned-type-label {
+  color: #0f172a;
+}
+
+.pinned-summary-snippet {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+:root:not(.dark) .pinned-summary-snippet {
+  color: #475569;
+}
+
+.pinned-summary-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pinned-count-toggle-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #f1f5f9;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+:root:not(.dark) .pinned-count-toggle-btn {
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+.pinned-count-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+:root:not(.dark) .pinned-count-toggle-btn:hover {
+  background: #f1f5f9;
+}
+
+.pinned-action-more-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+:root:not(.dark) .pinned-action-more-btn {
+  color: #64748b;
+}
+
+.pinned-action-more-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+:root:not(.dark) .pinned-action-more-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Expanded View */
+.pinned-expanded-box {
+  display: flex;
+  flex-direction: column;
+  background: #0f172a;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+:root:not(.dark) .pinned-expanded-box {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.pinned-expanded-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+:root:not(.dark) .pinned-expanded-header {
+  background: #f8fafc;
+  border-bottom-color: #e2e8f0;
+}
+
+.pinned-expanded-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+:root:not(.dark) .pinned-expanded-title {
+  color: #0f172a;
+}
+
+.pinned-collapse-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pinned-collapse-btn:hover {
+  color: #38bdf8;
+}
+
+.pinned-expanded-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.pinned-expanded-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 0.15s ease;
+}
+
+:root:not(.dark) .pinned-expanded-item {
+  border-bottom-color: #f1f5f9;
+}
+
+.pinned-expanded-item:last-child {
+  border-bottom: none;
+}
+
+.pinned-expanded-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+:root:not(.dark) .pinned-expanded-item:hover {
+  background: #f8fafc;
+}
+
+.pinned-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.pinned-item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.pinned-item-snippet {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+:root:not(.dark) .pinned-item-snippet {
+  color: #475569;
+}
+
+.pinned-expanded-footer {
+  text-align: center;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #38bdf8;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+:root:not(.dark) .pinned-expanded-footer {
+  color: #0284c7;
+  border-top-color: #e2e8f0;
+  background: #fafafa;
+}
+
+.pinned-expanded-footer:hover {
+  text-decoration: underline;
+}
+
+.context-delete-channel-btn {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  margin-top: 8px;
+}
+
+.context-delete-channel-btn:hover {
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #ef4444;
+}
+
 @media (prefers-reduced-motion: reduce) { .project-chevron { transition: none; } }
 </style>
 

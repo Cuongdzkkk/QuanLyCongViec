@@ -238,6 +238,12 @@ namespace TaskManagement.Infrastructure.Data
             // =============================================
             modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
             modelBuilder.Entity<Permission>().HasIndex(p => p.Code).IsUnique();
+            modelBuilder.Entity<RefreshToken>(entity =>
+            {
+                entity.Property(r => r.Token).HasMaxLength(500).IsRequired();
+                entity.HasIndex(r => r.Token);
+                entity.HasIndex(r => new { r.Token, r.IsRevoked, r.ExpiryTime });
+            });
 
             modelBuilder.Entity<EnterpriseLead>(entity =>
             {
@@ -776,6 +782,7 @@ namespace TaskManagement.Infrastructure.Data
                 entity.Property(item => item.ConditionType).HasMaxLength(32).IsRequired();
                 entity.Property(item => item.ConditionMetric).HasMaxLength(40).IsRequired();
                 entity.Property(item => item.DisplayValue).HasPrecision(18, 2);
+                entity.Property(item => item.Threshold).HasPrecision(18, 2);
                 entity.HasIndex(item => new { item.SeasonId, item.IsEnabled });
                 entity.HasOne(item => item.Season).WithMany(season => season.RewardDefinitions).HasForeignKey(item => item.SeasonId).OnDelete(DeleteBehavior.Cascade);
             });

@@ -77,7 +77,7 @@ namespace TaskManagement.Infrastructure.Services
                 throw new UnauthorizedAccessException("Email hoặc mật khẩu không chính xác.");
             }
 
-            var tenantConfig = await _context.TenantConfigs.FirstOrDefaultAsync() 
+            var tenantConfig = await _context.TenantConfigs.AsNoTracking().OrderBy(t => t.Id).FirstOrDefaultAsync() 
                                 ?? new TenantConfig();
 
             if (user.Is2FAEnabled || tenantConfig.Require2FA)

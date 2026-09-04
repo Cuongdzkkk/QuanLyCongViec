@@ -35,7 +35,11 @@ public static class HostingConfigurationExtensions
             {
                 sqlOptions.EnableRetryOnFailure(5, TimeSpan.FromSeconds(30), null);
                 sqlOptions.MigrationsAssembly("TaskManagement.Infrastructure");
-            }).ConfigureWarnings(warnings => warnings.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning)));
+            }).ConfigureWarnings(warnings =>
+            {
+                warnings.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning);
+                warnings.Ignore(RelationalEventId.PendingModelChangesWarning);
+            }));
     }
 
     public static void ValidateEnvironmentConfiguration(IConfiguration configuration, IHostEnvironment environment)

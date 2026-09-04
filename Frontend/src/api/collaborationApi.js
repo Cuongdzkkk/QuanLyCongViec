@@ -243,6 +243,36 @@ export const collaborationApi = {
     return response.data
   },
 
+  async editChannelMessage(channelId, messageId, content, options = {}) {
+    try {
+      const response = await axiosClient.put(`/channels/${channelId}/messages/${messageId}`, { content }, { signal: options.signal })
+      return unwrapData(response)
+    } catch {
+      const response = await axiosClient.patch(`/channels/${channelId}/messages/${messageId}`, { content }, { signal: options.signal })
+      return unwrapData(response)
+    }
+  },
+
+  async deleteChannelMessage(channelId, messageId, options = {}) {
+    const response = await axiosClient.delete(`/channels/${channelId}/messages/${messageId}`, { signal: options.signal })
+    return unwrapData(response)
+  },
+
+  async editDirectMessage(conversationId, messageId, content, options = {}) {
+    try {
+      const response = await axiosClient.put(`/direct-conversations/${conversationId}/messages/${messageId}`, { content }, { signal: options.signal })
+      return unwrapData(response)
+    } catch {
+      const response = await axiosClient.patch(`/direct-conversations/${conversationId}/messages/${messageId}`, { content }, { signal: options.signal })
+      return unwrapData(response)
+    }
+  },
+
+  async deleteDirectMessage(conversationId, messageId, options = {}) {
+    const response = await axiosClient.delete(`/direct-conversations/${conversationId}/messages/${messageId}`, { signal: options.signal })
+    return unwrapData(response)
+  },
+
   async markDirectConversationRead(conversationId, messageId, options = {}) {
     const response = await axiosClient.post(
       `/direct-conversations/${conversationId}/read`,
