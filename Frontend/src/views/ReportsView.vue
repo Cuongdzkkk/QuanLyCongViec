@@ -19,12 +19,13 @@
     <ProjectEmptyState 
       v-else-if="allTasks.length === 0"
       icon="fa-solid fa-chart-line"
-      :title="t('reports.noTasksPlaceholder')"
-      :description="t('reports.noTasksPlaceholderDesc')"
+      style="margin-top: 64px;"
+      :title="t('reports.noTasksPlaceholder', 'Chưa có công việc nào trong dự án này.')"
+      :description="t('reports.noTasksPlaceholderDesc', 'Hãy tạo một vài công việc để xem thống kê, biểu đồ và phân bổ tải công việc tại đây.')"
     >
       <template #action>
         <button class="empty-spaces-btn" @click="router.push(buildSpacePath(projectId, 'work-items'))">
-          <i class="fa-solid fa-plus"></i> {{ t('reports.createWorkItem') }}
+          <i class="fa-solid fa-plus"></i> {{ t('reports.createWorkItem', 'Tạo công việc mới') }}
         </button>
       </template>
     </ProjectEmptyState>
