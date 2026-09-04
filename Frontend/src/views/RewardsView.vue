@@ -1830,8 +1830,6 @@ const myRankIndex = computed(() => {
   if (!leaderboard.value || !wallet.value?.userId) return -1
   return leaderboard.value.findIndex(u => String(u.userId || u.Id || u.id) === String(wallet.value.userId))
 })
-const userCanManage = computed(() => true)
-
 const calculateClientCareer = (points) => {
   let level = 1
   let currentThreshold = 0
@@ -1992,12 +1990,7 @@ const loadRewards = async () => {
       leaderboard.value = []
     }
 
-    // Diagnostic toast to see how many rewards are fetched
-    if (activeTab.value === 'rewards' && !isCreatingReward.value) {
-      ElMessage.info(`[Debug] Đã tải ${seasonDashboard.value.availableRewards?.length || 0} phần thưởng từ hệ thống`)
-    }
-
-    if (projectId && userCanManage.value) {
+    if (projectId && seasonDashboard.value.canManage) {
       const seasonsResponse = await axiosClient.get(`/projects/${projectId}/rewards/seasons`).catch(() => null)
       managerSeasons.value = seasonsResponse?.data?.data || seasonsResponse?.data || []
     } else if (seasonDashboard.value.currentSeason) {
