@@ -313,7 +313,7 @@ function navigateToTask(taskId) {
           <p>Hãy tạo form yêu cầu để nhân viên gửi công việc vào SprintA.</p>
         </div>
         <div class="empty-spaces-actions">
-          <button v-if="intakePermissions.canCreate" class="empty-state-action-btn" @click="showCreate = true">
+          <button v-if="intakePermissions.canCreate" class="empty-spaces-btn" @click="showCreate = true">
             <i class="fa-solid fa-paper-plane mr-1"></i> Gửi yêu cầu mới
           </button>
         </div>

@@ -23,7 +23,7 @@
       :description="t('reports.noTasksPlaceholderDesc')"
     >
       <template #action>
-        <button class="empty-state-action-btn" @click="router.push(buildSpacePath(projectId, 'work-items'))">
+        <button class="empty-spaces-btn" @click="router.push(buildSpacePath(projectId, 'work-items'))">
           <i class="fa-solid fa-plus"></i> {{ t('reports.createWorkItem') }}
         </button>
       </template>

@@ -77,7 +77,7 @@
           <h3>Không tìm thấy thành viên nào phù hợp.</h3>
           <p>Thử điều chỉnh bộ lọc hoặc từ khóa tìm kiếm.</p>
         </div>
-        <button class="empty-state-action-btn" type="button" @click="showAddMemberModal = true">
+        <button class="empty-spaces-btn" type="button" @click="showAddMemberModal = true">
           <i class="fa-solid fa-plus"></i> Thêm thành viên
         </button>
       </div>
@@ -133,7 +133,7 @@
           <h3>Chưa có team nào được liên kết</h3>
           <p>Liên kết team với dự án này để mọi người làm việc cùng nhau.</p>
         </div>
-        <button class="empty-state-action-btn" type="button" @click="openLinkTeamModal">
+        <button class="empty-spaces-btn" type="button" @click="openLinkTeamModal">
           <i class="fa-solid fa-link"></i> Liên kết Team ngay
         </button>
       </div>
