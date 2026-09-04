@@ -1,8 +1,8 @@
 <template>
   <main class="checkout-page">
     <header class="checkout-nav">
-      <button type="button" class="back-button" @click="router.push('/#pricing')">
-        <ArrowLeft :size="17" /> {{ t('Quay lại bảng giá', 'Back to pricing') }}
+      <button type="button" class="back-button" @click="goBackToOrigin">
+        <ArrowLeft :size="17" /> {{ t('Quay lại ứng dụng', 'Back to app') }}
       </button>
       <div class="brand"><SprintaBrand size="compact" /><span>Billing</span></div>
     </header>
@@ -129,7 +129,7 @@
               <div><dt>{{ t('Biên nhận', 'Receipt') }}</dt><dd>{{ receipt?.receiptNumber || t('Có thể xem trong lịch sử', 'Available in history') }}</dd></div>
             </dl>
             <div class="success-actions">
-              <button type="button" class="primary-button" @click="router.push('/dashboard')">{{ t('Tiếp tục sử dụng SprintA', 'Continue using SprintA') }}</button>
+              <button type="button" class="primary-button" @click="goBackToOrigin">{{ t('Tiếp tục sử dụng SprintA', 'Continue using SprintA') }}</button>
               <button v-if="paidOrder && canShowPaymentReceipt(paidOrder)" type="button" class="secondary-button" @click="openReceipt(paidOrder)">{{ t('Xem biên nhận', 'View receipt') }}</button>
             </div>
           </section>
@@ -238,6 +238,7 @@ import {
   shouldFetchPaymentOrderDetails,
   shouldPollPaymentOrder
 } from '@/utils/billingCheckoutState'
+import { resolveBillingReturnTo } from '@/utils/billingPlanFlow'
 
 const route = useRoute()
 const router = useRouter()
@@ -265,6 +266,7 @@ const checkoutOrderGate = createCheckoutOrderGate(async (code) => unwrapBillingD
 const isVi = computed(() => language.value === 'vi')
 const t = (vi, en) => isVi.value ? vi : en
 const planCode = computed(() => String(route.params.planCode || '').toLowerCase())
+const returnTo = computed(() => resolveBillingReturnTo(route.query.returnTo))
 const routeOrderId = computed(() => {
   const value = String(route.query.orderId || '').trim()
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : ''
@@ -272,6 +274,7 @@ const routeOrderId = computed(() => {
 const checkoutRouteKey = computed(() => `${planCode.value}:${routeOrderId.value}`)
 const isFree = computed(() => planCode.value === 'free' || Number(plan.value?.monthlyPriceVnd) === 0)
 const isEnterprise = computed(() => planCode.value === 'enterprise' || plan.value?.monthlyPriceVnd == null)
+const goBackToOrigin = () => router.push(returnTo.value)
 
 const applyHistoryResponse = (response) => {
   const historyData = unwrapBillingData(response) || {}

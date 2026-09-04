@@ -596,6 +596,7 @@
 
     <CreateSpaceModal v-model:visible="createSpaceVisible" @created="handleSiteCreated" />
     <CreateProjectModal v-model:visible="createVisible" @created="handleProjectCreated" />
+    <AiCreditsPurchaseModal v-model="aiCreditsModalVisible" />
 
     <transition name="fade">
       <div v-if="isOffline" class="offline-warning-banner" role="alert">
@@ -675,6 +676,7 @@ import CreateProjectModal from '../CreateProjectModal.vue'
 import CreateSpaceModal from '../CreateSpaceModal.vue'
 import AppTopBar from './AppTopBar.vue'
 import NexusSidebar from './NexusSidebar.vue'
+import AiCreditsPurchaseModal from '@/components/ai/AiCreditsPurchaseModal.vue'
 import GlobalStickiesDrawer from '@/components/stickies/GlobalStickiesDrawer.vue'
 import FloatingStickiesLayer from '@/components/stickies/FloatingStickiesLayer.vue'
 import { useI18nStore } from '@/store/useI18nStore'
@@ -747,6 +749,7 @@ const stickyLauncherCreating = ref(false)
 let stickyLauncherDragState = null
 const createVisible = ref(false)
 const createSpaceVisible = ref(false)
+const aiCreditsModalVisible = ref(false)
 const isMobile = ref(window.innerWidth <= 1024)
 const aiInput = ref('')
 const aiSending = ref(false)
@@ -1782,7 +1785,10 @@ const openAiFullChat = async () => {
   await router.push({ name: 'AIPage' })
 }
 
-const openAiCreditPurchase = () => router.push('/#pricing')
+const openAiCreditPurchase = () => {
+  aiVisible.value = false
+  aiCreditsModalVisible.value = true
+}
 
 const resizeAiComposer = () => {
   const textarea = aiComposerRef.value
