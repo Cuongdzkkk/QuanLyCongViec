@@ -111,7 +111,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppModal from '@/components/common/Foundation/AppModal.vue'
 import axiosClient from '@/api/axiosClient'
 import { billingApi, unwrapBillingData } from '@/api/billingApi'
@@ -121,6 +121,7 @@ const props = defineProps({
   modelValue: { type: Boolean, required: true }
 })
 const emit = defineEmits(['update:modelValue'])
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const error = ref('')
@@ -173,7 +174,11 @@ const loadData = async () => {
 const close = () => emit('update:modelValue', false)
 const openBilling = () => {
   close()
-  router.push({ name: 'BillingCheckout', params: { planCode: currentPlanCode.value || plans.value[0]?.code || 'free' } })
+  router.push(buildBillingCheckoutLocation(
+    currentPlanCode.value || plans.value[0]?.code || 'free',
+    '',
+    route.fullPath
+  ))
 }
 
 const selectPlan = async plan => {
@@ -187,7 +192,7 @@ const selectPlan = async plan => {
       return
     }
     close()
-    await router.push(buildBillingCheckoutLocation(plan.code))
+    await router.push(buildBillingCheckoutLocation(plan.code, '', route.fullPath))
   } catch (selectError) {
     error.value = selectError?.response?.data?.message || 'Không thể chuẩn bị luồng billing.'
   } finally {

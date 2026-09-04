@@ -76,9 +76,15 @@ test('billing plan CTAs use the exact existing checkout or activation flow', () 
     name: 'BillingCheckout',
     params: { planCode: 'plus' }
   })
+  assert.deepEqual(buildBillingCheckoutLocation('Plus', '', '/ai-assistant?conversation=42'), {
+    name: 'BillingCheckout',
+    params: { planCode: 'plus' },
+    query: { returnTo: '/ai-assistant?conversation=42' }
+  })
   assert.match(billingModal, /@click\.stop="selectPlan\(plan\)"/)
   assert.match(billingModal, /billingApi\.activateFree\(\)/)
-  assert.match(billingModal, /router\.push\(buildBillingCheckoutLocation\(plan\.code\)\)/)
+  assert.match(billingModal, /router\.push\(buildBillingCheckoutLocation\(plan\.code, '', route\.fullPath\)\)/)
+  assert.match(billingModal, /router\.push\(buildBillingCheckoutLocation\([\s\S]*route\.fullPath[\s\S]*\)\)/)
   assert.doesNotMatch(billingModal, /billingApi\.createOrder\(plan\.code\)/)
 })
 
