@@ -196,6 +196,7 @@
             <div>
               <strong>{{ aiCopy.contextTitle }}</strong>
               <span>{{ currentRouteLabel }}</span>
+              <small>{{ currentProjectLabel }}</small>
             </div>
             <button type="button" @click="useQuickPrompt(`${aiCopy.currentPagePrompt}: ${currentRouteLabel}`)">
               <i class="fa-solid fa-wand-magic-sparkles"></i>
@@ -1944,6 +1945,12 @@ const currentWorkspaceId = computed(() => {
   if (typeof routeWorkspaceId === 'string' && routeWorkspaceId.length >= 30) return routeWorkspaceId
   const project = projectStore.currentProject
   return project?.workspaceId || project?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null
+})
+
+const currentProjectLabel = computed(() => {
+  const project = projectStore.allProjects.find(item => `${item.id || item.Id}` === `${currentProjectId.value || ''}`)
+    || projectStore.currentProject
+  return project?.name || project?.Name || (currentProjectId.value ? 'Project hiện tại' : 'Chưa chọn project')
 })
 
 const stickyContext = computed(() => ({
@@ -4003,6 +4010,137 @@ const handleProjectCreated = (newProject) => {
   .ai-hero { padding: 18px 16px 15px; }
   .ai-content { padding: 15px 14px 18px; }
   .ai-sidebar > :deep(.ai-composer) { margin: 0 12px calc(12px + env(safe-area-inset-bottom)); }
+}
+
+/* Focused floating-panel pass: reserve the panel's viewport for interaction;
+   passive metadata stays compact and the content owns the scroll. */
+.ai-sidebar {
+  min-height: 0;
+}
+
+.ai-hero {
+  flex: 0 0 auto;
+  padding: 14px 16px 12px;
+}
+
+.ai-brand {
+  gap: 9px;
+}
+
+.ai-brand-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+}
+
+.ai-brand-icon img {
+  width: 29px;
+  height: 29px;
+}
+
+.ai-brand p {
+  font-size: 10px;
+}
+
+.ai-brand h4 {
+  font-size: 16px;
+}
+
+.ai-hero-copy {
+  max-width: 54ch;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ai-open-full-chat,
+.close-ai {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.ai-credit-card {
+  margin-top: 9px;
+  padding: 9px 10px;
+  border-radius: 11px;
+  box-shadow: none;
+}
+
+.ai-credit-head {
+  gap: 8px;
+}
+
+.ai-credit-head > div {
+  gap: 6px;
+}
+
+.ai-credit-label,
+.ai-credit-head strong,
+.ai-credit-message {
+  font-size: 10px;
+}
+
+.ai-credit-progress {
+  height: 5px;
+  margin-top: 7px;
+}
+
+.ai-credit-message {
+  margin-top: 6px;
+  line-height: 1.3;
+}
+
+.ai-credit-buy {
+  min-height: 28px;
+  margin-top: 6px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font-size: 10px;
+}
+
+.ai-pin-toggle {
+  min-height: 26px;
+  margin-top: 7px;
+  padding: 4px 8px;
+  font-size: 10px;
+}
+
+.ai-conversation-toolbar {
+  grid-template-columns: 30px 30px minmax(0, 1fr);
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.ai-conversation-toolbar button {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.ai-conversation-toolbar span {
+  font-size: 10px;
+}
+
+.ai-content {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ai-context-card small {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .ai-hero {
+    padding: 13px 14px 11px;
+  }
 }
 
 .persistent-call-overlay {
