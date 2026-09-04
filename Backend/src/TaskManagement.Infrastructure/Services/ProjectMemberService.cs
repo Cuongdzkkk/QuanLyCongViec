@@ -333,6 +333,13 @@ namespace TaskManagement.Infrastructure.Services
             string? removalReason,
             bool useTransaction)
         {
+            // Each execution-strategy attempt must start from database state so
+            // failed Added/Modified entries cannot be replayed as duplicates.
+            if (useTransaction)
+            {
+                _context.ChangeTracker.Clear();
+            }
+
             IDbContextTransaction? transaction = null;
             if (useTransaction)
             {
