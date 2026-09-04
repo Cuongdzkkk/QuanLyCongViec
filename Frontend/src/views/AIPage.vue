@@ -953,7 +953,7 @@ const sendMessage = async (overrideMessage = null) => {
         projectId: currentProjectId.value || null,
         workspaceId: currentWorkspaceId.value || null,
         message: outgoing,
-        pageContext: { pageType: 'ai-assistant', currentView: 'conversation', visibleTaskIds: [], visibleStatuses: [], filters: {}, extra: { history } }
+        pageContext: { pageType: 'ai-assistant', currentView: 'conversation', visibleTaskIds: [], visibleStatuses: [], filters: {}, extra: { history: JSON.stringify(history) } }
       })
     if (requestRevision !== aiContextRevision.value) return
 
@@ -995,6 +995,7 @@ const sendMessage = async (overrideMessage = null) => {
     
     chatHistory.value.push({ role: 'bot', content: friendlyMessage })
   } finally {
+    await loadAiUsage()
     isLoading.value = false
   }
 }
