@@ -526,13 +526,7 @@ function pageMenuItems(page) {
           </template>
         </ProjectPageHeader>
 
-        <div class="pages-nav" style="margin-top: 18px">
-        <div class="nav-tab" :class="{ 'active': activeTab === 'Public' }" @click="activeTab = 'Public'">{{ t('Public') }}</div>
-        <div class="nav-tab" :class="{ 'active': activeTab === 'Private' }" @click="activeTab = 'Private'">{{ t('Private') }}</div>
-        <div class="nav-tab" :class="{ 'active': activeTab === 'Archived' }" @click="activeTab = 'Archived'">{{ t('Archived') }}</div>
-      </div>
-
-      <ProjectPageToolbar
+        <ProjectPageToolbar
           :showSearch="true"
           v-model:searchQuery="filterSearch"
           :searchPlaceholder="t('Search pages...')"
@@ -644,22 +638,20 @@ function pageMenuItems(page) {
           </template>
         </ProjectPageToolbar>
 
+      <div class="pages-nav">
+        <div class="nav-tab" :class="{ 'active': activeTab === 'Public' }" @click="activeTab = 'Public'">{{ t('Public') }}</div>
+        <div class="nav-tab" :class="{ 'active': activeTab === 'Private' }" @click="activeTab = 'Private'">{{ t('Private') }}</div>
+        <div class="nav-tab" :class="{ 'active': activeTab === 'Archived' }" @click="activeTab = 'Archived'">{{ t('Archived') }}</div>
+      </div>
 
+      <div class="pages-list" :class="{ 'pages-grid': pageViewMode === 'grid' }" v-loading="loading">
+        <ProjectEmptyState
+           v-if="filteredPages.length === 0"
+           icon="fa-regular fa-file-lines"
+           :title="activeTab === 'Archived' ? t('No archived pages yet') : t('No pages yet')"
+           :description="activeTab === 'Archived' ? t('Archive pages not on your radar. Access them here when needed.') : t('Create your first page to get started and keep your work organized.')"
+        />
 
-      <ProjectEmptyState
-         v-if="!loading && filteredPages.length === 0"
-         icon="fa-regular fa-file-lines"
-         :title="activeTab === 'Archived' ? t('No archived pages yet') : t('No pages yet')"
-         :description="activeTab === 'Archived' ? t('Archive pages not on your radar. Access them here when needed.') : t('Create your first page to get started and keep your work organized.')"
-      >
-        <template #action>
-          <button class="empty-state-action-btn" type="button" @click="createPage">
-            <i class="fa-solid fa-plus"></i> {{ t('Add page') }}
-          </button>
-        </template>
-      </ProjectEmptyState>
-
-      <div v-else class="pages-list" :class="{ 'pages-grid': pageViewMode === 'grid' }" v-loading="loading">
         <div v-for="page in filteredPages" :key="page.id" class="page-row" @click="openPage(page.id)">
            <div class="pr-left">
               <i :class="page.icon || 'fa-regular fa-file-lines'" class="doc-icon" aria-hidden="true"></i>

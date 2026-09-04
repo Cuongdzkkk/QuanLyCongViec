@@ -4,7 +4,6 @@ import ModulesTab from '@/components/ModulesTab.vue'
 import { useRoute } from 'vue-router'
 import { ref, onMounted } from 'vue'
 import axiosClient from '@/api/axiosClient'
-import AppEmptyState from '@/components/common/Foundation/AppEmptyState.vue'
 
 const route = useRoute()
 const projectId = ref(route.params.id)
@@ -32,7 +31,7 @@ onMounted(async () => {
   <div class="modules-route-shell">
     <div class="modules-route-content">
       <ModulesTab v-if="isReady && projectId && projectId !== 'default'" :projectId="projectId" />
-      <AppEmptyState v-else-if="isReady" icon="fa-solid fa-cubes" title="Chưa có dự án" description="Hãy chọn một dự án để xem các phân hệ." />
+      <div v-else-if="isReady" class="text-muted text-center pt-10">No project available to load Modules.</div>
     </div>
   </div>
 </template>

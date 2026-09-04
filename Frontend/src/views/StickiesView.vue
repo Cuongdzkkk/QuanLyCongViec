@@ -138,7 +138,7 @@
         <span>{{ stickyStore.error }}</span>
         <button type="button" @click="loadNotes">Thử lại</button>
       </div>
-      <div v-else-if="!displayNotes.length" class="empty-spaces-flat">
+      <div v-else-if="!displayNotes.length" class="empty-spaces-flat" style="padding: 80px 0;">
         <div class="empty-spaces-icon" aria-hidden="true">
           <i class="fa-regular fa-note-sticky"></i>
         </div>
@@ -731,7 +731,54 @@ h1 { margin: 3px 0 4px; font-size: 22px; letter-spacing: 0; }
   .notes-grid { grid-template-columns: 1fr; }
 }
 
+/* Empty State Styles */
+.empty-spaces-flat {
+  min-height: 204px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 26px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-align: center;
+}
 
+.empty-spaces-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  color: var(--color-accent);
+  font-size: 23px;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12);
+}
+
+.empty-spaces-copy {
+  max-width: 380px;
+}
+
+.empty-spaces-copy h3 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.empty-spaces-copy p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
 
 .empty-spaces-btn {
   height: 36px;

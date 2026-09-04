@@ -11,7 +11,6 @@ import { signalRService } from '@/api/signalrService'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
-import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 import { buildSpacePath } from '@/utils/spaceRoute'
 
 const props = defineProps({
@@ -67,16 +66,6 @@ const intakeSortOptions = [
   { value: 'updatedAt', label: 'Cập nhật gần nhất', icon: 'fa-regular fa-clock' },
   { value: 'title', label: 'Tiêu đề', icon: 'fa-solid fa-font' },
   { value: 'status', label: 'Trạng thái', icon: 'fa-solid fa-circle-dot' }
-]
-
-const intakeTableColumns = [
-  { key: 'title', label: 'Intake', icon: 'fa-solid fa-inbox', width: '28%', minWidth: '300px', sticky: true },
-  { key: 'submittedBy', label: 'Người gửi', icon: 'fa-regular fa-user', width: '16%', minWidth: '170px' },
-  { key: 'priority', label: 'Ưu tiên', icon: 'fa-solid fa-signal', width: '12%', minWidth: '130px' },
-  { key: 'dueDate', label: 'Hạn mong muốn', icon: 'fa-regular fa-calendar', width: '14%', minWidth: '145px' },
-  { key: 'status', label: 'Trạng thái', icon: 'fa-regular fa-circle-dot', width: '16%', minWidth: '170px' },
-  { key: 'createdAt', label: 'Ngày tạo', icon: 'fa-regular fa-clock', width: '14%', minWidth: '150px' },
-  { key: 'actions', label: 'Hành động', icon: 'fa-solid fa-bolt', width: '220px', minWidth: '220px' }
 ]
 const filteredIntakes = computed(() => {
   const query = intakeSearch.value.trim().toLowerCase()
@@ -292,77 +281,86 @@ function navigateToTask(taskId) {
       </template>
     </ProjectPageToolbar>
 
-    <!-- Error State -->
-    <div v-if="!loading && loadError" class="empty-state-global" role="alert">
-      <div class="empty-spaces-icon" aria-hidden="true">
-        <i class="fa-solid fa-shield-halved"></i>
+    <!-- Inbox List -->
+    <div v-loading="loading" class="intake-content-area">
+      <div v-if="!loading && loadError" class="intake-empty-state" role="alert">
+        <div class="empty-icon-wrapper">
+          <i class="fa-solid fa-shield-halved text-4xl text-[var(--color-text-muted)]"></i>
+        </div>
+        <h4 class="font-bold text-sm text-[var(--color-text-primary)] mt-4">Không thể mở Intake</h4>
+        <p class="text-xs text-[var(--color-text-muted)] mt-1 max-w-sm">{{ loadError }}</p>
       </div>
-      <div class="empty-spaces-copy">
-        <h3>Không thể mở Intake</h3>
-        <p>{{ loadError }}</p>
-      </div>
-    </div>
-    
-    <!-- Empty State -->
-    <div v-else-if="!loading && intakes.length === 0" class="empty-state-global">
-        <div class="empty-spaces-icon" aria-hidden="true">
-          <i class="fa-regular fa-envelope-open"></i>
+      
+      <!-- Empty State -->
+      <div v-else-if="!loading && intakes.length === 0" class="intake-empty-state">
+        <div class="empty-icon-wrapper">
+          <i class="fa-regular fa-envelope-open text-4xl text-[var(--color-text-muted)]"></i>
         </div>
-        <div class="empty-spaces-copy">
-          <h3>Chưa có yêu cầu nào</h3>
-          <p>Hãy tạo form yêu cầu để nhân viên gửi công việc vào SprintA.</p>
-        </div>
-        <div class="empty-spaces-actions">
-          <button v-if="intakePermissions.canCreate" class="empty-state-action-btn" @click="showCreate = true">
-            <i class="fa-solid fa-paper-plane mr-1"></i> Gửi yêu cầu mới
-          </button>
-        </div>
+        <h4 class="font-bold text-sm text-[var(--color-text-primary)] mt-4">Chưa có yêu cầu nào</h4>
+        <p class="text-xs text-[var(--color-text-muted)] mt-1 mb-4 max-w-sm">Hãy tạo form yêu cầu để nhân viên gửi công việc vào SprintA.</p>
+        <button v-if="intakePermissions.canCreate" class="nexus-btn-primary" @click="showCreate = true">
+          <i class="fa-solid fa-paper-plane mr-1"></i> Gửi yêu cầu mới
+        </button>
       </div>
 
-    <!-- Inbox List -->
-    <div v-else v-loading="loading" class="intake-content-area">
-      <WorkItemsListTable :columns="intakeTableColumns" :rows="filteredIntakes" min-width="1280" @row-click="viewDetail">
-        <template #cell-title="{ row }">
-          <div class="wi-cell">
-            <span class="wi-id">{{ row.id?.slice(0, 8).toUpperCase() }}</span>
-            <span class="wi-title" :title="row.title">{{ row.title }}</span>
-            <span class="source-tag text-[10px]">{{ row.source }}</span>
-          </div>
-        </template>
-        <template #cell-submittedBy="{ row }">
-          <span>{{ row.submittedByName || 'Khách vãng lai' }}</span>
-        </template>
-        <template #cell-priority="{ row }">
-          <span class="priority-badge" :style="{ color: getPriorityInfo(row.priority).color, backgroundColor: getPriorityInfo(row.priority).bg }">
-            <i :class="getPriorityInfo(row.priority).icon"></i>
-            {{ getPriorityInfo(row.priority).label }}
-          </span>
-        </template>
-        <template #cell-dueDate="{ row }">
-          <span class="muted-text">{{ formatDateOnly(row.desiredDueDate) }}</span>
-        </template>
-        <template #cell-status="{ row }">
-          <span class="status-badge" :style="{ color: getStatusInfo(row.status).color, backgroundColor: getStatusInfo(row.status).bg }">
-            <i :class="getStatusInfo(row.status).icon"></i>
-            {{ getStatusInfo(row.status).label }}
-          </span>
-        </template>
-        <template #cell-createdAt="{ row }">
-          <span class="muted-text">{{ formatDate(row.createdAt) }}</span>
-        </template>
-        <template #cell-actions="{ row }">
-          <div class="actions-cell" @click.stop>
-            <el-button size="small" link type="primary" @click="viewDetail(row)">Chi tiết</el-button>
-            <template v-if="row.status === 'Pending' && intakePermissions.canReview">
-              <el-button size="small" type="success" plain @click="updateStatus(row.id, 'Accepted')">Duyệt</el-button>
-              <el-button size="small" type="danger" plain @click="updateStatus(row.id, 'Declined')">Từ chối</el-button>
-            </template>
-            <el-button v-if="row.status === 'Accepted' && row.createdIssueId" size="small" type="primary" plain @click="navigateToTask(row.createdIssueId)">
-              <i class="fa-solid fa-arrow-up-right-from-square mr-1"></i> Xem việc
-            </el-button>
-          </div>
-        </template>
-      </WorkItemsListTable>
+      <!-- Table Listing -->
+      <div v-else class="table-container">
+        <table v-resizable class="intake-table">
+          <thead>
+            <tr>
+              <th><i class="fa-solid fa-inbox"></i> Tiêu đề yêu cầu</th>
+              <th><i class="fa-solid fa-user-pen"></i> Người gửi</th>
+              <th><i class="fa-solid fa-signal"></i> Mức độ ưu tiên</th>
+              <th><i class="fa-regular fa-calendar"></i> Hạn mong muốn</th>
+              <th><i class="fa-regular fa-circle-dot"></i> Trạng thái</th>
+              <th><i class="fa-regular fa-clock"></i> Ngày tạo</th>
+              <th class="actions-header"><i class="fa-solid fa-bolt"></i> Hành động</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in filteredIntakes" :key="item.id" class="table-row">
+              <td class="title-cell" @click="viewDetail(item)">
+                {{ item.title }}
+                <span class="source-tag text-[10px] ml-2">{{ item.source }}</span>
+              </td>
+              <td>{{ item.submittedByName || 'Khách vãng lai' }}</td>
+              <td>
+                <span 
+                  class="priority-badge"
+                  :style="{ 
+                    color: getPriorityInfo(item.priority).color, 
+                    backgroundColor: getPriorityInfo(item.priority).bg 
+                  }"
+                >
+                  {{ getPriorityInfo(item.priority).label }}
+                </span>
+              </td>
+              <td>{{ formatDateOnly(item.desiredDueDate) }}</td>
+              <td>
+                <span class="status-badge" :style="{ color: getStatusInfo(item.status).color, backgroundColor: getStatusInfo(item.status).bg }">
+                  <i :class="getStatusInfo(item.status).icon" class="mr-1"></i>
+                  {{ getStatusInfo(item.status).label }}
+                </span>
+              </td>
+              <td class="text-xs text-[var(--color-text-muted)]">{{ formatDate(item.createdAt) }}</td>
+              <td class="actions-cell">
+                <el-button size="small" link type="primary" @click="viewDetail(item)">Chi tiết</el-button>
+                
+                <template v-if="item.status === 'Pending' && intakePermissions.canReview">
+                  <el-button size="small" type="success" plain @click="updateStatus(item.id, 'Accepted')">Duyệt</el-button>
+                  <el-button size="small" type="danger" plain @click="updateStatus(item.id, 'Declined')">Từ chối</el-button>
+                </template>
+
+                <template v-if="item.status === 'Accepted' && item.createdIssueId">
+                  <el-button size="small" type="primary" plain @click="navigateToTask(item.createdIssueId)">
+                    <i class="fa-solid fa-arrow-up-right-from-square mr-1"></i> Xem việc
+                  </el-button>
+                </template>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
     </div>
 
@@ -511,11 +509,31 @@ function navigateToTask(taskId) {
 
 .intake-content-area {
   width: 100%;
-  padding: 0;
-  box-sizing: border-box;
 }
 
+/* Empty State */
+.intake-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 80px 24px;
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+}
 
+.empty-icon-wrapper {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
 /* Table Listing */
 .table-container {
