@@ -16,6 +16,13 @@ namespace TaskManagement.Application.Interfaces
         Task<ResourceAuthorizationResult> AuthorizeProjectAsync(
             Guid userId,
             Guid projectId,
+            string permissionCode,
+            bool requireDirectProjectMembership = false);
+
+        Task<ResourceAuthorizationResult> AuthorizeProjectResourceAsync(
+            Guid userId,
+            string resourceType,
+            Guid resourceId,
             string permissionCode);
 
         Task<List<Guid>> GetAccessibleProjectIdsAsync(
