@@ -66,7 +66,7 @@ test('credit management uses authenticated billing data and the existing checkou
   assert.match(creditsModal, /billingApi\.getMyHistory\(/)
   assert.match(creditsModal, /axiosClient\.get\(['"]\/public\/pricing['"]\)/)
   assert.doesNotMatch(creditsModal, /billingApi\.createOrder\(plan\.code\)/)
-  assert.match(creditsModal, /router\.push\(buildBillingCheckoutLocation\(plan\.code\)\)/)
+  assert.match(creditsModal, /router\.push\(buildBillingCheckoutLocation\(plan\.code, '', route\.fullPath\)\)/)
   assert.match(creditsModal, /Mở trang gói &(?:amp;|&) thanh toán/)
   assert.match(creditsModal, /Mở trang thanh toán &(?:amp;|&) lịch sử/)
   assert.doesNotMatch(creditsModal, /Mở billing/)
