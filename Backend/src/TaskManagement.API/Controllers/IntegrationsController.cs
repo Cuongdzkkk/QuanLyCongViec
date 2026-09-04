@@ -558,9 +558,13 @@ namespace TaskManagement.API.Controllers
             }
             catch (Exception ex)
             {
-                FailSync(history, ex);
+                FailSync(history, ex is GoogleProviderException { ReconnectRequired: true }
+                    ? "Gmail requires reconnect."
+                    : "Gmail sync failed.");
                 await _context.SaveChangesAsync();
-                return StatusCode(502, new { message = "Không đồng bộ được Gmail", detail = ex.Message });
+                return StatusCode(502, new { message = ex is GoogleProviderException { ReconnectRequired: true }
+                    ? "Gmail cần kết nối lại"
+                    : "Không đồng bộ được Gmail" });
             }
         }
 
@@ -637,11 +641,11 @@ namespace TaskManagement.API.Controllers
                 await _context.SaveChangesAsync();
                 return Ok(new { statusCode = 200, data = new { imported, account.LastSyncedAt } });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                FailSync(history, ex);
+                FailSync(history, "Slack sync failed.");
                 await _context.SaveChangesAsync();
-                return StatusCode(502, new { message = "Không đồng bộ được Slack", detail = ex.Message });
+                return StatusCode(502, new { message = "Không đồng bộ được Slack" });
             }
         }
 
@@ -896,10 +900,10 @@ namespace TaskManagement.API.Controllers
             history.CompletedAt = DateTime.UtcNow;
         }
 
-        private static void FailSync(SyncHistory history, Exception ex)
+        private static void FailSync(SyncHistory history, string message)
         {
             history.Status = "error";
-            history.Message = ex.Message;
+            history.Message = message;
             history.CompletedAt = DateTime.UtcNow;
         }
 

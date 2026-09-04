@@ -180,6 +180,36 @@ public sealed class GoogleCalendarOAuthHardeningTests
         context.IntegrationAccounts.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task GmailSync_DoesNotExposeProviderFailureDetails()
+    {
+        var (controller, context, userId) = CreateSyncController(
+            "gmail",
+            new StubHandler(_ => JsonResponse("{\"error\":\"provider-secret-detail\"}", HttpStatusCode.BadGateway)));
+
+        var result = await controller.SyncGmail();
+
+        var response = result.Should().BeOfType<ObjectResult>().Subject;
+        response.StatusCode.Should().Be((int)HttpStatusCode.BadGateway);
+        JsonSerializer.Serialize(response.Value).Should().NotContain("provider-secret-detail");
+        (await context.SyncHistories.SingleAsync(x => x.UserId == userId)).Message.Should().NotContain("provider-secret-detail");
+    }
+
+    [Fact]
+    public async Task SlackSync_DoesNotExposeProviderFailureDetails()
+    {
+        var (controller, context, userId) = CreateSyncController(
+            "slack",
+            new StubHandler(_ => JsonResponse("{\"ok\":false,\"error\":\"provider-secret-detail\"}")));
+
+        var result = await controller.SyncSlack();
+
+        var response = result.Should().BeOfType<ObjectResult>().Subject;
+        response.StatusCode.Should().Be((int)HttpStatusCode.BadGateway);
+        JsonSerializer.Serialize(response.Value).Should().NotContain("provider-secret-detail");
+        (await context.SyncHistories.SingleAsync(x => x.UserId == userId)).Message.Should().NotContain("provider-secret-detail");
+    }
+
     private static IntegrationsController CreateController(IConfiguration configuration, Guid userId)
     {
         var context = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -201,6 +231,52 @@ public sealed class GoogleCalendarOAuthHardeningTests
             }
         };
         return controller;
+    }
+
+    private static (IntegrationsController Controller, ApplicationDbContext Context, Guid UserId) CreateSyncController(
+        string provider,
+        HttpMessageHandler handler)
+    {
+        var userId = Guid.NewGuid();
+        var context = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options);
+        var protector = new EphemeralDataProtectionProvider();
+        context.IntegrationAccounts.Add(new IntegrationAccount
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Provider = provider,
+            AccountEmail = $"{provider}@example.test",
+            AccessToken = protector.CreateProtector("SprintA.IntegrationTokens").Protect("access-token"),
+            IsActive = true,
+            AccessTokenExpiresAt = DateTime.UtcNow.AddMinutes(5),
+            CreatedAt = DateTime.UtcNow
+        });
+        context.Users.Add(new User { Id = userId, Email = $"{provider}-user@example.test", IsActive = true });
+        context.SaveChanges();
+
+        var configuration = new ConfigurationBuilder().Build();
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(item => item.CreateClient(It.IsAny<string>())).Returns(new HttpClient(handler));
+        var controller = new IntegrationsController(
+            context,
+            configuration,
+            factory.Object,
+            protector,
+            Mock.Of<IGoogleCalendarIntegrationService>(),
+            new OAuthStateStore())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        new[] { new Claim(ClaimTypes.NameIdentifier, userId.ToString()) }, "test"))
+                }
+            }
+        };
+        return (controller, context, userId);
     }
 
     private static HttpResponseMessage JsonResponse(string json, HttpStatusCode status = HttpStatusCode.OK)
