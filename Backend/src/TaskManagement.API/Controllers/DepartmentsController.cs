@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using System.Collections.Generic;
 using TaskManagement.API.Hubs;
 using TaskManagement.API.Realtime;
 using TaskManagement.Application.DTOs.Common;
@@ -17,13 +18,19 @@ namespace TaskManagement.API.Controllers
     {
         private readonly IDepartmentService _departmentService;
         private readonly TaskManagement.Infrastructure.Data.ApplicationDbContext _context;
+        private readonly IResourceAuthorizationService _authorization;
         private readonly IHubContext<KanbanHub> _hub;
 
-        public DepartmentsController(IDepartmentService departmentService, TaskManagement.Infrastructure.Data.ApplicationDbContext context, IHubContext<KanbanHub> hub)
+        public DepartmentsController(
+            IDepartmentService departmentService,
+            TaskManagement.Infrastructure.Data.ApplicationDbContext context,
+            IHubContext<KanbanHub> hub,
+            IResourceAuthorizationService authorization)
         {
             _departmentService = departmentService;
             _context = context;
             _hub = hub;
+            _authorization = authorization;
         }
 
         private async Task PublishDepartmentAsync(Guid id, string action = "upsert", object? data = null)
@@ -185,7 +192,11 @@ namespace TaskManagement.API.Controllers
                 .Select(d => new { id = d.Id, name = d.Name })
                 .ToListAsync();
 
-            var kudos = await _context.Kudos
+            var callerIdValue = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var canReadKudos = Guid.TryParse(callerIdValue, out var callerId) &&
+                (await _authorization.AuthorizeDepartmentAsync(callerId, id)).Succeeded;
+            var kudos = canReadKudos
+                ? (await _context.Kudos
                 .Include(k => k.Sender)
                 .Where(k => k.DepartmentId == id)
                 .OrderByDescending(k => k.CreatedAt)
@@ -196,7 +207,8 @@ namespace TaskManagement.API.Controllers
                     icon = k.Icon ?? "🌟",
                     createdAt = k.CreatedAt
                 })
-                .ToListAsync();
+                .ToListAsync()).Cast<object>().ToList()
+                : new List<object>();
 
             return Ok(new {
                 statusCode = 200,

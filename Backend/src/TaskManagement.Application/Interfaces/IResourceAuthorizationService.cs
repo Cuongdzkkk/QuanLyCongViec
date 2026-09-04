@@ -13,6 +13,14 @@ namespace TaskManagement.Application.Interfaces
             Guid workspaceId,
             string permissionCode);
 
+        Task<ResourceAuthorizationResult> AuthorizeDepartmentAsync(
+            Guid userId,
+            Guid departmentId);
+
+        Task<List<Guid>> GetSharedActiveDepartmentIdsAsync(
+            Guid firstUserId,
+            Guid secondUserId);
+
         Task<ResourceAuthorizationResult> AuthorizeProjectAsync(
             Guid userId,
             Guid projectId,

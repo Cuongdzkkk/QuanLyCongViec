@@ -44,6 +44,52 @@ namespace TaskManagement.Infrastructure.Services
             return new(true, membership.WorkspaceRole);
         }
 
+        public async Task<ResourceAuthorizationResult> AuthorizeDepartmentAsync(
+            Guid userId,
+            Guid departmentId)
+        {
+            var isMember = await _dbContext.DepartmentMembers
+                .AsNoTracking()
+                .AnyAsync(member =>
+                    member.DepartmentId == departmentId &&
+                    member.Department.IsActive &&
+                    !member.Department.IsDeleted &&
+                    member.UserId == userId &&
+                    member.User.IsActive &&
+                    !member.User.IsDeleted);
+
+            return isMember
+                ? new(true)
+                : new(false, FailureReason: "Active department membership is required.");
+        }
+
+        public Task<List<Guid>> GetSharedActiveDepartmentIdsAsync(
+            Guid firstUserId,
+            Guid secondUserId)
+        {
+            var memberships = _dbContext.DepartmentMembers
+                .AsNoTracking()
+                .Where(first =>
+                    first.UserId == firstUserId &&
+                    first.Department.IsActive &&
+                    !first.Department.IsDeleted &&
+                    first.User.IsActive &&
+                    !first.User.IsDeleted)
+                .Join(
+                    _dbContext.DepartmentMembers.AsNoTracking(),
+                    first => first.DepartmentId,
+                    second => second.DepartmentId,
+                    (first, second) => second)
+                .Where(second =>
+                    second.UserId == secondUserId &&
+                    second.User.IsActive &&
+                    !second.User.IsDeleted)
+                .Select(second => second.DepartmentId)
+                .Distinct();
+
+            return memberships.ToListAsync();
+        }
+
         public async Task<ResourceAuthorizationResult> AuthorizeProjectAsync(
             Guid userId,
             Guid projectId,
