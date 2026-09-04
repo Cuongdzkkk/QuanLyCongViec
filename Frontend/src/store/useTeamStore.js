@@ -79,6 +79,31 @@ export const useTeamStore = defineStore('team', {
         this.isLoading = false
       }
     },
+    async fetchWorkspaceTeams(workspaceId) {
+      this.isLoading = true
+      this.error = null
+      try {
+        if (!workspaceId) {
+          this.allTeams = []
+          return
+        }
+        const response = await axiosClient.get(`/workspaces/${workspaceId}/teams`)
+        const teams = response.data?.data || response.data || []
+        this.allTeams = teams.map(team => ({
+          ...team,
+          id: team.departmentId || team.DepartmentId || team.id,
+          name: team.name || team.Name,
+          description: team.description || team.Description,
+          memberCount: team.memberCount ?? team.MemberCount ?? 0,
+          workspaceAccess: true
+        }))
+      } catch (err) {
+        this.error = err.message || 'Failed to fetch teams for this site'
+        this.allTeams = []
+      } finally {
+        this.isLoading = false
+      }
+    },
     async fetchTeamDetail(id) {
       this.isLoading = true
       this.error = null

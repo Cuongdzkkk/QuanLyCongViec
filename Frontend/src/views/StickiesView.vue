@@ -26,6 +26,12 @@
         show-search
         search-placeholder="Tìm theo tiêu đề hoặc nội dung"
       >
+        <template #left>
+          <div class="view-toggles" aria-label="Chế độ hiển thị ghi chú">
+            <button class="toggle-btn" :class="{ active: noteViewMode === 'list' }" type="button" title="Danh sách" @click="noteViewMode = 'list'"><i class="fa-solid fa-list"></i></button>
+            <button class="toggle-btn" :class="{ active: noteViewMode === 'grid' }" type="button" title="Lưới" @click="noteViewMode = 'grid'"><i class="fa-solid fa-table-cells-large"></i></button>
+          </div>
+        </template>
         <template #filters>
           <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
             <button
@@ -138,20 +144,27 @@
         <span>{{ stickyStore.error }}</span>
         <button type="button" @click="loadNotes">Thử lại</button>
       </div>
-      <div v-else-if="!displayNotes.length" class="empty-spaces-flat" style="padding: 80px 0;">
-        <div class="empty-spaces-icon" aria-hidden="true">
-          <i class="fa-regular fa-note-sticky"></i>
-        </div>
-        <div class="empty-spaces-copy">
-          <h3>{{ activeFilters.length || search ? 'Không tìm thấy ghi chú phù hợp' : 'Chưa có ghi chú' }}</h3>
-          <p v-if="!activeFilters.length && !search">Tạo ghi chú đầu tiên để lưu ý tưởng hoặc việc cần nhớ.</p>
-          <button v-if="!activeFilters.length && !search" class="empty-spaces-btn mt-3" type="button" @click="addNote">
+      <ProjectEmptyState
+        v-else-if="!displayNotes.length"
+        icon="fa-regular fa-note-sticky"
+        :title="activeFilters.length || search ? 'Không tìm thấy ghi chú phù hợp' : 'Chưa có ghi chú'"
+        :description="(!activeFilters.length && !search) ? 'Tạo ghi chú đầu tiên để lưu ý tưởng hoặc việc cần nhớ.' : undefined"
+      >
+        <template #action v-if="!activeFilters.length && !search">
+          <button class="empty-spaces-btn" type="button" @click="addNote">
             Tạo ghi chú
           </button>
-        </div>
-      </div>
+        </template>
+      </ProjectEmptyState>
       <template v-else>
-        <div class="notes-grid">
+        <WorkItemsListTable v-if="noteViewMode === 'list'" class="notes-list-table" :columns="noteListColumns" :rows="displayNotes" min-width="900" row-key="id">
+          <template #cell-title="{ row }"><strong>{{ row.title || 'Không có tiêu đề' }}</strong></template>
+          <template #cell-content="{ row }"><span class="note-list-content">{{ notePreview(row) }}</span></template>
+          <template #cell-creator="{ row }"><span>{{ noteCreator(row) }}</span></template>
+          <template #cell-updatedAt="{ row }"><span>{{ formatNoteDate(row.updatedAt || row.createdAt) }}</span></template>
+          <template #cell-status="{ row }"><span class="note-list-status">{{ row.isPinned ? 'Đã ghim' : 'Bình thường' }}</span></template>
+        </WorkItemsListTable>
+        <div v-else class="notes-grid">
           <StickyNoteEditor
             v-for="note in displayNotes"
             :key="note.id"
@@ -176,6 +189,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import StickyNoteEditor from '@/components/stickies/StickyNoteEditor.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
+import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 import { useStickyStore } from '@/store/useStickyStore'
 import { getRandomPaletteColor } from '@/utils/colors'
 
@@ -217,6 +232,14 @@ onBeforeUnmount(() => {
 
 // Filter Bar configuration
 const activeFilters = ref([])
+const noteViewMode = ref(localStorage.getItem('stickies_view_mode') || 'grid')
+const noteListColumns = [
+  { key: 'title', label: 'Tiêu đề', icon: 'fa-solid fa-note-sticky', width: '28%', minWidth: '220px', sticky: true },
+  { key: 'content', label: 'Nội dung', icon: 'fa-solid fa-align-left', width: '34%', minWidth: '280px' },
+  { key: 'creator', label: 'Người tạo', icon: 'fa-solid fa-user', width: '16%', minWidth: '150px' },
+  { key: 'updatedAt', label: 'Cập nhật', icon: 'fa-regular fa-clock', width: '14%', minWidth: '140px' },
+  { key: 'status', label: 'Trạng thái', icon: 'fa-solid fa-thumbtack', width: '12%', minWidth: '130px' }
+]
 
 const noteCreator = note => note.createdByName || note.creatorName || note.createdBy?.fullName || note.createdBy?.name || note.createdById || ''
 
@@ -270,6 +293,9 @@ const filteredStickySortOptions = computed(() => {
   if (!q) return stickySortOptions
   return stickySortOptions.filter(o => o.label.toLowerCase().includes(q))
 })
+
+const notePreview = (note) => String(note?.content || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140) || '—'
+const formatNoteDate = (value) => value ? new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value)) : '—'
 
 // Combined Display List
 const displayNotes = computed(() => {
@@ -325,6 +351,8 @@ watch(search, value => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(loadNotes, 350)
 })
+
+watch(noteViewMode, value => localStorage.setItem('stickies_view_mode', value))
 
 const addNote = async () => {
   if (creating.value) return
@@ -439,6 +467,10 @@ h1 { margin: 3px 0 4px; font-size: 22px; letter-spacing: 0; }
   box-sizing: border-box !important;
 }
 .notes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; align-items: start; }
+.notes-list-table { width: 100%; overflow-x: auto; }
+.notes-list-table :deep(.work-items-list-table) { min-width: 900px !important; width: 100%; }
+.note-list-content { display: block; max-width: 460px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-secondary); }
+.note-list-status { color: var(--color-text-secondary); font-weight: 600; white-space: nowrap; }
 .page-state {
   width: 100% !important;
   min-width: 100% !important;
@@ -451,16 +483,14 @@ h1 { margin: 3px 0 4px; font-size: 22px; letter-spacing: 0; }
   text-align: center;
   box-sizing: border-box !important;
 }
-.page-state.empty-state,
 .page-state.error-state {
   border: 1px dashed var(--color-border) !important;
   border-radius: 12px !important;
   background: var(--color-surface) !important;
   padding: 54px 24px !important;
 }
-.empty-state, .error-state { flex-direction: column; }
-.empty-state > i { font-size: 34px; }
-.empty-state strong, .error-state strong { color: var(--color-text-primary); }
+.error-state { flex-direction: column; }
+.error-state strong { color: var(--color-text-primary); }
 .load-more { display: block; margin: 18px auto 0; }
 
 /* Popover/dropdown menu custom styling */
@@ -731,73 +761,6 @@ h1 { margin: 3px 0 4px; font-size: 22px; letter-spacing: 0; }
   .notes-grid { grid-template-columns: 1fr; }
 }
 
-/* Empty State Styles */
-.empty-spaces-flat {
-  min-height: 204px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 24px 26px;
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  text-align: center;
-}
 
-.empty-spaces-icon {
-  width: 54px;
-  height: 54px;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
-  color: var(--color-accent);
-  font-size: 23px;
-  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12);
-}
 
-.empty-spaces-copy {
-  max-width: 380px;
-}
-
-.empty-spaces-copy h3 {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: 15px;
-  font-weight: 800;
-  line-height: 1.35;
-}
-
-.empty-spaces-copy p {
-  margin: 3px 0 0;
-  color: var(--color-text-muted);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.empty-spaces-btn {
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 9px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  transition: all 0.2s ease;
-  margin-top: 12px;
-}
-
-.empty-spaces-btn:hover {
-  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
-  color: var(--color-accent);
-}
 </style>

@@ -144,8 +144,10 @@ const fetchPlanningSummary = async () => {
     estimateAccuracy.value = data.estimateAccuracy || estimateAccuracy.value
     workloadSummary.value = data.workload || workloadSummary.value
     managerReview.value = data.managerReview || managerReview.value
+    return true
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Unable to load planning analytics.')
+    return false
   } finally {
     loadingPlanning.value = false
   }
@@ -160,8 +162,9 @@ const confirmPlanningBaseline = async () => {
 
   try {
     await axiosClient.post(`/analytics/projects/${projectId}/confirm-baseline`)
+    const refreshed = await fetchPlanningSummary()
+    if (!refreshed) return
     ElMessage.success('Planning baseline confirmed.')
-    fetchPlanningSummary()
   } catch (error) {
     ElMessage.error(error.response?.data?.message || 'Unable to confirm planning baseline.')
   }

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import CyclesTab from '@/components/CyclesTab.vue'
+import AppEmptyState from '@/components/common/Foundation/AppEmptyState.vue'
 
 const route = useRoute()
 const projectId = computed(() => route.params.id || null)
@@ -10,7 +11,7 @@ const projectId = computed(() => route.params.id || null)
 <template>
   <div class="cycles-route-shell">
     <CyclesTab v-if="projectId && projectId !== 'default'" :key="projectId" :projectId="projectId" />
-    <div v-else class="text-muted text-center pt-10">Không có dự án để tải Cycle.</div>
+    <AppEmptyState v-else icon="fa-solid fa-arrows-rotate" title="Chưa có dự án" description="Hãy chọn một dự án để xem các chu kỳ công việc." />
   </div>
 </template>
 

@@ -36,6 +36,8 @@ namespace TaskManagement.Domain.Entities
 
         public Guid? RelatedInvitationId { get; set; }
         public ProjectInvitation? RelatedInvitation { get; set; }
+        public Guid? RelatedSiteAccountLinkRequestId { get; set; }
+        public SiteAccountLinkRequest? RelatedSiteAccountLinkRequest { get; set; }
         public string? ActionState { get; set; }
 
         /// <summary>Who triggered this notification</summary>

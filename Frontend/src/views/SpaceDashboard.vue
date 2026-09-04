@@ -713,44 +713,6 @@ watch(projectId, () => {
   text-decoration: underline;
 }
 
-/* Empty state */
-.empty-state {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  background: rgba(0, 0, 0, 0.05);
-  border: 1px dashed var(--color-border);
-  border-radius: 8px;
-  padding: 32px 16px;
-}
-
-[data-theme='dark'] .empty-state {
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.empty-state i {
-  font-size: 36px;
-  color: var(--color-text-muted);
-  margin-bottom: 12px;
-}
-
-.empty-state h4 {
-  color: var(--color-text-primary);
-  font-size: 14px;
-  font-weight: 600;
-  margin: 0;
-}
-
-.empty-state p {
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  margin-top: 6px;
-  max-width: 250px;
-  line-height: 1.4;
-}
 
 /* Task list styles */
 .task-list {

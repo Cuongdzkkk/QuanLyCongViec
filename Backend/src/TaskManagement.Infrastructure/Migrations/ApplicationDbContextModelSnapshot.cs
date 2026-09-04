@@ -2558,6 +2558,9 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Property<Guid?>("RelatedProjectId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("RelatedSiteAccountLinkRequestId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("RelatedTaskId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2580,6 +2583,8 @@ namespace TaskManagement.Infrastructure.Migrations
                         .HasFilter("[DedupeKey] IS NOT NULL");
 
                     b.HasIndex("RelatedInvitationId");
+
+                    b.HasIndex("RelatedSiteAccountLinkRequestId");
 
                     b.HasIndex("TriggeredByUserId");
 
@@ -3973,6 +3978,38 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.ToTable("RolePermissions");
                 });
 
+            modelBuilder.Entity("TaskManagement.Domain.Entities.SiteAccountLinkRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("RequesterUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("TargetUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TargetUserId");
+
+                    b.HasIndex("RequesterUserId", "TargetUserId", "Status");
+
+                    b.ToTable("SiteAccountLinkRequests");
+                });
+
             modelBuilder.Entity("TaskManagement.Domain.Entities.SiteAuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4927,6 +4964,27 @@ namespace TaskManagement.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("Workspaces");
+                });
+
+            modelBuilder.Entity("TaskManagement.Domain.Entities.WorkspaceDepartmentAccess", b =>
+                {
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("GrantedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("GrantedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("WorkspaceId", "DepartmentId");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.ToTable("WorkspaceDepartmentAccesses");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.WorkspaceMember", b =>
@@ -5985,6 +6043,11 @@ namespace TaskManagement.Infrastructure.Migrations
                         .HasForeignKey("RelatedInvitationId")
                         .OnDelete(DeleteBehavior.NoAction);
 
+                    b.HasOne("TaskManagement.Domain.Entities.SiteAccountLinkRequest", "RelatedSiteAccountLinkRequest")
+                        .WithMany()
+                        .HasForeignKey("RelatedSiteAccountLinkRequestId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("TaskManagement.Domain.Entities.User", "TriggeredByUser")
                         .WithMany()
                         .HasForeignKey("TriggeredByUserId")
@@ -6001,6 +6064,8 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("CollaborationChannel");
 
                     b.Navigation("RelatedInvitation");
+
+                    b.Navigation("RelatedSiteAccountLinkRequest");
 
                     b.Navigation("TriggeredByUser");
 
@@ -6477,6 +6542,25 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("TaskManagement.Domain.Entities.SiteAccountLinkRequest", b =>
+                {
+                    b.HasOne("TaskManagement.Domain.Entities.User", "RequesterUser")
+                        .WithMany("OutgoingSiteAccountLinkRequests")
+                        .HasForeignKey("RequesterUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("TaskManagement.Domain.Entities.User", "TargetUser")
+                        .WithMany("IncomingSiteAccountLinkRequests")
+                        .HasForeignKey("TargetUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("RequesterUser");
+
+                    b.Navigation("TargetUser");
+                });
+
             modelBuilder.Entity("TaskManagement.Domain.Entities.SiteAuditLog", b =>
                 {
                     b.HasOne("TaskManagement.Domain.Entities.User", "User")
@@ -6855,6 +6939,25 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("Owner");
                 });
 
+            modelBuilder.Entity("TaskManagement.Domain.Entities.WorkspaceDepartmentAccess", b =>
+                {
+                    b.HasOne("TaskManagement.Domain.Entities.Department", "Department")
+                        .WithMany("WorkspaceAccesses")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaskManagement.Domain.Entities.Workspace", "Workspace")
+                        .WithMany("TeamAccesses")
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Department");
+
+                    b.Navigation("Workspace");
+                });
+
             modelBuilder.Entity("TaskManagement.Domain.Entities.WorkspaceMember", b =>
                 {
                     b.HasOne("TaskManagement.Domain.Entities.User", "User")
@@ -6939,6 +7042,8 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("Projects");
 
                     b.Navigation("TeamGoals");
+
+                    b.Navigation("WorkspaceAccesses");
                 });
 
             modelBuilder.Entity("TaskManagement.Domain.Entities.DirectConversation", b =>
@@ -7094,11 +7199,15 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.Navigation("ExternalLogins");
 
+                    b.Navigation("IncomingSiteAccountLinkRequests");
+
                     b.Navigation("ManagedDepartments");
 
                     b.Navigation("NotificationPreferences");
 
                     b.Navigation("Notifications");
+
+                    b.Navigation("OutgoingSiteAccountLinkRequests");
 
                     b.Navigation("OwnedWorkspaces");
 
@@ -7168,6 +7277,8 @@ namespace TaskManagement.Infrastructure.Migrations
                     b.Navigation("Members");
 
                     b.Navigation("Projects");
+
+                    b.Navigation("TeamAccesses");
                 });
 #pragma warning restore 612, 618
         }

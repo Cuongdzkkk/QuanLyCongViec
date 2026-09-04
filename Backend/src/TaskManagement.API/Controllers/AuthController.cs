@@ -286,7 +286,8 @@ namespace TaskManagement.API.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { statusCode = 500, message = "Internal server error: " + ex.Message });
+                _logger.LogError(ex, "Accept invite token failed unexpectedly");
+                return StatusCode(500, new { statusCode = 500, message = "Không thể xử lý lời mời lúc này. Vui lòng thử lại sau." });
             }
         }
 
@@ -1200,7 +1201,8 @@ namespace TaskManagement.API.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { statusCode = 500, message = "Dev login lỗi: " + ex.Message });
+                _logger.LogError(ex, "Development login failed unexpectedly");
+                return StatusCode(500, new { statusCode = 500, message = "Không thể đăng nhập lúc này. Vui lòng thử lại sau." });
             }
         }
 
@@ -1221,7 +1223,8 @@ namespace TaskManagement.API.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(new { statusCode = 400, message = ex.Message });
+                _logger.LogError(ex, "Logout failed unexpectedly");
+                return StatusCode(500, new { statusCode = 500, message = "Không thể đăng xuất hoàn toàn. Vui lòng thử lại sau." });
             }
         }
 

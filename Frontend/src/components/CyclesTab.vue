@@ -19,6 +19,8 @@ import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import ToolbarValueFilter from '@/components/common/ToolbarValueFilter.vue'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
+import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 
 
 import { use } from 'echarts/core'
@@ -57,6 +59,7 @@ const showCycleSearch = ref(false)
 const showCycleFilters = ref(false)
 const cycleSearchQuery = ref('')
 const activeFilters = ref([])
+const cycleViewMode = ref('cards')
 
 const cycleSortDirection = ref('desc')
 const cycleSortBy = ref('startDate')
@@ -65,6 +68,14 @@ const cycleSortOptions = [
   { value: 'endDate', label: 'End date', icon: 'fa-regular fa-calendar-check' },
   { value: 'name', label: 'Name', icon: 'fa-solid fa-font' },
   { value: 'progress', label: 'Progress', icon: 'fa-solid fa-chart-line' }
+]
+
+const cycleListColumns = [
+  { key: 'name', label: 'Cycle', icon: 'fa-solid fa-rotate', width: '34%', minWidth: '260px', sticky: true },
+  { key: 'state', label: 'State', icon: 'fa-solid fa-circle-half-stroke', width: '18%', minWidth: '150px' },
+  { key: 'startDate', label: 'Start date', icon: 'fa-regular fa-calendar', width: '18%', minWidth: '150px' },
+  { key: 'endDate', label: 'Due date', icon: 'fa-regular fa-calendar-check', width: '18%', minWidth: '150px' },
+  { key: 'progress', label: 'Progress', icon: 'fa-solid fa-chart-line', width: '12%', minWidth: '120px' }
 ]
 
 const cycleFilterFields = computed(() => [
@@ -181,7 +192,7 @@ const toggleTab = (tab) => {
 
 const clearCycleFilters = () => {
   cycleSearchQuery.value = ''
-  cycleProgressFilter.value = 'all'
+  activeFilters.value = []
 }
 
 const getCyclePanelTab = (cycleId) => cyclePanelTabs.value[cycleId] || 'state'
@@ -795,8 +806,10 @@ onUnmounted(() => {
         :description="t('cyclesTab.cyclesDesc', 'Manage project sprints and iterations')"
       >
         <template #actions>
-          <button class="nexus-btn-primary" type="button" @click="showCreateModal = true" :disabled="!canManageSprint" :title="!canManageSprint ? t('cyclesTab.noPermissionToAddCycle', 'You do not have permission to add a cycle') : ''">
-            <i class="fa-solid fa-plus"></i> {{ t('cyclesTab.addCycle', 'Add cycle') }}
+          <button class="cycles-add-button" type="button" @click="showCreateModal = true" :disabled="!canManageSprint" :title="!canManageSprint ? t('cyclesTab.noPermissionToAddCycle', 'You do not have permission to add a cycle') : ''">
+            <span class="border-light"></span>
+            <i class="fa-solid fa-plus btn-icon"></i>
+            <span>Thêm chu kỳ</span>
           </button>
         </template>
       </ProjectPageHeader>
@@ -834,6 +847,16 @@ onUnmounted(() => {
         <template #sort>
           <ToolbarSortMenu v-model="cycleSortBy" v-model:direction="cycleSortDirection" label="Sort cycles" :options="cycleSortOptions" />
         </template>
+        <template #left>
+          <div class="view-toggles" aria-label="Cycle view mode">
+            <button class="toggle-btn" :class="{ active: cycleViewMode === 'list' }" type="button" title="List view" @click="cycleViewMode = 'list'">
+              <i class="fa-solid fa-list"></i>
+            </button>
+            <button class="toggle-btn" :class="{ active: cycleViewMode === 'cards' }" type="button" title="Card view" @click="cycleViewMode = 'cards'">
+              <i class="fa-solid fa-table-cells-large"></i>
+            </button>
+          </div>
+        </template>
       </ProjectPageToolbar>
 
     <div v-if="sprintStore.loading && allSprints.length === 0" class="cycle-load-state" role="status">
@@ -846,8 +869,33 @@ onUnmounted(() => {
       <button type="button" class="nexus-btn-outlined" @click="loadCycles(true)">Thử lại</button>
     </div>
 
+    <ProjectEmptyState
+      v-else-if="!sprintStore.loading && !sprintStore.error && allSprints.length === 0"
+      icon="fa-solid fa-rotate"
+      title="Chưa có chu kỳ nào được thiết lập."
+      description="Khởi tạo chu kỳ (Sprint) để lên kế hoạch, phân bổ và theo dõi các mục tiêu phát triển."
+    >
+      <template #action>
+        <button v-if="canManageSprint" class="empty-spaces-btn" type="button" @click="showCreateModal = true">
+          <i class="fa-solid fa-plus"></i> Thêm chu kỳ
+        </button>
+      </template>
+    </ProjectEmptyState>
+
+    <div v-else-if="allSprints.length > 0 && cycleViewMode === 'list'" class="cycles-list-view">
+      <WorkItemsListTable :columns="cycleListColumns" :rows="filteredSprints" min-width="1180" @row-click="openCycleBoard">
+        <template #cell-name="{ row }">
+          <div class="cycle-list-name"><i class="fa-solid fa-rotate"></i><strong>{{ row.name }}</strong></div>
+        </template>
+        <template #cell-state="{ row }"><span class="cycle-list-state" :class="`state-${String(row.state || '').toLowerCase()}`">{{ cycleStateLabel(row.state) }}</span></template>
+        <template #cell-startDate="{ row }"><span>{{ formatDateCompact(row.startDate) }}</span></template>
+        <template #cell-endDate="{ row }"><span>{{ formatDateCompact(row.endDate) }}</span></template>
+        <template #cell-progress="{ row }"><span class="cycle-list-progress">{{ percentLabel(row) }}</span></template>
+      </WorkItemsListTable>
+    </div>
+
     <div
-      v-if="allSprints.length > 0 || (!sprintStore.loading && !sprintStore.error)"
+      v-else-if="allSprints.length > 0"
       class="cycles-body"
     >
       <div class="cycle-section">
@@ -858,7 +906,10 @@ onUnmounted(() => {
         </div>
 
         <div class="cs-content" v-show="expandedTabs.active">
-          <div class="empty-state text-muted" v-if="activeSprints.length === 0">{{ t('cyclesTab.noActiveCycles', 'No active cycles.') }}</div>
+          <div class="empty-state text-muted" v-if="activeSprints.length === 0">
+            <div class="ce-title">{{ t('cyclesTab.noActiveCycles', 'Không có chu kỳ đang hoạt động.') }}</div>
+            <div class="ce-desc">{{ t('cyclesTab.noActiveCyclesDesc', 'Hãy bắt đầu một chu kỳ từ danh sách sắp tới.') }}</div>
+          </div>
           <div class="cycle-card expanded" v-for="cycle in activeSprints" :key="cycle.id">
             <div class="cc-top">
               <div class="cct-left">
@@ -979,7 +1030,10 @@ onUnmounted(() => {
         </div>
 
         <div class="cs-content" v-show="expandedTabs.upcoming">
-          <div class="empty-state text-muted" v-if="upcomingSprints.length === 0">{{ t('cyclesTab.noUpcomingCycles', 'No upcoming cycles.') }}</div>
+          <div class="empty-state text-muted" v-if="upcomingSprints.length === 0">
+            <div class="ce-title">{{ t('cyclesTab.noUpcomingCycles', 'Không có chu kỳ sắp tới.') }}</div>
+            <div class="ce-desc">{{ t('cyclesTab.noUpcomingCyclesDesc', 'Tạo chu kỳ mới để lên kế hoạch công việc.') }}</div>
+          </div>
           <div class="cycle-card collapsed hover-card" v-for="cycle in upcomingSprints" :key="cycle.id">
             <div class="cct-left">
               <div class="progress-ring text-muted">{{ percentLabel(cycle) }}</div>
@@ -1028,7 +1082,10 @@ onUnmounted(() => {
         </div>
 
         <div class="cs-content" v-show="expandedTabs.completed">
-          <div class="empty-state text-muted" v-if="completedSprints.length === 0">{{ t('cyclesTab.noCompletedCyclesYet', 'No completed cycles yet.') }}</div>
+          <div class="empty-state text-muted" v-if="completedSprints.length === 0">
+            <div class="ce-title">{{ t('cyclesTab.noCompletedCyclesYet', 'Chưa có chu kỳ nào hoàn thành.') }}</div>
+            <div class="ce-desc">{{ t('cyclesTab.noCompletedCyclesDesc', 'Hoàn thành các chu kỳ hiện tại để xem lịch sử tại đây.') }}</div>
+          </div>
           <div v-for="cycle in completedSprints" :key="cycle.id" class="completed-cycle-wrapper">
             <div class="cycle-card collapsed hover-card">
               <div class="cct-left">
@@ -1638,6 +1695,43 @@ onUnmounted(() => {
 .dp-popover, .dp-popover-inline { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 14px; width: 100%; padding: 16px; box-shadow: var(--shadow-sm); }
 .dp-popover { position: absolute; top: 100%; left: 0; margin-top: 8px; z-index: 1001; }
 .dp-popover-inline { position: relative; }
+
+
+
+/* Modern Create Cycle Modal */
+.create-cycle-modal {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.12);
+  border-radius: 16px;
+}
+
+[data-theme='dark'] .create-cycle-modal {
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+}
+
+.create-cycle-modal .cm-input,
+.create-cycle-modal .cm-textarea {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  color: var(--color-text-primary);
+}
+
+.create-cycle-modal .cm-input:focus,
+.create-cycle-modal .cm-textarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  outline: none;
+}
+
 .dp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .dp-month-year { display: flex; gap: 12px; font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
 .dp-nav { display: flex; gap: 8px; }
@@ -1750,6 +1844,56 @@ onUnmounted(() => {
   padding: 0 18px 18px !important;
 }
 
+/* Create-cycle dialog: focused SaaS form treatment */
+.sa-data-modal-overlay {
+  padding: 24px;
+  background: rgba(15, 23, 42, .48);
+  backdrop-filter: blur(8px);
+}
+
+.create-cycle-modal {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border));
+  border-radius: 22px;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, .28), 0 0 0 1px rgba(255,255,255,.22) inset;
+  animation: create-cycle-dialog-in .22s ease-out both;
+}
+
+.create-cycle-modal.with-horizontal-calendar { width: min(900px, 100%); }
+
+.create-cycle-modal .cm-header {
+  padding: 22px 24px 18px !important;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)), var(--color-surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+}
+
+.create-cycle-modal .cm-body { padding: 22px 24px 24px !important; }
+.create-cycle-modal .cm-layout-grid { gap: 24px; }
+.create-cycle-modal .cm-field { gap: 8px; margin-bottom: 18px; }
+.create-cycle-modal .cm-field > label { font-size: 12px; letter-spacing: .02em; text-transform: uppercase; color: var(--color-text-muted); }
+.create-cycle-modal .cm-input,
+.create-cycle-modal .cm-textarea {
+  border-radius: 12px;
+  border-color: color-mix(in srgb, var(--color-border) 82%, var(--color-accent));
+  background: color-mix(in srgb, var(--color-bg-secondary) 72%, var(--color-surface));
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04) inset;
+}
+.create-cycle-modal .cm-input { min-height: 46px; }
+.create-cycle-modal .cm-textarea { min-height: 112px; line-height: 1.5; }
+.create-cycle-modal .cm-input:focus,
+.create-cycle-modal .cm-textarea:focus,
+.create-cycle-modal .dp-btn:focus-visible { border-color: var(--color-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.create-cycle-modal .dp-btn { min-height: 48px; border-radius: 12px; background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)); }
+.create-cycle-modal .cm-footer { padding: 16px 24px 20px; background: color-mix(in srgb, var(--color-bg-secondary) 62%, var(--color-surface)); }
+.create-cycle-modal .cm-btn-cancel,
+.create-cycle-modal .cm-btn-create { min-height: 42px; border-radius: 11px; padding: 10px 18px; font-size: 13px; font-weight: 700; }
+.create-cycle-modal .cm-btn-create { box-shadow: 0 8px 18px color-mix(in srgb, var(--color-accent) 28%, transparent); }
+
+@keyframes create-cycle-dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 @media (max-width: 780px) {
   .cycles-body {
     padding: 12px !important;
@@ -1762,6 +1906,15 @@ onUnmounted(() => {
   .cc-grid {
     grid-template-columns: 1fr !important;
   }
+
+  .sa-data-modal-overlay { padding: 12px; align-items: flex-end; }
+  .create-cycle-modal,
+  .create-cycle-modal.with-horizontal-calendar { width: 100%; max-width: none; border-radius: 20px; }
+  .create-cycle-modal .cm-header { padding: 18px 18px 14px !important; }
+  .create-cycle-modal .cm-body { padding: 18px !important; max-height: 72vh; overflow-y: auto; }
+  .create-cycle-modal .cm-footer { padding: 14px 18px 18px; }
+  .create-cycle-modal .cm-btn-cancel,
+  .create-cycle-modal .cm-btn-create { flex: 1; }
 }
 
 /* Polished cycles experience */
@@ -1860,18 +2013,31 @@ onUnmounted(() => {
 .empty-state.text-muted {
   width: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 54px !important;
-  height: 54px !important;
+  min-height: 70px !important;
+  height: 70px !important;
   background: transparent !important;
   border: none !important;
   color: var(--color-text-secondary) !important;
-  font-weight: 550;
+  font-weight: 400;
   box-shadow: none !important;
   box-sizing: border-box;
   margin: 0 !important;
-  padding: 0 !important;
+  padding: 12px 0 !important;
+}
+
+.ce-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+.ce-desc {
+  font-size: 13px;
+  color: var(--color-text-muted);
 }
 
 .progress-ring {
@@ -2166,6 +2332,128 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
+.cycles-list-view {
+  width: calc(100% + 36px);
+  margin-left: -18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  border-left: 0;
+  border-right: 0;
+  border-radius: 0;
+  scrollbar-color: color-mix(in srgb, var(--sa-primary, #0ea5e9) 55%, var(--color-border)) transparent;
+  scrollbar-width: thin;
+}
+
+.cycles-list-view :deep(.work-items-table-shell) {
+  width: 100%;
+  min-width: 0;
+  overflow-x: visible;
+}
+
+.cycles-list-view :deep(.work-items-list-table) {
+  width: 100%;
+  min-width: 1180px !important;
+}
+
+.cycle-list-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text-primary);
+}
+
+.cycle-list-name i { color: var(--sa-primary, #0ea5e9); }
+.cycle-list-state,
+.cycle-list-progress {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cycle-list-state { background: color-mix(in srgb, var(--sa-primary, #0ea5e9) 12%, var(--color-surface)); color: var(--sa-primary, #0284c7); }
+.cycle-list-state.state-completed { background: rgba(34,197,94,.12); color: #15803d; }
+.cycle-list-state.state-active { background: rgba(249,115,22,.13); color: #c2410c; }
+.cycle-list-progress { background: rgba(14,165,233,.10); color: #0369a1; }
+
+.cycles-create-btn {
+  position: relative;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 10px 17px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, #7dd3fc 72%, #0284c7);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0f4c81 0%, #0369a1 48%, #0ea5e9 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: .01em;
+  box-shadow: 0 8px 18px rgba(2, 132, 199, .22), inset 0 1px 0 rgba(255,255,255,.18);
+  transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+}
+
+.cycles-create-btn::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 9px;
+  border: 1px solid rgba(255,255,255,.22);
+  pointer-events: none;
+}
+
+.cycles-create-btn::before {
+  content: '';
+  position: absolute;
+  top: -35%;
+  left: -45%;
+  width: 28%;
+  height: 170%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,.32), transparent);
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cycles-create-btn i {
+  position: relative;
+  z-index: 1;
+  transition: transform .22s ease;
+}
+
+.cycles-create-btn:hover:not(:disabled) i {
+  transform: rotate(12deg) scale(1.12);
+}
+
+.cycles-create-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+  box-shadow: 0 12px 24px rgba(2, 132, 199, .30), inset 0 1px 0 rgba(255,255,255,.22);
+}
+
+.cycles-create-btn:hover:not(:disabled)::before {
+  opacity: 1;
+  animation: cycles-button-shine .7s ease-out;
+}
+
+@keyframes cycles-button-shine {
+  from { left: -45%; }
+  to { left: 125%; }
+}
+
+.cycles-create-btn:active:not(:disabled) { transform: translateY(0); }
+.cycles-create-btn:focus-visible { outline: 3px solid rgba(14,165,233,.28); outline-offset: 3px; }
+
 .plane-danger-btn:disabled,
 .plane-primary-btn:disabled,
 .cm-btn-cancel:disabled {
@@ -2306,5 +2594,96 @@ onUnmounted(() => {
   border: none;
   padding: 0 !important;
   overflow: visible;
+}
+
+.cycles-add-button {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 20px;
+  min-width: 145px;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+  
+  /* Inner glowing white border */
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), inset 0 0 8px rgba(255, 255, 255, 0.2);
+  
+  /* Sweeping background from left (dark) to right (normal blue) */
+  background-image: linear-gradient(
+    to right,
+    #021a52 0%,       
+    #021a52 40%,      
+    rgba(56, 189, 248, 0.8) 47%, 
+    #ffffff 50%,                 
+    rgba(56, 189, 248, 0.8) 53%, 
+    #0ea5e9 60%,                 
+    #0ea5e9 100%                 
+  );
+  background-size: 250% 100%;
+  background-position: 100% 0; /* Default: showing only normal blue side */
+  transition: background-position 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.cycles-add-button:hover:not(:disabled) {
+  background-position: 0% 0; /* Sweeps left to right */
+  transform: translateY(-1px);
+  box-shadow: 
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7), 
+    inset 0 0 10px rgba(255, 255, 255, 0.3),
+    0 4px 12px rgba(8, 169, 229, 0.4);
+}
+
+.cycles-add-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Outer Perimeter Light without corners */
+.cycles-add-button .border-light {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  padding: 1.5px; /* The thickness of the glowing border line */
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.cycles-add-button .border-light::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(from 0deg, transparent 75%, #38bdf8 95%, #ffffff 100%, transparent 100%);
+  animation: border-spin 2s linear infinite;
+}
+
+@keyframes border-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Button Content & Icon */
+.cycles-add-button .btn-icon {
+  font-size: 13px;
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cycles-add-button:hover:not(:disabled) .btn-icon {
+  transform: rotate(90deg) scale(1.25);
 }
 </style>

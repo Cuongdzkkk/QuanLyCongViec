@@ -19,12 +19,12 @@
     <ProjectEmptyState 
       v-else-if="allTasks.length === 0"
       icon="fa-solid fa-chart-line"
-      :title="t('reports.noTasksPlaceholder')"
-      :description="t('reports.noTasksPlaceholderDesc')"
+      :title="'Chưa đủ dữ liệu thống kê'"
+      :description="'Hệ thống cần có ít nhất một công việc để tạo báo cáo và biểu đồ phân tích dự án.'"
     >
       <template #action>
-        <button class="nexus-btn-primary" @click="router.push(buildSpacePath(projectId, 'work-items'))">
-          <i class="fa-solid fa-plus"></i> {{ t('reports.createWorkItem') }}
+        <button class="empty-spaces-btn" @click="router.push(buildSpacePath(projectId, 'work-items'))">
+          <i class="fa-solid fa-plus"></i> Tạo công việc
         </button>
       </template>
     </ProjectEmptyState>
@@ -152,10 +152,14 @@
               </router-link>
             </div>
 
-            <div v-if="suggestedTasks.length === 0" class="empty-state">
-              <i class="fa-solid fa-mug-hot"></i>
-              <h4>{{ t('reports.allCaughtUp', 'You are all caught up!') }}</h4>
-              <p>{{ t('reports.noUrgentTasks', 'No urgent tasks suggested for today.') }}</p>
+            <div v-if="suggestedTasks.length === 0" class="empty-spaces-flat">
+              <div class="empty-spaces-icon" aria-hidden="true">
+                <i class="fa-solid fa-mug-hot"></i>
+              </div>
+              <div class="empty-spaces-copy">
+                <h3>{{ t('reports.allCaughtUp', 'You are all caught up!') }}</h3>
+                <p>{{ t('reports.noUrgentTasks', 'No urgent tasks suggested for today.') }}</p>
+              </div>
             </div>
 
             <div v-else class="task-list">
@@ -205,9 +209,13 @@
               </h3>
             </div>
 
-            <div v-if="continueTasks.length === 0" class="empty-state" style="min-height: 100px; padding: 16px;">
-              <i class="fa-solid fa-inbox text-gray-300" style="font-size: 20px;"></i>
-              <p style="margin-top: 6px;">{{ t('reports.noOtherTasks', 'No other active tasks.') }}</p>
+            <div v-if="continueTasks.length === 0" class="empty-spaces-flat">
+              <div class="empty-spaces-icon" aria-hidden="true">
+                <i class="fa-solid fa-inbox text-gray-300"></i>
+              </div>
+              <div class="empty-spaces-copy">
+                <p style="margin-top: 6px;">{{ t('reports.noOtherTasks', 'No other active tasks.') }}</p>
+              </div>
             </div>
 
             <div v-else class="task-list" style="opacity: 0.85;">
@@ -403,10 +411,14 @@
               <i class="fa-solid fa-users text-blue-500"></i> {{ t('reports.teamWorkload', 'Khối lượng công việc của đội') }}
             </h3>
 
-            <div v-if="teamWorkload.length === 0" class="empty-state">
-              <i class="fa-solid fa-users text-3xl text-gray-300 mb-2"></i>
-              <h4>{{ t('reports.workloadDist', 'Phân bổ công việc') }}</h4>
-              <p>{{ t('reports.assignTasksHint', 'Giao việc cho thành viên để theo dõi khối lượng công việc tại đây.') }}</p>
+            <div v-if="teamWorkload.length === 0" class="empty-spaces-flat">
+              <div class="empty-spaces-icon" aria-hidden="true">
+                <i class="fa-solid fa-users"></i>
+              </div>
+              <div class="empty-spaces-copy">
+                <h3>{{ t('reports.workloadDist', 'Phân bổ công việc') }}</h3>
+                <p>{{ t('reports.assignTasksHint', 'Giao việc cho thành viên để theo dõi khối lượng công việc tại đây.') }}</p>
+              </div>
             </div>
 
             <div v-else class="workload-list">
@@ -1545,8 +1557,8 @@ onMounted(() => {
 }
 
 .space-reports-page :deep(.project-page-inner) {
-  padding-top: 14px;
-  scroll-padding-top: 14px;
+  padding-top: 0;
+  scroll-padding-top: 0;
 }
 
 .reports-error {
@@ -1907,7 +1919,7 @@ onMounted(() => {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 14px !important;
-  padding: 24px 26px;
+  padding: 18px;
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
@@ -2504,43 +2516,7 @@ onMounted(() => {
   text-decoration: underline;
 }
 
-.empty-state {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  background: rgba(0, 0, 0, 0.03);
-  border: 1px dashed var(--color-border);
-  border-radius: 8px;
-  padding: 32px 16px;
-}
 
-[data-theme='dark'] .empty-state {
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.empty-state i {
-  font-size: 36px;
-  color: var(--color-text-muted);
-  margin-bottom: 12px;
-}
-
-.empty-state h4 {
-  color: var(--color-text-primary);
-  font-size: 14px;
-  font-weight: 600;
-  margin: 0;
-}
-
-.empty-state p {
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  margin-top: 6px;
-  max-width: 250px;
-  line-height: 1.4;
-}
 
 .task-list {
   display: flex;
@@ -3134,3 +3110,4 @@ onMounted(() => {
 }
 
 </style>
+

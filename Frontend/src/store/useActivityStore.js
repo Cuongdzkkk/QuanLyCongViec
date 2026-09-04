@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import axiosClient from '@/api/axiosClient'
+import { language } from '@/i18n'
 
 export const useActivityStore = defineStore('activityStore', {
   state: () => ({
@@ -48,9 +49,38 @@ export const useActivityStore = defineStore('activityStore', {
         'Da bo theo doi': 'Unfollowed'
       };
 
-      for (const [vi, en] of Object.entries(viToEnMap)) {
+      const viToViMap = {
+        'Da tao': 'Đã tạo',
+        'Da them thanh vien vao': 'Đã thêm thành viên vào',
+        'Da xoa thanh vien khoi': 'Đã xóa thành viên khỏi',
+        'Da doi quan ly': 'Đã đổi quản lý cho',
+        'Da cap nhat tien do': 'Đã cập nhật tiến độ của',
+        'Da cap nhat': 'Đã cập nhật',
+        'Da luu tru': 'Đã lưu trữ',
+        'Da khoi phuc': 'Đã khôi phục',
+        'Da xoa': 'Đã xóa',
+        'Da lien ket muc tieu voi team': 'Đã liên kết mục tiêu với team',
+        'Da bo lien ket muc tieu khoi team': 'Đã bỏ liên kết mục tiêu khỏi team',
+        'Da lien ket du an voi team': 'Đã liên kết dự án với team',
+        'Da bo lien ket du an khoi team': 'Đã bỏ liên kết dự án khỏi team',
+        'Da binh luan tren': 'Đã bình luận trên',
+        'Da them ban cap nhat cho': 'Đã thêm bản cập nhật cho',
+        'Da them bai hoc cho': 'Đã thêm bài học cho',
+        'Da them rui ro cho': 'Đã thêm rủi ro cho',
+        'Da them quyet dinh cho': 'Đã thêm quyết định cho',
+        'Da gui loi khen:': 'Đã gửi lời khen:',
+        'Da doi trang thai': 'Đã đổi trạng thái',
+        'Da gan sao': 'Đã gắn sao',
+        'Da bo gan sao': 'Đã bỏ gắn sao',
+        'Da theo doi': 'Đã theo dõi',
+        'Da bo theo doi': 'Đã bỏ theo dõi'
+      };
+
+      const currentMap = language.value === 'en' ? viToEnMap : viToViMap;
+
+      for (const [vi, mappedStr] of Object.entries(currentMap)) {
         if (summary.startsWith(vi)) {
-          summary = summary.replace(vi, en);
+          summary = summary.replace(vi, mappedStr);
           break;
         }
       }
