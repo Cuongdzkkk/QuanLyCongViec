@@ -163,6 +163,56 @@ namespace TaskManagement.Infrastructure.Services
             return new(true, workspaceMembership, membership);
         }
 
+        public async Task<ResourceAuthorizationResult> AuthorizeProjectForRestoreAsync(
+            Guid userId,
+            Guid projectId)
+        {
+            var project = await _dbContext.Projects
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(item => item.Id == projectId && !item.Workspace.IsDeleted)
+                .Select(item => new { item.WorkspaceId })
+                .FirstOrDefaultAsync();
+            if (project == null)
+            {
+                return new(false, FailureReason: "Project does not exist in an active workspace.");
+            }
+
+            var workspaceMembership = await _dbContext.WorkspaceMembers
+                .AsNoTracking()
+                .Where(member =>
+                    member.UserId == userId &&
+                    member.WorkspaceId == project.WorkspaceId &&
+                    member.IsActive &&
+                    member.User.IsActive &&
+                    !member.User.IsDeleted)
+                .Select(member => member.WorkspaceRole)
+                .FirstOrDefaultAsync();
+            if (string.IsNullOrWhiteSpace(workspaceMembership))
+            {
+                return new(false, FailureReason: "Active workspace membership is required.");
+            }
+
+            var membership = await _dbContext.ProjectMembers
+                .AsNoTracking()
+                .Where(member =>
+                    member.UserId == userId &&
+                    member.ProjectId == projectId &&
+                    member.Status &&
+                    member.User.IsActive &&
+                    !member.User.IsDeleted)
+                .Select(member => member.ProjectRole)
+                .FirstOrDefaultAsync();
+            if (string.IsNullOrWhiteSpace(membership))
+            {
+                return new(false, workspaceMembership, FailureReason: "Active project management membership is required.");
+            }
+
+            return ResourcePermissionPolicy.ProjectRoleHasPermission(membership, ResourcePermissionCodes.ProjectWrite)
+                ? new(true, workspaceMembership, membership)
+                : new(false, workspaceMembership, membership, "Project management permission is required.");
+        }
+
         public async Task<ResourceAuthorizationResult> AuthorizeProjectResourceAsync(
             Guid userId,
             string resourceType,

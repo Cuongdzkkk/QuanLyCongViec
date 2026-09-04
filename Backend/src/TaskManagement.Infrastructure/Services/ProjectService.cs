@@ -1,6 +1,8 @@
 ﻿using TaskManagement.Application.DTOs.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,15 +22,21 @@ namespace TaskManagement.Infrastructure.Services
         private readonly ApplicationDbContext _context;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IResourceAuthorizationService _authorization;
+        private readonly IHostEnvironment? _environment;
+        private readonly ILogger<ProjectService>? _logger;
 
         public ProjectService(
             ApplicationDbContext context,
             IHttpContextAccessor httpContextAccessor,
-            IResourceAuthorizationService authorization)
+            IResourceAuthorizationService authorization,
+            IHostEnvironment? environment = null,
+            ILogger<ProjectService>? logger = null)
         {
             _context = context;
             _httpContextAccessor = httpContextAccessor;
             _authorization = authorization;
+            _environment = environment;
+            _logger = logger;
         }
 
         private static string BuildProjectUiConfig(string? existingConfig, string? cover, string? icon)
@@ -772,17 +780,29 @@ namespace TaskManagement.Infrastructure.Services
 
             var tasks = await _context.WorkTasks.IgnoreQueryFilters().Where(wt => wt.ProjectId == id).ToListAsync();
             var taskIds = tasks.Select(t => t.Id).ToList();
+            var comments = await _context.Comments
+                .Where(comment =>
+                    (comment.EntityType == "Project" && comment.EntityId == id) ||
+                    (comment.EntityType == "WorkTask" && taskIds.Contains(comment.EntityId)))
+                .ToListAsync();
+            var commentIds = comments.Select(comment => comment.Id).ToList();
+            var commentAttachments = commentIds.Count == 0
+                ? new List<CommentAttachment>()
+                : await _context.CommentAttachments
+                    .Where(attachment => commentIds.Contains(attachment.CommentId))
+                    .ToListAsync();
+            _context.CommentAttachments.RemoveRange(commentAttachments);
+            _context.Comments.RemoveRange(comments);
 
             if (taskIds.Any())
             {
                 var assignments = await _context.TaskAssignments.Where(ta => taskIds.Contains(ta.WorkTaskId)).ToListAsync();
                 _context.TaskAssignments.RemoveRange(assignments);
 
-                var dependencies = await _context.TaskDependencies.Where(td => taskIds.Contains(td.PredecessorTaskId) || taskIds.Contains(td.PredecessorTaskId)).ToListAsync();
+                var dependencies = await _context.TaskDependencies
+                    .Where(td => taskIds.Contains(td.PredecessorTaskId) || taskIds.Contains(td.SuccessorTaskId))
+                    .ToListAsync();
                 _context.TaskDependencies.RemoveRange(dependencies);
-
-                var comments = await _context.Comments.Where(c => c.EntityType == "WorkTask" && taskIds.Contains(c.EntityId)).ToListAsync();
-                _context.Comments.RemoveRange(comments);
 
                 var attachments = await _context.Attachments.Where(a => taskIds.Contains(a.WorkTaskId)).ToListAsync();
                 _context.Attachments.RemoveRange(attachments);
@@ -837,6 +857,92 @@ namespace TaskManagement.Infrastructure.Services
 
             _context.Projects.Remove(project);
             await _context.SaveChangesAsync();
+            await CleanupCommentFilesAsync(commentAttachments);
+        }
+
+        private async Task CleanupCommentFilesAsync(IReadOnlyCollection<CommentAttachment> attachments)
+        {
+            if (_environment == null || attachments.Count == 0)
+            {
+                return;
+            }
+
+            var survivingFileNames = (await _context.CommentAttachments
+                    .AsNoTracking()
+                    .Select(attachment => attachment.FileUrl)
+                    .ToListAsync())
+                .Select(ExtractFileName)
+                .Where(fileName => fileName != null)
+                .Select(fileName => fileName!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var deletedFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var commentsRoot = Path.Combine(_environment.ContentRootPath, "uploads", "comments");
+            string root;
+            try
+            {
+                root = Path.GetFullPath(commentsRoot)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            }
+            catch (ArgumentException exception)
+            {
+                _logger?.LogWarning(exception, "Could not resolve the comment attachment storage root.");
+                return;
+            }
+
+            foreach (var attachment in attachments)
+            {
+                var fileName = ExtractFileName(attachment.FileUrl);
+                if (fileName == null || !deletedFileNames.Add(fileName) || survivingFileNames.Contains(fileName))
+                {
+                    continue;
+                }
+
+                string path;
+                try
+                {
+                    path = Path.GetFullPath(Path.Combine(commentsRoot, fileName));
+                }
+                catch (ArgumentException exception)
+                {
+                    _logger?.LogWarning(exception, "Skipped invalid comment attachment path for attachment {AttachmentId}.", attachment.Id);
+                    continue;
+                }
+
+                if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger?.LogWarning("Skipped unsafe comment attachment path for attachment {AttachmentId}.", attachment.Id);
+                    continue;
+                }
+
+                try
+                {
+                    if (File.Exists(path) || Directory.Exists(path))
+                    {
+                        File.Delete(path);
+                    }
+                }
+                catch (IOException exception)
+                {
+                    _logger?.LogWarning(exception, "Could not delete comment attachment file for attachment {AttachmentId}.", attachment.Id);
+                }
+                catch (UnauthorizedAccessException exception)
+                {
+                    _logger?.LogWarning(exception, "Could not delete comment attachment file for attachment {AttachmentId}.", attachment.Id);
+                }
+            }
+        }
+
+        private static string? ExtractFileName(string? fileUrl)
+        {
+            if (string.IsNullOrWhiteSpace(fileUrl))
+            {
+                return null;
+            }
+
+            var fileName = Path.GetFileName(fileUrl.Replace('/', Path.DirectorySeparatorChar));
+            return string.IsNullOrWhiteSpace(fileName) || fileName == "." || fileName == ".."
+                ? null
+                : fileName;
         }
     
         public async Task<IEnumerable<TabItemDto>> GetLessonsAsync(Guid id)
