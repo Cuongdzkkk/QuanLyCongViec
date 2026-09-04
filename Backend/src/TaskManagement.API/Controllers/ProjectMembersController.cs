@@ -152,9 +152,17 @@ namespace TaskManagement.API.Controllers
             {
                 return BadRequest(new { statusCode = 400, message = ex.Message });
             }
-            catch (Exception ex)
+            catch (KeyNotFoundException ex)
             {
-                return StatusCode(500, new { statusCode = 500, message = "Internal server error: " + ex.Message });
+                return NotFound(new { statusCode = 404, message = ex.Message });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return StatusCode(403, new { statusCode = 403, message = "You are not allowed to remove this member." });
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new { statusCode = 500, message = "Unable to remove the project member." });
             }
         }
 
