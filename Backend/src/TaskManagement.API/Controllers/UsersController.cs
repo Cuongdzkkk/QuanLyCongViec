@@ -8,6 +8,7 @@ using TaskManagement.Application.DTOs.Auth;
 using TaskManagement.Application.Interfaces;
 using System.Security.Claims;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Text.Json;
@@ -34,17 +35,20 @@ namespace TaskManagement.API.Controllers
         private readonly IOtpService _otpService;
         private readonly IEmailService _emailService;
         private readonly IHubContext<KanbanHub> _hub;
+        private readonly IResourceAuthorizationService _authorization;
 
         public UsersController(
             ApplicationDbContext context,
             IOtpService otpService,
             IEmailService emailService,
-            IHubContext<KanbanHub> hub)
+            IHubContext<KanbanHub> hub,
+            IResourceAuthorizationService authorization)
         {
             _context = context;
             _otpService = otpService;
             _emailService = emailService;
             _hub = hub;
+            _authorization = authorization;
         }
 
         [HttpGet("me")]
@@ -336,11 +340,31 @@ namespace TaskManagement.API.Controllers
                 })
                 .ToListAsync();
 
-            var kudos = await _context.Kudos
+            var callerIdValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var callerIdIsValid = Guid.TryParse(callerIdValue, out var callerId);
+            var visibleKudoTeamIds = callerIdIsValid
+                ? await _authorization.GetSharedActiveDepartmentIdsAsync(callerId, id)
+                : new List<Guid>();
+            var canReadKudos = callerIdIsValid && (callerId == id || visibleKudoTeamIds.Count > 0);
+            var targetTeamIds = user.DepartmentMemberships
+                .Where(dm => dm.Department != null && dm.Department.IsActive && !dm.Department.IsDeleted)
+                .Select(dm => dm.DepartmentId)
+                .ToList();
+            var kudoTeamIds = callerId == id ? targetTeamIds : visibleKudoTeamIds;
+            var kudos = canReadKudos
+                ? (await _context.Kudos
                 .AsNoTracking()
                 .Include(k => k.Sender)
                 .Include(k => k.Department)
-                .Where(k => k.ReceiverId == id || (k.DepartmentId.HasValue && teamIds.Contains(k.DepartmentId.Value)))
+                .Where(k =>
+                    (k.DepartmentId.HasValue && kudoTeamIds.Contains(k.DepartmentId.Value)) ||
+                    (k.ReceiverId == id &&
+                        (callerId == id ||
+                         k.SenderId == callerId ||
+                         k.Sender.DepartmentMemberships.Any(member =>
+                             kudoTeamIds.Contains(member.DepartmentId) &&
+                             member.Department.IsActive &&
+                             !member.Department.IsDeleted))))
                 .OrderByDescending(k => k.CreatedAt)
                 .Select(k => new
                 {
@@ -355,7 +379,8 @@ namespace TaskManagement.API.Controllers
                     icon = k.Icon ?? "Star",
                     createdAt = k.CreatedAt
                 })
-                .ToListAsync();
+                .ToListAsync()).Cast<object>().ToList()
+                : new List<object>();
 
             var history = await _context.SiteAuditLogs
                 .AsNoTracking()
