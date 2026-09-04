@@ -50,10 +50,10 @@
             <button type="button" class="text-action" @click="openBilling">Mở trang gói &amp; thanh toán</button>
           </div>
           <div class="plan-grid">
-            <article v-for="plan in plans" :key="plan.code" class="plan-card" :class="{ 'is-current': isCurrentPlan(plan), 'is-recommended': plan.isRecommended }">
+            <article v-for="plan in plans" :key="getPlanCode(plan)" class="plan-card" :class="{ 'is-current': isCurrentPlan(plan), 'is-recommended': plan.isRecommended }">
               <div class="plan-card-head">
                 <div>
-                  <span class="plan-code">{{ plan.code }}</span>
+                  <span class="plan-code">{{ getPlanCode(plan) }}</span>
                   <h3>{{ plan.name }}</h3>
                 </div>
                 <span v-if="isCurrentPlan(plan)" class="current-badge">Đang dùng</span>
@@ -70,11 +70,11 @@
                 class="plan-action"
                 :class="{ primary: !isCurrentPlan(plan) && !isEnterprisePlan(plan) }"
                 :aria-label="`${plan.name}: ${planActionLabel(plan)}`"
-                :data-plan-code="plan.code"
-                :disabled="isCurrentPlan(plan) || isEnterprisePlan(plan) || checkoutLoadingCode === plan.code"
+                :data-plan-code="getPlanCode(plan)"
+                :disabled="isCurrentPlan(plan) || isEnterprisePlan(plan) || checkoutLoadingCode === getPlanCode(plan)"
                 @click.stop="selectPlan(plan)"
               >
-                <span v-if="checkoutLoadingCode === plan.code">Đang chuẩn bị...</span>
+                <span v-if="checkoutLoadingCode === getPlanCode(plan)">Đang chuẩn bị...</span>
                 <span v-else>{{ planActionLabel(plan) }}</span>
               </button>
               <small v-if="isEnterprisePlan(plan)" class="plan-note">Gói này chưa có thanh toán online trong contract hiện tại.</small>
@@ -143,8 +143,9 @@ const payload = response => response?.data?.data ?? response?.data ?? response
 const formatCredits = value => Number(value || 0).toLocaleString('vi-VN')
 const priceLabel = value => value == null ? 'Liên hệ' : Number(value) === 0 ? 'Miễn phí' : `${Number(value).toLocaleString('vi-VN')} đ/tháng`
 const formatDate = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium' }).format(new Date(value)) : '—'
-const isCurrentPlan = plan => String(plan?.code || '').toLowerCase() === currentPlanCode.value
-const isEnterprisePlan = plan => String(plan?.code || '').toLowerCase() === 'enterprise' || plan?.monthlyPriceVnd == null
+const getPlanCode = plan => String(plan?.code || plan?.id || '').trim().toLowerCase()
+const isCurrentPlan = plan => getPlanCode(plan) === currentPlanCode.value
+const isEnterprisePlan = plan => getPlanCode(plan) === 'enterprise' || plan?.monthlyPriceVnd == null
 const planActionLabel = plan => ({ current: 'Gói hiện tại', enterprise: 'Liên hệ sales', free: 'Kích hoạt Free', paid: 'Mở thanh toán' }[resolveBillingPlanFlow(plan, currentPlanCode.value)] || 'Mở thanh toán')
 
 const loadData = async () => {
@@ -175,7 +176,7 @@ const close = () => emit('update:modelValue', false)
 const openBilling = () => {
   close()
   router.push(buildBillingCheckoutLocation(
-    currentPlanCode.value || plans.value[0]?.code || 'free',
+    currentPlanCode.value || getPlanCode(plans.value[0]) || 'free',
     '',
     route.fullPath
   ))
@@ -184,7 +185,7 @@ const openBilling = () => {
 const selectPlan = async plan => {
   const flow = resolveBillingPlanFlow(plan, currentPlanCode.value)
   if (flow === 'current' || flow === 'enterprise') return
-  checkoutLoadingCode.value = plan.code
+  checkoutLoadingCode.value = getPlanCode(plan)
   try {
     if (flow === 'free') {
       await billingApi.activateFree()
@@ -192,7 +193,7 @@ const selectPlan = async plan => {
       return
     }
     close()
-    await router.push(buildBillingCheckoutLocation(plan.code, '', route.fullPath))
+    await router.push(buildBillingCheckoutLocation(getPlanCode(plan), '', route.fullPath))
   } catch (selectError) {
     error.value = selectError?.response?.data?.message || 'Không thể chuẩn bị luồng billing.'
   } finally {

@@ -274,7 +274,7 @@ const routeOrderId = computed(() => {
 const checkoutRouteKey = computed(() => `${planCode.value}:${routeOrderId.value}`)
 const isFree = computed(() => planCode.value === 'free' || Number(plan.value?.monthlyPriceVnd) === 0)
 const isEnterprise = computed(() => planCode.value === 'enterprise' || plan.value?.monthlyPriceVnd == null)
-const goBackToOrigin = () => router.push(returnTo.value)
+const goBackToOrigin = () => router.replace(returnTo.value)
 
 const applyHistoryResponse = (response) => {
   const historyData = unwrapBillingData(response) || {}
