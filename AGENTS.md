@@ -40,16 +40,6 @@
 * Trước khi sửa phải xem `git status --short`.
 * Sau khi sửa phải báo `git diff --name-only`.
 
-## Agent skills
-
-### Issue tracker
-
-GitHub Issues hold this repository's issues and specs; use the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Domain docs
-
-Use the single-context layout with root `CONTEXT.md` and `docs/adr/`, creating them lazily only when domain decisions are resolved. See `docs/agents/domain.md`.
-
 ## Required report
 
 Sau mỗi task báo ngắn:
@@ -60,3 +50,13 @@ Sau mỗi task báo ngắn:
 4. Có sửa Backend không.
 5. Build result.
 6. Test UI đã làm.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs for this repository are tracked in GitHub Issues using the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Use a single-context domain documentation layout. See `docs/agents/domain.md`.
