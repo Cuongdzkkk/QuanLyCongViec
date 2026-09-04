@@ -16,6 +16,21 @@ const RESTRICTED_PROJECT_ID = 'bbbbbbbb-0000-0000-0000-000000000011'
 const WORKSPACE_ID = 'a0000001-0001-0001-0001-000000000001'
 const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14)
 const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+const primaryUsername = process.env.SPRINTA_E2E_USERNAME
+const primaryPassword = process.env.SPRINTA_E2E_PASSWORD
+const secondaryUsername = process.env.SPRINTA_E2E_SECONDARY_USERNAME
+const secondaryPassword = process.env.SPRINTA_E2E_SECONDARY_PASSWORD
+const missingCredentials = [
+  ['SPRINTA_E2E_USERNAME', primaryUsername],
+  ['SPRINTA_E2E_PASSWORD', primaryPassword],
+  ['SPRINTA_E2E_SECONDARY_USERNAME', secondaryUsername],
+  ['SPRINTA_E2E_SECONDARY_PASSWORD', secondaryPassword]
+].filter(([, value]) => !value).map(([name]) => name)
+
+if (missingCredentials.length) {
+  process.stdout.write(`SKIP functional recovery: missing ${missingCredentials.join(', ')}\n`)
+  process.exit(0)
+}
 
 const results = []
 const consoleErrors = []
@@ -142,7 +157,7 @@ try {
   await cdp.viewport(1440, 900)
   await cdp.navigate(APP + '/login')
 
-  const login = await cdp.eval(`(async()=>{const r=await fetch('${API}/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'dev@sprinta.local',password:'dev123'})});const j=await r.json();if(!r.ok) return {ok:false,status:r.status,body:j};sessionStorage.setItem('accessToken',j.data.accessToken);sessionStorage.setItem('user',JSON.stringify(j.data));return {ok:true,status:r.status,user:j.data};})()`)
+  const login = await cdp.eval(`(async()=>{const r=await fetch('${API}/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:${JSON.stringify(primaryUsername)},password:${JSON.stringify(primaryPassword)})});const j=await r.json();if(!r.ok) return {ok:false,status:r.status,body:j};sessionStorage.setItem('accessToken',j.data.accessToken);sessionStorage.setItem('user',JSON.stringify(j.data));return {ok:true,status:r.status,user:j.data};})()`)
   record('Browser login', login.ok, `HTTP ${login.status}`)
 
   await cdp.navigate(`${APP}/space/${PROJECT_ID}/work-items`)
@@ -280,7 +295,7 @@ try {
     await cdp.viewport(1440, 900)
   }
 
-  const khoiToken = await cdp.eval(`(async()=>{const r=await fetch('${API}/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'khoi.nguyen@novatech.vn',password:'Demo@123'})});const j=await r.json();return j.data?.accessToken||''})()`)
+  const khoiToken = await cdp.eval(`(async()=>{const r=await fetch('${API}/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:${JSON.stringify(secondaryUsername)},password:${JSON.stringify(secondaryPassword)})});const j=await r.json();return j.data?.accessToken||''})()`)
   const action = async (type, payload, key, token = '') => browserFetch(cdp, `${API}/ai/actions/execute`, { method: 'POST', token, body: { type, idempotencyKey: key, workspaceId: WORKSPACE_ID, projectId: PROJECT_ID, payload } })
   const actionCases = [
     ['Cycle', 'create_cycle', { projectId: PROJECT_ID, name: `QA Cycle ${stamp}`, startDate: '2026-08-01', endDate: '2026-08-14' }],
