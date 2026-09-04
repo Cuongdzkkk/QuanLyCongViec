@@ -3962,6 +3962,49 @@ const handleProjectCreated = (newProject) => {
 .ai-credit-card.is-empty { border-color: var(--color-danger); }
 .ai-credit-card.is-empty .ai-credit-progress > span { width: 0 !important; background: var(--color-danger); }
 
+/* Shared floating panel polish. Keep it visually related to the full AI page
+   while preserving the existing conversation, action and upload contracts. */
+.ai-sidebar {
+  border-radius: 22px;
+  border-color: color-mix(in srgb, #0b8fd3 28%, var(--color-border));
+  background: radial-gradient(circle at 100% 0, color-mix(in srgb, #0b8fd3 13%, transparent), transparent 32%), var(--color-surface);
+  box-shadow: 0 28px 80px color-mix(in srgb, var(--color-text-primary) 30%, transparent), 0 0 0 1px color-mix(in srgb, var(--color-text-inverse) 8%, transparent) inset;
+}
+.ai-hero {
+  padding: 22px 22px 18px;
+  border-bottom-color: color-mix(in srgb, #0b8fd3 20%, var(--color-border));
+  background: linear-gradient(145deg, color-mix(in srgb, #0b8fd3 14%, var(--color-surface)), var(--color-surface) 72%);
+}
+.ai-brand-icon { width: 44px; height: 44px; border-radius: 14px; background: color-mix(in srgb, #0b8fd3 15%, var(--color-surface)); border-color: color-mix(in srgb, #0b8fd3 32%, var(--color-border)); }
+.ai-brand h4 { font-size: 18px; letter-spacing: -.03em; }
+.ai-hero-copy { margin-top: 14px; line-height: 1.6; }
+.ai-credit-card { margin-top: 16px; padding: 15px; border-radius: 16px; border-color: color-mix(in srgb, #0b8fd3 38%, var(--color-border)); background: linear-gradient(145deg, color-mix(in srgb, #0b8fd3 18%, var(--color-surface-hover)), var(--color-surface-hover) 76%); box-shadow: 0 12px 26px color-mix(in srgb, #0b8fd3 13%, transparent); }
+.ai-credit-label { color: #0b8fd3; font-size: 10px; letter-spacing: .1em; }
+.ai-credit-progress { height: 7px; margin-top: 12px; }
+.ai-credit-progress > span { background: linear-gradient(90deg, #0b8fd3, #41c0f2); }
+.ai-credit-buy { min-height: 34px; border-radius: 10px; }
+.ai-conversation-toolbar { margin-top: 14px; grid-template-columns: 36px 36px minmax(0, 1fr); gap: 7px; }
+.ai-conversation-toolbar button { width: 36px; height: 36px; border-radius: 10px; }
+.ai-conversation-toolbar span { padding-inline: 4px; font-size: 11px; }
+.ai-content { padding: 18px 20px 22px; background: color-mix(in srgb, var(--color-bg) 74%, var(--color-surface)); }
+.quick-actions { gap: 9px; margin-top: 0; margin-bottom: 15px; }
+.quick-action { flex: 1 1 calc(50% - 5px); justify-content: flex-start; min-height: 42px; padding: 8px 10px; border-radius: 12px; border-color: color-mix(in srgb, #0b8fd3 21%, var(--color-border)); background: color-mix(in srgb, var(--color-surface) 84%, #0b8fd3); font-size: 11px; line-height: 1.3; }
+.quick-action i { width: 17px; color: #0b8fd3; text-align: center; }
+.quick-action:hover { transform: translateY(-1px); box-shadow: 0 8px 18px color-mix(in srgb, #0b8fd3 13%, transparent); }
+.ai-context-card { margin-bottom: 18px; padding: 14px; border-radius: 14px; border-color: color-mix(in srgb, #0b8fd3 24%, var(--color-border)); background: color-mix(in srgb, #0b8fd3 8%, var(--color-surface)); }
+.ai-context-card button { width: 36px; height: 36px; border-radius: 10px; }
+.ai-content :deep(.ai-composer) { margin-top: 0; }
+.ai-sidebar > :deep(.ai-composer) { margin: 0 16px 16px; width: auto; flex: 0 0 auto; }
+.ai-sidebar > :deep(.ai-composer) .ai-input-foot { padding-inline: 3px; }
+.global-utility-rail.is-ai-open { right: calc(16px + min(var(--ai-sidebar-width, 456px), 70vw) + 18px); border-color: color-mix(in srgb, #0b8fd3 30%, var(--color-border)); box-shadow: 0 14px 30px color-mix(in srgb, var(--color-text-primary) 18%, transparent); }
+
+@media (max-width: 760px) {
+  .ai-sidebar { border-radius: 20px 20px 0 0; }
+  .ai-hero { padding: 18px 16px 15px; }
+  .ai-content { padding: 15px 14px 18px; }
+  .ai-sidebar > :deep(.ai-composer) { margin: 0 12px calc(12px + env(safe-area-inset-bottom)); }
+}
+
 .persistent-call-overlay {
   position: fixed;
   z-index: 2000;

@@ -45,7 +45,7 @@
           </div>
         </div>
 
-        <details class="workspace-tools">
+        <details v-if="hasConnectedGithubIntegration" class="workspace-tools">
           <summary><span>Công cụ workspace</span><small>Phân tích GitHub và review backlog</small></summary>
         <div class="repo-panel">
           <div class="repo-head">
@@ -290,19 +290,20 @@
               <i :class="action.icon" aria-hidden="true"></i> {{ action.label }}
             </button>
           </div>
-          <details v-if="quickActions.slice(4).length" class="quick-more">
-            <summary>Xem thêm công cụ</summary>
-            <div class="quick-links quick-links-more">
+          <button v-if="quickActions.slice(4).length" class="quick-more-toggle" type="button" :aria-expanded="quickToolsExpanded" @click="quickToolsExpanded = !quickToolsExpanded">
+            <span><i class="fa-solid fa-sliders" aria-hidden="true"></i> Xem thêm công cụ</span>
+            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+          </button>
+          <div v-if="quickToolsExpanded" class="quick-links quick-links-more" aria-label="Công cụ bổ sung">
               <button v-for="action in quickActions.slice(4)" :key="`more-${action.type}`" class="q-link" type="button" @click="useQuickPrompt(action.prompt)">
                 <i :class="action.icon" aria-hidden="true"></i> {{ action.label }}
               </button>
-            </div>
-          </details>
+          </div>
         </div>
 
         <div class="panel-section mt-30">
           <div class="section-title">NGỮ CẢNH HIỆN TẠI</div>
-          <p class="text-muted sidebar-copy">Credits và trạng thái xử lý được cập nhật theo tài khoản của bạn. Tiến trình luôn hiển thị ngay trong cuộc trò chuyện.</p>
+          <p class="text-muted sidebar-copy">{{ activeProjectName }} · {{ activeWorkspaceName }}. Credits và tiến trình được cập nhật theo tài khoản của bạn.</p>
         </div>
 
         <div class="upgrade-card-wrapper">
@@ -392,6 +393,9 @@ const aiPlanLabel = computed(() => {
   return plan ? plan.charAt(0).toUpperCase() + plan.slice(1) : 'Free'
 })
 const quickActions = computed(() => AI_QUICK_ACTIONS)
+const quickToolsExpanded = ref(false)
+const connectedIntegrations = ref([])
+const hasConnectedGithubIntegration = computed(() => connectedIntegrations.value.some(item => item?.provider === 'github' && item?.status === 'connected'))
 const selectedBacklogKeys = ref([])
 const reviewTargetSprintId = ref('')
 const repoForm = ref({
@@ -1016,6 +1020,20 @@ const loadAiUsage = async () => {
   }
 }
 
+const loadConnectedIntegrations = async () => {
+  try {
+    const response = await axiosClient.get('/integrations')
+    const payload = response.data?.data ?? response.data
+    const rawProviders = payload?.providers ?? []
+    const providers = Array.isArray(rawProviders) ? rawProviders : (Array.isArray(rawProviders?.$values) ? rawProviders.$values : [])
+    connectedIntegrations.value = Array.isArray(providers)
+      ? providers.filter(provider => provider?.status === 'connected')
+      : []
+  } catch {
+    connectedIntegrations.value = []
+  }
+}
+
 onMounted(() => {
   siteStore.fetchSites()
     .then(() => {
@@ -1028,6 +1046,7 @@ onMounted(() => {
   clearLegacyGitHubCredentialStorage()
   projectStore.fetchAllProjects().catch(() => [])
   loadAiUsage()
+  loadConnectedIntegrations()
   if (currentProjectId.value) {
     sprintStore.fetchSprints(currentProjectId.value).catch(() => [])
     signalRService.startConnection(`${currentProjectId.value}`)
@@ -1106,6 +1125,145 @@ const handleSidebarSaved = (prefs) => {
   max-width: 1440px;
   margin: 0 auto;
   background: var(--color-bg);
+}
+
+/* Final page pass: distinct navy-tinted layers, more breathing room, and a
+   deliberate right rail instead of a wall of identical pale controls. */
+.ai-page-flex-wrapper {
+  --ai-page-ink: #0a2340;
+  --ai-page-accent: #0b8fd3;
+  min-height: 0;
+  background: var(--color-bg);
+}
+
+.ai-page-history {
+  flex-basis: 264px;
+  padding: 26px 16px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 86%, var(--ai-page-accent)), var(--color-surface));
+}
+
+.ai-container {
+  padding: 26px clamp(20px, 4vw, 62px) 0;
+  background:
+    radial-gradient(circle at 58% -10%, color-mix(in srgb, var(--ai-page-accent) 11%, transparent), transparent 34%),
+    var(--color-bg);
+}
+
+.ai-page-header { margin-bottom: 20px; padding: 0; }
+.page-title { font-size: clamp(27px, 2.7vw, 36px); font-weight: 800; letter-spacing: -.045em; }
+.header-left { gap: 9px; }
+.header-pill,
+.workspace-context-pill,
+.credit-pill,
+.workspace-selector,
+.header-icon-btn,
+.return-floating-btn,
+.credit-buy-inline {
+  border-color: color-mix(in srgb, var(--ai-page-accent) 24%, var(--color-border));
+  background: color-mix(in srgb, var(--color-surface) 88%, var(--ai-page-accent));
+}
+.header-pill { padding: 6px 10px; font-weight: 750; }
+.credit-pill { margin-left: 0; font-variant-numeric: tabular-nums; }
+
+.workspace-tools { margin-bottom: 18px; }
+.workspace-tools > summary {
+  min-height: 46px;
+  padding: 10px 14px;
+  border-color: color-mix(in srgb, var(--ai-page-accent) 25%, var(--color-border));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--color-surface) 86%, var(--ai-page-accent));
+}
+.repo-panel {
+  margin: 0 0 16px;
+  padding: 18px;
+  border-color: color-mix(in srgb, var(--ai-page-accent) 20%, var(--color-border));
+  border-radius: 0 0 15px 15px;
+  background: color-mix(in srgb, var(--color-surface) 93%, var(--ai-page-accent));
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--color-text-primary) 7%, transparent);
+}
+
+.chat-history {
+  max-width: 940px;
+  gap: 18px;
+  padding-bottom: 24px;
+}
+.chat-history :deep(.ai-message-bubble) { line-height: 1.68; }
+.ai-chat-input-wrapper {
+  width: min(940px, 100%);
+  padding: 14px 0 22px;
+  background: linear-gradient(var(--color-bg), color-mix(in srgb, var(--color-bg) 92%, transparent) 82%, transparent);
+}
+
+.ai-details-panel {
+  width: 302px;
+  padding: 30px 21px 24px;
+  border-left-color: color-mix(in srgb, var(--ai-page-accent) 20%, var(--color-border));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 94%, var(--ai-page-accent)), var(--color-surface));
+}
+.section-label { font-size: 10px; letter-spacing: .16em; }
+.section-title { margin-bottom: 0; font-size: 16px; font-weight: 800; letter-spacing: -.025em; text-transform: none; }
+.quick-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 14px; }
+.q-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 58px;
+  padding: 10px;
+  border-color: color-mix(in srgb, var(--ai-page-accent) 19%, var(--color-border));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--color-surface-hover) 65%, var(--color-surface));
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.3;
+}
+.q-link i { width: 25px; flex: 0 0 25px; color: var(--ai-page-accent); text-align: center; font-size: 15px; }
+.q-link:hover { transform: translateY(-2px); box-shadow: 0 8px 18px color-mix(in srgb, var(--ai-page-accent) 12%, transparent); }
+.quick-more-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 42px;
+  margin-top: 12px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--ai-page-accent) 22%, var(--color-border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--color-surface) 82%, var(--ai-page-accent));
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+}
+.quick-more-toggle span { display: inline-flex; align-items: center; gap: 8px; }
+.quick-more-toggle span i { color: var(--ai-page-accent); }
+.quick-more-toggle > i { transition: transform 180ms ease; }
+.quick-more-toggle[aria-expanded='true'] > i { transform: rotate(180deg); }
+.quick-links-more { margin-top: 9px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, var(--ai-page-accent) 15%, var(--color-border)); }
+.sidebar-copy { margin: 10px 0 0; font-size: 12px; }
+.upgrade-card-wrapper { margin-top: 34px; }
+.upgrade-card {
+  padding: 20px;
+  border-color: color-mix(in srgb, var(--ai-page-accent) 38%, var(--color-border));
+  border-radius: 18px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--ai-page-accent) 18%, var(--color-surface)), var(--color-surface) 72%);
+  box-shadow: 0 16px 32px color-mix(in srgb, var(--ai-page-accent) 12%, transparent);
+}
+.credit-balance { font-size: 29px; }
+.btn-upgrade { width: 100%; min-height: 42px; border-radius: 11px; }
+
+@media (max-width: 1100px) {
+  .ai-container { padding: 20px 18px 0; }
+  .ai-details-panel { padding: 22px 18px; }
+}
+
+@media (max-width: 620px) {
+  .ai-container { padding: 16px 14px 0; }
+  .header-left { align-items: flex-start; }
+  .workspace-context-pill { max-width: min(100%, 300px); }
+  .chat-history { padding-bottom: 12px; }
+  .ai-chat-input-wrapper { padding: 10px 0 calc(12px + env(safe-area-inset-bottom)); }
+  .quick-links { grid-template-columns: 1fr 1fr; }
 }
 
 .ai-container {
@@ -1879,4 +2037,42 @@ const handleSidebarSaved = (prefs) => {
 @media (max-width: 1100px) {
   .ai-details-panel { width: 100%; padding: 22px 18px; box-shadow: none; }
 }
+
+/* Cascade guard: this block intentionally lives last so the final page
+   direction wins over the legacy compatibility rules above. */
+.ai-page-flex-wrapper { min-height: 0; background: var(--color-bg); }
+.ai-page-history { flex-basis: 264px; padding: 26px 16px; background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 86%, #0b8fd3), var(--color-surface)); }
+.ai-container { padding: 26px clamp(20px, 4vw, 62px) 0; background: radial-gradient(circle at 58% -10%, color-mix(in srgb, #0b8fd3 11%, transparent), transparent 34%), var(--color-bg); }
+.ai-page-header { margin-bottom: 20px; padding: 0; }
+.page-title { font-size: clamp(27px, 2.7vw, 36px); font-weight: 800; letter-spacing: -.045em; }
+.header-left { gap: 9px; }
+.header-pill, .workspace-context-pill, .credit-pill, .workspace-selector, .header-icon-btn, .return-floating-btn, .credit-buy-inline { border-color: color-mix(in srgb, #0b8fd3 24%, var(--color-border)); background: color-mix(in srgb, var(--color-surface) 88%, #0b8fd3); }
+.credit-pill { margin-left: 0; font-variant-numeric: tabular-nums; }
+.workspace-tools { margin-bottom: 18px; }
+.workspace-tools > summary { min-height: 46px; padding: 10px 14px; border-color: color-mix(in srgb, #0b8fd3 25%, var(--color-border)); border-radius: 13px; background: color-mix(in srgb, var(--color-surface) 86%, #0b8fd3); }
+.repo-panel { margin: 0 0 16px; padding: 18px; border-color: color-mix(in srgb, #0b8fd3 20%, var(--color-border)); border-radius: 0 0 15px 15px; background: color-mix(in srgb, var(--color-surface) 93%, #0b8fd3); box-shadow: 0 12px 28px color-mix(in srgb, var(--color-text-primary) 7%, transparent); }
+.chat-history { max-width: 940px; gap: 18px; padding-bottom: 24px; }
+.chat-history :deep(.ai-message-bubble) { line-height: 1.68; }
+.ai-chat-input-wrapper { width: min(940px, 100%); padding: 14px 0 22px; background: linear-gradient(var(--color-bg), color-mix(in srgb, var(--color-bg) 92%, transparent) 82%, transparent); }
+.ai-details-panel { width: 302px; padding: 30px 21px 24px; border-left-color: color-mix(in srgb, #0b8fd3 20%, var(--color-border)); background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 94%, #0b8fd3), var(--color-surface)); }
+.section-label { font-size: 10px; letter-spacing: .16em; }
+.section-title { margin-bottom: 0; font-size: 16px; font-weight: 800; letter-spacing: -.025em; text-transform: none; }
+.quick-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 14px; }
+.q-link { display: flex; align-items: center; gap: 8px; min-height: 58px; padding: 10px; border-color: color-mix(in srgb, #0b8fd3 19%, var(--color-border)); border-radius: 13px; background: color-mix(in srgb, var(--color-surface-hover) 65%, var(--color-surface)); font-size: 11px; font-weight: 750; line-height: 1.3; }
+.q-link i { width: 25px; flex: 0 0 25px; color: #0b8fd3; text-align: center; font-size: 15px; }
+.q-link:hover { transform: translateY(-2px); box-shadow: 0 8px 18px color-mix(in srgb, #0b8fd3 12%, transparent); }
+.quick-more-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 42px; margin-top: 12px; padding: 0 11px; border: 1px solid color-mix(in srgb, #0b8fd3 22%, var(--color-border)); border-radius: 11px; background: color-mix(in srgb, var(--color-surface) 82%, #0b8fd3); color: var(--color-text-secondary); cursor: pointer; font: inherit; font-size: 11px; font-weight: 750; }
+.quick-more-toggle span { display: inline-flex; align-items: center; gap: 8px; }
+.quick-more-toggle span i { color: #0b8fd3; }
+.quick-more-toggle > i { transition: transform 180ms ease; }
+.quick-more-toggle[aria-expanded='true'] > i { transform: rotate(180deg); }
+.quick-links-more { margin-top: 9px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, #0b8fd3 15%, var(--color-border)); }
+.sidebar-copy { margin: 10px 0 0; font-size: 12px; }
+.upgrade-card-wrapper { margin-top: 34px; }
+.upgrade-card { padding: 20px; border-color: color-mix(in srgb, #0b8fd3 38%, var(--color-border)); border-radius: 18px; background: linear-gradient(145deg, color-mix(in srgb, #0b8fd3 18%, var(--color-surface)), var(--color-surface) 72%); box-shadow: 0 16px 32px color-mix(in srgb, #0b8fd3 12%, transparent); }
+.credit-balance { font-size: 29px; }
+.btn-upgrade { width: 100%; min-height: 42px; border-radius: 11px; }
+
+@media (max-width: 1100px) { .ai-container { padding: 20px 18px 0; } .ai-details-panel { padding: 22px 18px; } }
+@media (max-width: 620px) { .ai-container { padding: 16px 14px 0; } .header-left { align-items: flex-start; } .workspace-context-pill { max-width: min(100%, 300px); } .chat-history { padding-bottom: 12px; } .ai-chat-input-wrapper { padding: 10px 0 calc(12px + env(safe-area-inset-bottom)); } .quick-links { grid-template-columns: 1fr 1fr; } }
 </style>
