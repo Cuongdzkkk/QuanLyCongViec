@@ -368,8 +368,8 @@ const archiveProject = async (space) => {
   try {
     await ElMessageBox.confirm(`Are you sure you want to archive project "${space.name}"?`, 'Archive Project', { type: 'warning' })
     await axiosClient.put(`/projects/${space.id}/archive`)
+    await fetchSpaces()
     ElMessage.success('Project archived')
-    fetchSpaces()
   } catch (err) {
     if (err !== 'cancel') ElMessage.error('Failed to archive project')
   }

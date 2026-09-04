@@ -181,7 +181,7 @@ const toggleTab = (tab) => {
 
 const clearCycleFilters = () => {
   cycleSearchQuery.value = ''
-  cycleProgressFilter.value = 'all'
+  activeFilters.value = []
 }
 
 const getCyclePanelTab = (cycleId) => cyclePanelTabs.value[cycleId] || 'state'
@@ -1750,6 +1750,56 @@ onUnmounted(() => {
   padding: 0 18px 18px !important;
 }
 
+/* Create-cycle dialog: focused SaaS form treatment */
+.sa-data-modal-overlay {
+  padding: 24px;
+  background: rgba(15, 23, 42, .48);
+  backdrop-filter: blur(8px);
+}
+
+.create-cycle-modal {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border));
+  border-radius: 22px;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, .28), 0 0 0 1px rgba(255,255,255,.22) inset;
+  animation: create-cycle-dialog-in .22s ease-out both;
+}
+
+.create-cycle-modal.with-horizontal-calendar { width: min(900px, 100%); }
+
+.create-cycle-modal .cm-header {
+  padding: 22px 24px 18px !important;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)), var(--color-surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+}
+
+.create-cycle-modal .cm-body { padding: 22px 24px 24px !important; }
+.create-cycle-modal .cm-layout-grid { gap: 24px; }
+.create-cycle-modal .cm-field { gap: 8px; margin-bottom: 18px; }
+.create-cycle-modal .cm-field > label { font-size: 12px; letter-spacing: .02em; text-transform: uppercase; color: var(--color-text-muted); }
+.create-cycle-modal .cm-input,
+.create-cycle-modal .cm-textarea {
+  border-radius: 12px;
+  border-color: color-mix(in srgb, var(--color-border) 82%, var(--color-accent));
+  background: color-mix(in srgb, var(--color-bg-secondary) 72%, var(--color-surface));
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04) inset;
+}
+.create-cycle-modal .cm-input { min-height: 46px; }
+.create-cycle-modal .cm-textarea { min-height: 112px; line-height: 1.5; }
+.create-cycle-modal .cm-input:focus,
+.create-cycle-modal .cm-textarea:focus,
+.create-cycle-modal .dp-btn:focus-visible { border-color: var(--color-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.create-cycle-modal .dp-btn { min-height: 48px; border-radius: 12px; background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)); }
+.create-cycle-modal .cm-footer { padding: 16px 24px 20px; background: color-mix(in srgb, var(--color-bg-secondary) 62%, var(--color-surface)); }
+.create-cycle-modal .cm-btn-cancel,
+.create-cycle-modal .cm-btn-create { min-height: 42px; border-radius: 11px; padding: 10px 18px; font-size: 13px; font-weight: 700; }
+.create-cycle-modal .cm-btn-create { box-shadow: 0 8px 18px color-mix(in srgb, var(--color-accent) 28%, transparent); }
+
+@keyframes create-cycle-dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 @media (max-width: 780px) {
   .cycles-body {
     padding: 12px !important;
@@ -1762,6 +1812,15 @@ onUnmounted(() => {
   .cc-grid {
     grid-template-columns: 1fr !important;
   }
+
+  .sa-data-modal-overlay { padding: 12px; align-items: flex-end; }
+  .create-cycle-modal,
+  .create-cycle-modal.with-horizontal-calendar { width: 100%; max-width: none; border-radius: 20px; }
+  .create-cycle-modal .cm-header { padding: 18px 18px 14px !important; }
+  .create-cycle-modal .cm-body { padding: 18px !important; max-height: 72vh; overflow-y: auto; }
+  .create-cycle-modal .cm-footer { padding: 14px 18px 18px; }
+  .create-cycle-modal .cm-btn-cancel,
+  .create-cycle-modal .cm-btn-create { flex: 1; }
 }
 
 /* Polished cycles experience */
@@ -2312,7 +2371,7 @@ onUnmounted(() => {
 .cycles-add-button {
   position: relative;
   isolation: isolate;
-  overflow: hidden;
+  overflow: visible;
   min-width: 150px;
   height: 44px !important;
   padding: 0 20px !important;
@@ -2333,24 +2392,28 @@ onUnmounted(() => {
     0 0 0 1px rgba(8, 169, 229, .12),
     inset 0 1px 0 rgba(255, 255, 255, .24),
     inset 0 -2px 0 rgba(1, 19, 59, .32) !important;
-  transition: transform .24s cubic-bezier(.22, 1, .36, 1), box-shadow .24s ease, filter .24s ease, background-position .5s ease;
-  animation: cycle-button-energy 4s ease-in-out infinite;
+  transition: transform .24s cubic-bezier(.22, 1, .36, 1), box-shadow .24s ease, filter .24s ease;
 }
 
 .cycles-add-button::before {
   content: '';
   position: absolute;
-  inset: -2px;
+  inset: -3px;
   width: auto;
   height: auto;
   border-radius: 13px;
   transform: none;
-  background: conic-gradient(from 0deg, transparent 0 58%, rgba(34, 211, 238, .22) 66%, #baf4ff 73%, #0ea5e9 79%, transparent 88% 100%);
+  padding: 1px;
+  background: conic-gradient(from 0deg, transparent 0 58%, rgba(34, 211, 238, .35) 66%, #d7fbff 73%, #0ea5e9 80%, transparent 89% 100%);
   opacity: .72;
-  animation: cycle-border-orbit 2.4s linear infinite;
+  animation: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
   transition: opacity .25s ease, filter .25s ease;
   pointer-events: none;
-  z-index: -2;
+  z-index: 2;
 }
 
 .cycles-add-button::after {
@@ -2358,10 +2421,8 @@ onUnmounted(() => {
   position: absolute;
   inset: 2px;
   border-radius: 9px;
-  background:
-    radial-gradient(circle at 10% 0%, rgba(255, 255, 255, .28), transparent 27%),
-    linear-gradient(110deg, transparent 20%, rgba(34, 211, 238, .08) 50%, transparent 80%);
-  opacity: .9;
+  background: transparent;
+  display: none;
   pointer-events: none;
   transition: opacity .25s ease, transform .25s ease;
   z-index: -1;
@@ -2383,11 +2444,9 @@ onUnmounted(() => {
 }
 
 .cycles-add-button:hover:not(:disabled) {
-  transform: translateY(-3px) scale(1.035);
-  background-position: 0 0, 100% 50%;
-  filter: saturate(1.22) brightness(1.1);
-  box-shadow: 0 16px 30px rgba(2, 50, 142, .4), 0 0 0 2px rgba(125, 231, 255, .7), 0 0 0 6px rgba(34, 211, 238, .14), 0 0 34px rgba(14, 165, 233, .42), inset 0 1px 0 rgba(255, 255, 255, .34), inset 0 -2px 0 rgba(1, 19, 59, .28) !important;
-  animation: none;
+  transform: translateY(-2px);
+  filter: brightness(1.04);
+  box-shadow: 0 11px 22px rgba(2, 50, 142, .3), inset 0 1px 0 rgba(255, 255, 255, .28), inset 0 -2px 0 rgba(1, 19, 59, .28) !important;
 }
 
 .cycles-add-button:hover:not(:disabled)::after {
@@ -2396,13 +2455,13 @@ onUnmounted(() => {
 }
 
 .cycles-add-button:hover:not(:disabled)::before {
-  opacity: 1;
-  filter: drop-shadow(0 0 5px rgba(125, 231, 255, .95));
+  opacity: .95;
+  filter: drop-shadow(0 0 3px rgba(125, 231, 255, .62));
 }
 
 .cycles-add-button:hover:not(:disabled) i {
   transform: translateX(-2px) rotate(-12deg) scale(1.16);
-  filter: drop-shadow(0 0 6px rgba(165, 243, 252, .8));
+  filter: drop-shadow(0 0 3px rgba(165, 243, 252, .45));
 }
 
 .cycles-add-button i {
@@ -2416,9 +2475,9 @@ onUnmounted(() => {
   position: relative;
   z-index: 1;
   display: inline-block;
-  overflow: hidden;
+  overflow: visible;
   padding: 2px 1px;
-  text-shadow: 0 1px 8px rgba(2, 16, 48, .7);
+  text-shadow: 0 1px 3px rgba(2, 16, 48, .58);
 }
 .cycle-button-label::before,
 .cycle-button-label::after {
@@ -2433,7 +2492,7 @@ onUnmounted(() => {
   transition: opacity .2s ease, transform .65s cubic-bezier(.2,.8,.2,1);
 }
 .cycle-button-label::before,
-.cycle-button-label::after { display: none; }
+.cycle-button-label::after { display: none !important; }
 .cycle-button-label::before {
   left: -42px;
   transform: translateY(-50%) translateX(0);
@@ -2446,18 +2505,16 @@ onUnmounted(() => {
 }
 .cycles-add-button:hover:not(:disabled) .cycle-button-label {
   color: #ffffff;
-  text-shadow: 0 0 5px rgba(186, 244, 255, .95), 0 0 14px rgba(56, 189, 248, .7);
+  text-shadow: 0 1px 3px rgba(2, 16, 48, .62);
 }
 .cycles-add-button:hover:not(:disabled) .cycle-button-label::before {
-  opacity: 1;
-  transform: translateY(-50%) translateX(66px);
+  opacity: 0;
 }
 .cycles-add-button:hover:not(:disabled) .cycle-button-label::after {
-  opacity: 1;
-  transform: translateY(-50%) translateX(-66px);
+  opacity: 0;
 }
 .cycles-add-button:active:not(:disabled) .cycle-button-label {
-  text-shadow: 0 0 8px rgba(125, 211, 252, .95);
+  text-shadow: 0 1px 3px rgba(2, 16, 48, .62);
 }
 
 .cycles-add-button:focus-visible {

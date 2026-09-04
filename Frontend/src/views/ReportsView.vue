@@ -1558,8 +1558,8 @@ onMounted(() => {
 }
 
 .space-reports-page :deep(.project-page-inner) {
-  padding-top: 14px;
-  scroll-padding-top: 14px;
+  padding-top: 0;
+  scroll-padding-top: 0;
 }
 
 .reports-error {
