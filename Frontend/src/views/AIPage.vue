@@ -3,45 +3,80 @@
     <div class="ai-page-flex-wrapper">
       <aside class="ai-page-history" :class="{ 'is-open': aiConversationStore.historyVisible }" aria-label="Lịch sử trò chuyện">
         <div class="ai-page-history-head">
-          <div><span class="eyebrow">SPRINTA AI</span><strong>Lịch sử trò chuyện</strong></div>
+          <div>
+            <span class="eyebrow">SPRINTA AI</span>
+            <strong>Lịch sử trò chuyện</strong>
+            <small>Các cuộc trò chuyện của bạn</small>
+          </div>
           <button type="button" aria-label="Đóng lịch sử" title="Đóng lịch sử" @click="aiConversationStore.historyVisible = false">×</button>
         </div>
-        <input v-model="conversationSearch" type="search" placeholder="Tìm cuộc trò chuyện" aria-label="Tìm cuộc trò chuyện" />
+        <button class="history-new-button" type="button" @click="startNewConversation">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i>
+          <span>Cuộc trò chuyện mới</span>
+        </button>
+        <label class="history-search">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input v-model="conversationSearch" type="search" placeholder="Tìm cuộc trò chuyện" aria-label="Tìm cuộc trò chuyện" />
+        </label>
         <p v-if="conversationLoading" class="history-empty">Đang tải...</p>
         <p v-else-if="!conversations.length" class="history-empty">Chưa có cuộc trò chuyện đã lưu.</p>
-        <button v-for="conversation in filteredConversations" :key="conversation.id" type="button" class="ai-page-history-item" :class="{ active: conversation.id === currentConversationId }" @click="openConversation(conversation.id)">
-          <strong>{{ conversation.title }}</strong>
-          <small>{{ formatConversationDate(conversation.updatedAt) }}</small>
-        </button>
+        <p v-else-if="!filteredConversations.length" class="history-empty">Không tìm thấy cuộc trò chuyện phù hợp.</p>
+        <div v-else class="history-groups">
+          <section v-for="group in groupedConversations" :key="group.key" class="history-group">
+            <h3>{{ group.label }}</h3>
+            <button v-for="conversation in group.items" :key="conversation.id" type="button" class="ai-page-history-item" :class="{ active: conversation.id === currentConversationId }" @click="openConversation(conversation.id)">
+              <span class="history-item-icon"><i class="fa-regular fa-message" aria-hidden="true"></i></span>
+              <span class="history-item-content">
+                <strong>{{ conversation.title }}</strong>
+                <small>{{ formatConversationDate(conversation.updatedAt) }}</small>
+              </span>
+              <i class="fa-solid fa-chevron-right history-item-arrow" aria-hidden="true"></i>
+            </button>
+          </section>
+        </div>
         <button v-if="conversationHasMore" class="history-more" type="button" @click="loadConversations(false)">Tải thêm</button>
       </aside>
       <div class="ai-container">
         <div class="ai-page-header">
-          <div class="header-left">
-            <h2 class="page-title">Trợ lý AI</h2>
-            <span class="header-pill">Trợ lý công việc</span>
-            <span class="workspace-context-pill" :title="currentWorkspaceId ? `Workspace ${currentWorkspaceId}` : 'Chưa chọn workspace'">
-              <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
-              {{ activeProjectName }} · {{ activeWorkspaceName }}
-            </span>
-            <label v-if="workspaceOptions.length" class="workspace-selector">
-              <i class="fa-solid fa-building" aria-hidden="true"></i>
-              <span class="sr-only">Workspace</span>
-              <select v-model="selectedWorkspaceId" aria-label="Chọn workspace" @change="handleWorkspaceChange">
-                <option v-for="workspace in workspaceOptions" :key="workspace.id || workspace.Id" :value="workspace.id || workspace.Id">
-                  {{ workspace.name || workspace.Name }}
-                </option>
-              </select>
-            </label>
-            <span v-if="aiUsage" class="credit-pill">
-              {{ aiUsage.usedCredits }}/{{ aiUsage.includedCredits }} credits · còn {{ aiUsage.remainingCredits }}
-            </span>
-            <button v-if="aiUsage" class="credit-buy-inline" type="button" @click="openAiCreditPurchase">Mua thêm</button>
+          <div class="ai-page-header-top">
+            <div class="header-left">
+              <div class="page-title-line">
+                <h2 class="page-title">Trợ lý AI</h2>
+                <span class="header-pill">Trợ lý công việc</span>
+              </div>
+              <span class="page-subtitle">Làm việc với dữ liệu thật trong đúng phạm vi bạn đang chọn.</span>
+            </div>
+            <div class="header-actions">
+              <button class="header-icon-btn" type="button" title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới" @click="startNewConversation"><i class="fa-solid fa-plus"></i></button>
+              <button class="header-icon-btn mobile-history-toggle" type="button" title="Mở lịch sử" aria-label="Mở lịch sử" @click="toggleConversationHistory"><i class="fa-solid fa-clock-rotate-left"></i></button>
+              <button class="return-floating-btn" type="button" @click="returnToFloating"><i class="fa-solid fa-arrow-left"></i> Về bảng AI</button>
+            </div>
           </div>
-          <div class="header-actions">
-            <button class="header-icon-btn" type="button" title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới" @click="startNewConversation"><i class="fa-solid fa-plus"></i></button>
-            <button class="header-icon-btn mobile-history-toggle" type="button" title="Mở lịch sử" aria-label="Mở lịch sử" @click="toggleConversationHistory"><i class="fa-solid fa-clock-rotate-left"></i></button>
-            <button class="return-floating-btn" type="button" @click="returnToFloating"><i class="fa-solid fa-arrow-left"></i> Về bảng AI</button>
+          <div class="ai-context-bar">
+            <div class="context-summary">
+              <span class="context-kicker"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i> AI ĐANG LÀM VIỆC TRONG</span>
+              <strong>{{ activeWorkspaceName }} <span aria-hidden="true">·</span> {{ activeProjectName }}</strong>
+              <small>Trang: {{ currentPageLabel }} · Đổi workspace ở đây; project lấy từ project đang mở.</small>
+            </div>
+            <div class="context-controls">
+              <span class="workspace-context-pill" :title="currentWorkspaceId ? `Workspace ${currentWorkspaceId}` : 'Chưa chọn workspace'">
+                <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+                <span>Phạm vi hiện tại</span>
+              </span>
+              <label v-if="workspaceOptions.length" class="workspace-selector">
+                <i class="fa-solid fa-building" aria-hidden="true"></i>
+                <span class="sr-only">Workspace</span>
+                <select v-model="selectedWorkspaceId" aria-label="Chọn workspace" @change="handleWorkspaceChange">
+                  <option v-for="workspace in workspaceOptions" :key="workspace.id || workspace.Id" :value="workspace.id || workspace.Id">
+                    {{ workspace.name || workspace.Name }}
+                  </option>
+                </select>
+              </label>
+              <span v-if="aiUsage" class="credit-pill">
+                {{ aiRemainingCredits }} credits còn lại
+              </span>
+              <button v-if="aiUsage" class="credit-buy-inline" type="button" @click="openAiCreditPurchase">Mua thêm</button>
+            </div>
           </div>
         </div>
 
@@ -327,7 +362,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import CustomizeSidebarModal from '../components/CustomizeSidebarModal.vue'
 import AiComposer from '@/components/ai/AiComposer.vue'
@@ -353,6 +388,7 @@ import { useAiComposer } from '@/composables/useAiComposer'
 import { AI_QUICK_ACTIONS } from '@/utils/aiActionUi'
 
 const router = useRouter()
+const route = useRoute()
 const aiComposerRef = ref(null)
 const aiConversationStore = useAiConversationStore()
 const aiPetStore = useAiPetStore()
@@ -418,7 +454,44 @@ const conversationSearch = computed({
 })
 const workspaceOptions = computed(() => siteStore.sites || [])
 const currentWorkspaceId = computed(() => selectedWorkspaceId.value || currentProjectRecord.value?.workspaceId || currentProjectRecord.value?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null)
-const formatConversationDate = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : ''
+const formatConversationDate = value => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const now = new Date()
+  const dateKey = item => `${item.getFullYear()}-${item.getMonth()}-${item.getDate()}`
+  const time = new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' }).format(date)
+  if (dateKey(date) === dateKey(now)) return `Hôm nay · ${time}`
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  if (dateKey(date) === dateKey(yesterday)) return `Hôm qua · ${time}`
+  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
+}
+const groupedConversations = computed(() => {
+  const now = new Date()
+  const dateKey = item => `${item.getFullYear()}-${item.getMonth()}-${item.getDate()}`
+  const todayKey = dateKey(now)
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  const yesterdayKey = dateKey(yesterday)
+  const groups = [
+    { key: 'today', label: 'Hôm nay', items: [] },
+    { key: 'recent', label: 'Gần đây', items: [] },
+    { key: 'earlier', label: 'Trước đó', items: [] }
+  ]
+  filteredConversations.value.forEach(conversation => {
+    const date = new Date(conversation.updatedAt)
+    const key = Number.isNaN(date.getTime())
+      ? 'earlier'
+      : dateKey(date) === todayKey
+        ? 'today'
+        : dateKey(date) === yesterdayKey
+          ? 'recent'
+          : 'earlier'
+    groups.find(group => group.key === key).items.push(conversation)
+  })
+  return groups.filter(group => group.items.length)
+})
 const {
   pendingAttachments,
   composerDragActive,
@@ -475,6 +548,10 @@ const activeProjectName = computed(() => {
 const activeWorkspaceName = computed(() => {
   const workspace = workspaceOptions.value.find(item => `${item.id || item.Id}` === `${currentWorkspaceId.value || ''}`)
   return workspace?.name || workspace?.Name || (currentWorkspaceId.value ? 'Workspace hiện tại' : 'Chưa chọn workspace')
+})
+const currentPageLabel = computed(() => {
+  const name = route.meta?.title || route.name || route.path
+  return typeof name === 'string' ? name : route.path
 })
 const workspaceIdOf = workspace => workspace?.id || workspace?.Id || ''
 const syncSelectedWorkspace = () => {
@@ -2075,4 +2152,287 @@ const handleSidebarSaved = (prefs) => {
 
 @media (max-width: 1100px) { .ai-container { padding: 20px 18px 0; } .ai-details-panel { padding: 22px 18px; } }
 @media (max-width: 620px) { .ai-container { padding: 16px 14px 0; } .header-left { align-items: flex-start; } .workspace-context-pill { max-width: min(100%, 300px); } .chat-history { padding-bottom: 12px; } .ai-chat-input-wrapper { padding: 10px 0 calc(12px + env(safe-area-inset-bottom)); } .quick-links { grid-template-columns: 1fr 1fr; } }
+
+/* Focused layout pass: keep the utility rail self-contained while giving the
+   conversation and current scope the strongest hierarchy. */
+.ai-page-flex-wrapper {
+  overflow: hidden;
+}
+
+.ai-page-history {
+  box-sizing: border-box;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.ai-page-history-head > div {
+  gap: 4px;
+}
+
+.ai-page-history-head small {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.history-new-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--color-accent);
+  border-radius: 10px;
+  background: var(--color-accent);
+  color: var(--color-on-accent, #fff);
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+
+.history-new-button:hover,
+.history-new-button:focus-visible {
+  filter: brightness(1.05);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.history-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+}
+
+.history-search:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--sa-primary-soft);
+}
+
+.history-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.history-groups {
+  display: grid;
+  gap: 18px;
+}
+
+.history-group {
+  display: grid;
+  gap: 6px;
+}
+
+.history-group h3 {
+  margin: 0 4px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.ai-page-history-item {
+  grid-template-columns: 28px minmax(0, 1fr) 12px;
+  align-items: center;
+  min-height: 58px;
+  gap: 8px;
+  padding: 10px 9px;
+}
+
+.history-item-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  color: var(--color-accent);
+}
+
+.history-item-content {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.ai-page-history-item strong {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ai-page-history-item small {
+  font-size: 10px;
+}
+
+.history-item-arrow {
+  color: var(--color-text-muted);
+  font-size: 9px;
+  opacity: .7;
+}
+
+.ai-page-header {
+  display: grid;
+  gap: 16px;
+  flex: 0 0 auto;
+  min-height: 0;
+  margin-bottom: 18px;
+}
+
+.ai-page-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.page-title-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.page-subtitle {
+  display: block;
+  margin-top: 5px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.ai-context-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 24%, var(--color-border));
+  border-radius: 14px;
+  background: linear-gradient(110deg, color-mix(in srgb, var(--color-accent) 9%, var(--color-surface)), var(--color-surface) 72%);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+}
+
+.context-summary {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.context-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+
+.context-summary strong {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-summary small {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.context-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.context-controls .workspace-context-pill {
+  flex: 0 0 auto;
+  max-width: none;
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+  font-weight: 800;
+}
+
+.context-controls .credit-pill {
+  font-size: 11px;
+}
+
+.ai-details-panel {
+  box-sizing: border-box;
+  flex: 0 0 302px;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.ai-details-panel > * {
+  flex: 0 0 auto;
+}
+
+.upgrade-card-wrapper {
+  margin-top: 24px;
+  padding-bottom: 2px;
+}
+
+.upgrade-card {
+  padding: 16px;
+}
+
+.credit-balance {
+  font-size: 24px;
+}
+
+@media (max-width: 1100px) {
+  .ai-page-header-top,
+  .ai-context-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .context-controls {
+    justify-content: flex-start;
+    width: 100%;
+  }
+}
+
+@media (max-width: 620px) {
+  .ai-page-header-top {
+    gap: 12px;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .context-summary strong {
+    white-space: normal;
+  }
+
+  .context-controls {
+    align-items: stretch;
+  }
+
+  .context-controls .workspace-selector {
+    flex: 1 1 170px;
+  }
+}
 </style>
