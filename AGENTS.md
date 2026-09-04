@@ -3,7 +3,6 @@
 ## Scope
 
 * Khi task là UI, chỉ sửa frontend.
-* Tuyệt đối không sửa Backend, Controller, Entity, Migration, DbContext, API contract.
 * Không đổi endpoint API.
 * Không đổi tên field API.
 * Không thêm mock data.
@@ -11,7 +10,6 @@
 * Không thay component đang nối API thật bằng ừ component visual/mock.
 * Không xóa chức năng đang chạy được.
 * UI đẹp nhưng làm hỏng chức năng là task thất bại.
-* Nếu cần backend thì phải báo `CẦN BACKEND`, không tự sửa.
 
 ## Frontend stack
 
@@ -50,3 +48,13 @@ Sau mỗi task báo ngắn:
 4. Có sửa Backend không.
 5. Build result.
 6. Test UI đã làm.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs for this repository are tracked in GitHub Issues using the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Use a single-context domain documentation layout. See `docs/agents/domain.md`.

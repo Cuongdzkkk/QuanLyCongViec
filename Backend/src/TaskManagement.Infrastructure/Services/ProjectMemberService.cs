@@ -303,8 +303,45 @@ namespace TaskManagement.Infrastructure.Services
                 throw new UnauthorizedAccessException("Authenticated removal actor is required.");
             }
 
+            if (!_context.Database.IsRelational())
+            {
+                await RemoveMemberCoreAsync(projectId, userId, removedBy, removalReason, useTransaction: false);
+                return;
+            }
+
+            // A caller that already owns a transaction must own the surrounding
+            // execution strategy as well; do not create a nested transaction here.
+            if (_context.Database.CurrentTransaction != null)
+            {
+                await RemoveMemberCoreAsync(projectId, userId, removedBy, removalReason, useTransaction: false);
+                return;
+            }
+
+            await _context.Database.CreateExecutionStrategy()
+                .ExecuteAsync(() => RemoveMemberCoreAsync(
+                    projectId,
+                    userId,
+                    removedBy,
+                    removalReason,
+                    useTransaction: true));
+        }
+
+        private async Task RemoveMemberCoreAsync(
+            Guid projectId,
+            Guid userId,
+            Guid removedBy,
+            string? removalReason,
+            bool useTransaction)
+        {
+            // Each execution-strategy attempt must start from database state so
+            // failed Added/Modified entries cannot be replayed as duplicates.
+            if (useTransaction)
+            {
+                _context.ChangeTracker.Clear();
+            }
+
             IDbContextTransaction? transaction = null;
-            if (_context.Database.IsRelational())
+            if (useTransaction)
             {
                 transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             }
@@ -315,7 +352,7 @@ namespace TaskManagement.Infrastructure.Services
                     .SingleOrDefaultAsync(item => item.ProjectId == projectId && item.UserId == userId && item.Status);
                 if (member == null)
                 {
-                    throw new ArgumentException("Member does not exist or has already left the project.");
+                    throw new KeyNotFoundException("Member does not exist or has already left the project.");
                 }
 
                 var now = DateTime.UtcNow;
@@ -500,8 +537,27 @@ namespace TaskManagement.Infrastructure.Services
                 throw new ArgumentException("User is required.");
             }
 
+            if (!_context.Database.IsRelational() || _context.Database.CurrentTransaction != null)
+            {
+                return await AddExistingMemberCoreAsync(projectId, request, useTransaction: false);
+            }
+
+            return await _context.Database.CreateExecutionStrategy()
+                .ExecuteAsync(() => AddExistingMemberCoreAsync(projectId, request, useTransaction: true));
+        }
+
+        private async Task<ProjectMemberResponseDto> AddExistingMemberCoreAsync(
+            Guid projectId,
+            AddExistingProjectMemberRequestDto request,
+            bool useTransaction)
+        {
+            if (useTransaction)
+            {
+                _context.ChangeTracker.Clear();
+            }
+
             IDbContextTransaction? transaction = null;
-            if (_context.Database.IsRelational())
+            if (useTransaction)
             {
                 transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             }

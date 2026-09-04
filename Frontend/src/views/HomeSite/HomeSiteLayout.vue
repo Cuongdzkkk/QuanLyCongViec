@@ -385,9 +385,11 @@ const goToSiteSelection = () => {
 
 /* Sidebar */
 .sidebar {
-  width: 240px;
-  background-color: #f4f5f7;
-  border-right: 1px solid #dfe1e6;
+  width: var(--sa-sidebar-width, 224px);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sa-sidebar, #f8fafc) 88%, #ffffff 12%), var(--sa-sidebar, #f8fafc)),
+    var(--sa-sidebar, #f8fafc);
+  border-right: 1px solid var(--color-border, #dfe1e6);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -395,7 +397,7 @@ const goToSiteSelection = () => {
 }
 
 .sidebar-header {
-  padding: 24px 16px 16px;
+  padding: 12px 10px;
 }
 
 .site-switcher {
@@ -445,7 +447,7 @@ const goToSiteSelection = () => {
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  padding: 0 16px;
+  padding: 0 10px;
 }
 
 .nav-section-title {
@@ -461,24 +463,28 @@ const goToSiteSelection = () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px;
+  min-height: 36px;
+  padding: 8px 10px;
   text-decoration: none;
   color: #42526e;
   font-size: 14px;
   font-weight: 500;
-  border-radius: 3px;
-  margin-bottom: 2px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  margin-bottom: 0;
   transition: all 0.2s;
 }
 
 .nav-item:hover {
-  background-color: rgba(9, 30, 66, 0.08);
-  color: #172b4d;
+  background-color: rgba(14, 165, 233, 0.08);
+  color: var(--color-text-primary, #172b4d);
+  border-color: rgba(14, 165, 233, 0.18);
 }
 
 .nav-item.router-link-active, .nav-item.active-nav {
-  background-color: rgba(0, 82, 204, 0.08);
-  color: #0052cc;
+  background-color: rgba(14, 165, 233, 0.14);
+  color: var(--sa-primary, #0369a1);
+  border-color: rgba(14, 165, 233, 0.28);
 }
 
 .nav-item.router-link-active .nav-icon, .nav-item.active-nav .nav-icon {

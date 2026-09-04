@@ -32,7 +32,7 @@ namespace TaskManagement.API.Controllers
         }
 
         /// <summary>
-        /// Lấy tất cả workspaces mà user hiện tại là thành viên
+        /// Lấy tất cả workspace mà user sở hữu, được mời trực tiếp hoặc được cấp quyền qua team
         /// </summary>
         [HttpGet]
         public async Task<IActionResult> GetMyWorkspaces()
@@ -41,22 +41,48 @@ namespace TaskManagement.API.Controllers
             if (!Guid.TryParse(userId, out Guid parsedUserId))
                 return Unauthorized(new { statusCode = 401, message = "Vui lòng đăng nhập." });
 
-            var workspaces = await _context.WorkspaceMembers
+            var workspaces = await _context.Workspaces
                 .AsNoTracking()
-                .Where(wm => wm.UserId == parsedUserId && wm.IsActive)
-                .Select(wm => new
+                .Where(workspace =>
+                    !workspace.IsDeleted &&
+                    (workspace.OwnerId == parsedUserId ||
+                     workspace.Members.Any(member => member.UserId == parsedUserId && member.IsActive) ||
+                     workspace.TeamAccesses.Any(access =>
+                         access.Department.IsActive &&
+                         !access.Department.IsDeleted &&
+                         access.Department.DepartmentMembers.Any(member =>
+                             member.UserId == parsedUserId &&
+                             member.LeftAt == null &&
+                             member.User.IsActive &&
+                             !member.User.IsDeleted))))
+                .Select(workspace => new
                 {
-                    wm.Workspace.Id,
-                    wm.Workspace.Name,
-                    wm.Workspace.Slug,
-                    wm.Workspace.Logo,
-                    wm.Workspace.Timezone,
-                    wm.WorkspaceRole,
-                    OwnerName = wm.Workspace.Owner.FullName,
-                    MemberCount = wm.Workspace.Members.Count(m => m.IsActive),
-                    ProjectCount = wm.Workspace.Projects.Count(p => !p.IsDeleted),
-                    wm.Workspace.CreatedAt
+                    workspace.Id,
+                    workspace.Name,
+                    workspace.Slug,
+                    workspace.Logo,
+                    workspace.Timezone,
+                    WorkspaceRole = workspace.OwnerId == parsedUserId
+                        ? "OWNER"
+                        : workspace.Members
+                            .Where(member => member.UserId == parsedUserId && member.IsActive)
+                            .Select(member => member.WorkspaceRole)
+                            .FirstOrDefault() ?? "MEMBER",
+                    AccessSource = workspace.OwnerId == parsedUserId
+                        ? "OWNER"
+                        : workspace.Members.Any(member => member.UserId == parsedUserId && member.IsActive)
+                            ? "DIRECT"
+                            : "TEAM",
+                    workspace.OwnerId,
+                    OwnerName = workspace.Owner.FullName,
+                    OwnerEmail = workspace.Owner.Email,
+                    OwnerAvatarUrl = workspace.Owner.AvatarUrl,
+                    MemberCount = workspace.Members.Count(member => member.IsActive),
+                    ProjectCount = workspace.Projects.Count(project => !project.IsDeleted),
+                    workspace.CreatedAt,
+                    workspace.UpdatedAt
                 })
+                .OrderByDescending(workspace => workspace.UpdatedAt)
                 .ToListAsync();
 
             return Ok(new { statusCode = 200, message = "Success", data = workspaces });
@@ -226,22 +252,145 @@ namespace TaskManagement.API.Controllers
             if (!authorization.Succeeded)
                 return StatusCode(403, new { statusCode = 403, message = "Active workspace membership is required." });
 
-            var members = await _context.WorkspaceMembers
+            var directMembers = await _context.WorkspaceMembers
                 .AsNoTracking()
                 .Where(wm => wm.WorkspaceId == workspaceId && wm.IsActive)
-                .Select(wm => new
+                .Select(wm => new WorkspaceMemberListItem
                 {
-                    wm.UserId,
-                    wm.User.FullName,
-                    wm.User.Email,
-                    wm.User.AvatarUrl,
-                    wm.WorkspaceRole,
-                    wm.JoinedAt
+                    UserId = wm.UserId,
+                    FullName = wm.User.FullName,
+                    Email = wm.User.Email,
+                    AvatarUrl = wm.User.AvatarUrl,
+                    WorkspaceRole = wm.WorkspaceRole,
+                    JoinedAt = wm.JoinedAt,
+                    AccessSource = "DIRECT"
                 })
-                .OrderBy(m => m.FullName)
                 .ToListAsync();
 
+            var teamMembers = await _context.WorkspaceDepartmentAccesses
+                .AsNoTracking()
+                .Where(access =>
+                    access.WorkspaceId == workspaceId &&
+                    access.Department.IsActive &&
+                    !access.Department.IsDeleted)
+                .SelectMany(
+                    access => access.Department.DepartmentMembers.Where(member =>
+                        member.LeftAt == null &&
+                        member.User.IsActive &&
+                        !member.User.IsDeleted),
+                    (access, member) => new WorkspaceMemberListItem
+                    {
+                        UserId = member.UserId,
+                        FullName = member.User.FullName,
+                        Email = member.User.Email,
+                        AvatarUrl = member.User.AvatarUrl,
+                        WorkspaceRole = "MEMBER",
+                        JoinedAt = access.GrantedAt,
+                        AccessSource = "TEAM",
+                        TeamId = access.DepartmentId,
+                        TeamName = access.Department.Name
+                    })
+                .ToListAsync();
+
+            var members = directMembers
+                .Concat(teamMembers)
+                .GroupBy(member => member.UserId)
+                .Select(group => group
+                    .OrderBy(member => member.AccessSource == "DIRECT" ? 0 : 1)
+                    .First())
+                .OrderBy(member => member.FullName)
+                .ToList();
+
             return Ok(new { statusCode = 200, message = "Success", data = members });
+        }
+
+        [HttpGet("{workspaceId}/teams")]
+        public async Task<IActionResult> GetTeams(Guid workspaceId)
+        {
+            if (!Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+                return Unauthorized(new { statusCode = 401, message = "Authentication is required." });
+
+            var authorization = await _authorizationService.AuthorizeWorkspaceAsync(
+                userId,
+                workspaceId,
+                ResourcePermissionCodes.WorkspaceRead);
+            if (!authorization.Succeeded)
+                return StatusCode(403, new { statusCode = 403, message = "Workspace access is required." });
+
+            var teams = await _context.WorkspaceDepartmentAccesses
+                .AsNoTracking()
+                .Where(access => access.WorkspaceId == workspaceId)
+                .OrderBy(access => access.Department.Name)
+                .Select(access => new
+                {
+                    access.DepartmentId,
+                    access.Department.Name,
+                    access.Department.Description,
+                    MemberCount = access.Department.DepartmentMembers.Count(member => member.LeftAt == null),
+                    access.GrantedAt,
+                    access.GrantedByUserId
+                })
+                .ToListAsync();
+
+            return Ok(new { statusCode = 200, message = "Success", data = teams });
+        }
+
+        [HttpPost("{workspaceId}/teams/{departmentId}")]
+        public async Task<IActionResult> GrantTeamAccess(Guid workspaceId, Guid departmentId)
+        {
+            if (!Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+                return Unauthorized(new { statusCode = 401, message = "Authentication is required." });
+
+            var authorization = await _authorizationService.AuthorizeWorkspaceAsync(
+                userId,
+                workspaceId,
+                ResourcePermissionCodes.WorkspaceManage);
+            if (!authorization.Succeeded)
+                return StatusCode(403, new { statusCode = 403, message = "Workspace management permission is required." });
+
+            var teamExists = await _context.Departments.AnyAsync(department =>
+                department.Id == departmentId && department.IsActive && !department.IsDeleted);
+            if (!teamExists)
+                return NotFound(new { statusCode = 404, message = "Team does not exist or is inactive." });
+
+            var accessExists = await _context.WorkspaceDepartmentAccesses.AnyAsync(access =>
+                access.WorkspaceId == workspaceId && access.DepartmentId == departmentId);
+            if (!accessExists)
+            {
+                _context.WorkspaceDepartmentAccesses.Add(new WorkspaceDepartmentAccess
+                {
+                    WorkspaceId = workspaceId,
+                    DepartmentId = departmentId,
+                    GrantedByUserId = userId,
+                    GrantedAt = DateTime.UtcNow
+                });
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok(new { statusCode = 200, message = "Team access granted.", data = new { workspaceId, departmentId } });
+        }
+
+        [HttpDelete("{workspaceId}/teams/{departmentId}")]
+        public async Task<IActionResult> RevokeTeamAccess(Guid workspaceId, Guid departmentId)
+        {
+            if (!Guid.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+                return Unauthorized(new { statusCode = 401, message = "Authentication is required." });
+
+            var authorization = await _authorizationService.AuthorizeWorkspaceAsync(
+                userId,
+                workspaceId,
+                ResourcePermissionCodes.WorkspaceManage);
+            if (!authorization.Succeeded)
+                return StatusCode(403, new { statusCode = 403, message = "Workspace management permission is required." });
+
+            var access = await _context.WorkspaceDepartmentAccesses.FirstOrDefaultAsync(item =>
+                item.WorkspaceId == workspaceId && item.DepartmentId == departmentId);
+            if (access == null)
+                return NoContent();
+
+            _context.WorkspaceDepartmentAccesses.Remove(access);
+            await _context.SaveChangesAsync();
+            return NoContent();
         }
 
         /// <summary>
@@ -450,5 +599,18 @@ namespace TaskManagement.API.Controllers
     public class UpdateMemberRoleRequest
     {
         public string Role { get; set; } = string.Empty;
+    }
+
+    public sealed class WorkspaceMemberListItem
+    {
+        public Guid UserId { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string? AvatarUrl { get; set; }
+        public string WorkspaceRole { get; set; } = "MEMBER";
+        public DateTime JoinedAt { get; set; }
+        public string AccessSource { get; set; } = "DIRECT";
+        public Guid? TeamId { get; set; }
+        public string? TeamName { get; set; }
     }
 }

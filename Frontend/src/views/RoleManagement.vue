@@ -46,11 +46,13 @@
         </div>
         
         <!-- Empty State when no role is selected -->
-        <div class="empty-state" v-else>
-          <div class="empty-icon">🛡️</div>
-          <h3>Select a Role</h3>
-          <p>Choose a role from the sidebar to view its permissions and members.</p>
-        </div>
+        <!-- Empty State when no role is selected -->
+        <ProjectEmptyState
+          v-else
+          icon="fa-solid fa-shield-halved"
+          title="Select a Role"
+          description="Choose a role from the sidebar to view its permissions and members."
+        />
       </div>
     </div>
   </div>
@@ -63,6 +65,7 @@ import RoleHeader from '@/components/RoleManagement/RoleHeader.vue';
 import PermissionsTab from '@/components/RoleManagement/PermissionsTab.vue';
 import MembersTab from '@/components/RoleManagement/MembersTab.vue';
 import HistoryTab from '@/components/RoleManagement/HistoryTab.vue';
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue';
 
 const activeTab = ref('permissions');
 
@@ -244,23 +247,5 @@ function openCreateRole() {
   background: #475569;
 }
 
-.empty-state {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-}
 
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.empty-state h3 {
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
 </style>

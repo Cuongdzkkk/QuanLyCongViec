@@ -31,7 +31,6 @@ namespace TaskManagement.Infrastructure.Services
         private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
         private static readonly string[] RepositoryExecutionProjectRoles = { "PM", "PO", "SM", "Project Lead", "PROJECT_MANAGER", "PROJECT_LEAD", "Admin" };
         private static readonly string[] AssigneeSuggestionProjectRoles = { "PM", "PO", "SM", "Project Lead", "PROJECT_MANAGER", "PROJECT_LEAD", "SCRUM_MASTER", "Admin" };
-        private static readonly string[] SystemExecutionRoles = { "Admin", "System Admin", "SuperAdmin", "Organization Admin" };
 
         public GeminiAiService(
             ApplicationDbContext context,
@@ -1881,24 +1880,21 @@ namespace TaskManagement.Infrastructure.Services
 
         private async Task EnsureRepositoryExecutionAccessAsync(Guid userId, Guid projectId)
         {
-            var user = await _context.Users
-                .AsNoTracking()
-                .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Id == userId);
-
-            var isSystemAllowed = user?.UserRoles?.Any(ur =>
-                ur.Role != null &&
-                SystemExecutionRoles.Contains(ur.Role.Name, StringComparer.OrdinalIgnoreCase)) == true;
-
-            if (isSystemAllowed)
-            {
-                return;
-            }
-
             var projectRole = await _context.ProjectMembers
                 .AsNoTracking()
-                .Where(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status)
+                .Where(pm => pm.ProjectId == projectId &&
+                             pm.UserId == userId &&
+                             pm.Status &&
+                             pm.User.IsActive &&
+                             !pm.User.IsDeleted &&
+                             pm.Project.Status &&
+                             !pm.Project.IsDeleted &&
+                             !pm.Project.Workspace.IsDeleted &&
+                             pm.Project.Workspace.Members.Any(member =>
+                                 member.UserId == userId &&
+                                 member.IsActive &&
+                                 member.User.IsActive &&
+                                 !member.User.IsDeleted))
                 .Select(pm => pm.ProjectRole)
                 .FirstOrDefaultAsync();
 
@@ -1913,24 +1909,21 @@ namespace TaskManagement.Infrastructure.Services
 
         private async Task EnsureAiAssigneeSuggestionAccessAsync(Guid userId, Guid projectId)
         {
-            var user = await _context.Users
-                .AsNoTracking()
-                .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.Id == userId);
-
-            var isSystemAllowed = user?.UserRoles?.Any(ur =>
-                ur.Role != null &&
-                SystemExecutionRoles.Contains(ur.Role.Name, StringComparer.OrdinalIgnoreCase)) == true;
-
-            if (isSystemAllowed)
-            {
-                return;
-            }
-
             var projectRole = await _context.ProjectMembers
                 .AsNoTracking()
-                .Where(pm => pm.ProjectId == projectId && pm.UserId == userId && pm.Status)
+                .Where(pm => pm.ProjectId == projectId &&
+                             pm.UserId == userId &&
+                             pm.Status &&
+                             pm.User.IsActive &&
+                             !pm.User.IsDeleted &&
+                             pm.Project.Status &&
+                             !pm.Project.IsDeleted &&
+                             !pm.Project.Workspace.IsDeleted &&
+                             pm.Project.Workspace.Members.Any(member =>
+                                 member.UserId == userId &&
+                                 member.IsActive &&
+                                 member.User.IsActive &&
+                                 !member.User.IsDeleted))
                 .Select(pm => pm.ProjectRole)
                 .FirstOrDefaultAsync();
 

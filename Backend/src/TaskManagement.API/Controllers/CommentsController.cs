@@ -15,6 +15,8 @@ using System.Threading.Tasks;
 using TaskManagement.API.Hubs;
 using TaskManagement.API.Filters;
 using TaskManagement.API.Security;
+using TaskManagement.Application.Common;
+using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 
@@ -31,12 +33,26 @@ namespace TaskManagement.API.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IHubContext<NotificationHub> _notificationHub;
         private readonly IWebHostEnvironment _env;
+        private readonly IResourceAuthorizationService _authorizationService;
 
-        public CommentsController(ApplicationDbContext context, IHubContext<NotificationHub> notificationHub, IWebHostEnvironment env)
+        private static readonly HashSet<string> SupportedCommentEntityTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "WorkTask", "Project", "Goal", "Risk", "Lesson", "Decision",
+            "GoalUpdate", "ProjectUpdate",
+            "GoalLesson", "GoalRisk", "GoalDecision",
+            "ProjectLesson", "ProjectRisk", "ProjectDecision"
+        };
+
+        public CommentsController(
+            ApplicationDbContext context,
+            IHubContext<NotificationHub> notificationHub,
+            IWebHostEnvironment env,
+            IResourceAuthorizationService authorizationService)
         {
             _context = context;
             _notificationHub = notificationHub;
             _env = env;
+            _authorizationService = authorizationService;
         }
 
         private async Task<bool> TaskBelongsToProjectAsync(Guid projectId, Guid taskId)
@@ -77,6 +93,31 @@ namespace TaskManagement.API.Controllers
         {
             var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             return Guid.TryParse(claim, out var id) ? id : null;
+        }
+
+        private async Task<IActionResult?> AuthorizePolymorphicResourceAsync(
+            string entityType,
+            Guid entityId,
+            string permissionCode)
+        {
+            var userId = GetUserId();
+            if (userId == null)
+            {
+                return Unauthorized();
+            }
+
+            var authorization = await _authorizationService.AuthorizeProjectResourceAsync(
+                userId.Value,
+                entityType,
+                entityId,
+                permissionCode);
+            return authorization.Succeeded
+                ? null
+                : StatusCode(403, new
+                {
+                    statusCode = 403,
+                    message = "Forbidden. Active project membership and permission are required."
+                });
         }
 
         private static (string Content, Dictionary<string, int> Reactions) ParseCommentContent(string? rawContent)
@@ -183,16 +224,18 @@ namespace TaskManagement.API.Controllers
         [HttpGet("comments/{entityType}/{entityId}")]
         public async Task<IActionResult> GetCommentsPolymorphic(string entityType, Guid entityId)
         {
-            var allowedEntityTypes = new[]
-            {
-                "WorkTask", "Project", "Goal", "Risk", "Lesson", "Decision",
-                "GoalUpdate", "ProjectUpdate",
-                "GoalLesson", "GoalRisk", "GoalDecision",
-                "ProjectLesson", "ProjectRisk", "ProjectDecision"
-            };
-            if (!allowedEntityTypes.Contains(entityType))
+            if (!SupportedCommentEntityTypes.Contains(entityType))
             {
                 return BadRequest(new { message = "Loại Entity không hợp lệ." });
+            }
+
+            var authorizationFailure = await AuthorizePolymorphicResourceAsync(
+                entityType,
+                entityId,
+                ResourcePermissionCodes.ProjectRead);
+            if (authorizationFailure != null)
+            {
+                return authorizationFailure;
             }
 
             var comments = await _context.Comments
@@ -206,7 +249,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpGet("projects/{projectId}/WorkTasks/{taskId}/comments")]
-        [ProjectAuthorize("")]
+        [ProjectAuthorize("", true)]
         public async Task<IActionResult> GetComments(Guid projectId, Guid taskId)
         {
             if (!await TaskBelongsToProjectAsync(projectId, taskId))
@@ -228,16 +271,18 @@ namespace TaskManagement.API.Controllers
         [HttpPost("comments/{entityType}/{entityId}")]
         public async Task<IActionResult> CreateCommentPolymorphic(string entityType, Guid entityId, [FromForm] string content, [FromForm] Guid? parentCommentId, [FromForm] List<IFormFile>? files)
         {
-            var allowedEntityTypes = new[]
-            {
-                "WorkTask", "Project", "Goal", "Risk", "Lesson", "Decision",
-                "GoalUpdate", "ProjectUpdate",
-                "GoalLesson", "GoalRisk", "GoalDecision",
-                "ProjectLesson", "ProjectRisk", "ProjectDecision"
-            };
-            if (!allowedEntityTypes.Contains(entityType))
+            if (!SupportedCommentEntityTypes.Contains(entityType))
             {
                 return BadRequest(new { message = "Loại Entity không hợp lệ." });
+            }
+
+            var authorizationFailure = await AuthorizePolymorphicResourceAsync(
+                entityType,
+                entityId,
+                ResourcePermissionCodes.ProjectRead);
+            if (authorizationFailure != null)
+            {
+                return authorizationFailure;
             }
 
             var userId = GetUserId();
@@ -337,7 +382,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("projects/{projectId}/WorkTasks/{taskId}/comments")]
-        [ProjectAuthorize("")]
+        [ProjectAuthorize("", true)]
         public async Task<IActionResult> CreateComment(Guid projectId, Guid taskId, [FromForm] string content, [FromForm] Guid? parentCommentId, [FromForm] List<IFormFile>? files)
         {
             var userId = GetUserId();
@@ -443,7 +488,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost("projects/{projectId}/WorkTasks/{taskId}/comments/{commentId}/reactions")]
-        [ProjectAuthorize("")]
+        [ProjectAuthorize("", true)]
         public async Task<IActionResult> AddReaction(Guid projectId, Guid taskId, Guid commentId, [FromBody] AddReactionRequest request)
         {
             var userId = GetUserId();
@@ -494,7 +539,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPut("projects/{projectId}/WorkTasks/{taskId}/comments/{commentId}")]
-        [ProjectAuthorize("")]
+        [ProjectAuthorize("", true)]
         public async Task<IActionResult> UpdateComment(Guid projectId, Guid taskId, Guid commentId, [FromBody] UpdateCommentRequest request)
         {
             var userId = GetUserId();
@@ -520,7 +565,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpDelete("projects/{projectId}/WorkTasks/{taskId}/comments/{commentId}")]
-        [ProjectAuthorize("")]
+        [ProjectAuthorize("", true)]
         public async Task<IActionResult> DeleteCommentNested(Guid projectId, Guid taskId, Guid commentId)
         {
             if (!await TaskBelongsToProjectAsync(projectId, taskId))
@@ -532,7 +577,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpDelete("projects/{projectId}/WorkTasks/{taskId}/comments/{commentId}/attachments/{attachmentId}")]
-        [ProjectAuthorize("")]
+        [ProjectAuthorize("", true)]
         public async Task<IActionResult> DeleteCommentAttachment(Guid projectId, Guid taskId, Guid commentId, Guid attachmentId)
         {
             var userId = GetUserId();
@@ -573,6 +618,20 @@ namespace TaskManagement.API.Controllers
 
             var comment = await _context.Comments.FindAsync(commentId);
             if (comment == null) return NotFound();
+
+            if (SupportedCommentEntityTypes.Contains(comment.EntityType))
+            {
+                var authorization = await _authorizationService.AuthorizeProjectResourceAsync(
+                    userId.Value,
+                    comment.EntityType,
+                    comment.EntityId,
+                    ResourcePermissionCodes.ProjectRead);
+                if (!authorization.Succeeded)
+                {
+                    return NotFound();
+                }
+            }
+
             if (comment.UserId != userId.Value) return Forbid();
 
             comment.IsDeleted = true;
@@ -580,6 +639,23 @@ namespace TaskManagement.API.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { statusCode = 200, message = "Da xoa binh luan." });
+        }
+
+        [HttpPut("comments/{commentId}")]
+        public async Task<IActionResult> UpdateCommentGeneric(Guid commentId, [FromBody] UpdateCommentRequest request)
+        {
+            var userId = GetUserId();
+            if (userId == null) return Unauthorized();
+            var comment = await _context.Comments.FirstOrDefaultAsync(item => item.Id == commentId && !item.IsDeleted);
+            if (comment == null) return NotFound(new { message = "Comment khong ton tai." });
+            if (comment.UserId != userId.Value) return Forbid();
+            if (string.IsNullOrWhiteSpace(request.Content)) return BadRequest(new { message = "Noi dung khong duoc de trong." });
+
+            var parsed = ParseCommentContent(comment.Content);
+            comment.Content = ComposeCommentContent(SanitizeRichHtml(request.Content), parsed.Reactions);
+            comment.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return Ok(new { statusCode = 200, message = "Da cap nhat binh luan." });
         }
 
         [HttpPost("upload")]

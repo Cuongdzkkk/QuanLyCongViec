@@ -17,6 +17,7 @@ import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import { DEFAULT_PROJECT_BACKGROUND, DEFAULT_PROJECT_ICON } from '@/config/projectAppearance'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 import { buildSpacePath } from '@/utils/spaceRoute'
 
 const route = useRoute()
@@ -436,17 +437,12 @@ onBeforeUnmount(() => {
           </div>
           
           <!-- Premium Empty State for Spaces -->
-          <div v-else-if="sortedSpaces.length === 0" class="empty-spaces-card">
-            <div class="esc-icon">
-              <svg class="h-10 w-10 text-blue-500/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-              </svg>
-            </div>
-            <div class="esc-text">
-              <h3 class="text-sm font-semibold text-gray-700 dark:text-neutral-300">{{ t('forYou.noActiveSpaces') }}</h3>
-              <p class="text-xs text-gray-500 dark:text-neutral-500 mt-0.5">{{ t('forYou.noActiveSpacesDesc') }}</p>
-            </div>
-          </div>
+          <ProjectEmptyState
+            v-else-if="sortedSpaces.length === 0"
+            icon="fa-regular fa-folder-open"
+            :title="t('forYou.noActiveSpaces')"
+            :description="t('forYou.noActiveSpacesDesc')"
+          />
           
           <div v-else class="spaces-row">
             <div 
@@ -528,23 +524,24 @@ onBeforeUnmount(() => {
             <i class="fa-solid fa-spinner fa-spin"></i> {{ t('forYou.loadingYourWork') }}
           </div>
 
-          <div v-else-if="errorTasks" class="empty-state">
-            <h3 class="text-sm font-semibold text-gray-700 dark:text-neutral-300">{{ t('forYou.loadTasksFailed') }}</h3>
-            <button class="jira-btn-subtle mt-4" @click="fetchMyTasks">{{ t('common.retry') }}</button>
-          </div>
+          <ProjectEmptyState
+            v-else-if="errorTasks"
+            icon="fa-solid fa-triangle-exclamation"
+            :title="t('forYou.loadTasksFailed')"
+            :description="t('common.error')"
+          >
+            <template #action>
+              <button class="empty-spaces-btn" @click="fetchMyTasks">{{ t('common.retry') }}</button>
+            </template>
+          </ProjectEmptyState>
           
           <!-- Premium Empty State for Tasks -->
-          <div v-else-if="filteredTasksList.length === 0" class="foryou-empty-state">
-            <div class="empty-state-illustration">
-              <svg class="mx-auto h-16 w-16 text-blue-500/20 dark:text-blue-400/10 mb-4 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-              </svg>
-            </div>
-            <h3 class="text-sm font-semibold text-gray-700 dark:text-neutral-300">{{ t('forYou.allCaughtUp') }}</h3>
-            <p class="text-xs text-gray-500 dark:text-neutral-500 mt-1 max-w-xs mx-auto">
-              {{ t('forYou.noMatchingWorkItems') }}
-            </p>
-          </div>
+          <ProjectEmptyState
+            v-else-if="filteredTasksList.length === 0"
+            icon="fa-solid fa-check-double"
+            :title="t('forYou.allCaughtUp')"
+            :description="t('forYou.noMatchingWorkItems')"
+          />
 
           <!-- Task Groups -->
           <div v-else class="task-groups-container fixed-height-scroll">

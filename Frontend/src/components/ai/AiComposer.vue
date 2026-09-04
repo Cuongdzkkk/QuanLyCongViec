@@ -10,14 +10,14 @@
     <input ref="fileInput" class="ai-composer-file-input" type="file" multiple :accept="accept" @change="$emit('files', $event)" />
 
     <div v-if="pendingAttachments.length" class="ai-attachment-tray" role="list" aria-label="Tệp đang chờ tải lên">
-      <article v-for="attachment in pendingAttachments" :key="attachment.id" class="ai-attachment-card" role="listitem">
+      <article v-for="attachment in pendingAttachments" :key="attachment.id" class="ai-attachment-card" :class="attachment.kind === 'image' ? 'is-image' : 'is-file'" role="listitem">
         <button v-if="attachment.kind === 'image'" class="ai-attachment-thumbnail" type="button" :title="`Mở ${attachment.name}`" @click="$emit('preview-attachment', attachment)">
           <img :src="attachment.previewUrl" :alt="attachment.name" />
         </button>
         <div v-else class="ai-attachment-file-icon" aria-hidden="true"><i :class="attachment.icon"></i></div>
         <div class="ai-attachment-meta">
           <strong>{{ attachment.kind === 'image' ? attachment.displayName : attachment.name }}</strong>
-          <span>{{ attachment.typeLabel }} · {{ formatBytes(attachment.size) }}<template v-if="attachment.width && attachment.height"> · {{ attachment.width }}×{{ attachment.height }}</template></span>
+          <span>{{ attachment.typeLabel }}<template v-if="attachment.kind === 'image'"> · {{ formatBytes(attachment.size) }}<template v-if="attachment.width && attachment.height"> · {{ attachment.width }}×{{ attachment.height }}</template></template></span>
           <small :class="`is-${attachment.status || 'pending'}`"><i :class="statusIcon(attachment.status)"></i> {{ statusLabel(attachment.status) }}</small>
         </div>
         <div class="ai-attachment-actions">
@@ -80,9 +80,10 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
+import { measureAiComposerHeight, AI_COMPOSER_MAX_HEIGHT } from '@/utils/aiComposer'
 
-defineProps({
+const props = defineProps({
   modelValue: { type: String, default: '' },
   placeholder: { type: String, default: 'Hỏi SprintA AI bất cứ điều gì...' },
   enterHint: { type: String, default: 'Enter để gửi · Shift + Enter để xuống dòng' },
@@ -109,13 +110,21 @@ const emit = defineEmits([
 ])
 
 const fileInput = ref(null)
+const resizeTextarea = () => {
+  const textarea = textareaInput.value
+  if (!textarea) return
+  const maxHeight = Number.parseFloat(window.getComputedStyle(textarea).maxHeight) || AI_COMPOSER_MAX_HEIGHT
+  textarea.style.height = '0px'
+  const { height, overflowY } = measureAiComposerHeight(textarea.scrollHeight, maxHeight)
+  textarea.style.height = `${height}px`
+  textarea.style.overflowY = overflowY
+}
 const textareaInput = ref(null)
 const handleInput = event => {
   const textarea = event.target
-  textarea.style.height = 'auto'
-  textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`
   emit('update:modelValue', textarea.value)
   emit('input', event)
+  nextTick(resizeTextarea)
 }
 const formatBytes = bytes => {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
@@ -129,8 +138,12 @@ const statusIcon = status => ({ uploading: 'fa-solid fa-arrow-up-from-bracket fa
 
 defineExpose({
   openFilePicker: () => fileInput.value?.click(),
-  focusInput: () => textareaInput.value?.focus()
+  focusInput: () => textareaInput.value?.focus(),
+  resetTextarea: resizeTextarea
 })
+
+watch(() => props.modelValue, () => nextTick(resizeTextarea), { flush: 'post' })
+onMounted(() => nextTick(resizeTextarea))
 </script>
 
 <style scoped>
@@ -202,5 +215,116 @@ defineExpose({
 @media (max-width: 520px) {
   .ai-composer { border-radius: 15px; }
   .ai-composer-row { border-radius: 12px; }
+}
+
+/* Final interaction surface: attachments stay above the input and the input
+   gets enough room to feel like one calm, modern writing surface. */
+.ai-composer {
+  gap: 12px;
+  padding: 13px;
+  border-radius: 22px;
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)), var(--color-surface) 62%),
+    var(--color-surface);
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--color-text-primary) 11%, transparent), 0 0 0 1px color-mix(in srgb, var(--color-text-inverse) 7%, transparent) inset;
+}
+
+.ai-attachment-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 190px;
+  margin: 0;
+  overflow-y: auto;
+}
+
+.ai-attachment-card {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+  flex: 1 1 230px;
+  min-width: min(100%, 230px);
+  max-width: 320px;
+  padding: 8px;
+  border-radius: 13px;
+  border-color: color-mix(in srgb, var(--color-accent) 20%, var(--color-border));
+  background: color-mix(in srgb, var(--color-surface-hover) 78%, var(--color-surface));
+}
+
+.ai-attachment-card.is-file {
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  min-width: min(100%, 210px);
+}
+
+.ai-attachment-thumbnail {
+  width: 78px;
+  height: 58px;
+  border-radius: 9px;
+}
+
+.ai-attachment-file-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+.ai-attachment-meta { gap: 3px; }
+.ai-attachment-meta strong { font-size: 12px; }
+.ai-attachment-meta span { font-size: 10px; }
+.ai-attachment-meta small { font-size: 10px; }
+
+.ai-composer-row {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) 46px 48px;
+  gap: 9px;
+  align-items: end;
+  padding: 6px 7px 6px 8px;
+  border-radius: 17px;
+  border-color: color-mix(in srgb, var(--color-accent) 23%, var(--color-border));
+  background: color-mix(in srgb, var(--color-bg) 34%, var(--color-surface));
+}
+
+.ai-composer-row :deep(.el-dropdown) { width: 46px; }
+.ai-composer-row textarea {
+  min-height: 52px;
+  max-height: 184px;
+  overflow-y: auto;
+  padding: 12px 4px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.ai-attachment-actions button,
+.ai-composer-icon-btn,
+.ai-composer-send {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  border-radius: 13px;
+}
+
+.ai-composer-send {
+  width: 48px;
+  height: 48px;
+  flex-basis: 48px;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--color-accent) 26%, transparent);
+}
+
+.ai-input-foot {
+  padding: 0 5px;
+  font-size: 10px;
+}
+.ai-input-foot span { line-height: 1.45; }
+
+@media (max-width: 520px) {
+  .ai-composer { padding: 10px; border-radius: 18px; }
+  .ai-attachment-card,
+  .ai-attachment-card.is-file { flex-basis: 100%; max-width: none; }
+  .ai-composer-row { grid-template-columns: 42px minmax(0, 1fr) 42px 46px; gap: 5px; padding-inline: 5px; }
+  .ai-composer-row :deep(.el-dropdown) { width: 42px; }
+  .ai-composer-row textarea { min-height: 52px; max-height: 152px; padding-inline: 3px; }
+  .ai-composer-icon-btn { width: 40px; height: 40px; flex-basis: 40px; }
+  .ai-composer-send { width: 46px; height: 46px; flex-basis: 46px; }
 }
 </style>

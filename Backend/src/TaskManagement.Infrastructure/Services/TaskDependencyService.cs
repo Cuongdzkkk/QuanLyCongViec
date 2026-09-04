@@ -31,8 +31,49 @@ namespace TaskManagement.Infrastructure.Services
 
             var (predecessorId, successorId, dependencyType) = NormalizeRelation(taskId, relatedTaskId, relationType);
 
+            if (!_context.Database.IsRelational() || _context.Database.CurrentTransaction != null)
+            {
+                return await AddOrUpdateCoreAsync(
+                    projectId,
+                    taskId,
+                    relatedTaskId,
+                    predecessorId,
+                    successorId,
+                    dependencyType,
+                    useTransaction: false,
+                    cancellationToken);
+            }
+
+            return await _context.Database.CreateExecutionStrategy()
+                .ExecuteAsync(
+                    () => AddOrUpdateCoreAsync(
+                        projectId,
+                        taskId,
+                        relatedTaskId,
+                        predecessorId,
+                        successorId,
+                        dependencyType,
+                        useTransaction: true,
+                        cancellationToken));
+        }
+
+        private async Task<TaskDependencyMutation> AddOrUpdateCoreAsync(
+            Guid projectId,
+            Guid taskId,
+            Guid relatedTaskId,
+            Guid predecessorId,
+            Guid successorId,
+            int dependencyType,
+            bool useTransaction,
+            CancellationToken cancellationToken)
+        {
+            if (useTransaction)
+            {
+                _context.ChangeTracker.Clear();
+            }
+
             IDbContextTransaction? transaction = null;
-            if (_context.Database.IsRelational())
+            if (useTransaction)
             {
                 // Serializable prevents two concurrent edge inserts from both validating
                 // against the same stale graph and jointly creating a cycle.

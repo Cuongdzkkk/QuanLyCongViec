@@ -35,6 +35,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<Organization> Organizations { get; set; }
         public DbSet<Department> Departments { get; set; }
         public DbSet<DepartmentMember> DepartmentMembers { get; set; }
+        public DbSet<WorkspaceDepartmentAccess> WorkspaceDepartmentAccesses { get; set; }
 
         // Group 3: Core Work Management
         public DbSet<Project> Projects { get; set; }
@@ -60,6 +61,7 @@ namespace TaskManagement.Infrastructure.Data
         public DbSet<SiteAuditLog> SiteAuditLogs { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<ProjectInvitation> ProjectInvitations { get; set; }
+        public DbSet<SiteAccountLinkRequest> SiteAccountLinkRequests { get; set; }
         public DbSet<NotificationPreference> NotificationPreferences { get; set; }
         public DbSet<RecentView> RecentViews { get; set; }
 
@@ -229,6 +231,7 @@ namespace TaskManagement.Infrastructure.Data
 
             // New Composite Keys
             modelBuilder.Entity<WorkspaceMember>().HasKey(x => new { x.WorkspaceId, x.UserId });
+            modelBuilder.Entity<WorkspaceDepartmentAccess>().HasKey(x => new { x.WorkspaceId, x.DepartmentId });
             modelBuilder.Entity<IssueLabel>().HasKey(x => new { x.WorkTaskId, x.LabelId });
             modelBuilder.Entity<IssueModule>().HasKey(x => new { x.WorkTaskId, x.ModuleId });
             modelBuilder.Entity<TaskSubscriber>().HasKey(x => new { x.WorkTaskId, x.UserId });
@@ -606,7 +609,23 @@ namespace TaskManagement.Infrastructure.Data
                 entity.HasOne(n => n.RelatedInvitation).WithMany()
                     .HasForeignKey(n => n.RelatedInvitationId)
                     .OnDelete(DeleteBehavior.NoAction);
+                entity.HasOne(n => n.RelatedSiteAccountLinkRequest).WithMany()
+                    .HasForeignKey(n => n.RelatedSiteAccountLinkRequestId)
+                    .OnDelete(DeleteBehavior.NoAction);
                 entity.Property(n => n.ActionState).HasMaxLength(32);
+            });
+
+            modelBuilder.Entity<SiteAccountLinkRequest>(entity =>
+            {
+                entity.HasKey(request => request.Id);
+                entity.Property(request => request.Status).HasMaxLength(32).IsRequired();
+                entity.HasIndex(request => new { request.RequesterUserId, request.TargetUserId, request.Status });
+                entity.HasOne(request => request.RequesterUser).WithMany(user => user.OutgoingSiteAccountLinkRequests)
+                    .HasForeignKey(request => request.RequesterUserId)
+                    .OnDelete(DeleteBehavior.NoAction);
+                entity.HasOne(request => request.TargetUser).WithMany(user => user.IncomingSiteAccountLinkRequests)
+                    .HasForeignKey(request => request.TargetUserId)
+                    .OnDelete(DeleteBehavior.NoAction);
             });
 
             modelBuilder.Entity<CallChatMessage>(entity =>
@@ -1054,6 +1073,18 @@ namespace TaskManagement.Infrastructure.Data
                 .HasOne(wm => wm.User)
                 .WithMany(u => u.WorkspaceMemberships)
                 .HasForeignKey(wm => wm.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<WorkspaceDepartmentAccess>()
+                .HasOne(access => access.Workspace)
+                .WithMany(workspace => workspace.TeamAccesses)
+                .HasForeignKey(access => access.WorkspaceId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<WorkspaceDepartmentAccess>()
+                .HasOne(access => access.Department)
+                .WithMany(department => department.WorkspaceAccesses)
+                .HasForeignKey(access => access.DepartmentId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             // Project -> Workspace

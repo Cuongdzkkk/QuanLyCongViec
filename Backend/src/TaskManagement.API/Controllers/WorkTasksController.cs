@@ -32,6 +32,7 @@ namespace TaskManagement.API.Controllers
         private readonly IWorkTaskService _workTaskService;
         private readonly IHubContext<KanbanHub> _kanbanHub;
         private readonly ApplicationDbContext? _context;
+        private readonly IResourceAuthorizationService? _authorizationService;
         private static readonly string[] BaselineManagerRoles = { "PM", "PO", "SM", "PA", "PROJECT_MANAGER", "SCRUM_MASTER", "PROJECT_ADMIN" };
         private const string TaskVisibilitySettingGroup = "TaskVisibility";
         private const string ProjectPermissionsSettingGroup = "ProjectPermissions";
@@ -43,11 +44,13 @@ namespace TaskManagement.API.Controllers
         public WorkTasksController(
             IWorkTaskService workTaskService,
             IHubContext<KanbanHub> kanbanHub,
-            ApplicationDbContext? context = null)
+            ApplicationDbContext? context = null,
+            IResourceAuthorizationService? authorizationService = null)
         {
             _workTaskService = workTaskService;
             _kanbanHub = kanbanHub;
             _context = context;
+            _authorizationService = authorizationService;
         }
 
         private static string NormalizeStatusName(string? statusName)
@@ -997,6 +1000,13 @@ namespace TaskManagement.API.Controllers
                 }
                 var savedTask = await LoadTaskResponseAsync(context, projectId, id, userId);
                 await BroadcastTaskUpdatedAsync(projectId, savedTask);
+
+                var rewardService = HttpContext.RequestServices.GetService<TaskManagement.Application.Interfaces.IRewardSystemService>();
+                if (rewardService != null && updatedTask != null)
+                {
+                    await rewardService.HandleTaskStatusChangeAsync(id, userId, previousTask?.TaskStatus?.Name, updatedTask.TaskStatus?.Name);
+                }
+
                 return Ok(new { statusCode = 200, message = "Cập nhật trạng thái tác vụ thành công.", data = savedTask });
             }
             catch (DbUpdateConcurrencyException)
@@ -1581,7 +1591,7 @@ namespace TaskManagement.API.Controllers
                 {
                     if (userId != Guid.Empty && !string.IsNullOrWhiteSpace(newStatusName))
                     {
-                        await gamificationService.ApplyStatusChangeRewardsAsync(id, userId, oldStatusName, newStatusName);
+                        // await gamificationService.ApplyStatusChangeRewardsAsync(id, userId, oldStatusName, newStatusName);
                     }
 
                     if (updates.TryGetProperty("dueDate", out _))
@@ -1862,7 +1872,7 @@ namespace TaskManagement.API.Controllers
                 await context.SaveChangesAsync();
                 if (!string.IsNullOrWhiteSpace(newStatusName))
                 {
-                    await gamificationService.ApplyStatusChangeRewardsAsync(id, userId, oldStatusName, newStatusName);
+                    // await gamificationService.ApplyStatusChangeRewardsAsync(id, userId, oldStatusName, newStatusName);
                 }
                 foreach (var reward in completedAssigneeRewards)
                 {
@@ -2546,6 +2556,10 @@ namespace TaskManagement.API.Controllers
             if (!Guid.TryParse(userIdStr, out Guid userId))
                 return Unauthorized();
 
+            var authorization = await AuthorizeProjectAsync(userId, projectId, ResourcePermissionCodes.ProjectWrite);
+            if (authorization != null)
+                return authorization;
+
             if (rows == null || rows.Count == 0)
                 return BadRequest(new { statusCode = 400, message = "Không có dữ liệu để nhập.", errors = new[] { "Danh sách công việc trống." } });
 
@@ -2691,6 +2705,14 @@ namespace TaskManagement.API.Controllers
         [HttpGet("projects/{projectId}/WorkTasks/export")]
         public async Task<IActionResult> ExportWorkTasks(Guid projectId, [FromServices] ApplicationDbContext context)
         {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdStr, out Guid userId))
+                return Unauthorized();
+
+            var authorization = await AuthorizeProjectAsync(userId, projectId, ResourcePermissionCodes.ProjectRead);
+            if (authorization != null)
+                return authorization;
+
             var project = await context.Projects.FirstOrDefaultAsync(p => p.Id == projectId && !p.IsDeleted);
             if (project == null)
                 return NotFound(new { statusCode = 404, message = "Không tìm thấy dự án." });
@@ -2786,6 +2808,13 @@ namespace TaskManagement.API.Controllers
         [Authorize]
         public async Task<IActionResult> GetContingencyPlans(Guid id)
         {
+            var userId = GetAuthenticatedUserId();
+            if (userId == null)
+                return Unauthorized(new { statusCode = 401, message = "User is not authenticated." });
+            var authorization = await AuthorizeTaskAsync(userId.Value, id, ResourcePermissionCodes.ProjectRead);
+            if (authorization != null)
+                return authorization;
+
             try
             {
                 var plans = await _workTaskService.GetContingencyPlansAsync(id);
@@ -2801,6 +2830,13 @@ namespace TaskManagement.API.Controllers
         [Authorize]
         public async Task<IActionResult> GetContingencyPlan(Guid id, Guid planId)
         {
+            var userId = GetAuthenticatedUserId();
+            if (userId == null)
+                return Unauthorized(new { statusCode = 401, message = "User is not authenticated." });
+            var authorization = await AuthorizeTaskAsync(userId.Value, id, ResourcePermissionCodes.ProjectRead);
+            if (authorization != null)
+                return authorization;
+
             try
             {
                 var plan = await _workTaskService.GetContingencyPlanByIdAsync(id, planId);
@@ -2822,6 +2858,10 @@ namespace TaskManagement.API.Controllers
             var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
                 return Unauthorized(new { statusCode = 401, message = "User is not authenticated." });
+
+            var authorization = await AuthorizeTaskAsync(userId, id, ResourcePermissionCodes.ProjectWrite);
+            if (authorization != null)
+                return authorization;
 
             try
             {
@@ -2845,6 +2885,10 @@ namespace TaskManagement.API.Controllers
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
                 return Unauthorized(new { statusCode = 401, message = "User is not authenticated." });
 
+            var authorization = await AuthorizeTaskAsync(userId, id, ResourcePermissionCodes.ProjectWrite);
+            if (authorization != null)
+                return authorization;
+
             try
             {
                 var plan = await _workTaskService.UpdateContingencyPlanAsync(id, planId, userId, dto);
@@ -2864,6 +2908,10 @@ namespace TaskManagement.API.Controllers
             var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
                 return Unauthorized(new { statusCode = 401, message = "User is not authenticated." });
+
+            var authorization = await AuthorizeTaskAsync(userId, id, ResourcePermissionCodes.ProjectWrite);
+            if (authorization != null)
+                return authorization;
 
             try
             {
@@ -2885,6 +2933,10 @@ namespace TaskManagement.API.Controllers
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
                 return Unauthorized(new { statusCode = 401, message = "User is not authenticated." });
 
+            var authorization = await AuthorizeTaskAsync(userId, id, ResourcePermissionCodes.ProjectWrite);
+            if (authorization != null)
+                return authorization;
+
             try
             {
                 await _workTaskService.CreateContingencyTaskToPlanAsync(id, planId, dto, userId);
@@ -2904,6 +2956,12 @@ namespace TaskManagement.API.Controllers
             var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
                 return Unauthorized(new { statusCode = 401, message = "User is not authenticated." });
+
+            var authorization = await AuthorizeTaskAsync(userId, id, ResourcePermissionCodes.ProjectWrite);
+            if (authorization != null)
+                return authorization;
+            if (!await IsFallbackTaskInSameProjectAsync(id, fallbackTaskId))
+                return BadRequest(new { statusCode = 400, message = "Fallback task must belong to the same project." });
 
             try
             {
@@ -2925,6 +2983,10 @@ namespace TaskManagement.API.Controllers
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
                 return Unauthorized(new { statusCode = 401, message = "User is not authenticated." });
 
+            var authorization = await AuthorizeTaskAsync(userId, id, ResourcePermissionCodes.ProjectWrite);
+            if (authorization != null)
+                return authorization;
+
             try
             {
                 await _workTaskService.RemoveContingencyTaskFromPlanAsync(id, planId, fallbackTaskId, userId);
@@ -2945,6 +3007,10 @@ namespace TaskManagement.API.Controllers
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out Guid userId))
                 return Unauthorized(new { statusCode = 401, message = "User is not authenticated." });
 
+            var authorization = await AuthorizeTaskAsync(userId, id, ResourcePermissionCodes.ProjectWrite);
+            if (authorization != null)
+                return authorization;
+
             try
             {
                 await _workTaskService.ActivateContingencyTaskAsync(id, planId, fallbackTaskId, userId);
@@ -2955,6 +3021,57 @@ namespace TaskManagement.API.Controllers
             {
                 return BadRequest(new { statusCode = 400, message = ex.Message });
             }
+        }
+
+        private async Task<IActionResult?> AuthorizeProjectAsync(Guid userId, Guid projectId, string permissionCode)
+        {
+            if (_authorizationService == null)
+                return Forbid();
+
+            var authorization = await _authorizationService.AuthorizeProjectAsync(
+                userId,
+                projectId,
+                permissionCode,
+                requireDirectProjectMembership: true);
+            return authorization.Succeeded ? null : Forbid();
+        }
+
+        private async Task<IActionResult?> AuthorizeTaskAsync(Guid userId, Guid taskId, string permissionCode)
+        {
+            if (_authorizationService == null)
+                return Forbid();
+
+            var authorization = await _authorizationService.AuthorizeProjectResourceAsync(
+                userId,
+                "WorkTask",
+                taskId,
+                permissionCode);
+            return authorization.Succeeded ? null : Forbid();
+        }
+
+        private async Task<bool> IsFallbackTaskInSameProjectAsync(Guid taskId, Guid fallbackTaskId)
+        {
+            if (_context == null)
+                return false;
+
+            var projectId = await _context.WorkTasks
+                .AsNoTracking()
+                .Where(task => task.Id == taskId && !task.IsDeleted)
+                .Select(task => (Guid?)task.ProjectId)
+                .FirstOrDefaultAsync();
+            if (!projectId.HasValue)
+                return false;
+
+            return await _context.WorkTasks.AnyAsync(task =>
+                task.Id == fallbackTaskId &&
+                task.ProjectId == projectId.Value &&
+                !task.IsDeleted);
+        }
+
+        private Guid? GetAuthenticatedUserId()
+        {
+            var value = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            return Guid.TryParse(value, out var userId) ? userId : null;
         }
 
         private async Task PublishContingencyChangedAsync(Guid taskId, Guid planId, string action)

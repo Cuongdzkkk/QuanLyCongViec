@@ -3,49 +3,98 @@
     <div class="ai-page-flex-wrapper">
       <aside class="ai-page-history" :class="{ 'is-open': aiConversationStore.historyVisible }" aria-label="Lịch sử trò chuyện">
         <div class="ai-page-history-head">
-          <div><span class="eyebrow">SPRINTA AI</span><strong>Lịch sử trò chuyện</strong></div>
+          <div>
+            <span class="eyebrow">SPRINTA AI</span>
+            <strong>Lịch sử trò chuyện</strong>
+            <small>Các cuộc trò chuyện của bạn</small>
+          </div>
           <button type="button" aria-label="Đóng lịch sử" title="Đóng lịch sử" @click="aiConversationStore.historyVisible = false">×</button>
         </div>
-        <input v-model="conversationSearch" type="search" placeholder="Tìm cuộc trò chuyện" aria-label="Tìm cuộc trò chuyện" />
+        <button class="history-new-button" type="button" @click="startNewConversation">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i>
+          <span>Cuộc trò chuyện mới</span>
+        </button>
+        <label class="history-search">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input v-model="conversationSearch" type="search" placeholder="Tìm cuộc trò chuyện" aria-label="Tìm cuộc trò chuyện" />
+        </label>
         <p v-if="conversationLoading" class="history-empty">Đang tải...</p>
         <p v-else-if="!conversations.length" class="history-empty">Chưa có cuộc trò chuyện đã lưu.</p>
-        <button v-for="conversation in filteredConversations" :key="conversation.id" type="button" class="ai-page-history-item" :class="{ active: conversation.id === currentConversationId }" @click="openConversation(conversation.id)">
-          <strong>{{ conversation.title }}</strong>
-          <small>{{ formatConversationDate(conversation.updatedAt) }}</small>
-        </button>
+        <p v-else-if="!filteredConversations.length" class="history-empty">Không tìm thấy cuộc trò chuyện phù hợp.</p>
+        <div v-else class="history-groups">
+          <section v-for="group in groupedConversations" :key="group.key" class="history-group">
+            <h3>{{ group.label }}</h3>
+            <button v-for="conversation in group.items" :key="conversation.id" type="button" class="ai-page-history-item" :class="{ active: conversation.id === currentConversationId }" @click="openConversation(conversation.id)">
+              <span class="history-item-icon"><i class="fa-regular fa-message" aria-hidden="true"></i></span>
+              <span class="history-item-content">
+                <strong>{{ conversation.title }}</strong>
+                <small>{{ formatConversationDate(conversation.updatedAt) }}</small>
+              </span>
+              <i class="fa-solid fa-chevron-right history-item-arrow" aria-hidden="true"></i>
+            </button>
+          </section>
+        </div>
         <button v-if="conversationHasMore" class="history-more" type="button" @click="loadConversations(false)">Tải thêm</button>
       </aside>
       <div class="ai-container">
         <div class="ai-page-header">
-          <div class="header-left">
-            <h2 class="page-title">Trợ lý AI</h2>
-            <span class="header-pill">Trợ lý công việc</span>
-            <span class="workspace-context-pill" :title="currentWorkspaceId ? `Workspace ${currentWorkspaceId}` : 'Chưa chọn workspace'">
-              <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
-              {{ activeProjectName }} · {{ activeWorkspaceName }}
-            </span>
-            <label v-if="workspaceOptions.length" class="workspace-selector">
-              <i class="fa-solid fa-building" aria-hidden="true"></i>
-              <span class="sr-only">Workspace</span>
-              <select v-model="selectedWorkspaceId" aria-label="Chọn workspace" @change="handleWorkspaceChange">
-                <option v-for="workspace in workspaceOptions" :key="workspace.id || workspace.Id" :value="workspace.id || workspace.Id">
-                  {{ workspace.name || workspace.Name }}
-                </option>
-              </select>
-            </label>
-            <span v-if="aiUsage" class="credit-pill">
-              {{ aiUsage.usedCredits }}/{{ aiUsage.includedCredits }} credits · còn {{ aiUsage.remainingCredits }}
-            </span>
-            <button v-if="aiUsage" class="credit-buy-inline" type="button" @click="openAiCreditPurchase">Mua thêm</button>
+          <div class="ai-page-header-top">
+            <div class="header-left">
+              <div class="page-title-line">
+                <h2 class="page-title">Trợ lý AI</h2>
+                <span class="header-pill">Trợ lý công việc</span>
+              </div>
+              <span class="page-subtitle">Làm việc với dữ liệu thật trong đúng phạm vi bạn đang chọn.</span>
+            </div>
+            <div class="header-actions">
+              <button class="header-icon-btn" type="button" title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới" @click="startNewConversation"><i class="fa-solid fa-plus"></i></button>
+              <button class="header-icon-btn mobile-history-toggle" type="button" title="Mở lịch sử" aria-label="Mở lịch sử" @click="toggleConversationHistory"><i class="fa-solid fa-clock-rotate-left"></i></button>
+              <button class="return-floating-btn" type="button" @click="returnToFloating"><i class="fa-solid fa-arrow-left"></i> Về bảng AI</button>
+            </div>
           </div>
-          <div class="header-actions">
-            <button class="header-icon-btn" type="button" title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới" @click="startNewConversation"><i class="fa-solid fa-plus"></i></button>
-            <button class="header-icon-btn mobile-history-toggle" type="button" title="Mở lịch sử" aria-label="Mở lịch sử" @click="toggleConversationHistory"><i class="fa-solid fa-clock-rotate-left"></i></button>
-            <button class="return-floating-btn" type="button" @click="returnToFloating"><i class="fa-solid fa-arrow-left"></i> Về bảng AI</button>
+          <div class="ai-context-bar">
+            <div class="context-summary">
+              <span class="context-kicker"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i> PHẠM VI AI</span>
+              <strong>{{ activeWorkspaceName }} <span aria-hidden="true">·</span> {{ activeProjectName }}</strong>
+              <small>Workspace/project được chọn cho các thao tác AI.</small>
+            </div>
+            <div class="context-controls">
+              <span class="workspace-context-pill" :title="currentWorkspaceId ? `Workspace ${currentWorkspaceId}` : 'Chưa chọn workspace'">
+                <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+                <span>Phạm vi hiện tại</span>
+              </span>
+              <label v-if="workspaceOptions.length" class="workspace-selector">
+                <i class="fa-solid fa-building" aria-hidden="true"></i>
+                <span class="sr-only">Workspace</span>
+                <select v-model="selectedWorkspaceId" aria-label="Chọn workspace" @change="handleWorkspaceChange">
+                  <option v-for="workspace in workspaceOptions" :key="workspace.id || workspace.Id" :value="workspace.id || workspace.Id">
+                    {{ workspace.name || workspace.Name }}
+                  </option>
+                </select>
+              </label>
+              <label class="workspace-selector project-selector">
+                <i class="fa-solid fa-folder-tree" aria-hidden="true"></i>
+                <span class="sr-only">Project</span>
+                <select v-model="selectedProjectId" aria-label="Chọn project" @change="handleProjectChange">
+                  <option value="">Chọn project</option>
+                  <option v-for="project in availableProjects" :key="project.id" :value="project.id">
+                    {{ project.name }}
+                  </option>
+                </select>
+              </label>
+              <span v-if="aiUsage" class="credit-pill">
+                {{ aiRemainingCredits }} credits còn lại
+              </span>
+              <button v-if="aiUsage" class="credit-buy-inline" type="button" @click="openAiCreditPurchase">Mua thêm</button>
+            </div>
+            <div class="current-page-summary">
+              <span>TRANG HIỆN TẠI</span>
+              <strong>{{ currentPageLabel }}</strong>
+            </div>
           </div>
         </div>
 
-        <details class="workspace-tools">
+        <details v-if="hasConnectedGithubIntegration" class="workspace-tools">
           <summary><span>Công cụ workspace</span><small>Phân tích GitHub và review backlog</small></summary>
         <div class="repo-panel">
           <div class="repo-head">
@@ -286,23 +335,24 @@
           <div class="section-label">SPRINTA AI</div>
           <div class="section-title">CÔNG CỤ NHANH</div>
           <div class="quick-links">
-            <button v-for="action in quickActions.slice(0, 4)" :key="action.type" class="q-link" type="button" @click="useQuickPrompt(action.prompt)">
+            <button v-for="action in quickActions.slice(0, 4)" :key="action.type" class="q-link" type="button" @click="runQuickPrompt(action.prompt)">
               <i :class="action.icon" aria-hidden="true"></i> {{ action.label }}
             </button>
           </div>
-          <details v-if="quickActions.slice(4).length" class="quick-more">
-            <summary>Xem thêm công cụ</summary>
-            <div class="quick-links quick-links-more">
-              <button v-for="action in quickActions.slice(4)" :key="`more-${action.type}`" class="q-link" type="button" @click="useQuickPrompt(action.prompt)">
+          <button v-if="quickActions.slice(4).length" class="quick-more-toggle" type="button" :aria-expanded="quickToolsExpanded" @click="quickToolsExpanded = !quickToolsExpanded">
+            <span><i class="fa-solid fa-sliders" aria-hidden="true"></i> Xem thêm công cụ</span>
+            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+          </button>
+          <div v-if="quickToolsExpanded" class="quick-links quick-links-more" aria-label="Công cụ bổ sung">
+              <button v-for="action in quickActions.slice(4)" :key="`more-${action.type}`" class="q-link" type="button" @click="runQuickPrompt(action.prompt)">
                 <i :class="action.icon" aria-hidden="true"></i> {{ action.label }}
               </button>
-            </div>
-          </details>
+          </div>
         </div>
 
         <div class="panel-section mt-30">
           <div class="section-title">NGỮ CẢNH HIỆN TẠI</div>
-          <p class="text-muted sidebar-copy">Credits và trạng thái xử lý được cập nhật theo tài khoản của bạn. Tiến trình luôn hiển thị ngay trong cuộc trò chuyện.</p>
+          <p class="text-muted sidebar-copy">{{ activeProjectName }} · {{ activeWorkspaceName }}. Credits và tiến trình được cập nhật theo tài khoản của bạn.</p>
         </div>
 
         <div class="upgrade-card-wrapper">
@@ -326,7 +376,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import CustomizeSidebarModal from '../components/CustomizeSidebarModal.vue'
 import AiComposer from '@/components/ai/AiComposer.vue'
@@ -343,25 +393,35 @@ import { broadcastAdminRealtime } from '@/utils/adminRealtime'
 import { signalRService } from '@/api/signalrService'
 import { hasProjectWritePermission, normalizeProjectRole } from '@/utils/permissions'
 import { AUTH_SESSION_CHANGED, getStoredUserSession } from '@/utils/authSession'
-import { clearScopedCurrentProjectId, getScopedCurrentProjectId } from '@/utils/projectContext'
+import { clearScopedCurrentProjectId, getScopedCurrentProjectId, setScopedCurrentProjectId } from '@/utils/projectContext'
 import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
 import { useAiConversationStore } from '@/store/useAiConversationStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
-import { isComposerSendKey } from '@/utils/aiWorkspace'
+import { useAiScopeStore } from '@/store/useAiScopeStore'
+import { buildAiContextKey, isAiContextMatch, isComposerSendKey } from '@/utils/aiWorkspace'
 import { useAiComposer } from '@/composables/useAiComposer'
 import { AI_QUICK_ACTIONS } from '@/utils/aiActionUi'
 
 const router = useRouter()
+const route = useRoute()
 const aiComposerRef = ref(null)
 const aiConversationStore = useAiConversationStore()
 const aiPetStore = useAiPetStore()
+const aiScopeStore = useAiScopeStore()
 const projectStore = useProjectStore()
 const workTaskStore = useWorkTaskStore()
 const siteStore = useSiteStore()
 const sprintStore = useSprintStore()
 const i18nStore = useI18nStore()
 const currentUser = ref(getStoredUserSession())
-const selectedWorkspaceId = ref('')
+const selectedWorkspaceId = computed({
+  get: () => aiScopeStore.workspaceId,
+  set: value => aiScopeStore.setWorkspace(value)
+})
+const selectedProjectId = computed({
+  get: () => aiScopeStore.projectId || getScopedCurrentProjectId(),
+  set: value => aiScopeStore.setProject(value)
+})
 const showCustomizeModal = ref(false)
 const sidebarPreferences = ref({ audit: true, users: true })
 
@@ -392,6 +452,9 @@ const aiPlanLabel = computed(() => {
   return plan ? plan.charAt(0).toUpperCase() + plan.slice(1) : 'Free'
 })
 const quickActions = computed(() => AI_QUICK_ACTIONS)
+const quickToolsExpanded = ref(false)
+const connectedIntegrations = ref([])
+const hasConnectedGithubIntegration = computed(() => connectedIntegrations.value.some(item => item?.provider === 'github' && item?.status === 'connected'))
 const selectedBacklogKeys = ref([])
 const reviewTargetSprintId = ref('')
 const repoForm = ref({
@@ -413,8 +476,51 @@ const conversationSearch = computed({
   set: value => { aiConversationStore.search = value }
 })
 const workspaceOptions = computed(() => siteStore.sites || [])
+const projectWorkspaceIdOf = project => project?.workspaceId || project?.WorkspaceId || project?.originalRow?.workspaceId || project?.originalRow?.WorkspaceId || ''
+const availableProjects = computed(() => {
+  const workspaceId = `${currentWorkspaceId.value || ''}`
+  if (!workspaceId) return []
+  return (projectStore.allProjects || []).filter(project => `${projectWorkspaceIdOf(project)}` === workspaceId)
+})
 const currentWorkspaceId = computed(() => selectedWorkspaceId.value || currentProjectRecord.value?.workspaceId || currentProjectRecord.value?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null)
-const formatConversationDate = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : ''
+const formatConversationDate = value => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const now = new Date()
+  const dateKey = item => `${item.getFullYear()}-${item.getMonth()}-${item.getDate()}`
+  const time = new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' }).format(date)
+  if (dateKey(date) === dateKey(now)) return `Hôm nay · ${time}`
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  if (dateKey(date) === dateKey(yesterday)) return `Hôm qua · ${time}`
+  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
+}
+const groupedConversations = computed(() => {
+  const now = new Date()
+  const dateKey = item => `${item.getFullYear()}-${item.getMonth()}-${item.getDate()}`
+  const todayKey = dateKey(now)
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  const yesterdayKey = dateKey(yesterday)
+  const groups = [
+    { key: 'today', label: 'Hôm nay', items: [] },
+    { key: 'recent', label: 'Gần đây', items: [] },
+    { key: 'earlier', label: 'Trước đó', items: [] }
+  ]
+  filteredConversations.value.forEach(conversation => {
+    const date = new Date(conversation.updatedAt)
+    const key = Number.isNaN(date.getTime())
+      ? 'earlier'
+      : dateKey(date) === todayKey
+        ? 'today'
+        : dateKey(date) === yesterdayKey
+          ? 'recent'
+          : 'earlier'
+    groups.find(group => group.key === key).items.push(conversation)
+  })
+  return groups.filter(group => group.items.length)
+})
 const {
   pendingAttachments,
   composerDragActive,
@@ -461,7 +567,9 @@ const userInitials = computed(() => {
   return name.substring(0, 2).toUpperCase()
 })
 
-const currentProjectId = computed(() => getScopedCurrentProjectId())
+const currentProjectId = computed(() => selectedProjectId.value || null)
+const aiContextKey = computed(() => buildAiContextKey(currentWorkspaceId.value, currentProjectId.value))
+const aiContextRevision = ref(0)
 const activeProjectName = computed(() => {
   const projectId = currentProjectId.value
   if (!projectId) return 'Chua chon project'
@@ -472,6 +580,10 @@ const activeWorkspaceName = computed(() => {
   const workspace = workspaceOptions.value.find(item => `${item.id || item.Id}` === `${currentWorkspaceId.value || ''}`)
   return workspace?.name || workspace?.Name || (currentWorkspaceId.value ? 'Workspace hiện tại' : 'Chưa chọn workspace')
 })
+const currentPageLabel = computed(() => {
+  const name = route.meta?.title || route.name || route.path
+  return typeof name === 'string' ? name : route.path
+})
 const workspaceIdOf = workspace => workspace?.id || workspace?.Id || ''
 const syncSelectedWorkspace = () => {
   const preferredId = currentProjectRecord.value?.workspaceId
@@ -480,33 +592,69 @@ const syncSelectedWorkspace = () => {
     || siteStore.activeSite?.Id
     || ''
   const preferredWorkspace = workspaceOptions.value.find(item => `${workspaceIdOf(item)}` === `${preferredId}`)
-  selectedWorkspaceId.value = workspaceIdOf(preferredWorkspace) || workspaceIdOf(workspaceOptions.value[0])
+  aiScopeStore.hydrate({ workspaceId: workspaceIdOf(preferredWorkspace) || workspaceIdOf(workspaceOptions.value[0]) })
 }
-const handleWorkspaceChanged = event => {
+const syncSelectedProject = () => {
+  const candidate = selectedProjectId.value || getScopedCurrentProjectId()
+  const selected = availableProjects.value.find(project => `${project.id}` === `${candidate}`)
+  if (selected) {
+    aiScopeStore.hydrate({ projectId: selected.id })
+    setScopedCurrentProjectId(selected.id)
+    projectStore.clearProjectContext(selected.id)
+    return selected.id
+  }
+
+  aiScopeStore.clearProject()
+  clearScopedCurrentProjectId()
+  projectStore.clearProjectContext()
+  return ''
+}
+const resetAiConversation = () => {
+  releaseMessageAttachmentUrls()
+  aiConversationStore.startNewConversation()
+}
+const handleWorkspaceChanged = async event => {
   const workspaceId = event?.detail?.workspaceId
   if (!workspaceId || `${workspaceId}` === `${selectedWorkspaceId.value}`) return
-  selectedWorkspaceId.value = workspaceId
+  aiScopeStore.setWorkspace(workspaceId)
+  aiContextRevision.value += 1
   clearScopedCurrentProjectId()
   projectStore.clearWorkspaceData()
-  aiConversationStore.startNewConversation()
-  loadConversations(true)
+  resetAiConversation()
+  await projectStore.fetchAllProjects(true).catch(() => [])
+  syncSelectedProject()
+  await loadConversations(true)
 }
-const handleWorkspaceChange = () => {
+const handleWorkspaceChange = async () => {
   const workspace = workspaceOptions.value.find(item => `${workspaceIdOf(item)}` === `${selectedWorkspaceId.value}`)
   if (!workspace) return
 
-  const previousWorkspaceId = currentProjectRecord.value?.workspaceId
-    || currentProjectRecord.value?.WorkspaceId
-    || siteStore.activeSite?.id
-    || siteStore.activeSite?.Id
-    || ''
+  const previousWorkspaceId = siteStore.activeSite?.id || siteStore.activeSite?.Id || null
   siteStore.setRecentSite(workspace)
   if (`${previousWorkspaceId || ''}` === `${selectedWorkspaceId.value}`) return
 
+  aiScopeStore.setWorkspace(selectedWorkspaceId.value)
+  aiContextRevision.value += 1
   clearScopedCurrentProjectId()
   projectStore.clearWorkspaceData()
-  aiConversationStore.startNewConversation()
-  loadConversations(true)
+  resetAiConversation()
+  await projectStore.fetchAllProjects(true).catch(() => [])
+  syncSelectedProject()
+  await loadConversations(true)
+}
+const handleProjectChange = async () => {
+  const selected = availableProjects.value.find(project => `${project.id}` === `${selectedProjectId.value}`)
+  if (!selected) {
+    syncSelectedProject()
+    return
+  }
+
+  aiScopeStore.setProject(selected.id)
+  setScopedCurrentProjectId(selected.id)
+  projectStore.clearProjectContext(selected.id)
+  aiContextRevision.value += 1
+  resetAiConversation()
+  await loadConversations(true)
 }
 const refreshCurrentUser = () => {
   currentUser.value = getStoredUserSession()
@@ -603,13 +751,33 @@ const toggleConversationHistory = () => {
   if (aiConversationStore.historyVisible) loadConversations(true)
 }
 
-const startNewConversation = () => aiConversationStore.startNewConversation()
+const startNewConversation = () => resetAiConversation()
 const openConversation = async id => {
   try {
+    releaseMessageAttachmentUrls()
     await aiConversationStore.openConversation(id)
+    await hydrateConversationImages()
   } catch {
     ElMessage.error('Không thể mở cuộc trò chuyện.')
   }
+}
+const releaseMessageAttachmentUrls = () => {
+  chatHistory.value.flatMap(message => message.attachments || []).forEach(attachment => {
+    if (attachment.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(attachment.previewUrl)
+    attachment.previewUrl = ''
+  })
+}
+const hydrateConversationImages = async () => {
+  const images = chatHistory.value.flatMap(message => message.attachments || [])
+    .filter(attachment => attachment.kind === 'image' && attachment.contentUrl)
+  await Promise.all(images.map(async attachment => {
+    try {
+      const response = await axiosClient.get(attachment.contentUrl, { responseType: 'blob' })
+      attachment.previewUrl = URL.createObjectURL(response.data)
+    } catch {
+      attachment.previewUrl = ''
+    }
+  }))
 }
 const returnToFloating = async () => {
   aiPetStore.setPanelOpen(true)
@@ -622,6 +790,12 @@ const actionPayload = action => action?.payload || {}
 
 const confirmPageAction = async action => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
+  if (!isAiContextMatch(action.contextKey, currentWorkspaceId.value, currentProjectId.value)) {
+    action.uiStatus = 'error'
+    action.error = 'Ngữ cảnh AI đã thay đổi. Hãy gửi lại yêu cầu trong project hiện tại.'
+    await aiConversationStore.persistConversation()
+    return
+  }
   action.loading = true
   action.uiStatus = 'loading'
   try {
@@ -754,6 +928,7 @@ const sendMessage = async (overrideMessage = null) => {
 
   const sentAttachments = pendingAttachments.value
   isLoading.value = true
+  const requestRevision = aiContextRevision.value
   startThinkingMessage(outgoing)
 
   try {
@@ -762,6 +937,7 @@ const sendMessage = async (overrideMessage = null) => {
       firstMessage: outgoing || sentAttachments.map(item => item.name).join(', ')
     })
     const uploadedAttachments = hasAttachments ? await uploadFullAttachments(conversationId) : []
+    if (requestRevision !== aiContextRevision.value) return
     pendingAttachments.value = []
     chatHistory.value.splice(chatHistory.value.length - 1, 0, { role: 'user', content: outgoing || 'Hãy phân tích các attachment đã đính kèm.', attachments: uploadedAttachments })
     const history = chatHistory.value
@@ -779,6 +955,7 @@ const sendMessage = async (overrideMessage = null) => {
         message: outgoing,
         pageContext: { pageType: 'ai-assistant', currentView: 'conversation', visibleTaskIds: [], visibleStatuses: [], filters: {}, extra: { history } }
       })
+    if (requestRevision !== aiContextRevision.value) return
 
     clearProgressTimer()
     chatHistory.value.pop()
@@ -795,6 +972,7 @@ const sendMessage = async (overrideMessage = null) => {
         ...action,
         type: String(action.type || '').toLowerCase(),
         payload: action.payload || {},
+        contextKey: aiContextKey.value,
         uiStatus: 'pending',
         loading: false,
         error: '',
@@ -823,6 +1001,10 @@ const sendMessage = async (overrideMessage = null) => {
 
 const useQuickPrompt = (prompt) => {
   userMessage.value = prompt
+}
+const runQuickPrompt = (prompt) => {
+  userMessage.value = prompt
+  void sendMessage()
 }
 
 const prepareBreakdownPrompt = () => {
@@ -1016,18 +1198,38 @@ const loadAiUsage = async () => {
   }
 }
 
+const loadConnectedIntegrations = async () => {
+  try {
+    const response = await axiosClient.get('/integrations')
+    const payload = response.data?.data ?? response.data
+    const rawProviders = payload?.providers ?? []
+    const providers = Array.isArray(rawProviders) ? rawProviders : (Array.isArray(rawProviders?.$values) ? rawProviders.$values : [])
+    connectedIntegrations.value = Array.isArray(providers)
+      ? providers.filter(provider => provider?.status === 'connected')
+      : []
+  } catch {
+    connectedIntegrations.value = []
+  }
+}
+
 onMounted(() => {
   siteStore.fetchSites()
-    .then(() => {
+    .then(async () => {
       syncSelectedWorkspace()
-      loadConversations(true)
+      await projectStore.fetchAllProjects(true).catch(() => [])
+      syncSelectedProject()
+      await loadConversations(true)
     })
-    .catch(() => loadConversations(true))
+    .catch(async () => {
+      await projectStore.fetchAllProjects(true).catch(() => [])
+      syncSelectedProject()
+      await loadConversations(true)
+    })
   window.addEventListener('sprinta-workspace-changed', handleWorkspaceChanged)
   window.addEventListener(AUTH_SESSION_CHANGED, refreshCurrentUser)
   clearLegacyGitHubCredentialStorage()
-  projectStore.fetchAllProjects().catch(() => [])
   loadAiUsage()
+  loadConnectedIntegrations()
   if (currentProjectId.value) {
     sprintStore.fetchSprints(currentProjectId.value).catch(() => [])
     signalRService.startConnection(`${currentProjectId.value}`)
@@ -1080,6 +1282,7 @@ watch(repoAnalysis, () => {
 
 onBeforeUnmount(() => {
   clearProgressTimer()
+  releaseMessageAttachmentUrls()
   window.removeEventListener('sprinta-workspace-changed', handleWorkspaceChanged)
   window.removeEventListener(AUTH_SESSION_CHANGED, refreshCurrentUser)
 })
@@ -1106,6 +1309,145 @@ const handleSidebarSaved = (prefs) => {
   max-width: 1440px;
   margin: 0 auto;
   background: var(--color-bg);
+}
+
+/* Final page pass: distinct navy-tinted layers, more breathing room, and a
+   deliberate right rail instead of a wall of identical pale controls. */
+.ai-page-flex-wrapper {
+  --ai-page-ink: #0a2340;
+  --ai-page-accent: #0b8fd3;
+  min-height: 0;
+  background: var(--color-bg);
+}
+
+.ai-page-history {
+  flex-basis: 264px;
+  padding: 26px 16px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 86%, var(--ai-page-accent)), var(--color-surface));
+}
+
+.ai-container {
+  padding: 26px clamp(20px, 4vw, 62px) 0;
+  background:
+    radial-gradient(circle at 58% -10%, color-mix(in srgb, var(--ai-page-accent) 11%, transparent), transparent 34%),
+    var(--color-bg);
+}
+
+.ai-page-header { margin-bottom: 20px; padding: 0; }
+.page-title { font-size: clamp(27px, 2.7vw, 36px); font-weight: 800; letter-spacing: -.045em; }
+.header-left { gap: 9px; }
+.header-pill,
+.workspace-context-pill,
+.credit-pill,
+.workspace-selector,
+.header-icon-btn,
+.return-floating-btn,
+.credit-buy-inline {
+  border-color: color-mix(in srgb, var(--ai-page-accent) 24%, var(--color-border));
+  background: color-mix(in srgb, var(--color-surface) 88%, var(--ai-page-accent));
+}
+.header-pill { padding: 6px 10px; font-weight: 750; }
+.credit-pill { margin-left: 0; font-variant-numeric: tabular-nums; }
+
+.workspace-tools { margin-bottom: 18px; }
+.workspace-tools > summary {
+  min-height: 46px;
+  padding: 10px 14px;
+  border-color: color-mix(in srgb, var(--ai-page-accent) 25%, var(--color-border));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--color-surface) 86%, var(--ai-page-accent));
+}
+.repo-panel {
+  margin: 0 0 16px;
+  padding: 18px;
+  border-color: color-mix(in srgb, var(--ai-page-accent) 20%, var(--color-border));
+  border-radius: 0 0 15px 15px;
+  background: color-mix(in srgb, var(--color-surface) 93%, var(--ai-page-accent));
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--color-text-primary) 7%, transparent);
+}
+
+.chat-history {
+  max-width: 940px;
+  gap: 18px;
+  padding-bottom: 24px;
+}
+.chat-history :deep(.ai-message-bubble) { line-height: 1.68; }
+.ai-chat-input-wrapper {
+  width: min(940px, 100%);
+  padding: 14px 0 22px;
+  background: linear-gradient(var(--color-bg), color-mix(in srgb, var(--color-bg) 92%, transparent) 82%, transparent);
+}
+
+.ai-details-panel {
+  width: 302px;
+  padding: 30px 21px 24px;
+  border-left-color: color-mix(in srgb, var(--ai-page-accent) 20%, var(--color-border));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 94%, var(--ai-page-accent)), var(--color-surface));
+}
+.section-label { font-size: 10px; letter-spacing: .16em; }
+.section-title { margin-bottom: 0; font-size: 16px; font-weight: 800; letter-spacing: -.025em; text-transform: none; }
+.quick-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 14px; }
+.q-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 58px;
+  padding: 10px;
+  border-color: color-mix(in srgb, var(--ai-page-accent) 19%, var(--color-border));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--color-surface-hover) 65%, var(--color-surface));
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.3;
+}
+.q-link i { width: 25px; flex: 0 0 25px; color: var(--ai-page-accent); text-align: center; font-size: 15px; }
+.q-link:hover { transform: translateY(-2px); box-shadow: 0 8px 18px color-mix(in srgb, var(--ai-page-accent) 12%, transparent); }
+.quick-more-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 42px;
+  margin-top: 12px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--ai-page-accent) 22%, var(--color-border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--color-surface) 82%, var(--ai-page-accent));
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+}
+.quick-more-toggle span { display: inline-flex; align-items: center; gap: 8px; }
+.quick-more-toggle span i { color: var(--ai-page-accent); }
+.quick-more-toggle > i { transition: transform 180ms ease; }
+.quick-more-toggle[aria-expanded='true'] > i { transform: rotate(180deg); }
+.quick-links-more { margin-top: 9px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, var(--ai-page-accent) 15%, var(--color-border)); }
+.sidebar-copy { margin: 10px 0 0; font-size: 12px; }
+.upgrade-card-wrapper { margin-top: 34px; }
+.upgrade-card {
+  padding: 20px;
+  border-color: color-mix(in srgb, var(--ai-page-accent) 38%, var(--color-border));
+  border-radius: 18px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--ai-page-accent) 18%, var(--color-surface)), var(--color-surface) 72%);
+  box-shadow: 0 16px 32px color-mix(in srgb, var(--ai-page-accent) 12%, transparent);
+}
+.credit-balance { font-size: 29px; }
+.btn-upgrade { width: 100%; min-height: 42px; border-radius: 11px; }
+
+@media (max-width: 1100px) {
+  .ai-container { padding: 20px 18px 0; }
+  .ai-details-panel { padding: 22px 18px; }
+}
+
+@media (max-width: 620px) {
+  .ai-container { padding: 16px 14px 0; }
+  .header-left { align-items: flex-start; }
+  .workspace-context-pill { max-width: min(100%, 300px); }
+  .chat-history { padding-bottom: 12px; }
+  .ai-chat-input-wrapper { padding: 10px 0 calc(12px + env(safe-area-inset-bottom)); }
+  .quick-links { grid-template-columns: 1fr 1fr; }
 }
 
 .ai-container {
@@ -1878,5 +2220,381 @@ const handleSidebarSaved = (prefs) => {
 
 @media (max-width: 1100px) {
   .ai-details-panel { width: 100%; padding: 22px 18px; box-shadow: none; }
+}
+
+/* Cascade guard: this block intentionally lives last so the final page
+   direction wins over the legacy compatibility rules above. */
+.ai-page-flex-wrapper { min-height: 0; background: var(--color-bg); }
+.ai-page-history { flex-basis: 264px; padding: 26px 16px; background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 86%, #0b8fd3), var(--color-surface)); }
+.ai-container { padding: 26px clamp(20px, 4vw, 62px) 0; background: radial-gradient(circle at 58% -10%, color-mix(in srgb, #0b8fd3 11%, transparent), transparent 34%), var(--color-bg); }
+.ai-page-header { margin-bottom: 20px; padding: 0; }
+.page-title { font-size: clamp(27px, 2.7vw, 36px); font-weight: 800; letter-spacing: -.045em; }
+.header-left { gap: 9px; }
+.header-pill, .workspace-context-pill, .credit-pill, .workspace-selector, .header-icon-btn, .return-floating-btn, .credit-buy-inline { border-color: color-mix(in srgb, #0b8fd3 24%, var(--color-border)); background: color-mix(in srgb, var(--color-surface) 88%, #0b8fd3); }
+.credit-pill { margin-left: 0; font-variant-numeric: tabular-nums; }
+.workspace-tools { margin-bottom: 18px; }
+.workspace-tools > summary { min-height: 46px; padding: 10px 14px; border-color: color-mix(in srgb, #0b8fd3 25%, var(--color-border)); border-radius: 13px; background: color-mix(in srgb, var(--color-surface) 86%, #0b8fd3); }
+.repo-panel { margin: 0 0 16px; padding: 18px; border-color: color-mix(in srgb, #0b8fd3 20%, var(--color-border)); border-radius: 0 0 15px 15px; background: color-mix(in srgb, var(--color-surface) 93%, #0b8fd3); box-shadow: 0 12px 28px color-mix(in srgb, var(--color-text-primary) 7%, transparent); }
+.chat-history { max-width: 940px; gap: 18px; padding-bottom: 24px; }
+.chat-history :deep(.ai-message-bubble) { line-height: 1.68; }
+.ai-chat-input-wrapper { width: min(940px, 100%); padding: 14px 0 22px; background: linear-gradient(var(--color-bg), color-mix(in srgb, var(--color-bg) 92%, transparent) 82%, transparent); }
+.ai-details-panel { width: 302px; padding: 30px 21px 24px; border-left-color: color-mix(in srgb, #0b8fd3 20%, var(--color-border)); background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 94%, #0b8fd3), var(--color-surface)); }
+.section-label { font-size: 10px; letter-spacing: .16em; }
+.section-title { margin-bottom: 0; font-size: 16px; font-weight: 800; letter-spacing: -.025em; text-transform: none; }
+.quick-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 14px; }
+.q-link { display: flex; align-items: center; gap: 8px; min-height: 58px; padding: 10px; border-color: color-mix(in srgb, #0b8fd3 19%, var(--color-border)); border-radius: 13px; background: color-mix(in srgb, var(--color-surface-hover) 65%, var(--color-surface)); font-size: 11px; font-weight: 750; line-height: 1.3; }
+.q-link i { width: 25px; flex: 0 0 25px; color: #0b8fd3; text-align: center; font-size: 15px; }
+.q-link:hover { transform: translateY(-2px); box-shadow: 0 8px 18px color-mix(in srgb, #0b8fd3 12%, transparent); }
+.quick-more-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 42px; margin-top: 12px; padding: 0 11px; border: 1px solid color-mix(in srgb, #0b8fd3 22%, var(--color-border)); border-radius: 11px; background: color-mix(in srgb, var(--color-surface) 82%, #0b8fd3); color: var(--color-text-secondary); cursor: pointer; font: inherit; font-size: 11px; font-weight: 750; }
+.quick-more-toggle span { display: inline-flex; align-items: center; gap: 8px; }
+.quick-more-toggle span i { color: #0b8fd3; }
+.quick-more-toggle > i { transition: transform 180ms ease; }
+.quick-more-toggle[aria-expanded='true'] > i { transform: rotate(180deg); }
+.quick-links-more { margin-top: 9px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, #0b8fd3 15%, var(--color-border)); }
+.sidebar-copy { margin: 10px 0 0; font-size: 12px; }
+.upgrade-card-wrapper { margin-top: 34px; }
+.upgrade-card { padding: 20px; border-color: color-mix(in srgb, #0b8fd3 38%, var(--color-border)); border-radius: 18px; background: linear-gradient(145deg, color-mix(in srgb, #0b8fd3 18%, var(--color-surface)), var(--color-surface) 72%); box-shadow: 0 16px 32px color-mix(in srgb, #0b8fd3 12%, transparent); }
+.credit-balance { font-size: 29px; }
+.btn-upgrade { width: 100%; min-height: 42px; border-radius: 11px; }
+
+@media (max-width: 1100px) { .ai-container { padding: 20px 18px 0; } .ai-details-panel { padding: 22px 18px; } }
+@media (max-width: 620px) { .ai-container { padding: 16px 14px 0; } .header-left { align-items: flex-start; } .workspace-context-pill { max-width: min(100%, 300px); } .chat-history { padding-bottom: 12px; } .ai-chat-input-wrapper { padding: 10px 0 calc(12px + env(safe-area-inset-bottom)); } .quick-links { grid-template-columns: 1fr 1fr; } }
+
+/* Focused layout pass: keep the utility rail self-contained while giving the
+   conversation and current scope the strongest hierarchy. */
+.ai-page-flex-wrapper {
+  overflow: hidden;
+}
+
+.ai-page-history {
+  box-sizing: border-box;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.ai-page-history-head > div {
+  gap: 4px;
+}
+
+.ai-page-history-head small {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.history-new-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--color-accent);
+  border-radius: 10px;
+  background: var(--color-accent);
+  color: var(--color-on-accent, #fff);
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+
+.history-new-button:hover,
+.history-new-button:focus-visible {
+  filter: brightness(1.05);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.history-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+}
+
+.history-search:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--sa-primary-soft);
+}
+
+.history-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.history-groups {
+  display: grid;
+  gap: 18px;
+}
+
+.history-group {
+  display: grid;
+  gap: 6px;
+}
+
+.history-group h3 {
+  margin: 0 4px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.ai-page-history-item {
+  grid-template-columns: 28px minmax(0, 1fr) 12px;
+  align-items: center;
+  min-height: 58px;
+  gap: 8px;
+  padding: 10px 9px;
+}
+
+.history-item-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  color: var(--color-accent);
+}
+
+.history-item-content {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.ai-page-history-item strong {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ai-page-history-item small {
+  font-size: 10px;
+}
+
+.history-item-arrow {
+  color: var(--color-text-muted);
+  font-size: 9px;
+  opacity: .7;
+}
+
+.ai-page-header {
+  display: grid;
+  gap: 16px;
+  flex: 0 0 auto;
+  min-height: 0;
+  margin-bottom: 18px;
+}
+
+.ai-page-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.page-title-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.page-subtitle {
+  display: block;
+  margin-top: 5px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.ai-context-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 24%, var(--color-border));
+  border-radius: 14px;
+  background: linear-gradient(110deg, color-mix(in srgb, var(--color-accent) 9%, var(--color-surface)), var(--color-surface) 72%);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+}
+
+.context-summary {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.context-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+
+.context-summary strong {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-summary small {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.context-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.context-controls .workspace-context-pill {
+  flex: 0 0 auto;
+  max-width: none;
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+  font-weight: 800;
+}
+
+.context-controls .credit-pill {
+  font-size: 11px;
+}
+
+.ai-details-panel {
+  box-sizing: border-box;
+  flex: 0 0 302px;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.ai-details-panel > * {
+  flex: 0 0 auto;
+}
+
+.upgrade-card-wrapper {
+  margin-top: 24px;
+  padding-bottom: 2px;
+}
+
+.upgrade-card {
+  padding: 16px;
+}
+
+.credit-balance {
+  font-size: 24px;
+}
+
+@media (max-width: 1100px) {
+  .ai-page-header-top,
+  .ai-context-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .context-controls {
+    justify-content: flex-start;
+    width: 100%;
+  }
+}
+
+@media (max-width: 620px) {
+  .ai-page-header-top {
+    gap: 12px;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .context-summary strong {
+    white-space: normal;
+  }
+
+  .context-controls {
+    align-items: stretch;
+  }
+
+  .context-controls .workspace-selector {
+    flex: 1 1 170px;
+  }
+}
+
+/* Responsive contract: the desktop shell keeps three bounded columns; below
+   tablet width, history becomes a drawer and the utility rail is removed so
+   the conversation remains the only expanding surface. */
+.ai-page-flex-wrapper,
+.ai-container,
+.ai-page-header,
+.ai-context-bar,
+.context-summary,
+.context-controls,
+.chat-history,
+.ai-details-panel {
+  min-width: 0;
+}
+
+.ai-page-flex-wrapper { width: 100%; max-width: none; overflow: hidden; }
+.ai-container { min-height: 0; overflow-x: hidden; }
+.ai-context-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(140px, .55fr);
+  align-items: center;
+}
+.current-page-summary {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  justify-items: end;
+}
+.current-page-summary span {
+  color: var(--color-text-muted);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .1em;
+}
+.current-page-summary strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-details-panel { overflow-x: hidden; }
+
+@media (max-width: 1100px) {
+  .ai-context-bar { display: flex; align-items: flex-start; }
+  .current-page-summary { width: 100%; justify-items: start; }
+  .ai-details-panel { display: none; }
+}
+
+@media (max-width: 620px) {
+  .ai-context-bar { gap: 12px; }
+  .context-summary strong { white-space: normal; overflow-wrap: anywhere; }
+  .current-page-summary strong { white-space: normal; overflow-wrap: anywhere; }
 }
 </style>

@@ -27,6 +27,7 @@ import { TableHeader } from '@tiptap/extension-table-header'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 import { getStoredUserSession } from '@/utils/authSession'
@@ -94,6 +95,12 @@ const pageSortOptions = [
 ]
 const filterSearch = ref('')
 const pageViewMode = ref('list')
+const pageTableColumns = [
+  { key: 'title', label: 'Page', icon: 'fa-solid fa-file-lines', width: '36%', minWidth: '260px', sticky: true },
+  { key: 'author', label: 'Created by', icon: 'fa-solid fa-user', width: '22%', minWidth: '180px' },
+  { key: 'updatedAt', label: 'Updated', icon: 'fa-regular fa-clock', width: '20%', minWidth: '160px' },
+  { key: 'privacy', label: 'Visibility', icon: 'fa-solid fa-eye', width: '22%', minWidth: '160px' }
+]
 const filterFavorites = ref(false)
 const createdDateWindow = ref('')
 const createdByMe = ref(false)
@@ -526,7 +533,13 @@ function pageMenuItems(page) {
           </template>
         </ProjectPageHeader>
 
-        <ProjectPageToolbar
+        <div class="pages-nav" style="margin-top: 18px">
+        <div class="nav-tab" :class="{ 'active': activeTab === 'Public' }" @click="activeTab = 'Public'">{{ t('Public') }}</div>
+        <div class="nav-tab" :class="{ 'active': activeTab === 'Private' }" @click="activeTab = 'Private'">{{ t('Private') }}</div>
+        <div class="nav-tab" :class="{ 'active': activeTab === 'Archived' }" @click="activeTab = 'Archived'">{{ t('Archived') }}</div>
+      </div>
+
+      <ProjectPageToolbar
           :showSearch="true"
           v-model:searchQuery="filterSearch"
           :searchPlaceholder="t('Search pages...')"
@@ -633,25 +646,34 @@ function pageMenuItems(page) {
           <template #toggles>
             <div class="view-toggles">
               <button class="toggle-btn" :class="{ active: pageViewMode === 'list' }" type="button" title="List view" @click="pageViewMode = 'list'"><i class="fa-solid fa-bars"></i></button>
+              <button class="toggle-btn" :class="{ active: pageViewMode === 'table' }" type="button" title="Danh sách mẫu" @click="pageViewMode = 'table'"><i class="fa-solid fa-table-list"></i></button>
               <button class="toggle-btn" :class="{ active: pageViewMode === 'grid' }" type="button" title="Grid view" @click="pageViewMode = 'grid'"><i class="fa-solid fa-table-cells-large"></i></button>
             </div>
           </template>
         </ProjectPageToolbar>
 
-      <div class="pages-nav">
-        <div class="nav-tab" :class="{ 'active': activeTab === 'Public' }" @click="activeTab = 'Public'">{{ t('Public') }}</div>
-        <div class="nav-tab" :class="{ 'active': activeTab === 'Private' }" @click="activeTab = 'Private'">{{ t('Private') }}</div>
-        <div class="nav-tab" :class="{ 'active': activeTab === 'Archived' }" @click="activeTab = 'Archived'">{{ t('Archived') }}</div>
-      </div>
 
-      <div class="pages-list" :class="{ 'pages-grid': pageViewMode === 'grid' }" v-loading="loading">
-        <ProjectEmptyState
-           v-if="filteredPages.length === 0"
-           icon="fa-regular fa-file-lines"
-           :title="activeTab === 'Archived' ? t('No archived pages yet') : t('No pages yet')"
-           :description="activeTab === 'Archived' ? t('Archive pages not on your radar. Access them here when needed.') : t('Create your first page to get started and keep your work organized.')"
-        />
 
+      <ProjectEmptyState
+         v-if="!loading && filteredPages.length === 0"
+         icon="fa-regular fa-file-lines"
+         :title="activeTab === 'Archived' ? t('No archived pages yet') : t('No pages yet')"
+         :description="activeTab === 'Archived' ? t('Archive pages not on your radar. Access them here when needed.') : t('Create your first page to get started and keep your work organized.')"
+      >
+        <template #action>
+          <button class="empty-spaces-btn" type="button" @click="createPage">
+            <i class="fa-solid fa-plus"></i> {{ t('Add page') }}
+          </button>
+        </template>
+      </ProjectEmptyState>
+
+      <WorkItemsListTable v-else-if="pageViewMode === 'table'" :columns="pageTableColumns" :rows="filteredPages" min-width="820" @row-click="openPage">
+        <template #cell-title="{ row }"><strong>{{ row.title || row.name }}</strong></template>
+        <template #cell-author="{ row }"><span>{{ row.createdByName || row.authorName || '—' }}</span></template>
+        <template #cell-updatedAt="{ row }"><span>{{ row.updatedAt ? new Date(row.updatedAt).toLocaleDateString() : '—' }}</span></template>
+        <template #cell-privacy="{ row }"><span>{{ row.isPrivate ? 'Private' : 'Public' }}</span></template>
+      </WorkItemsListTable>
+      <div v-else class="pages-list" :class="{ 'pages-grid': pageViewMode === 'grid' }" v-loading="loading">
         <div v-for="page in filteredPages" :key="page.id" class="page-row" @click="openPage(page.id)">
            <div class="pr-left">
               <i :class="page.icon || 'fa-regular fa-file-lines'" class="doc-icon" aria-hidden="true"></i>

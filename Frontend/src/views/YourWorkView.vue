@@ -11,12 +11,14 @@ import { useSiteStore } from '@/store/useSiteStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
 import { useStarredStore } from '@/store/useStarredStore'
+import { useActivityStore } from '@/store/useActivityStore'
 import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { translateDemoText } from '@/utils/demoContentLocale'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import TaskDetailModal from '@/components/TaskDetailModal.vue'
 import { DEFAULT_PROJECT_BACKGROUND, DEFAULT_PROJECT_ICON } from '@/config/projectAppearance'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 import { buildSpacePath } from '@/utils/spaceRoute'
 
 const router = useRouter()
@@ -27,6 +29,7 @@ const siteStore = useSiteStore()
 const projectStore = useProjectStore()
 const workTaskStore = useWorkTaskStore()
 const starredStore = useStarredStore()
+const activityStore = useActivityStore()
 const t = (key) => i18nStore.t(key)
 const demoText = (value) => translateDemoText(value, i18nStore.language || 'vi')
 
@@ -520,13 +523,7 @@ const updateTaskProperty = async (task, field, value) => {
   }
 }
 
-const pageActivities = computed(() => activities.value.slice(0, 10).map(activity => ({
-  id: activity.id,
-  icon: 'fa-solid fa-clock-rotate-left',
-  text: activity.summary || `${activity.action || ''} ${activity.resource || ''}`.trim(),
-  bold: '',
-  time: activity.timestamp ? new Date(activity.timestamp).toLocaleString() : ''
-})))
+const pageActivities = computed(() => activities.value.slice(0, 10).map(activity => activityStore.normalizeActivity(activity)))
 
 const retryCurrentView = () => {
   if (activeTab.value === 'Summary') {
@@ -662,48 +659,51 @@ const getInitials = (name) => {
             <i class="fa-solid fa-spinner fa-spin"></i> {{ t('forYou.loadingSpaces') }}
           </div>
           
-          <div v-else-if="sortedSpaces.length === 0" class="empty-spaces-flat">
-            <div class="empty-spaces-icon" aria-hidden="true">
-              <i class="fa-regular fa-folder-open"></i>
-            </div>
-            <div class="empty-spaces-copy">
-              <h3>{{ t('forYou.noActiveSpaces') }}</h3>
-              <p>{{ t('forYou.noActiveSpacesDesc') }}</p>
-            </div>
-          </div>
+          <ProjectEmptyState
+            v-else-if="sortedSpaces.length === 0"
+            icon="fa-regular fa-folder-open"
+            :title="t('forYou.noActiveSpaces')"
+            :description="t('forYou.noActiveSpacesDesc')"
+          />
           
           <div v-else class="spaces-row">
             <div 
-              v-for="space in sortedSpaces.slice(0, 4)" 
+              v-for="space in sortedSpaces.slice(0, 6)" 
               :key="space.id" 
-              class="space-card"
+              class="yw-project-card"
               @click="router.push(buildSpacePath(space, 'work-items'))"
             >
-              <ProjectAvatar class="recommended-project-avatar" :icon="space.icon" :background="space.cover" size="sm" />
-              <div class="sc-info">
-                <h3 class="sc-name" :title="demoText(space.name)">{{ demoText(space.name) }}</h3>
-                <p class="sc-desc">{{ demoText(space.description) }} - {{ space.displayTaskCount }} {{ t('common.tasks') }}</p>
-                <div class="sc-meta">
-                  <span class="sc-visibility" :class="getSpaceVisibilityLabel(space).toLowerCase()">
+              <div class="yw-card-cover" :style="{ background: space.cover || '#1e293b' }">
+                <div class="yw-card-actions">
+                  <button 
+                    class="yw-card-btn"
+                    type="button"
+                    :class="{ starred: projectStore.favoriteProjects.some(p => p.id === space.id) }"
+                    :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, space.id)"
+                    :aria-pressed="projectStore.favoriteProjects.some(p => p.id === space.id)"
+                    @click.stop="toggleSpaceStar(space)"
+                    :title="projectStore.favoriteProjects.some(p => p.id === space.id) ? 'Bỏ đánh dấu' : 'Đánh dấu'"
+                  >
+                    <i :class="projectStore.favoriteProjects.some(p => p.id === space.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="yw-card-body">
+                <ProjectAvatar class="yw-floating-avatar" :icon="space.icon" :background="space.cover" size="sm" />
+                <div class="yw-proj-header">
+                  <h3 class="yw-proj-name" :title="demoText(space.name)">{{ demoText(space.name) }}</h3>
+                  <span class="yw-proj-key" v-if="space.key">{{ space.key }}</span>
+                </div>
+                <p class="yw-proj-desc" :title="demoText(space.description)">{{ demoText(space.description) || '...' }}</p>
+                <div class="yw-proj-meta">
+                  <span class="yw-meta-item" :class="getSpaceVisibilityLabel(space).toLowerCase()">
                     <i :class="getSpaceVisibilityLabel(space) === 'Private' ? 'fa-solid fa-lock' : 'fa-solid fa-globe'"></i>
                     {{ getSpaceVisibilityLabel(space) }}
                   </span>
-                  <span><i class="fa-regular fa-calendar"></i>{{ formatSpaceCreatedDate(space.createdAt) }}</span>
-                  <span><i class="fa-solid fa-users"></i>{{ getSpaceMemberCountLabel(space) }}</span>
+                  <span class="yw-meta-item"><i class="fa-regular fa-calendar"></i>{{ formatSpaceCreatedDate(space.createdAt) }}</span>
+                  <span class="yw-meta-item"><i class="fa-solid fa-users"></i>{{ getSpaceMemberCountLabel(space) }}</span>
                 </div>
               </div>
-              <UserAvatar class="sc-leader-avatar" :user="space.leader" :size="28" :fontSize="11" :title="space.leader?.fullName || 'Project lead'" />
-              <button 
-                class="sc-star-btn"
-                type="button"
-                :class="{ starred: projectStore.favoriteProjects.some(p => p.id === space.id) }"
-                :disabled="starredStore.isPending(STARRED_ENTITY_TYPES.PROJECT, space.id)"
-                :aria-pressed="projectStore.favoriteProjects.some(p => p.id === space.id)"
-                @click.stop="toggleSpaceStar(space)"
-                :title="projectStore.favoriteProjects.some(p => p.id === space.id) ? 'Bỏ đánh dấu' : 'Đánh dấu'"
-              >
-                <i :class="projectStore.favoriteProjects.some(p => p.id === space.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
-              </button>
             </div>
           </div>
         </section>
@@ -793,12 +793,11 @@ const getInitials = (name) => {
               <span>{{ t('yourWork.activityFailed') }}</span>
               <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
             </div>
-            <div v-else-if="recentActivity.length === 0" class="personal-state recent-empty-state">
-              <div class="recent-empty-icon" aria-hidden="true">
-                <i class="fa-solid fa-clock-rotate-left"></i>
-              </div>
-              <span>{{ t('yourWork.noActivity') }}</span>
-            </div>
+            <ProjectEmptyState
+              v-else-if="recentActivity.length === 0"
+              icon="fa-solid fa-clock-rotate-left"
+              :title="t('yourWork.noActivity')"
+            />
             <div class="list-row" style="cursor: default;" v-for="activity in recentActivity" :key="activity.id">
               <div class="lr-left">
                 <span class="lr-id" style="min-width: 30px;"><i class="fa-solid fa-clock-rotate-left" style="color: #A1A1AA"></i></span>
@@ -823,7 +822,7 @@ const getInitials = (name) => {
             </div>
           </div>
 
-          <div class="list-body mt-4">
+          <div class="list-body mt-4" :class="{ 'recent-list-body': listData.length === 0 }">
             <Transition name="fade-fast" mode="out-in">
               <div v-if="taskListLoading" key="state-loading" class="personal-state">
                 <i class="fa-solid fa-spinner fa-spin"></i>
@@ -833,9 +832,12 @@ const getInitials = (name) => {
                 <span>{{ t('yourWork.loadFailed') }}</span>
                 <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
               </div>
-              <div v-else-if="listData.length === 0" key="state-empty" class="personal-state">
-                {{ t(`yourWork.empty.${activeTab.toLowerCase()}`) || t('common.noData') }}
-              </div>
+              <ProjectEmptyState
+                v-else-if="listData.length === 0" key="state-empty"
+                icon="fa-solid fa-layer-group"
+                title="Không có công việc nào"
+                :description="t(`yourWork.empty.${activeTab.toLowerCase()}`) || t('common.noData')"
+              />
               <div v-else key="state-list" class="list-row-container">
                 <div class="list-row cursor-pointer" v-for="item in listData" :key="item.id" @click="openTaskDetail(item)">
               <div class="lr-left">
@@ -912,16 +914,15 @@ const getInitials = (name) => {
         </div>
 
               <div class="yw-scrollable" v-else-if="activeTab === 'Activity'">
-          <section class="yw-section">
-            <div class="activity-page-header flex-between mb-4">
-            <h3 class="yw-section-title" style="margin: 0;">
-              <span class="yw-section-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
-              {{ t('yourWork.recentActivity') }}
-            </h3>
-            <button class="plane-primary-btn" @click="downloadWordActivity">{{ t('yourWork.downloadActivity') }}</button>
+          <div class="list-header mt-4 flex-between items-center" style="position: relative;">
+            <div>
+              <span class="lh-title">{{ t('yourWork.recentActivity') }}</span>
+              <span class="lh-count">{{ activityTotal || pageActivities.length }}</span>
+            </div>
+            <button class="plane-primary-btn" @click="downloadWordActivity" style="position: absolute; right: 0; top: 50%; transform: translateY(-50%);">{{ t('yourWork.downloadActivity') }}</button>
           </div>
 
-          <div class="list-body mt-4 recent-list-body">
+          <div class="list-body mt-4" :class="{ 'recent-list-body': pageActivities.length === 0 }">
             <Transition name="fade-fast" mode="out-in">
               <div v-if="activityLoading" key="state-loading" class="personal-state">
                 <i class="fa-solid fa-spinner fa-spin"></i>
@@ -931,11 +932,14 @@ const getInitials = (name) => {
                 <span>{{ t('yourWork.activityFailed') }}</span>
                 <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
               </div>
-              <div v-else-if="pageActivities.length === 0" key="state-empty" class="personal-state recent-empty-state">
-                <div class="recent-empty-icon" aria-hidden="true">
+              <div v-else-if="pageActivities.length === 0" key="state-empty" class="empty-state-global">
+                <div class="empty-spaces-icon" aria-hidden="true">
                   <i class="fa-solid fa-clock-rotate-left"></i>
                 </div>
-                <span>{{ t('yourWork.noActivity') }}</span>
+                <div class="empty-spaces-copy">
+                  <h3>Không có hoạt động nào</h3>
+                  <p>{{ t('yourWork.noActivity') }}</p>
+                </div>
               </div>
               <div v-else key="state-list" class="list-row-container">
                 <div class="list-row" style="cursor: default;" v-for="activity in pageActivities" :key="activity.id">
@@ -952,7 +956,6 @@ const getInitials = (name) => {
               </div>
             </Transition>
           </div>
-          </section>
               </div>
           </div>
         </section>
@@ -1228,193 +1231,146 @@ const getInitials = (name) => {
 /* Spaces Row */
 .spaces-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
+  min-height: 250px;
+  align-content: start;
 }
 
-.space-card {
-  display: flex;
-  align-items: flex-start;
-  background: var(--color-surface, #ffffff);
+.yw-project-card {
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 16px;
-  padding: 14px 52px 14px 20px;
+  border-radius: 12px;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  position: relative;
-  overflow: hidden;
-}
-
-.recommended-project-avatar {
-  margin: 2px 11px 0 0;
-}
-
-.space-card:hover {
-  background-color: var(--color-surface-hover, #f4f5f7);
-  border-color: var(--color-accent);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
-  transform: translateY(-2px);
-}
-
-.sc-info {
-  flex: 1;
-  min-width: 0;
-  padding-right: 0;
-}
-
-.sc-name {
-  font-size: 15px;
-  font-weight: 600;
-  margin: 0 0 4px 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--color-text-primary, #172b4d);
-}
-
-.sc-desc {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--color-text-muted, #6b778c);
-  opacity: 0.85;
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sc-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-  color: var(--color-text-muted, #6b778c);
-  font-size: 10.5px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.sc-meta span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 20px;
-  padding: 4px 6px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--color-surface-hover, #f4f5f7) 72%, transparent);
-  white-space: nowrap;
-}
-
-.sc-meta i {
-  color: var(--color-accent);
-  font-size: 10px;
-}
-
-.sc-visibility.public {
-  color: #0f766e;
-  background: rgba(20, 184, 166, 0.1);
-  border-color: rgba(20, 184, 166, 0.22);
-}
-
-.sc-visibility.private {
-  color: #7c3aed;
-  background: rgba(124, 58, 237, 0.1);
-  border-color: rgba(124, 58, 237, 0.22);
-}
-
-.sc-visibility.public i,
-.sc-visibility.private i {
-  color: currentColor;
-}
-
-.sc-leader-avatar {
-  position: absolute;
-  right: 18px;
-  bottom: 14px;
-  border: 2px solid var(--color-surface, #ffffff);
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
-}
-
-.sc-star-btn {
-  appearance: none;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  color: var(--color-text-muted, #6b778c);
-  font-size: 14px;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border-radius: 6px;
-  opacity: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   transition: all 0.2s ease;
-  position: absolute;
-  right: 10px;
-  top: 10px;
-  transform: none;
-}
-.space-card:hover .sc-star-btn {
-  opacity: 1;
-}
-.sc-star-btn.starred {
-  opacity: 1;
-  color: #facc15;
-}
-.sc-star-btn:hover {
-  color: var(--color-text-primary, #172b4d);
-  background: rgba(9, 30, 66, 0.08);
-}
-
-.empty-spaces-flat {
-  min-height: 204px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 24px 26px;
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  text-align: center;
 }
 
-.empty-spaces-icon {
-  width: 54px;
-  height: 54px;
-  flex: 0 0 auto;
+.yw-project-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  border-color: var(--color-accent);
+}
+
+.yw-card-cover {
+  height: 38px;
+  background-color: #1e293b;
+  position: relative;
+}
+
+.yw-card-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+}
+
+.yw-card-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  opacity: 0;
+}
+
+.yw-project-card:hover .yw-card-btn {
+  opacity: 1;
+}
+
+.yw-card-btn:hover { background: #ffffff; color: var(--color-accent); }
+.yw-card-btn.starred { opacity: 1; color: #facc15; }
+
+.yw-card-body {
+  padding: 0 12px 12px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.yw-floating-avatar {
+  margin-top: -14px;
+  margin-bottom: 4px;
+  border: 2px solid var(--color-surface);
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  background: var(--color-surface);
+}
+
+.yw-proj-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.yw-proj-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yw-proj-key {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.yw-proj-desc {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin: 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.yw-proj-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.yw-meta-item {
+  font-size: 9.5px;
+  font-weight: 600;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
-  color: var(--color-accent);
-  font-size: 23px;
-  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12);
-}
-
-.empty-spaces-copy {
-  max-width: 380px;
-}
-
-.empty-spaces-copy h3 {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: 15px;
-  font-weight: 800;
-  line-height: 1.35;
-}
-
-.empty-spaces-copy p {
-  margin: 3px 0 0;
+  gap: 3px;
   color: var(--color-text-muted);
-  font-size: 13px;
-  line-height: 1.4;
+  background: color-mix(in srgb, var(--color-surface-hover) 70%, transparent);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(0,0,0,0.04);
 }
+
+.yw-meta-item i {
+  font-size: 9px;
+  color: var(--color-accent);
+}
+
+.yw-meta-item.public { color: #0f766e; background: rgba(20, 184, 166, 0.1); border-color: rgba(20, 184, 166, 0.2); }
+.yw-meta-item.private { color: #7c3aed; background: rgba(124, 58, 237, 0.1); border-color: rgba(124, 58, 237, 0.2); }
+.yw-meta-item.public i, .yw-meta-item.private i { color: currentColor; }
+
 .view-all-link {
   font-size: 13px;
   font-weight: 500;
@@ -1581,6 +1537,7 @@ const getInitials = (name) => {
   border: 0 !important;
   border-radius: 0 !important;
   background: transparent !important;
+  padding: 18px !important;
 }
 .recent-section-title {
   margin-bottom: 16px !important;
@@ -2659,6 +2616,7 @@ const getInitials = (name) => {
   border: 0 !important;
   border-radius: 0 !important;
   background: transparent !important;
+  padding: 18px !important;
 }
 
 .list-row {

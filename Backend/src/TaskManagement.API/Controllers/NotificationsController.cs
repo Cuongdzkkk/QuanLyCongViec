@@ -8,6 +8,8 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using TaskManagement.API.Hubs;
 using TaskManagement.API.Realtime;
+using TaskManagement.Application.Common;
+using TaskManagement.Application.Interfaces;
 using TaskManagement.Infrastructure.Data;
 
 namespace TaskManagement.API.Controllers
@@ -18,11 +20,16 @@ namespace TaskManagement.API.Controllers
     public class NotificationsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IResourceAuthorizationService _authorization;
         private readonly IHubContext<KanbanHub>? _hub;
 
-        public NotificationsController(ApplicationDbContext context, IHubContext<KanbanHub>? hub = null)
+        public NotificationsController(
+            ApplicationDbContext context,
+            IResourceAuthorizationService authorization,
+            IHubContext<KanbanHub>? hub = null)
         {
             _context = context;
+            _authorization = authorization;
             _hub = hub;
         }
 
@@ -66,6 +73,7 @@ namespace TaskManagement.API.Controllers
                     n.RelatedTaskId,
                     n.RelatedProjectId,
                     n.RelatedInvitationId,
+                    n.RelatedSiteAccountLinkRequestId,
                     n.ActionState,
                     n.CollaborationChannelId,
                     n.ChannelMessageId,
@@ -75,12 +83,14 @@ namespace TaskManagement.API.Controllers
                     n.CreatedAt
                 })
                 .ToListAsync();
+            var unreadCount = await _context.Notifications
+                .CountAsync(n => n.UserId == userId.Value && !n.IsRead);
 
             return Ok(new
             {
                 statusCode = 200,
                 data = notifications,
-                unreadCount = notifications.Count(n => !n.IsRead)
+                unreadCount
             });
         }
 
@@ -135,6 +145,8 @@ namespace TaskManagement.API.Controllers
             var actorId = GetUserId();
             if (actorId == null) return Unauthorized();
             if (request.AssigneeUserId == Guid.Empty || request.AssigneeUserId == actorId.Value) return Ok(new { statusCode = 200, message = "Skipped." });
+            var authorizationFailure = await AuthorizeTaskNotificationAsync(actorId.Value, request.ProjectId, request.TaskId);
+            if (authorizationFailure != null) return authorizationFailure;
 
             var notification = new TaskManagement.Domain.Entities.Notification
             {
@@ -162,6 +174,8 @@ namespace TaskManagement.API.Controllers
         {
             var actorId = GetUserId();
             if (actorId == null) return Unauthorized();
+            var authorizationFailure = await AuthorizeTaskNotificationAsync(actorId.Value, request.ProjectId, request.TaskId);
+            if (authorizationFailure != null) return authorizationFailure;
 
             var targetUserIds = await _context.TaskAssignments
                 .Where(ta => ta.WorkTaskId == request.TaskId && ta.Status && ta.UserId != actorId.Value)
@@ -197,6 +211,8 @@ namespace TaskManagement.API.Controllers
         {
             var actorId = GetUserId();
             if (actorId == null) return Unauthorized();
+            var authorizationFailure = await AuthorizeTaskNotificationAsync(actorId.Value, request.ProjectId, request.TaskId);
+            if (authorizationFailure != null) return authorizationFailure;
 
             var targetUserIds = await _context.TaskAssignments
                 .Where(ta => ta.WorkTaskId == request.TaskId && ta.Status && ta.UserId != actorId.Value)
@@ -239,8 +255,11 @@ namespace TaskManagement.API.Controllers
                 return Ok(new { skipped = true, message = "Không gửi nhắc việc cho chính bạn." });
             }
 
-            var task = await _context.WorkTasks.FirstOrDefaultAsync(t => t.Id == request.TaskId && t.ProjectId == request.ProjectId);
-            if (task == null) return NotFound("Task not found in the specified project.");
+            var authorizationFailure = await AuthorizeTaskNotificationAsync(actorId.Value, request.ProjectId, request.TaskId);
+            if (authorizationFailure != null) return authorizationFailure;
+
+            var task = await _context.WorkTasks.FirstOrDefaultAsync(t => t.Id == request.TaskId);
+            if (task == null) return NotFound("Task not found.");
 
             var isAssigned = await _context.TaskAssignments.AnyAsync(ta => ta.WorkTaskId == request.TaskId && ta.UserId == request.AssigneeUserId && ta.Status);
             if (!isAssigned)
@@ -272,6 +291,29 @@ namespace TaskManagement.API.Controllers
                 message = "Đã gửi nhắc việc.",
                 data = new { notificationId }
             });
+        }
+
+        private async Task<IActionResult?> AuthorizeTaskNotificationAsync(
+            Guid actorId,
+            Guid requestedProjectId,
+            Guid taskId)
+        {
+            var taskProjectId = await _context.WorkTasks
+                .AsNoTracking()
+                .Where(task => task.Id == taskId && !task.IsDeleted)
+                .Select(task => (Guid?)task.ProjectId)
+                .FirstOrDefaultAsync();
+            if (taskProjectId == null || taskProjectId.Value != requestedProjectId)
+                return NotFound("Task not found in the specified project.");
+
+            var authorization = await _authorization.AuthorizeProjectResourceAsync(
+                actorId,
+                "worktask",
+                taskId,
+                ResourcePermissionCodes.ProjectRead);
+            return authorization.Succeeded
+                ? null
+                : NotFound("Task is not accessible.");
         }
     }
 

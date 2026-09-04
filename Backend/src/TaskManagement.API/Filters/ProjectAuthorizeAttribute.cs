@@ -9,9 +9,9 @@ namespace TaskManagement.API.Filters
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true, Inherited = true)]
     public class ProjectAuthorizeAttribute : TypeFilterAttribute
     {
-        public ProjectAuthorizeAttribute(string roles) : base(typeof(ProjectAuthorizeFilter))
+        public ProjectAuthorizeAttribute(string roles, bool requireDirectProjectMembership = false) : base(typeof(ProjectAuthorizeFilter))
         {
-            Arguments = new object[] { roles };
+            Arguments = new object[] { roles, requireDirectProjectMembership };
         }
     }
 
@@ -20,8 +20,12 @@ namespace TaskManagement.API.Filters
         private readonly string _authorizationRule;
         private readonly string[] _allowedRoles;
         private readonly IResourceAuthorizationService _authorizationService;
+        private readonly bool _requireDirectProjectMembership;
 
-        public ProjectAuthorizeFilter(string roles, IResourceAuthorizationService authorizationService)
+        public ProjectAuthorizeFilter(
+            string roles,
+            bool requireDirectProjectMembership,
+            IResourceAuthorizationService authorizationService)
         {
             _authorizationRule = roles.Trim();
             _allowedRoles = roles
@@ -30,6 +34,12 @@ namespace TaskManagement.API.Filters
                 .Where(r => !string.IsNullOrWhiteSpace(r))
                 .ToArray();
             _authorizationService = authorizationService;
+            _requireDirectProjectMembership = requireDirectProjectMembership;
+        }
+
+        public ProjectAuthorizeFilter(string roles, IResourceAuthorizationService authorizationService)
+            : this(roles, false, authorizationService)
+        {
         }
 
         public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
@@ -58,7 +68,11 @@ namespace TaskManagement.API.Filters
             var permissionCode = ResourcePermissionPolicy.IsKnownPermission(_authorizationRule)
                 ? _authorizationRule
                 : ResourcePermissionCodes.ProjectRead;
-            var authorization = await _authorizationService.AuthorizeProjectAsync(userId, projectId, permissionCode);
+            var authorization = await _authorizationService.AuthorizeProjectAsync(
+                userId,
+                projectId,
+                permissionCode,
+                _requireDirectProjectMembership);
             if (!authorization.Succeeded)
             {
                 context.Result = new ObjectResult(new { statusCode = 403, message = "Forbidden. Active workspace/project membership and permission are required." })

@@ -42,5 +42,12 @@ export const isComposerSendKey = (event) => Boolean(
   event?.key === 'Enter' && !event.shiftKey && !event.isComposing
 )
 
+export const buildAiContextKey = (workspaceId, projectId) =>
+  `${workspaceId || ''}:${projectId || ''}`
+
+export const isAiContextMatch = (contextKey, workspaceId, projectId) => Boolean(
+  workspaceId && projectId && contextKey === buildAiContextKey(workspaceId, projectId)
+)
+
 export const writeActionsOnly = (actions = [], isReadOnlyAction = () => false) =>
   actions.filter(action => !isReadOnlyAction(action?.type, action?.requiresConfirmation))
