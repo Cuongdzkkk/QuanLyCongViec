@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Moq;
 using TaskManagement.Application.DTOs.Billing;
 using TaskManagement.Application.Interfaces;
@@ -324,6 +325,78 @@ public sealed class PaymentSqlServerTransactionTests
 
     [Fact]
     [Trait("Category", "SqlServerIntegration")]
+    public async Task ConcurrentApprovalAndRejectionCannotOverwriteACommittedPaidOrder()
+    {
+        var databaseName = $"TaskManagement_PaymentHotfix_{Guid.NewGuid():N}";
+        await using var setupContext = CreateContext(databaseName);
+        await setupContext.Database.MigrateAsync();
+        try
+        {
+            var (_, order) = await SeedPendingOrderAsync(setupContext, "plus", 1200);
+            var admin = new User
+            {
+                Id = Guid.NewGuid(), Email = "concurrent-state-admin@test.local", FullName = "Admin",
+                PasswordHash = "test", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+            };
+            setupContext.Users.Add(admin);
+            await setupContext.SaveChangesAsync();
+
+            var rejectSaveGate = new RejectSaveGate();
+            await using var rejectContext = CreateContext(databaseName, rejectSaveGate);
+            await using var approveContext = CreateContext(databaseName);
+            var reject = new BillingService(rejectContext, new AiCreditUsageService(rejectContext));
+            var approve = new BillingService(approveContext, new AiCreditUsageService(approveContext));
+
+            var rejectTask = Task.Run(async () =>
+            {
+                try
+                {
+                    await reject.RejectOrderAsync(order.Id, admin.Id, "invalid transfer");
+                    return true;
+                }
+                catch (InvalidOperationException)
+                {
+                    return false;
+                }
+            });
+            await rejectSaveGate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            var approveTask = Task.Run(async () =>
+            {
+                try
+                {
+                    await approve.ApproveOrderAsync(order.Id, admin.Id, "valid transfer");
+                    return true;
+                }
+                catch (InvalidOperationException)
+                {
+                    return false;
+                }
+            });
+
+            rejectSaveGate.Release.TrySetResult();
+            var outcomes = await Task.WhenAll(rejectTask, approveTask);
+
+            await using var verifyContext = CreateContext(databaseName);
+            var status = await verifyContext.PaymentOrders
+                .Where(item => item.Id == order.Id)
+                .Select(item => item.Status)
+                .SingleAsync();
+
+            outcomes.Count(result => result).Should().Be(1);
+            if (outcomes[1])
+                status.Should().Be("Paid");
+            else
+                status.Should().Be("Rejected");
+        }
+        finally
+        {
+            await setupContext.Database.EnsureDeletedAsync();
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "SqlServerIntegration")]
     public async Task SearchOrdersReturnsGlobalAggregateAlongsidePagedRows()
     {
         var databaseName = $"TaskManagement_PaymentHotfix_{Guid.NewGuid():N}";
@@ -386,10 +459,11 @@ public sealed class PaymentSqlServerTransactionTests
         }
     }
 
-    private static ApplicationDbContext CreateContext(string databaseName)
+    private static ApplicationDbContext CreateContext(string databaseName, params IInterceptor[] interceptors)
     {
         return new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseSqlServer(SqlServerTestConnection.Build(databaseName, 10), sql => sql.EnableRetryOnFailure())
+            .AddInterceptors(interceptors)
             .Options);
     }
 
@@ -415,4 +489,25 @@ public sealed class PaymentSqlServerTransactionTests
         IsValid = true, ProviderEventId = providerEventId, TransactionType = "in", Amount = order.AmountVnd,
         TransferContent = $"payment {order.TransferCode}", ProviderReference = "SEVQR SPA_TEST", TransactionAt = DateTimeOffset.UtcNow
     };
+
+    private sealed class RejectSaveGate : SaveChangesInterceptor
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context?.ChangeTracker.Entries<PaymentOrder>()
+                .Any(entry => entry.State == EntityState.Modified && entry.Entity.Status == "Rejected") == true)
+            {
+                Entered.TrySetResult();
+                await Release.Task.WaitAsync(cancellationToken);
+            }
+
+            return await base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
 }
