@@ -126,7 +126,10 @@ namespace TaskManagement.API.Controllers
                 .ToListAsync();
 
             var points = wallet?.TotalPoints ?? 0;
-            var career = CalculateCareer(points);
+            var lifetimeExp = await _context.PointTransactions
+                .Where(pt => pt.UserWalletUserId == userId.Value && pt.Amount > 0)
+                .SumAsync(pt => pt.Amount);
+            var career = CalculateCareer(lifetimeExp);
             var summary = BuildSummary(transactions, assignedTaskSnapshots, timeLogSnapshots);
 
             return Ok(new
@@ -139,8 +142,8 @@ namespace TaskManagement.API.Controllers
                     {
                         userId = userId.Value,
                         totalPoints = points,
-                        level = wallet?.Level ?? 1,
-                        nextLevelAt = ((wallet?.Level ?? 1) * 1000),
+                        level = career.Level,
+                        nextLevelAt = career.NextThreshold,
                         userName = wallet?.User.FullName ?? wallet?.User.Email,
                         rankTitle = career.Title
                     },
