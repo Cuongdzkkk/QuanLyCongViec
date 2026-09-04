@@ -185,7 +185,7 @@
               :key="prompt.text"
               class="quick-action"
               type="button"
-              @click="useQuickPrompt(prompt.text)"
+              @click="runQuickPrompt(prompt.text)"
             >
               <i :class="prompt.icon"></i>
               <span>{{ prompt.label }}</span>
@@ -198,7 +198,7 @@
               <span>{{ currentRouteLabel }}</span>
               <small>{{ currentProjectLabel }}</small>
             </div>
-            <button type="button" @click="useQuickPrompt(`${aiCopy.currentPagePrompt}: ${currentRouteLabel}`)">
+            <button type="button" @click="runQuickPrompt(`${aiCopy.currentPagePrompt}: ${currentRouteLabel}`)">
               <i class="fa-solid fa-wand-magic-sparkles"></i>
             </button>
           </div>
@@ -390,8 +390,10 @@ import { getRandomPaletteColor } from '@/utils/colors'
 import { getStickyAccountId } from '@/utils/stickyAccountIsolation'
 import {
   AI_PANEL_DEFAULT_WIDTH,
+  buildAiContextKey,
   clampAiPanelSize,
   isAiPanelResizable,
+  isAiContextMatch,
   isComposerSendKey,
   readAiPanelSize,
   writeAiPanelSize,
@@ -1336,6 +1338,13 @@ const startNewConversation = () => {
   clearPendingAttachments()
 }
 
+const handleAiWorkspaceChanged = () => {
+  aiContextRevision.value += 1
+  aiInput.value = ''
+  if (currentConversationId.value) startNewConversation()
+  if (aiVisible.value) void loadConversations(true)
+}
+
 const ensureConversation = async (firstMessage) => {
   return aiConversationStore.ensureConversation({ workspaceId: currentWorkspaceId.value, firstMessage })
 }
@@ -1343,6 +1352,7 @@ const ensureConversation = async (firstMessage) => {
 const releaseMessageAttachmentUrls = () => {
   chatHistory.value.forEach(message => message.attachments?.forEach((attachment) => {
     if (attachment.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(attachment.previewUrl)
+    attachment.previewUrl = ''
   }))
 }
 
@@ -1649,6 +1659,7 @@ onMounted(() => {
   document.addEventListener('keyup', captureSelectedText)
   window.addEventListener('keydown', handleGlobalKeydown)
   window.addEventListener('integration-detail-opened', closeUtilitiesForIntegrationDetail)
+  window.addEventListener('sprinta-workspace-changed', handleAiWorkspaceChanged)
   window.addEventListener('pointermove', movePet)
   window.addEventListener('pointerup', endPetDrag)
   nextTick(() => {
@@ -1668,6 +1679,7 @@ onUnmounted(() => {
   document.removeEventListener('keyup', captureSelectedText)
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('integration-detail-opened', closeUtilitiesForIntegrationDetail)
+  window.removeEventListener('sprinta-workspace-changed', handleAiWorkspaceChanged)
   window.removeEventListener('pointermove', movePet)
   window.removeEventListener('pointerup', endPetDrag)
   window.removeEventListener('pointermove', moveAiPanelResize)
@@ -1716,6 +1728,10 @@ const toggleCreate = () => {
 
 const useQuickPrompt = (prompt) => {
   aiInput.value = prompt
+}
+const runQuickPrompt = (prompt) => {
+  aiInput.value = prompt
+  void sendAiMessage()
 }
 
 const actionPayload = (action) => action?.payload || {}
@@ -1852,8 +1868,14 @@ const confirmDuplicateCreation = async (action) => {
     if (error !== 'cancel' && error !== 'close') ElMessage.error('Không thể xác nhận thao tác.')
   }
 }
-const executeAiAction = async (action) => {
+const executeAiAction = async (action, { navigate = true } = {}) => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
+  if (!isAiContextMatch(action.contextKey, currentWorkspaceId.value, currentProjectId.value)) {
+    action.uiStatus = 'error'
+    action.error = 'Ngữ cảnh AI đã thay đổi. Hãy gửi lại yêu cầu trong project hiện tại.'
+    await persistConversation()
+    return
+  }
   const duplicate = await findDuplicateTask(action)
   if (duplicate) {
     action.duplicateCandidate = duplicate
@@ -1906,7 +1928,7 @@ const executeAiAction = async (action) => {
     action.uiStatus = 'success'
     const navigation = await refreshAfterAiAction(action, result)
     ElMessage.success(result?.message || 'AI đã thực hiện thay đổi thành công.')
-    await navigateToAiEntity(navigation)
+    if (navigate) await navigateToAiEntity(navigation)
   } catch (error) {
     const duplicateCandidate = error.response?.data?.data?.existingTask
     if (error.response?.status === 409 && duplicateCandidate) {
@@ -1943,9 +1965,13 @@ const currentProjectId = computed(() => {
 const currentWorkspaceId = computed(() => {
   const routeWorkspaceId = route.params?.workspaceId || route.params?.spaceId
   if (typeof routeWorkspaceId === 'string' && routeWorkspaceId.length >= 30) return routeWorkspaceId
-  const project = projectStore.currentProject
+  const project = projectStore.allProjects.find(item => `${item.id || item.Id}` === `${currentProjectId.value || ''}`)
+    || projectStore.currentProject
   return project?.workspaceId || project?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null
 })
+
+const aiContextKey = computed(() => buildAiContextKey(currentWorkspaceId.value, currentProjectId.value))
+const aiContextRevision = ref(0)
 
 const currentProjectLabel = computed(() => {
   const project = projectStore.allProjects.find(item => `${item.id || item.Id}` === `${currentProjectId.value || ''}`)
@@ -2059,6 +2085,19 @@ watch(currentProjectId, async (newVal) => {
     await loadPermissionMatrix()
   }
 }, { immediate: true })
+
+watch([currentWorkspaceId, currentProjectId], async ([workspaceId, projectId], previous = []) => {
+  const [previousWorkspaceId, previousProjectId] = previous
+  if (workspaceId === previousWorkspaceId && projectId === previousProjectId) return
+
+  aiContextRevision.value += 1
+  if (currentConversationId.value) {
+    startNewConversation()
+  }
+  if (aiVisible.value) {
+    await loadConversations(true)
+  }
+}, { flush: 'post' })
 
 const currentTasks = computed(() => Array.isArray(workTaskStore.tasks) ? workTaskStore.tasks : [])
 
@@ -2230,7 +2269,7 @@ const createRealTasks = async (message) => {
       storyPoints: 0
     }
     if (dueDate) payload.dueDate = dueDate
-    created.push(await workTaskStore.createTask(projectId, payload))
+    created.push({ ...payload, projectId, pendingConfirmation: true })
   }
 
   window.dispatchEvent(new CustomEvent('sprinta-ai-task-created', { detail: { projectId, tasks: created } }))
@@ -2257,8 +2296,7 @@ const moveTaskByPrompt = async (message) => {
     return 'Mình chưa tìm thấy task cần chuyển. Hãy ghi rõ mã task hoặc đặt tên task trong dấu ngoặc kép, ví dụ: chuyển "Bug Bash" sang Done.'
   }
 
-  await workTaskStore.updateTaskStatus(projectId, task.id, statusName)
-  return `Đã chuyển task "${task.title}" sang trạng thái ${statusName}.`
+  return `Đã tạo đề xuất chuyển task "${task.title}" sang trạng thái ${statusName}. Vui lòng xác nhận qua action preview.`
 }
 
 const tryHandleLocalAiCommand = async (message) => {
@@ -2330,7 +2368,7 @@ const tryHandleLocalAiCommand = async (message) => {
   return null
 }
 
-const createSuggestedTask = async (task, messageItem) => {
+const createSuggestedTask = async (task) => {
   if (!canCreateTaskInProject.value) {
     ElMessage.error("Bạn không có quyền tạo công việc trong dự án này.")
     return
@@ -2338,21 +2376,32 @@ const createSuggestedTask = async (task, messageItem) => {
 
   task.loading = true
   try {
-    const created = await workTaskStore.createTask(currentProjectId.value, {
-      title: task.title,
-      description: task.description || "Được tạo từ gợi ý của SprintA AI",
-      priority: task.priority || 3,
-      dueDate: task.dueDate || null,
-      typeName: "Task",
-      storyPoints: 0
-    })
-    task.created = true
-    task.createdTask = created
-    ElMessage.success(`Đã tạo thành công task: "${created.title || created.Title}"`)
-    // Refresh lists
-    window.dispatchEvent(new CustomEvent('sprinta-ai-task-created', {
-      detail: { projectId: currentProjectId.value, task: created }
-    }))
+    const action = {
+      type: 'create_task',
+      contextKey: aiContextKey.value,
+      payload: {
+        projectId: currentProjectId.value,
+        title: task.title,
+        description: task.description || 'Được tạo từ gợi ý của SprintA AI',
+        priority: task.priority || 3,
+        dueDate: task.dueDate || null,
+        typeName: 'Task',
+        storyPoints: 0
+      },
+      uiStatus: 'pending',
+      loading: false,
+      error: '',
+      result: null,
+      duplicateCandidate: null
+    }
+    await executeAiAction(action, { navigate: false })
+    if (action.uiStatus === 'success') {
+      task.created = true
+      task.createdTask = action.result?.task || action.result
+      ElMessage.success(`Đã tạo thành công task: "${task.createdTask?.title || task.createdTask?.Title || task.title}"`)
+    } else if (action.duplicateCandidate) {
+      task.error = 'Đã tìm thấy task tương tự. Không tạo task mới.'
+    }
   } catch (e) {
     ElMessage.error(e.response?.data?.message || "Không thể tạo task gợi ý.")
   } finally {
@@ -2382,17 +2431,27 @@ const confirmSuggestedAction = async (action) => {
       return
     }
 
-    action.loading = true
     try {
-      await workTaskStore.updateTaskStatus(currentProjectId.value, action.taskId, action.statusName)
+      const guardedAction = {
+        type: 'update_task_status',
+        contextKey: aiContextKey.value,
+        payload: {
+          projectId: currentProjectId.value,
+          taskId: action.taskId,
+          statusName: action.statusName
+        },
+        uiStatus: 'pending',
+        loading: false,
+        error: '',
+        result: null,
+        duplicateCandidate: null
+      }
+      await executeAiAction(guardedAction, { navigate: false })
+      if (guardedAction.uiStatus !== 'success') return
       action.completed = true
       ElMessage.success(`Đã chuyển task "${action.taskTitle}" sang trạng thái ${action.statusName}.`)
-      // Refresh list
-      await workTaskStore.fetchTasks(currentProjectId.value)
     } catch (e) {
       ElMessage.error(e.response?.data?.message || "Không thể chuyển trạng thái task.")
-    } finally {
-      action.loading = false
     }
   }
 }
@@ -2472,6 +2531,7 @@ const sendAiMessage = async () => {
   if ((!outgoing && !hasAttachments) || aiSending.value) return
 
   aiSending.value = true
+  const requestRevision = aiContextRevision.value
   let loadingAdded = false
   let userMessageAdded = false
 
@@ -2479,6 +2539,7 @@ const sendAiMessage = async () => {
     const titleSeed = outgoing || pendingAttachments.value.map(item => item.name).join(', ')
     const conversationId = await ensureConversation(titleSeed)
     const uploadedAttachments = hasAttachments ? await uploadPendingAttachments(conversationId) : []
+    if (requestRevision !== aiContextRevision.value) return
 
     if (uploadedAttachments.length) pendingAttachments.value = []
     aiInput.value = ''
@@ -2499,6 +2560,7 @@ const sendAiMessage = async () => {
         attachmentIds: uploadedAttachments.map(item => item.id),
         message: outgoing
       })
+      if (requestRevision !== aiContextRevision.value) return
       const responseData = apiPayload(response)
       chatHistory.value.pop()
       loadingAdded = false
@@ -2527,6 +2589,7 @@ const sendAiMessage = async () => {
         extra: {}
       }
     })
+    if (requestRevision !== aiContextRevision.value) return
     const responseData = apiPayload(response)
 
     chatHistory.value.pop()
@@ -2542,6 +2605,7 @@ const sendAiMessage = async () => {
         type: String(action.type || '').toLowerCase(),
         payload: action.payload || {},
         duplicateCandidate: null,
+        contextKey: aiContextKey.value,
         uiStatus: 'pending',
         loading: false,
         error: '',

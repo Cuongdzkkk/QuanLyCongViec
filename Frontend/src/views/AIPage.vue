@@ -56,7 +56,7 @@
             <div class="context-summary">
               <span class="context-kicker"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i> AI ĐANG LÀM VIỆC TRONG</span>
               <strong>{{ activeWorkspaceName }} <span aria-hidden="true">·</span> {{ activeProjectName }}</strong>
-              <small>Trang: {{ currentPageLabel }} · Đổi workspace ở đây; project lấy từ project đang mở.</small>
+              <small>Trang: {{ currentPageLabel }} · Chọn workspace và project cho ngữ cảnh AI.</small>
             </div>
             <div class="context-controls">
               <span class="workspace-context-pill" :title="currentWorkspaceId ? `Workspace ${currentWorkspaceId}` : 'Chưa chọn workspace'">
@@ -69,6 +69,16 @@
                 <select v-model="selectedWorkspaceId" aria-label="Chọn workspace" @change="handleWorkspaceChange">
                   <option v-for="workspace in workspaceOptions" :key="workspace.id || workspace.Id" :value="workspace.id || workspace.Id">
                     {{ workspace.name || workspace.Name }}
+                  </option>
+                </select>
+              </label>
+              <label class="workspace-selector project-selector">
+                <i class="fa-solid fa-folder-tree" aria-hidden="true"></i>
+                <span class="sr-only">Project</span>
+                <select v-model="selectedProjectId" aria-label="Chọn project" @change="handleProjectChange">
+                  <option value="">Chọn project</option>
+                  <option v-for="project in availableProjects" :key="project.id" :value="project.id">
+                    {{ project.name }}
                   </option>
                 </select>
               </label>
@@ -321,7 +331,7 @@
           <div class="section-label">SPRINTA AI</div>
           <div class="section-title">CÔNG CỤ NHANH</div>
           <div class="quick-links">
-            <button v-for="action in quickActions.slice(0, 4)" :key="action.type" class="q-link" type="button" @click="useQuickPrompt(action.prompt)">
+            <button v-for="action in quickActions.slice(0, 4)" :key="action.type" class="q-link" type="button" @click="runQuickPrompt(action.prompt)">
               <i :class="action.icon" aria-hidden="true"></i> {{ action.label }}
             </button>
           </div>
@@ -330,7 +340,7 @@
             <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
           </button>
           <div v-if="quickToolsExpanded" class="quick-links quick-links-more" aria-label="Công cụ bổ sung">
-              <button v-for="action in quickActions.slice(4)" :key="`more-${action.type}`" class="q-link" type="button" @click="useQuickPrompt(action.prompt)">
+              <button v-for="action in quickActions.slice(4)" :key="`more-${action.type}`" class="q-link" type="button" @click="runQuickPrompt(action.prompt)">
                 <i :class="action.icon" aria-hidden="true"></i> {{ action.label }}
               </button>
           </div>
@@ -379,11 +389,11 @@ import { broadcastAdminRealtime } from '@/utils/adminRealtime'
 import { signalRService } from '@/api/signalrService'
 import { hasProjectWritePermission, normalizeProjectRole } from '@/utils/permissions'
 import { AUTH_SESSION_CHANGED, getStoredUserSession } from '@/utils/authSession'
-import { clearScopedCurrentProjectId, getScopedCurrentProjectId } from '@/utils/projectContext'
+import { clearScopedCurrentProjectId, getScopedCurrentProjectId, setScopedCurrentProjectId } from '@/utils/projectContext'
 import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
 import { useAiConversationStore } from '@/store/useAiConversationStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
-import { isComposerSendKey } from '@/utils/aiWorkspace'
+import { buildAiContextKey, isAiContextMatch, isComposerSendKey } from '@/utils/aiWorkspace'
 import { useAiComposer } from '@/composables/useAiComposer'
 import { AI_QUICK_ACTIONS } from '@/utils/aiActionUi'
 
@@ -399,6 +409,7 @@ const sprintStore = useSprintStore()
 const i18nStore = useI18nStore()
 const currentUser = ref(getStoredUserSession())
 const selectedWorkspaceId = ref('')
+const selectedProjectId = ref(getScopedCurrentProjectId())
 const showCustomizeModal = ref(false)
 const sidebarPreferences = ref({ audit: true, users: true })
 
@@ -453,6 +464,12 @@ const conversationSearch = computed({
   set: value => { aiConversationStore.search = value }
 })
 const workspaceOptions = computed(() => siteStore.sites || [])
+const projectWorkspaceIdOf = project => project?.workspaceId || project?.WorkspaceId || project?.originalRow?.workspaceId || project?.originalRow?.WorkspaceId || ''
+const availableProjects = computed(() => {
+  const workspaceId = `${currentWorkspaceId.value || ''}`
+  if (!workspaceId) return []
+  return (projectStore.allProjects || []).filter(project => `${projectWorkspaceIdOf(project)}` === workspaceId)
+})
 const currentWorkspaceId = computed(() => selectedWorkspaceId.value || currentProjectRecord.value?.workspaceId || currentProjectRecord.value?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null)
 const formatConversationDate = value => {
   if (!value) return ''
@@ -538,7 +555,9 @@ const userInitials = computed(() => {
   return name.substring(0, 2).toUpperCase()
 })
 
-const currentProjectId = computed(() => getScopedCurrentProjectId())
+const currentProjectId = computed(() => selectedProjectId.value || getScopedCurrentProjectId())
+const aiContextKey = computed(() => buildAiContextKey(currentWorkspaceId.value, currentProjectId.value))
+const aiContextRevision = ref(0)
 const activeProjectName = computed(() => {
   const projectId = currentProjectId.value
   if (!projectId) return 'Chua chon project'
@@ -563,31 +582,67 @@ const syncSelectedWorkspace = () => {
   const preferredWorkspace = workspaceOptions.value.find(item => `${workspaceIdOf(item)}` === `${preferredId}`)
   selectedWorkspaceId.value = workspaceIdOf(preferredWorkspace) || workspaceIdOf(workspaceOptions.value[0])
 }
-const handleWorkspaceChanged = event => {
+const syncSelectedProject = () => {
+  const candidate = selectedProjectId.value || getScopedCurrentProjectId()
+  const selected = availableProjects.value.find(project => `${project.id}` === `${candidate}`)
+  if (selected) {
+    selectedProjectId.value = selected.id
+    setScopedCurrentProjectId(selected.id)
+    projectStore.clearProjectContext(selected.id)
+    return selected.id
+  }
+
+  selectedProjectId.value = ''
+  clearScopedCurrentProjectId()
+  projectStore.clearProjectContext()
+  return ''
+}
+const resetAiConversation = () => {
+  releaseMessageAttachmentUrls()
+  aiConversationStore.startNewConversation()
+}
+const handleWorkspaceChanged = async event => {
   const workspaceId = event?.detail?.workspaceId
   if (!workspaceId || `${workspaceId}` === `${selectedWorkspaceId.value}`) return
   selectedWorkspaceId.value = workspaceId
+  selectedProjectId.value = ''
+  aiContextRevision.value += 1
   clearScopedCurrentProjectId()
   projectStore.clearWorkspaceData()
-  aiConversationStore.startNewConversation()
-  loadConversations(true)
+  resetAiConversation()
+  await projectStore.fetchAllProjects(true).catch(() => [])
+  syncSelectedProject()
+  await loadConversations(true)
 }
-const handleWorkspaceChange = () => {
+const handleWorkspaceChange = async () => {
   const workspace = workspaceOptions.value.find(item => `${workspaceIdOf(item)}` === `${selectedWorkspaceId.value}`)
   if (!workspace) return
 
-  const previousWorkspaceId = currentProjectRecord.value?.workspaceId
-    || currentProjectRecord.value?.WorkspaceId
-    || siteStore.activeSite?.id
-    || siteStore.activeSite?.Id
-    || ''
+  const previousWorkspaceId = currentWorkspaceId.value
   siteStore.setRecentSite(workspace)
   if (`${previousWorkspaceId || ''}` === `${selectedWorkspaceId.value}`) return
 
+  selectedProjectId.value = ''
+  aiContextRevision.value += 1
   clearScopedCurrentProjectId()
   projectStore.clearWorkspaceData()
-  aiConversationStore.startNewConversation()
-  loadConversations(true)
+  resetAiConversation()
+  await projectStore.fetchAllProjects(true).catch(() => [])
+  syncSelectedProject()
+  await loadConversations(true)
+}
+const handleProjectChange = async () => {
+  const selected = availableProjects.value.find(project => `${project.id}` === `${selectedProjectId.value}`)
+  if (!selected) {
+    syncSelectedProject()
+    return
+  }
+
+  setScopedCurrentProjectId(selected.id)
+  projectStore.clearProjectContext(selected.id)
+  aiContextRevision.value += 1
+  resetAiConversation()
+  await loadConversations(true)
 }
 const refreshCurrentUser = () => {
   currentUser.value = getStoredUserSession()
@@ -684,13 +739,33 @@ const toggleConversationHistory = () => {
   if (aiConversationStore.historyVisible) loadConversations(true)
 }
 
-const startNewConversation = () => aiConversationStore.startNewConversation()
+const startNewConversation = () => resetAiConversation()
 const openConversation = async id => {
   try {
+    releaseMessageAttachmentUrls()
     await aiConversationStore.openConversation(id)
+    await hydrateConversationImages()
   } catch {
     ElMessage.error('Không thể mở cuộc trò chuyện.')
   }
+}
+const releaseMessageAttachmentUrls = () => {
+  chatHistory.value.flatMap(message => message.attachments || []).forEach(attachment => {
+    if (attachment.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(attachment.previewUrl)
+    attachment.previewUrl = ''
+  })
+}
+const hydrateConversationImages = async () => {
+  const images = chatHistory.value.flatMap(message => message.attachments || [])
+    .filter(attachment => attachment.kind === 'image' && attachment.contentUrl)
+  await Promise.all(images.map(async attachment => {
+    try {
+      const response = await axiosClient.get(attachment.contentUrl, { responseType: 'blob' })
+      attachment.previewUrl = URL.createObjectURL(response.data)
+    } catch {
+      attachment.previewUrl = ''
+    }
+  }))
 }
 const returnToFloating = async () => {
   aiPetStore.setPanelOpen(true)
@@ -703,6 +778,12 @@ const actionPayload = action => action?.payload || {}
 
 const confirmPageAction = async action => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
+  if (!isAiContextMatch(action.contextKey, currentWorkspaceId.value, currentProjectId.value)) {
+    action.uiStatus = 'error'
+    action.error = 'Ngữ cảnh AI đã thay đổi. Hãy gửi lại yêu cầu trong project hiện tại.'
+    await aiConversationStore.persistConversation()
+    return
+  }
   action.loading = true
   action.uiStatus = 'loading'
   try {
@@ -835,6 +916,7 @@ const sendMessage = async (overrideMessage = null) => {
 
   const sentAttachments = pendingAttachments.value
   isLoading.value = true
+  const requestRevision = aiContextRevision.value
   startThinkingMessage(outgoing)
 
   try {
@@ -843,6 +925,7 @@ const sendMessage = async (overrideMessage = null) => {
       firstMessage: outgoing || sentAttachments.map(item => item.name).join(', ')
     })
     const uploadedAttachments = hasAttachments ? await uploadFullAttachments(conversationId) : []
+    if (requestRevision !== aiContextRevision.value) return
     pendingAttachments.value = []
     chatHistory.value.splice(chatHistory.value.length - 1, 0, { role: 'user', content: outgoing || 'Hãy phân tích các attachment đã đính kèm.', attachments: uploadedAttachments })
     const history = chatHistory.value
@@ -860,6 +943,7 @@ const sendMessage = async (overrideMessage = null) => {
         message: outgoing,
         pageContext: { pageType: 'ai-assistant', currentView: 'conversation', visibleTaskIds: [], visibleStatuses: [], filters: {}, extra: { history } }
       })
+    if (requestRevision !== aiContextRevision.value) return
 
     clearProgressTimer()
     chatHistory.value.pop()
@@ -876,6 +960,7 @@ const sendMessage = async (overrideMessage = null) => {
         ...action,
         type: String(action.type || '').toLowerCase(),
         payload: action.payload || {},
+        contextKey: aiContextKey.value,
         uiStatus: 'pending',
         loading: false,
         error: '',
@@ -904,6 +989,10 @@ const sendMessage = async (overrideMessage = null) => {
 
 const useQuickPrompt = (prompt) => {
   userMessage.value = prompt
+}
+const runQuickPrompt = (prompt) => {
+  userMessage.value = prompt
+  void sendMessage()
 }
 
 const prepareBreakdownPrompt = () => {
@@ -1113,15 +1202,20 @@ const loadConnectedIntegrations = async () => {
 
 onMounted(() => {
   siteStore.fetchSites()
-    .then(() => {
+    .then(async () => {
       syncSelectedWorkspace()
-      loadConversations(true)
+      await projectStore.fetchAllProjects(true).catch(() => [])
+      syncSelectedProject()
+      await loadConversations(true)
     })
-    .catch(() => loadConversations(true))
+    .catch(async () => {
+      await projectStore.fetchAllProjects(true).catch(() => [])
+      syncSelectedProject()
+      await loadConversations(true)
+    })
   window.addEventListener('sprinta-workspace-changed', handleWorkspaceChanged)
   window.addEventListener(AUTH_SESSION_CHANGED, refreshCurrentUser)
   clearLegacyGitHubCredentialStorage()
-  projectStore.fetchAllProjects().catch(() => [])
   loadAiUsage()
   loadConnectedIntegrations()
   if (currentProjectId.value) {
@@ -1176,6 +1270,7 @@ watch(repoAnalysis, () => {
 
 onBeforeUnmount(() => {
   clearProgressTimer()
+  releaseMessageAttachmentUrls()
   window.removeEventListener('sprinta-workspace-changed', handleWorkspaceChanged)
   window.removeEventListener(AUTH_SESSION_CHANGED, refreshCurrentUser)
 })
