@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <ProjectPageContainer scrollable class="space-reports-page">
     <ProjectPageHeader 
       icon="fa-solid fa-chart-line" 
@@ -20,12 +20,12 @@
       v-else-if="allTasks.length === 0"
       icon="fa-solid fa-chart-line"
       style="margin-top: 64px;"
-      :title="t('reports.noTasksPlaceholder', 'Chưa có công việc nào trong dự án này.')"
-      :description="t('reports.noTasksPlaceholderDesc', 'Hãy tạo một vài công việc để xem thống kê, biểu đồ và phân bổ tải công việc tại đây.')"
+      :title="t('reports.noTasksPlaceholder', 'Chưa có dữ liệu thống kê')"
+      :description="t('reports.noTasksPlaceholderDesc', 'Vui lòng tạo công việc để xem phân tích, biểu đồ và tiến độ dự án.')"
     >
       <template #action>
         <button class="empty-spaces-btn" @click="router.push(buildSpacePath(projectId, 'work-items'))">
-          <i class="fa-solid fa-plus"></i> {{ t('reports.createWorkItem', 'Tạo công việc mới') }}
+          <i class="fa-solid fa-plus"></i> {{ t('reports.createWorkItem', 'Tạo công việc') }}
         </button>
       </template>
     </ProjectEmptyState>
@@ -3111,3 +3111,4 @@ onMounted(() => {
 }
 
 </style>
+
