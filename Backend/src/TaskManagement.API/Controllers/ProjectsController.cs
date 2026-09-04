@@ -1036,7 +1036,7 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPut("{projectId:guid}/restore-deleted")]
-        [ProjectAuthorize("PROJECT_MANAGER,PROJECT_LEAD,PM,PO,SM,Admin")]
+        [ProjectRestoreAuthorize]
         public async Task<IActionResult> RestoreDeleted(Guid projectId)
         {
             try
