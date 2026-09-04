@@ -69,14 +69,13 @@
                 type="button"
                 class="plan-action"
                 :class="{ primary: !isCurrentPlan(plan) && !isEnterprisePlan(plan) }"
+                :aria-label="`${plan.name}: ${planActionLabel(plan)}`"
+                :data-plan-code="plan.code"
                 :disabled="isCurrentPlan(plan) || isEnterprisePlan(plan) || checkoutLoadingCode === plan.code"
-                @click="selectPlan(plan)"
+                @click.stop="selectPlan(plan)"
               >
                 <span v-if="checkoutLoadingCode === plan.code">Đang chuẩn bị...</span>
-                <span v-else-if="isCurrentPlan(plan)">Gói hiện tại</span>
-                <span v-else-if="isEnterprisePlan(plan)">Liên hệ sales</span>
-                <span v-else-if="Number(plan.monthlyPriceVnd) === 0">Kích hoạt Free</span>
-                <span v-else>Nâng cấp qua billing</span>
+                <span v-else>{{ planActionLabel(plan) }}</span>
               </button>
               <small v-if="isEnterprisePlan(plan)" class="plan-note">Gói này chưa có thanh toán online trong contract hiện tại.</small>
             </article>
@@ -116,6 +115,7 @@ import { useRouter } from 'vue-router'
 import AppModal from '@/components/common/Foundation/AppModal.vue'
 import axiosClient from '@/api/axiosClient'
 import { billingApi, unwrapBillingData } from '@/api/billingApi'
+import { buildBillingCheckoutLocation, resolveBillingPlanFlow } from '@/utils/billingPlanFlow'
 
 const props = defineProps({
   modelValue: { type: Boolean, required: true }
@@ -144,6 +144,7 @@ const priceLabel = value => value == null ? 'Liên hệ' : Number(value) === 0 ?
 const formatDate = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium' }).format(new Date(value)) : '—'
 const isCurrentPlan = plan => String(plan?.code || '').toLowerCase() === currentPlanCode.value
 const isEnterprisePlan = plan => String(plan?.code || '').toLowerCase() === 'enterprise' || plan?.monthlyPriceVnd == null
+const planActionLabel = plan => ({ current: 'Gói hiện tại', enterprise: 'Liên hệ sales', free: 'Kích hoạt Free', paid: 'Mở thanh toán' }[resolveBillingPlanFlow(plan, currentPlanCode.value)] || 'Mở thanh toán')
 
 const loadData = async () => {
   loading.value = true
@@ -176,22 +177,17 @@ const openBilling = () => {
 }
 
 const selectPlan = async plan => {
-  if (!plan?.code || isCurrentPlan(plan) || isEnterprisePlan(plan)) return
+  const flow = resolveBillingPlanFlow(plan, currentPlanCode.value)
+  if (flow === 'current' || flow === 'enterprise') return
   checkoutLoadingCode.value = plan.code
   try {
-    if (Number(plan.monthlyPriceVnd) === 0) {
+    if (flow === 'free') {
       await billingApi.activateFree()
       await loadData()
       return
     }
-    const order = unwrapBillingData(await billingApi.createOrder(plan.code)) || {}
-    const orderId = order.id || order.orderId
     close()
-    await router.push({
-      name: 'BillingCheckout',
-      params: { planCode: plan.code },
-      ...(orderId ? { query: { orderId } } : {})
-    })
+    await router.push(buildBillingCheckoutLocation(plan.code))
   } catch (selectError) {
     error.value = selectError?.response?.data?.message || 'Không thể chuẩn bị luồng billing.'
   } finally {
