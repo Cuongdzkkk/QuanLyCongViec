@@ -608,6 +608,20 @@ public sealed class BillingService : IBillingService
         Guid orderId, Guid adminUserId, string reason, CancellationToken cancellationToken = default)
     {
         RequireReason(reason);
+        if (!_context.Database.IsRelational())
+            return await RejectOrderCoreAsync(orderId, adminUserId, reason, false, cancellationToken);
+
+        return await _context.Database.CreateExecutionStrategy()
+            .ExecuteAsync(() => RejectOrderCoreAsync(orderId, adminUserId, reason, true, cancellationToken));
+    }
+
+    private async Task<PaymentOrderDto> RejectOrderCoreAsync(
+        Guid orderId, Guid adminUserId, string reason, bool useTransaction, CancellationToken cancellationToken)
+    {
+        if (useTransaction) _context.ChangeTracker.Clear();
+        await using IDbContextTransaction? transaction = useTransaction
+            ? await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
         var order = await _context.PaymentOrders.Include(item => item.User)
             .SingleOrDefaultAsync(item => item.Id == orderId, cancellationToken)
             ?? throw new ArgumentException("Đơn thanh toán không tồn tại.");
@@ -617,6 +631,7 @@ public sealed class BillingService : IBillingService
         order.AdminNote = reason.Trim();
         AddAudit(adminUserId, "PAYMENT_ORDER_REJECT", order.UserId, new { orderId, reason });
         await _context.SaveChangesAsync(cancellationToken);
+        if (transaction != null) await transaction.CommitAsync(cancellationToken);
         return await ToOrderDtoAsync(order, cancellationToken);
     }
 

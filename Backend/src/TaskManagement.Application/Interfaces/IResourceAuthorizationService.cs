@@ -27,6 +27,10 @@ namespace TaskManagement.Application.Interfaces
             string permissionCode,
             bool requireDirectProjectMembership = false);
 
+        Task<ResourceAuthorizationResult> AuthorizeProjectForRestoreAsync(
+            Guid userId,
+            Guid projectId);
+
         Task<ResourceAuthorizationResult> AuthorizeProjectResourceAsync(
             Guid userId,
             string resourceType,

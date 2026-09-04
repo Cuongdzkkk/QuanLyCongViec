@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using System.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -468,6 +470,22 @@ namespace TaskManagement.Infrastructure.Services
         }
 
         public async Task<WorkTaskResponseDto> CreateAsync(Guid reporterId, CreateWorkTaskDto request)
+        {
+            if (!_context.Database.IsRelational() || _context.Database.CurrentTransaction != null)
+                return await CreateCoreAsync(reporterId, request);
+
+            return await _context.Database.CreateExecutionStrategy()
+                .ExecuteAsync(async () =>
+                {
+                    _context.ChangeTracker.Clear();
+                    await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+                    var result = await CreateCoreAsync(reporterId, request);
+                    await transaction.CommitAsync();
+                    return result;
+                });
+        }
+
+        private async Task<WorkTaskResponseDto> CreateCoreAsync(Guid reporterId, CreateWorkTaskDto request)
         {
             if (reporterId == Guid.Empty)
             {
