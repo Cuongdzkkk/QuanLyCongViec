@@ -42,6 +42,7 @@
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'activity' }" @click="currentTab = 'activity'">SprintA</button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'hierarchy' }" @click="currentTab = 'hierarchy'">Phân cấp</button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'goals' }" @click="currentTab = 'goals'">Mục Tiêu</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'projects' }" @click="currentTab = 'projects'">Dự Án</button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'kudos' }" @click="currentTab = 'kudos'">Khen ngợi</button>
     </template>
     
@@ -77,7 +78,7 @@
               <UserAvatar :user="{ ...member, fullName: member.fullName || member.name, avatarColor: getAvatarColor(member.email || member.id) }" :size="32" :fontSize="14" :clickable="false" />
               <div class="member-info">
                 <span class="member-name hover:underline" style="font-weight: 600; color: #172B4D; font-size: 13.5px;">{{ member.fullName || member.name }}</span>
-                <span class="member-role" style="font-size: 12px; color: #5E6C84; display: block; margin-top: 2px;">{{ `${member.id}` === `${team.manager?.id || team.managerId || ''}` ? 'Leader' : (member.role || 'Thành viên') }}</span>
+                <span class="member-role" style="font-size: 12px; color: #5E6C84; display: block; margin-top: 2px;">{{ member.role || 'Thành viên' }}</span>
               </div>
             </div>
           </div>
@@ -89,25 +90,21 @@
         <section class="info-section">
           <div class="section-header-row">
             <h3>Công việc SprintA của {{ team.name }}</h3>
-            <div v-if="team.manager" style="display:flex;align-items:center;gap:8px;font-size:12px;color:#5E6C84;">
-              <span>Leader</span><UserAvatar :user="{ ...team.manager, fullName: team.manager.name }" :size="28" :fontSize="10" />
-            </div>
           </div>
           
-          <div class="activity-list" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 32px;" v-if="taskProjectGroups.length > 0">
-            <div v-for="group in taskProjectGroups" :key="group.projectId" class="team-task-project">
-              <button type="button" class="team-task-project-header" @click="toggleTaskProject(group.projectId)">
-                <span><i class="fa-solid fa-rocket"></i> {{ group.projectName }}</span>
-                <span style="display:flex;align-items:center;gap:10px;"><button v-if="isTeamLeader" type="button" class="icon-btn-micro" title="Hủy liên kết project" @click.stop="unlinkProject(group.projectId)"><i class="fa-solid fa-ellipsis-vertical"></i></button><i class="fa-solid" :class="expandedTaskProjects[group.projectId] ? 'fa-chevron-up' : 'fa-chevron-down'"></i></span>
-              </button>
-              <div v-if="expandedTaskProjects[group.projectId]" class="team-task-member-list">
-                <div v-for="member in group.members" :key="member.userId" class="team-task-member-row">
-                  <div style="display:flex; align-items:center; gap:10px;">
-                    <UserAvatar :user="{ ...member, fullName: member.fullName, avatarColor: getAvatarColor(member.email || member.userId) }" :size="28" :fontSize="10" />
-                    <span>{{ member.fullName }}</span>
-                  </div>
-                  <span class="team-task-progress">{{ member.completed }}/{{ member.total }}</span>
-                </div>
+          <div class="activity-list" style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 32px;" v-if="teamTasks && teamTasks.length > 0">
+            <div class="activity-item" v-for="task in teamTasks" :key="task.id" style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 16px; border-bottom: 1px solid #DFE1E6;">
+              <div style="display: flex; align-items: center; gap: 16px;">
+                 <div style="color: #0052CC; font-size: 16px;"><i class="fa-solid fa-square-check"></i></div>
+                 <div>
+                   <div style="font-size: 14px; color: #172B4D; font-weight: 500;">{{ task.name }}</div>
+                   <div style="font-size: 12px; color: #6B778C;">{{ task.projectKey }} • {{ task.projectName }}</div>
+                 </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 24px;">
+                 <span style="font-size: 12px; color: #6B778C;">{{ new Date(task.createdAt || Date.now()).toLocaleDateString() }}</span>
+                 <UserAvatar v-if="task.assignee" :user="{ ...task.assignee, fullName: task.assignee.name, avatarColor: getAvatarColor(task.assignee.email || task.assignee.id) }" :size="24" :fontSize="10" />
+                 <div class="member-avatar-micro" v-else style="background-color: #DFE1E6; color: #6B778C;"><i class="fa-solid fa-user"></i></div>
               </div>
             </div>
           </div>
@@ -310,10 +307,10 @@
                  <div style="width: 24px; height: 24px; background-color: #EBECF0; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
                    <i class="fa-solid fa-bullseye" style="color: #6B778C; font-size: 14px;"></i>
                  </div>
-                 <div style="display:flex; align-items:center; gap:8px;"><span class="status-badge" style="background-color: #DFE1E6; color: #42526E; font-size: 11px; font-weight: bold; text-transform: uppercase; padding: 2px 6px;">{{ goal.status || 'Đã hoàn tất 🚀' }}</span><button v-if="isTeamLeader" type="button" class="icon-btn-micro" @click.stop="unlinkGoal(goal.id)" title="Hủy liên kết"><i class="fa-solid fa-ellipsis-vertical"></i></button></div>
+                 <span class="status-badge" style="background-color: #DFE1E6; color: #42526E; font-size: 11px; font-weight: bold; text-transform: uppercase; padding: 2px 6px;">{{ goal.status || 'Đã hoàn tất 🚀' }}</span>
                </div>
                <div style="font-size: 14px; color: #172B4D; font-weight: 500; margin-bottom: 4px;">{{ goal.title }}</div>
-               <div style="display:flex; justify-content:space-between; align-items:center; font-size: 12px; color: #6B778C;"><span>Thuộc sở hữu của {{ goal.ownerName || goal.owner || 'Không rõ' }}</span><UserAvatar :user="{ id: goal.ownerId, fullName: goal.ownerName, avatarUrl: goal.ownerAvatarUrl }" :size="24" :fontSize="9" /></div>
+               <div style="font-size: 12px; color: #6B778C;">Thuộc sở hữu của {{ goal.owner }}</div>
              </div>
            </div>
 
@@ -393,13 +390,7 @@
         <div class="section-header-row">
           <h3>Khen ngợi</h3>
         </div>
-        <div v-if="kudos.length" class="kudos-list" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">
-          <div v-for="item in kudos" :key="item.id" class="kudos-card" style="background:#fff;border:1px solid #DFE1E6;border-radius:8px;padding:16px;">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><UserAvatar :user="{ id:item.senderId, fullName:item.sender, email:item.senderEmail, avatarUrl:item.senderAvatarUrl }" :size="32" :fontSize="12" /><strong>{{ item.sender }}</strong><span style="margin-left:auto;color:#6B778C;font-size:12px;">{{ new Date(item.createdAt).toLocaleDateString('vi-VN') }}</span></div>
-            <div style="color:#172B4D;white-space:pre-wrap;" v-html="sanitizeHtml(item.message)"></div>
-          </div>
-        </div>
-        <div v-if="!kudos.length" style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
+        <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px;">
            <div style="position: relative;">
               <div style="width: 80px; height: 80px; background-color: #FFFAE6; border-radius: 8px; display: flex; align-items: center; justify-content: center; transform: rotate(-5deg);">
                  <i class="fa-solid fa-medal" style="font-size: 32px; color: #FFAB00;"></i>
@@ -409,7 +400,7 @@
               </div>
            </div>
            <div style="flex: 1; position: relative;">
-              <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">{{ kudos.length ? 'Gửi thêm lời khen ngợi' : 'Đội ngũ này chưa nhận được lời khen ngợi nào' }}</h4>
+              <h4 style="font-size: 14px; color: #172B4D; margin-bottom: 8px;">Đội ngũ này chưa nhận được lời khen ngợi nào</h4>
               <p style="font-size: 13px; color: #6B778C; margin-bottom: 16px; line-height: 1.5;">Khen ngợi giúp công nhận những thành quả cá nhân và đội ngũ xuất sắc. Hãy gửi lời khen để khuyến khích mọi người!</p>
               <div style="position: relative; display: inline-block;">
                 <button class="secondary-btn" @click="isGiveKudosOpen = true" style="display: flex; align-items: center; gap: 8px;">
@@ -426,22 +417,15 @@
       <!-- Card: Liên kết đội ngũ -->
       <div class="sidebar-card">
         <div class="sidebar-card-header">
-          <h3>Liên kết đội ngũ <span class="badge">{{ linkedEntityCount }}</span></h3>
+          <h3>Liên kết đội ngũ <span class="badge">0</span></h3>
+          <button class="icon-btn-micro" title="Add Link"><i class="fa-solid fa-plus"></i></button>
         </div>
         <div class="link-items">
-          <el-popover
-            placement="bottom-start"
-            :width="250"
-            trigger="click"
-            popper-class="search-dropdown-popper"
-          >
-            <template #reference>
-              <div class="link-item">
-                <div class="link-item-icon project"><i class="fa-solid fa-rocket"></i></div>
-                <span class="link-item-label">Thêm dự án SprintA</span>
-              </div>
-            </template>
-            <div class="dropdown-menu-content" style="max-height: 200px; overflow-y: auto;">
+          <div class="link-item" @click="isSprintAProjectOpen = !isSprintAProjectOpen">
+            <div class="link-item-icon project"><i class="fa-solid fa-rocket"></i></div>
+            <span class="link-item-label">Thêm dự án SprintA</span>
+            <!-- SprintA Dropdown Menu -->
+            <div class="dropdown-menu search-dropdown" v-if="isSprintAProjectOpen" @click.stop style="position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: none !important; background: white; max-height: 200px; overflow-y: auto;">
               <div style="padding: 4px 8px; font-size: 11px; font-weight: bold; color: #6B778C; text-transform: uppercase;">Dự án trong Space</div>
               <div class="team-option" v-for="sp in siteProjects" :key="sp.id" @click="linkProject(sp)" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
                  <i class="fa-solid fa-rocket" style="color: #6B778C; font-size: 14px;"></i>
@@ -449,30 +433,21 @@
               </div>
               <div v-if="!siteProjects || siteProjects.length === 0" style="padding: 8px; font-size: 12px; color: #6B778C;">Không có dự án nào</div>
             </div>
-          </el-popover>
+          </div>
           
-          <el-popover
-            placement="bottom-start"
-            :width="250"
-            trigger="click"
-            popper-class="search-dropdown-popper"
-          >
-            <template #reference>
-              <div class="link-item">
-                <div class="link-item-icon space"><i class="fa-brands fa-confluence"></i></div>
-                <span class="link-item-label">Thêm không gian</span>
-              </div>
-            </template>
-            <div class="dropdown-menu-content" style="max-height: 200px; overflow-y: auto;">
-              <div class="team-option" v-for="space in ownedSites" :key="space.id" @click="linkSite(space)" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
+          <div class="link-item" @click="isSpaceDropdownOpen = !isSpaceDropdownOpen">
+            <div class="link-item-icon space"><i class="fa-brands fa-confluence"></i></div>
+            <span class="link-item-label">Thêm không gian</span>
+            <!-- Space Dropdown Menu -->
+            <div class="dropdown-menu search-dropdown" v-if="isSpaceDropdownOpen" @click.stop style="position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100; width: 250px; padding: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-radius: 8px; border: none !important; background: white; max-height: 200px; overflow-y: auto;">
+              <div class="team-option" v-for="space in sites" :key="space.id" style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; border-radius: 3px;">
                  <div class="space-avatar" style="width: 20px; height: 20px; background: #0052CC; color: white; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px;">{{ space.name.substring(0,1).toUpperCase() }}</div>
                  <span class="option-name" style="font-size: 13px; color: #172B4D;">{{ space.name }}</span>
               </div>
-              <div v-if="ownedSites.length === 0" style="padding: 8px; font-size: 12px; color: #6B778C;">Bạn chưa sở hữu site nào khác</div>
             </div>
-          </el-popover>
+          </div>
           
-          <div class="link-item" @click="addExternalLink">
+          <div class="link-item">
             <div class="link-item-icon link"><i class="fa-solid fa-link"></i></div>
             <span class="link-item-label">Thêm liên kết</span>
           </div>
@@ -836,7 +811,6 @@ import { useSiteStore } from '@/store/useSiteStore'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
 import { getStoredUser } from '@/utils/permissions'
 import { getAvatarColor } from '@/utils/avatarHelper'
-import { ElMessage } from 'element-plus'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import RichTextEditor from '@/components/common/RichTextEditor.vue'
 import DOMPurify from 'dompurify'
@@ -861,21 +835,10 @@ const currentUser = getStoredUser()
 const isSiteOwner = computed(() => {
   return currentUser?.role === 'Admin' || currentUser?.role === 'SystemAdmin'
 })
-const isTeamLeader = computed(() => isSiteOwner.value || `${team.value?.manager?.id || ''}` === `${currentUser?.id || ''}`)
 
 const sites = computed(() => siteStore.sites || [])
 const siteGoals = computed(() => goalStore.goals || [])
-const siteProjects = computed(() => {
-  const siteId = siteStore.recentSite?.id || siteStore.recentSite?.Id
-  return (homeProjectStore.projects || []).filter(project => {
-    const projectSiteId = project.workspaceId || project.WorkspaceId
-    return !siteId || !projectSiteId || `${projectSiteId}` === `${siteId}`
-  })
-})
-const ownedSites = computed(() => sites.value.filter(site => {
-  const role = `${site.workspaceRole || site.role || site.Role || ''}`.toLowerCase()
-  return site.isOwner === true || site.IsOwner === true || ['owner', 'admin', 'administrator'].includes(role)
-}))
+const siteProjects = computed(() => homeProjectStore.projects || [])
 
 const currentTab = ref('overview')
 const isMenuOpen = ref(false)
@@ -889,39 +852,11 @@ const teamSearch = ref('')
 const newGoalTitle = ref('')
 const selectedMembers = ref([])
 
-const teamTasks = computed(() => (teamStore.activityTasks || []).filter(task => {
-  const assignees = task.assignees || task.Assignees || []
-  return assignees.length > 0 || task.assignedUser || task.assignedUserId
-}))
-const expandedTaskProjects = ref({})
-const taskProjectGroups = computed(() => {
-  const groups = new Map()
-  for (const project of projects.value || []) {
-    const projectId = project.id || project.Id
-    if (projectId) groups.set(projectId, { projectId, projectName: project.name || project.title || 'Project', members: new Map() })
-  }
-  for (const task of teamTasks.value) {
-    const projectId = task.projectId || task.ProjectId
-    if (!projectId) continue
-    if (!groups.has(projectId)) groups.set(projectId, { projectId, projectName: task.projectName || 'Project', members: new Map() })
-    const group = groups.get(projectId)
-    const assignees = (task.assignees || task.Assignees || []).length
-      ? (task.assignees || task.Assignees)
-      : [task.assignedUser || { userId: task.assignedUserId, fullName: task.assignedUserName }]
-    for (const assignee of assignees) {
-      const userId = assignee.userId || assignee.UserId || assignee.id
-      if (!userId) continue
-      if (!group.members.has(userId)) group.members.set(userId, { ...assignee, userId, fullName: assignee.fullName || assignee.name || 'Thành viên', total: 0, completed: 0 })
-      const member = group.members.get(userId)
-      member.total += 1
-      const status = `${task.status || task.statusName || ''}`.toLowerCase()
-      if (task.completed === true || status.includes('complete') || status.includes('hoàn tất') || status.includes('done')) member.completed += 1
-    }
-  }
-  return Array.from(groups.values()).map(group => ({ ...group, members: Array.from(group.members.values()) }))
+const teamTasks = computed(() => {
+  if (!teamStore.projects || teamStore.projects.length === 0) return []
+  const linkedProjectIds = teamStore.projects.map(p => p.id)
+  return workTaskStore.tasks.filter(t => linkedProjectIds.includes(t.projectId))
 })
-const linkedEntityCount = computed(() => (projects.value?.length || 0) + (goals.value?.length || 0))
-const toggleTaskProject = projectId => { expandedTaskProjects.value[projectId] = !expandedTaskProjects.value[projectId] }
 
 const team = computed(() => teamStore.currentTeam)
 const sanitizeHtml = (value) => DOMPurify.sanitize(value || '')
@@ -1041,52 +976,20 @@ const selectManager = async (member) => {
   isManagerDropdownOpen.value = false
 }
 
-const linkGoal = async (goal) => {
-  try {
-    await teamStore.linkGoal(goal.id)
-    ElMessage.success('Đã liên kết mục tiêu với team')
-  } catch (err) {
-    ElMessage.error(err?.response?.data?.message || 'Không thể liên kết mục tiêu')
+const linkGoal = (goal) => {
+  if (!teamStore.goals) teamStore.goals = []
+  if (!teamStore.goals.find(g => g.id === goal.id)) {
+    teamStore.goals.push({ ...goal, status: 'Đã hoàn tất 🚀' })
   }
   isGoalDropdownOpen.value = false
 }
 
-const unlinkGoal = async goalId => {
-  if (!isTeamLeader.value) return
-  try {
-    await teamStore.unlinkGoal(goalId)
-    ElMessage.success('Đã hủy liên kết mục tiêu')
-  } catch (err) {
-    ElMessage.error(err?.response?.data?.message || 'Không thể hủy liên kết mục tiêu')
-  }
-}
-
-const linkProject = async (proj) => {
-  try {
-    await teamStore.linkProject(proj.id)
-    ElMessage.success('Đã liên kết project với team')
-  } catch (err) {
-    ElMessage.error(err?.response?.data?.message || 'Không thể liên kết project')
+const linkProject = (proj) => {
+  if (!teamStore.projects) teamStore.projects = []
+  if (!teamStore.projects.find(p => p.id === proj.id)) {
+    teamStore.projects.push({ ...proj, status: 'Đang thực hiện' })
   }
   isProjectDropdownOpen.value = false
-  isSprintAProjectOpen.value = false
-}
-
-const unlinkProject = async projectId => {
-  if (!isTeamLeader.value || !window.confirm('Hủy liên kết project và gỡ phân công của thành viên Team?')) return
-  try {
-    await teamStore.unlinkProject(projectId)
-    ElMessage.success('Đã hủy liên kết project')
-  } catch (err) {
-    ElMessage.error(err?.response?.data?.message || 'Không thể hủy liên kết project')
-  }
-}
-
-const linkSite = site => ElMessage.info(`Site ${site.name || site.Name} đã được chọn. Backend hiện chưa có bảng liên kết Team-Site để lưu dữ liệu.`)
-const addExternalLink = () => {
-  const url = window.prompt('Nhập URL cần liên kết')
-  if (!url) return
-  try { new URL(url); ElMessage.success('Đã thêm liên kết') } catch { ElMessage.error('URL không hợp lệ') }
 }
 
 const goToMemberProfile = (memberId) => {
@@ -1231,8 +1134,6 @@ onMounted(async () => {
   await teamStore.initializeRealtime()
   const id = route.params.id
   await teamStore.fetchTeamDetail(id)
-  if (siteStore.sites.length === 0) await siteStore.fetchSites()
-  if (homeProjectStore.projects.length === 0) await homeProjectStore.fetchProjects()
   if (siteStore.sites.length === 0) {
     await siteStore.fetchSites()
   }
@@ -1317,10 +1218,6 @@ watch(isAddMemberOpen, (val) => {
       peopleStore.fetchPeople()
     }
   }
-})
-
-watch(() => route.params.id, async (id, previousId) => {
-  if (id && id !== previousId) await teamStore.fetchTeamDetail(id)
 })
 
 const submitAddMember = async () => {
@@ -1724,42 +1621,6 @@ const submitAddMember = async () => {
   flex-direction: column;
   gap: 8px;
 }
-
-.team-task-project {
-  border: 1px solid #dfe1e6;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
-}
-
-.team-task-project-header {
-  width: 100%;
-  border: 0;
-  background: #fff;
-  color: #172b4d;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.team-task-project-header:hover { background: #f7f9fc; }
-.team-task-project-header i { color: #0052cc; margin-right: 8px; }
-
-.team-task-member-list { border-top: 1px solid #dfe1e6; }
-.team-task-member-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  color: #172b4d;
-  font-size: 13px;
-}
-.team-task-member-row + .team-task-member-row { border-top: 1px solid #f0f2f5; }
-.team-task-progress { color: #5e6c84; font-weight: 600; }
 
 .link-item {
   display: flex;

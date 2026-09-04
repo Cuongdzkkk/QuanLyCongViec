@@ -3,6 +3,7 @@
 ## Scope
 
 * Khi task là UI, chỉ sửa frontend.
+* Tuyệt đối không sửa Backend, Controller, Entity, Migration, DbContext, API contract.
 * Không đổi endpoint API.
 * Không đổi tên field API.
 * Không thêm mock data.
@@ -10,6 +11,7 @@
 * Không thay component đang nối API thật bằng ừ component visual/mock.
 * Không xóa chức năng đang chạy được.
 * UI đẹp nhưng làm hỏng chức năng là task thất bại.
+* Nếu cần backend thì phải báo `CẦN BACKEND`, không tự sửa.
 
 ## Frontend stack
 

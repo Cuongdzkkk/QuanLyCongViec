@@ -35,7 +35,6 @@
     "@vueuse/core": "^14.2.1",
     "apexcharts": "^5.10.5",
     "axios": "^1.13.6",
-    "canvas-confetti": "^1.9.4",
     "chart.js": "^4.5.1",
     "dompurify": "^3.3.3",
     "echarts": "^6.0.0",

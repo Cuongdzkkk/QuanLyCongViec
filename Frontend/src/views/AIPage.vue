@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div>
     <div class="ai-page-flex-wrapper">
       <aside class="ai-page-history" :class="{ 'is-open': aiConversationStore.historyVisible }" aria-label="Lịch sử trò chuyện">
@@ -19,7 +19,20 @@
         <div class="ai-page-header">
           <div class="header-left">
             <h2 class="page-title">Trợ lý AI</h2>
-            <span class="header-pill">Workspace assistant</span>
+            <span class="header-pill">Trợ lý công việc</span>
+            <span class="workspace-context-pill" :title="currentWorkspaceId ? `Workspace ${currentWorkspaceId}` : 'Chưa chọn workspace'">
+              <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+              {{ activeProjectName }} · {{ activeWorkspaceName }}
+            </span>
+            <label v-if="workspaceOptions.length" class="workspace-selector">
+              <i class="fa-solid fa-building" aria-hidden="true"></i>
+              <span class="sr-only">Workspace</span>
+              <select v-model="selectedWorkspaceId" aria-label="Chọn workspace" @change="handleWorkspaceChange">
+                <option v-for="workspace in workspaceOptions" :key="workspace.id || workspace.Id" :value="workspace.id || workspace.Id">
+                  {{ workspace.name || workspace.Name }}
+                </option>
+              </select>
+            </label>
             <span v-if="aiUsage" class="credit-pill">
               {{ aiUsage.usedCredits }}/{{ aiUsage.includedCredits }} credits · còn {{ aiUsage.remainingCredits }}
             </span>
@@ -33,25 +46,25 @@
         </div>
 
         <details class="workspace-tools">
-          <summary><span>Workspace tools</span><small>GitHub analysis và backlog review</small></summary>
+          <summary><span>Công cụ workspace</span><small>Phân tích GitHub và review backlog</small></summary>
         <div class="repo-panel">
           <div class="repo-head">
             <div>
-              <div class="panel-title">GitHub repo analysis</div>
-              <div class="panel-copy">Chọn repo, đọc nhanh metadata và gửi một prompt phân tích task vào chat box.</div>
+              <div class="panel-title">Phân tích repo GitHub</div>
+              <div class="panel-copy">Chọn repo, đọc nhanh metadata và gửi prompt phân tích task vào khung chat.</div>
             </div>
-            <button class="ghost-btn" type="button" :disabled="repoLoading" @click="analyzeRepository">Analyze repo</button>
+            <button class="ghost-btn" type="button" :disabled="repoLoading" @click="analyzeRepository">Phân tích repo</button>
           </div>
           <div class="repo-grid">
             <input v-model="repoForm.url" type="text" class="repo-input" placeholder="https://github.com/owner/repo" />
             <input v-model="repoForm.token" type="password" class="repo-input" placeholder="GitHub token (optional)" />
           </div>
           <div class="repo-actions">
-            <button class="ghost-btn" type="button" @click="useQuickPrompt('Phan ra task sau thanh 3-5 subtask ro rang, co test va ban giao.')">
-              Chen lenh breakdown
+            <button class="ghost-btn" type="button" @click="useQuickPrompt('Phân rã task sau thành 3-5 subtask rõ ràng, có test và bàn giao.')">
+              Chèn lệnh breakdown
             </button>
             <button class="ghost-btn" type="button" :disabled="repoLoading" @click="prepareBreakdownPrompt">
-              Mau prompt phan ra task
+              Mẫu prompt phân rã task
             </button>
           </div>
           <p v-if="repoStatus" class="repo-status">{{ repoStatus }}</p>
@@ -60,7 +73,7 @@
             <p class="analysis-summary">{{ repoAnalysis.summary }}</p>
             <div class="analysis-actions">
               <div class="analysis-project">
-                <strong>Project tao task:</strong>
+                <strong>Project tạo task:</strong>
                 <span>{{ activeProjectName }}</span>
               </div>
               <div class="analysis-action-buttons">
@@ -212,142 +225,173 @@
         </details>
 
         <div class="chat-history">
-          <div v-for="(msg, idx) in chatHistory" :key="idx" class="chat-row" :class="msg.role">
-            <div v-if="msg.role === 'bot'" class="bot-icon-circle"><i class="fa-solid fa-robot"></i></div>
-            <div :class="['bubble', msg.role === 'user' ? 'primary' : '']">
-              <div>{{ msg.content }}</div>
-              <div v-if="msg.progressSteps?.length" class="thinking-steps">
-                <div
-                  v-for="(step, stepIdx) in msg.progressSteps"
-                  :key="`${idx}-${stepIdx}`"
-                  class="thinking-step"
-                  :class="{ active: stepIdx <= (msg.progressIndex || 0) }"
-                >
-                  <i class="fa-solid fa-circle-notch" v-if="stepIdx === (msg.progressIndex || 0) && msg.isTyping"></i>
-                  <i class="fa-solid fa-check" v-else-if="stepIdx < (msg.progressIndex || 0)"></i>
-                  <i class="fa-regular fa-circle" v-else></i>
-                  <span>{{ step }}</span>
-                </div>
-              </div>
-              <i v-if="msg.isTyping" class="fa-solid fa-ellipsis fa-fade"></i>
-              <div v-if="msg.actions?.length" class="page-action-list" aria-label="AI action previews">
-                <article v-for="(action, actionIndex) in writeActions(msg.actions)" :key="`${action.type}-${actionIndex}`" class="page-action-card">
-                  <div class="page-action-head"><div><span>CẦN BẠN XÁC NHẬN</span><strong>{{ actionLabel(action.type) }}</strong></div><em>{{ actionStatusLabel(action) }}</em></div>
-                  <p>{{ action.description || 'AI đề xuất một thay đổi dựa trên yêu cầu của bạn.' }}</p>
-                  <dl><template v-for="detail in actionDetails(action)" :key="detail.label"><dt>{{ detail.label }}</dt><dd>{{ detail.value }}</dd></template></dl>
-                  <p v-if="action.error" class="page-action-error" role="alert">{{ action.error }}</p>
-                  <p v-if="action.result?.message" class="page-action-success" role="status">{{ action.result.message }}</p>
-                  <div class="page-action-controls">
-                    <button type="button" class="cancel-action" :disabled="action.loading || action.uiStatus === 'success'" @click="cancelPageAction(action)">Hủy</button>
-                    <button type="button" class="confirm-action" :disabled="action.loading || action.uiStatus === 'success'" @click="confirmPageAction(action)">{{ action.loading ? 'Đang xử lý...' : action.uiStatus === 'success' ? 'Đã thực hiện' : 'Xác nhận' }}</button>
-                  </div>
-                </article>
-                <small v-if="msg.actions.some(action => isReadOnlyAction(action.type, action.requiresConfirmation))" class="page-read-note">Đã đọc dữ liệu hiện tại để bổ sung kết quả.</small>
-              </div>
-            </div>
-            <div v-if="msg.role === 'user'" class="user-avatar-circle">{{ userInitials }}</div>
-          </div>
+          <AiMessage
+            v-for="(msg, idx) in chatHistory"
+            :key="`${msg.role}-${idx}`"
+            :message="msg"
+            :profile-initials="userInitials"
+            @preview-attachment="openAttachmentPreview"
+            @open-citation="openCitation"
+            @copy="copyAiMessage"
+            @continue="continueFromAiMessage"
+            @execute-action="confirmPageAction"
+            @cancel-action="cancelPageAction"
+            @retry-action="retryPageAction"
+            @quick-prompt="useQuickPrompt"
+          />
         </div>
 
         <div class="ai-chat-input-wrapper">
-          <div class="input-box">
-            <button class="full-composer-icon" type="button" title="Mở công cụ attachment" aria-label="Mở công cụ attachment" @click="returnToFloating"><i class="fa-solid fa-plus"></i></button>
-            <textarea
-              ref="fullComposerRef"
-              v-model="userMessage"
-              rows="1"
-              placeholder="Hoi SprintA AI bat cu dieu gi..."
-              :disabled="isLoading"
-              @input="resizeFullComposer"
-              @keydown="handleComposerKeydown"
-            ></textarea>
-            <button class="full-composer-icon" type="button" title="Mở nhập bằng giọng nói" aria-label="Mở nhập bằng giọng nói" @click="returnToFloating"><i class="fa-solid fa-microphone"></i></button>
-            <button class="send-btn" type="button" :disabled="isLoading || !userMessage.trim()" @click="sendMessage()">
-              <span class="fa fa-paper-plane"></span>
-            </button>
-          </div>
-          <div class="ai-disclaimer">SprintA AI co the mac sai sot. Hay kiem tra lai cac thong tin quan trong.</div>
+          <AiComposer
+            ref="aiComposerRef"
+            v-model="userMessage"
+            :placeholder="'Hỏi SprintA AI bất cứ điều gì...'"
+            :enter-hint="'Enter để gửi · Shift + Enter để xuống dòng'"
+            reset-label="Cuộc trò chuyện mới"
+            :sending="isLoading"
+            :credits-exhausted="aiCreditsExhausted"
+            :pending-attachments="pendingAttachments"
+            :composer-drag-active="composerDragActive"
+            :capturing-screenshot="capturingScreenshot"
+            :voice-state="voiceState"
+            :voice-language="voiceLanguage"
+            :voice-language-label="voiceLanguageLabel"
+            :voice-status-title="voiceStatusTitle"
+            :voice-elapsed-label="voiceElapsedLabel"
+            :voice-transcript="voiceTranscript"
+            :voice-error="voiceError"
+            :accept="composerAttachmentAccept"
+            @files="handleAttachmentInput"
+            @preview-attachment="openAttachmentPreview"
+            @remove-attachment="removePendingAttachment"
+            @attachment-command="handleAttachmentCommand"
+            @paste="handleComposerPaste"
+            @keydown="handleComposerKeydown"
+            @dragenter="composerDragActive = true"
+            @dragleave="handleComposerDragLeave"
+            @drop="handleComposerDrop"
+            @start-voice="startVoiceRecording"
+            @stop-voice="stopVoiceRecording"
+            @cancel-voice="cancelVoiceInput"
+            @record-again="recordVoiceAgain"
+            @use-transcript="applyVoiceTranscript"
+            @send="sendMessage"
+            @reset="startNewConversation"
+          />
         </div>
       </div>
 
       <aside class="ai-details-panel">
         <div class="panel-section">
-          <div class="section-label">Tro ly AI</div>
-          <div class="section-title">HANH DONG NHANH</div>
+          <div class="section-label">SPRINTA AI</div>
+          <div class="section-title">CÔNG CỤ NHANH</div>
           <div class="quick-links">
-            <button class="q-link" type="button" @click="useQuickPrompt('Tao lo trinh cho du an hien tai')">
-              <i class="fa-solid fa-map-location-dot"></i> Tao lo trinh
-            </button>
-            <button class="q-link" type="button" @click="useQuickPrompt('Tom tat cac cong viec quan trong')">
-              <i class="fa-regular fa-file-lines"></i> Tom tat cong viec
-            </button>
-            <button class="q-link" type="button" @click="useQuickPrompt('Soan ban cap nhat tien do ngan gon')">
-              <i class="fa-solid fa-pen-nib"></i> Soan ban cap nhat
-            </button>
-            <button class="q-link" type="button" @click="prepareBreakdownPrompt()">
-              <i class="fa-solid fa-list-check"></i> Breakdown task
+            <button v-for="action in quickActions.slice(0, 4)" :key="action.type" class="q-link" type="button" @click="useQuickPrompt(action.prompt)">
+              <i :class="action.icon" aria-hidden="true"></i> {{ action.label }}
             </button>
           </div>
+          <details v-if="quickActions.slice(4).length" class="quick-more">
+            <summary>Xem thêm công cụ</summary>
+            <div class="quick-links quick-links-more">
+              <button v-for="action in quickActions.slice(4)" :key="`more-${action.type}`" class="q-link" type="button" @click="useQuickPrompt(action.prompt)">
+                <i :class="action.icon" aria-hidden="true"></i> {{ action.label }}
+              </button>
+            </div>
+          </details>
         </div>
 
         <div class="panel-section mt-30">
-          <div class="section-title">NHAC NHO</div>
-          <p class="text-muted sidebar-copy">Credits và trạng thái xử lý được cập nhật theo tài khoản của bạn. Nếu AI chậm, tiến trình sẽ hiển thị ngay trong cuộc trò chuyện.</p>
+          <div class="section-title">NGỮ CẢNH HIỆN TẠI</div>
+          <p class="text-muted sidebar-copy">Credits và trạng thái xử lý được cập nhật theo tài khoản của bạn. Tiến trình luôn hiển thị ngay trong cuộc trò chuyện.</p>
         </div>
 
         <div class="upgrade-card-wrapper">
-          <div class="upgrade-card">
-            <div class="plan-label">AI CREDITS</div>
-            <div class="plan-desc">Xem các gói và luồng mua credits thật của SprintA.</div>
-            <button class="btn-upgrade" type="button" @click="openAiCreditPurchase">Mua thêm AI credits</button>
+          <div class="upgrade-card" aria-label="Tình trạng AI Credits">
+            <div class="plan-label">AI CREDITS · {{ aiPlanLabel }}</div>
+            <strong class="credit-balance">{{ aiRemainingCredits }} còn lại</strong>
+            <div class="credit-meter" role="progressbar" :aria-valuenow="aiCreditPercent" aria-valuemin="0" aria-valuemax="100" aria-label="Tỷ lệ AI credits còn lại">
+              <span :style="{ width: `${aiCreditPercent}%` }"></span>
+            </div>
+            <p class="plan-desc">{{ aiUsage ? `${aiUsage.usedCredits || 0} đã dùng · ${aiUsage.includedCredits || 0} được cấp trong kỳ này.` : 'Đang tải trạng thái credits...' }}</p>
+            <button class="btn-upgrade" type="button" @click="openAiCreditPurchase">Quản lý gói</button>
           </div>
         </div>
       </aside>
     </div>
 
     <CustomizeSidebarModal :visible="showCustomizeModal" @update:visible="showCustomizeModal = $event" @saved="handleSidebarSaved" />
+    <AiCreditsPurchaseModal v-model="aiCreditsModalVisible" />
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import CustomizeSidebarModal from '../components/CustomizeSidebarModal.vue'
+import AiComposer from '@/components/ai/AiComposer.vue'
+import AiMessage from '@/components/ai/AiMessage.vue'
+import AiCreditsPurchaseModal from '@/components/ai/AiCreditsPurchaseModal.vue'
 
 import axiosClient from '@/api/axiosClient'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
+import { useSiteStore } from '@/store/useSiteStore'
 import { useSprintStore } from '@/store/useSprintStore'
 import { useI18nStore } from '@/store/useI18nStore'
 import { broadcastAdminRealtime } from '@/utils/adminRealtime'
 import { signalRService } from '@/api/signalrService'
 import { hasProjectWritePermission, normalizeProjectRole } from '@/utils/permissions'
-import { getScopedCurrentProjectId } from '@/utils/projectContext'
+import { AUTH_SESSION_CHANGED, getStoredUserSession } from '@/utils/authSession'
+import { clearScopedCurrentProjectId, getScopedCurrentProjectId } from '@/utils/projectContext'
 import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
 import { useAiConversationStore } from '@/store/useAiConversationStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
-import { isComposerSendKey, writeActionsOnly } from '@/utils/aiWorkspace'
+import { isComposerSendKey } from '@/utils/aiWorkspace'
+import { useAiComposer } from '@/composables/useAiComposer'
+import { AI_QUICK_ACTIONS } from '@/utils/aiActionUi'
 
 const router = useRouter()
+const aiComposerRef = ref(null)
 const aiConversationStore = useAiConversationStore()
 const aiPetStore = useAiPetStore()
 const projectStore = useProjectStore()
 const workTaskStore = useWorkTaskStore()
+const siteStore = useSiteStore()
 const sprintStore = useSprintStore()
 const i18nStore = useI18nStore()
-const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
+const currentUser = ref(getStoredUserSession())
+const selectedWorkspaceId = ref('')
 const showCustomizeModal = ref(false)
 const sidebarPreferences = ref({ audit: true, users: true })
 
 const userMessage = ref('')
-const fullComposerRef = ref(null)
 const isLoading = ref(false)
 const repoLoading = ref(false)
 const repoStatus = ref('')
 const repoAnalysis = ref(null)
 const createBacklogLoading = ref('')
 const aiUsage = ref(null)
+const aiCreditsModalVisible = ref(false)
+const aiCreditsExhausted = computed(() => Boolean(
+  aiUsage.value
+  && Number(aiUsage.value.includedCredits || 0) > 0
+  && Number(aiUsage.value.remainingCredits ?? aiUsage.value.remainingIncludedCredits ?? (aiUsage.value.includedCredits - Number(aiUsage.value.usedCredits || 0))) <= 0
+))
+const aiRemainingCredits = computed(() => Math.max(0, Number(
+  aiUsage.value?.remainingCredits
+  ?? aiUsage.value?.remainingIncludedCredits
+  ?? (Number(aiUsage.value?.includedCredits || 0) - Number(aiUsage.value?.usedCredits || 0))
+)))
+const aiCreditPercent = computed(() => {
+  const included = Number(aiUsage.value?.includedCredits || 0)
+  return included > 0 ? Math.max(0, Math.min(100, Math.round((aiRemainingCredits.value / included) * 100))) : 0
+})
+const aiPlanLabel = computed(() => {
+  const plan = String(aiUsage.value?.planCode || 'free').trim()
+  return plan ? plan.charAt(0).toUpperCase() + plan.slice(1) : 'Free'
+})
+const quickActions = computed(() => AI_QUICK_ACTIONS)
 const selectedBacklogKeys = ref([])
 const reviewTargetSprintId = ref('')
 const repoForm = ref({
@@ -368,26 +412,52 @@ const conversationSearch = computed({
   get: () => aiConversationStore.search,
   set: value => { aiConversationStore.search = value }
 })
-const currentWorkspaceId = computed(() => currentProjectRecord.value?.workspaceId || currentProjectRecord.value?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null)
+const workspaceOptions = computed(() => siteStore.sites || [])
+const currentWorkspaceId = computed(() => selectedWorkspaceId.value || currentProjectRecord.value?.workspaceId || currentProjectRecord.value?.WorkspaceId || workTaskStore.resolveWorkspaceId(currentProjectId.value) || null)
 const formatConversationDate = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : ''
+const {
+  pendingAttachments,
+  composerDragActive,
+  capturingScreenshot,
+  voiceState,
+  voiceLanguage,
+  voiceTranscript,
+  voiceError,
+  voiceElapsedLabel,
+  voiceLanguageLabel,
+  voiceStatusTitle,
+  accept: composerAttachmentAccept,
+  openAttachmentPreview,
+  removePendingAttachment,
+  handleAttachmentInput,
+  handleComposerPaste,
+  handleAttachmentCommand,
+  handleComposerDrop,
+  handleComposerDragLeave,
+  startVoiceRecording,
+  stopVoiceRecording,
+  cancelVoiceInput,
+  recordVoiceAgain,
+  useVoiceTranscript
+} = useAiComposer({ workspaceId: currentWorkspaceId })
 
 const breakdownProgressSteps = [
-  'Dang phan tich task',
-  'Dang truy van dich vu AI',
-  'Dang thu lai neu can',
-  'Dang tong hop ket qua'
+  'Đang phân tích task',
+  'Đang truy vấn dịch vụ AI',
+  'Đang thử lại nếu cần',
+  'Đang tổng hợp kết quả'
 ]
 
 const defaultProgressSteps = [
-  'Dang doc yeu cau',
-  'Dang truy van AI',
-  'Dang tong hop phan hoi'
+  'Đang đọc yêu cầu',
+  'Đang truy vấn AI',
+  'Đang tổng hợp phản hồi'
 ]
 
 let progressTimer = null
 
 const userInitials = computed(() => {
-  const name = currentUser?.name || currentUser?.fullName || 'ME'
+  const name = currentUser.value?.fullName || currentUser.value?.username || currentUser.value?.email || 'ME'
   return name.substring(0, 2).toUpperCase()
 })
 
@@ -398,6 +468,49 @@ const activeProjectName = computed(() => {
   const project = projectStore.allProjects.find(item => item.id === projectId) || projectStore.currentProject
   return project?.name || `Project ${projectId}`
 })
+const activeWorkspaceName = computed(() => {
+  const workspace = workspaceOptions.value.find(item => `${item.id || item.Id}` === `${currentWorkspaceId.value || ''}`)
+  return workspace?.name || workspace?.Name || (currentWorkspaceId.value ? 'Workspace hiện tại' : 'Chưa chọn workspace')
+})
+const workspaceIdOf = workspace => workspace?.id || workspace?.Id || ''
+const syncSelectedWorkspace = () => {
+  const preferredId = currentProjectRecord.value?.workspaceId
+    || currentProjectRecord.value?.WorkspaceId
+    || siteStore.activeSite?.id
+    || siteStore.activeSite?.Id
+    || ''
+  const preferredWorkspace = workspaceOptions.value.find(item => `${workspaceIdOf(item)}` === `${preferredId}`)
+  selectedWorkspaceId.value = workspaceIdOf(preferredWorkspace) || workspaceIdOf(workspaceOptions.value[0])
+}
+const handleWorkspaceChanged = event => {
+  const workspaceId = event?.detail?.workspaceId
+  if (!workspaceId || `${workspaceId}` === `${selectedWorkspaceId.value}`) return
+  selectedWorkspaceId.value = workspaceId
+  clearScopedCurrentProjectId()
+  projectStore.clearWorkspaceData()
+  aiConversationStore.startNewConversation()
+  loadConversations(true)
+}
+const handleWorkspaceChange = () => {
+  const workspace = workspaceOptions.value.find(item => `${workspaceIdOf(item)}` === `${selectedWorkspaceId.value}`)
+  if (!workspace) return
+
+  const previousWorkspaceId = currentProjectRecord.value?.workspaceId
+    || currentProjectRecord.value?.WorkspaceId
+    || siteStore.activeSite?.id
+    || siteStore.activeSite?.Id
+    || ''
+  siteStore.setRecentSite(workspace)
+  if (`${previousWorkspaceId || ''}` === `${selectedWorkspaceId.value}`) return
+
+  clearScopedCurrentProjectId()
+  projectStore.clearWorkspaceData()
+  aiConversationStore.startNewConversation()
+  loadConversations(true)
+}
+const refreshCurrentUser = () => {
+  currentUser.value = getStoredUserSession()
+}
 const currentProjectRecord = computed(() => {
   const projectId = `${currentProjectId.value || ''}`
   if (!projectId) {
@@ -502,61 +615,10 @@ const returnToFloating = async () => {
   aiPetStore.setPanelOpen(true)
   await router.back()
 }
-const openAiCreditPurchase = () => router.push('/#pricing')
-
-const readOnlyActionTypes = new Set([
-  'summarize_dashboard', 'summarize_project', 'list_overdue_tasks', 'get_workload',
-  'explain_report', 'summarize_page', 'summarize_intakes', 'suggest_view_filter',
-  'list_work_items', 'list_cycles', 'list_modules', 'list_pages', 'list_views',
-  'list_intakes', 'list_pending_intakes', 'analyze_priority_distribution',
-  'analyze_status_distribution', 'analyze_workload', 'identify_project_risks',
-  'refresh_report', 'export_report_csv', 'summarize_report'
-])
-const isReadOnlyAction = (type, requiresConfirmation) => requiresConfirmation === false || readOnlyActionTypes.has(String(type || '').toLowerCase())
-const writeActions = actions => writeActionsOnly(actions, isReadOnlyAction)
+const openAiCreditPurchase = () => {
+  aiCreditsModalVisible.value = true
+}
 const actionPayload = action => action?.payload || {}
-const payloadValue = (action, ...keys) => {
-  const payload = actionPayload(action)
-  const key = keys.find(item => payload[item] !== undefined && payload[item] !== null && `${payload[item]}`.trim() !== '')
-  return key ? payload[key] : ''
-}
-const actionLabel = type => ({
-  create_task: 'Tạo task mới', create_project: 'Tạo project mới', create_goal: 'Tạo mục tiêu mới',
-  update_task_status: 'Cập nhật trạng thái task', update_task_priority: 'Cập nhật độ ưu tiên',
-  update_task_due_date: 'Cập nhật hạn task', assign_task: 'Giao task cho thành viên',
-  add_comment: 'Thêm bình luận', create_cycle: 'Tạo chu kỳ mới', create_module: 'Tạo mô-đun mới',
-  create_page: 'Tạo tài liệu mới', create_view: 'Tạo bộ lọc đã lưu', create_intake_request: 'Tạo yêu cầu mới'
-}[String(type || '').toLowerCase()] || 'Thực hiện thay đổi')
-const actionDetails = action => {
-  const type = String(action?.type || '').toLowerCase()
-  const details = []
-  const add = (label, value) => { if (value !== '' && value !== null && value !== undefined) details.push({ label, value: `${value}` }) }
-  if (type === 'create_task') {
-    add('Tiêu đề', payloadValue(action, 'title', 'taskTitle'))
-    add('Hạn', payloadValue(action, 'dueDate', 'plannedEndDate'))
-    add('Ưu tiên', payloadValue(action, 'priority'))
-  } else if (type === 'create_project' || type === 'create_goal') {
-    add('Tên', payloadValue(action, 'name', 'projectName', 'title'))
-    add('Mô tả', payloadValue(action, 'description'))
-  } else if (type === 'update_task_status') {
-    add('Task', payloadValue(action, 'taskTitle', 'title'))
-    add('Trạng thái mới', payloadValue(action, 'statusName', 'status'))
-  } else if (type === 'assign_task') {
-    add('Task', payloadValue(action, 'taskTitle', 'title'))
-    add('Người nhận', payloadValue(action, 'assigneeName', 'assigneeEmail', 'assignee'))
-  } else if (type === 'update_task_priority' || type === 'update_task_due_date') {
-    add('Task', payloadValue(action, 'taskTitle', 'title'))
-    add(type === 'update_task_priority' ? 'Độ ưu tiên mới' : 'Hạn mới', payloadValue(action, type === 'update_task_priority' ? 'priority' : 'dueDate'))
-  } else if (type === 'add_comment') {
-    add('Đối tượng', payloadValue(action, 'entityType'))
-    add('Nội dung', payloadValue(action, 'content'))
-  } else {
-    add('Tên', payloadValue(action, 'name', 'title'))
-    add('Dự án', payloadValue(action, 'projectName'))
-  }
-  return details
-}
-const actionStatusLabel = action => ({ pending: 'Chờ xác nhận', loading: 'Đang xử lý', success: 'Thành công', cancelled: 'Đã hủy', error: 'Thất bại' }[action.uiStatus || 'pending'] || 'Chờ xác nhận')
 
 const confirmPageAction = async action => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
@@ -595,17 +657,39 @@ const cancelPageAction = async action => {
   await aiConversationStore.persistConversation()
 }
 
+const retryPageAction = action => {
+  if (!action || action.loading) return
+  action.uiStatus = 'pending'
+  action.error = ''
+  return confirmPageAction(action)
+}
+
+const copyAiMessage = async content => {
+  if (!content) return
+  try { await navigator.clipboard.writeText(content); ElMessage.success('Đã sao chép câu trả lời.') } catch { ElMessage.info('Không thể sao chép tự động trên trình duyệt này.') }
+}
+
+const continueFromAiMessage = content => {
+  userMessage.value = `Hãy giải thích thêm và đưa ra bước tiếp theo từ câu trả lời này:\n${`${content || ''}`.slice(0, 600)}`
+  window.setTimeout(() => aiComposerRef.value?.focusInput?.(), 0)
+}
+
+const openCitation = citation => {
+  const attachment = chatHistory.value.flatMap(message => message.attachments || []).find(item => item.id === citation?.attachmentId)
+  if (attachment) openAttachmentPreview(attachment)
+}
+
+const applyVoiceTranscript = () => {
+  const transcript = useVoiceTranscript()
+  if (!transcript) return
+  userMessage.value = transcript
+  cancelVoiceInput()
+}
+
 const handleComposerKeydown = event => {
   if (!isComposerSendKey(event)) return
   event.preventDefault()
   sendMessage()
-}
-
-const resizeFullComposer = () => {
-  const textarea = fullComposerRef.value
-  if (!textarea) return
-  textarea.style.height = 'auto'
-  textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`
 }
 
 const isBreakdownPrompt = (message) => {
@@ -638,36 +722,63 @@ const startThinkingMessage = (message) => {
   }, 900)
 }
 
+const uploadFullAttachments = async conversationId => {
+  const uploaded = []
+  for (const attachment of pendingAttachments.value) {
+    attachment.status = 'uploading'
+    const form = new FormData()
+    form.append('file', attachment.file, attachment.name)
+    form.append('conversationId', conversationId)
+    if (currentWorkspaceId.value) form.append('workspaceId', currentWorkspaceId.value)
+    try {
+      const response = await axiosClient.post('/ai/attachments', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      const payload = response.data?.data ?? response.data
+      Object.assign(attachment, { id: payload.id, name: payload.fileName || attachment.name, size: payload.fileSize || attachment.size, contentUrl: payload.contentUrl, mimeType: payload.mimeType, status: String(payload.status || 'ready').toLowerCase() })
+      uploaded.push(attachment)
+    } catch (error) {
+      attachment.status = 'error'
+      throw error
+    }
+  }
+  return uploaded
+}
+
 const sendMessage = async (overrideMessage = null) => {
   const outgoing = `${overrideMessage ?? userMessage.value}`.trim()
-  if (!outgoing || isLoading.value) return
+  const hasAttachments = pendingAttachments.value.length > 0
+  if (aiCreditsExhausted.value || (!outgoing && !hasAttachments) || isLoading.value) return
 
   if (!overrideMessage) {
     userMessage.value = ''
   }
 
-  chatHistory.value.push({ role: 'user', content: outgoing })
+  const sentAttachments = pendingAttachments.value
   isLoading.value = true
   startThinkingMessage(outgoing)
 
   try {
     const conversationId = await aiConversationStore.ensureConversation({
       workspaceId: currentWorkspaceId.value,
-      firstMessage: outgoing
+      firstMessage: outgoing || sentAttachments.map(item => item.name).join(', ')
     })
+    const uploadedAttachments = hasAttachments ? await uploadFullAttachments(conversationId) : []
+    pendingAttachments.value = []
+    chatHistory.value.splice(chatHistory.value.length - 1, 0, { role: 'user', content: outgoing || 'Hãy phân tích các attachment đã đính kèm.', attachments: uploadedAttachments })
     const history = chatHistory.value
       .filter(item => !item.isTyping)
       .slice(-10)
       .map(item => ({ role: item.role === 'bot' ? 'assistant' : 'user', content: item.content }))
 
-    const response = await axiosClient.post('/ai/context-chat', {
-      conversationId,
-      route: '/ai-assistant',
-      projectId: currentProjectId.value || null,
-      workspaceId: currentWorkspaceId.value || null,
-      message: outgoing,
-      pageContext: { pageType: 'ai-assistant', currentView: 'conversation', visibleTaskIds: [], visibleStatuses: [], filters: {}, extra: { history } }
-    })
+    const response = uploadedAttachments.length
+      ? await axiosClient.post('/ai/attachment-chat', { conversationId, workspaceId: currentWorkspaceId.value || null, attachmentIds: uploadedAttachments.map(item => item.id), message: outgoing })
+      : await axiosClient.post('/ai/context-chat', {
+        conversationId,
+        route: '/ai-assistant',
+        projectId: currentProjectId.value || null,
+        workspaceId: currentWorkspaceId.value || null,
+        message: outgoing,
+        pageContext: { pageType: 'ai-assistant', currentView: 'conversation', visibleTaskIds: [], visibleStatuses: [], filters: {}, extra: { history } }
+      })
 
     clearProgressTimer()
     chatHistory.value.pop()
@@ -679,6 +790,7 @@ const sendMessage = async (overrideMessage = null) => {
       role: 'bot',
       content: message,
       warnings: payload?.warnings || [],
+      citations: payload?.citations || [],
       actions: (payload?.actions || []).map(action => ({
         ...action,
         type: String(action.type || '').toLowerCase(),
@@ -714,24 +826,24 @@ const useQuickPrompt = (prompt) => {
 }
 
 const prepareBreakdownPrompt = () => {
-  userMessage.value = 'Phan ra task sau thanh 3-5 subtask ro rang. Moi subtask can co muc tieu, owner de xuat, test/checklist va ban giao.'
+  userMessage.value = 'Phân rã task sau thành 3-5 subtask rõ ràng. Mỗi subtask cần có mục tiêu, owner đề xuất, test/checklist và bàn giao.'
 }
 
 const analyzeRepository = async () => {
   const repoUrl = repoForm.value.url.trim()
   if (!repoUrl) {
-    ElMessage.warning('Hay nhap repo GitHub truoc.')
+    ElMessage.warning('Hãy nhập repo GitHub trước.')
     return
   }
 
   const parsed = parseRepo(repoUrl)
   if (!parsed) {
-    ElMessage.error('Repo URL khong dung dinh dang GitHub.')
+    ElMessage.error('Repo URL không đúng định dạng GitHub.')
     return
   }
 
   repoLoading.value = true
-  repoStatus.value = 'Dang phan tich repo qua backend AI...'
+  repoStatus.value = 'Đang phân tích repo qua backend AI...'
 
   try {
     const response = await runWithEphemeralGitHubToken(repoForm.value, gitHubToken =>
@@ -743,25 +855,25 @@ const analyzeRepository = async () => {
 
     const analysis = response.data?.data
     if (!analysis) {
-      throw new Error('AI khong tra ve repo analysis hop le.')
+      throw new Error('AI không trả về repo analysis hợp lệ.')
     }
 
     repoAnalysis.value = analysis
     syncReviewSelectionFromAnalysis()
-    userMessage.value = analysis.suggestedPrompt || `Phan tich repo ${parsed.owner}/${parsed.repo} va de xuat backlog tiep theo.`
+    userMessage.value = analysis.suggestedPrompt || `Phân tích repo ${parsed.owner}/${parsed.repo} và đề xuất backlog tiếp theo.`
     repoStatus.value = `Da phan tich repo ${analysis.repository}. Prompt da san sang trong chat box.`
     chatHistory.value.push({
       role: 'bot',
       content: [
         `Repo ${analysis.repository}: ${analysis.summary}`,
         '',
-        `Quick wins: ${(analysis.quickWins || []).map(item => item.title).join(' | ') || 'Khong co'}`,
-        `Medium tasks: ${(analysis.mediumTasks || []).map(item => item.title).join(' | ') || 'Khong co'}`,
-        `Risky tasks: ${(analysis.riskyTasks || []).map(item => item.title).join(' | ') || 'Khong co'}`
+        `Quick wins: ${(analysis.quickWins || []).map(item => item.title).join(' | ') || 'Không có'}`,
+        `Medium tasks: ${(analysis.mediumTasks || []).map(item => item.title).join(' | ') || 'Không có'}`,
+        `Risky tasks: ${(analysis.riskyTasks || []).map(item => item.title).join(' | ') || 'Không có'}`
       ].join('\n')
     })
   } catch (error) {
-    repoStatus.value = error.response?.data?.message || error.message || 'Khong phan tich duoc repo.'
+    repoStatus.value = error.response?.data?.message || error.message || 'Không phân tích được repo.'
     ElMessage.error(repoStatus.value)
   } finally {
     repoLoading.value = false
@@ -770,12 +882,12 @@ const analyzeRepository = async () => {
 
 const createBacklogItems = async (mode) => {
   if (!repoAnalysis.value) {
-    ElMessage.warning('Hay phan tich repo truoc')
+    ElMessage.warning('Hãy phân tích repo trước.')
     return
   }
 
   if (!currentProjectId.value) {
-    ElMessage.warning('Hay chon project tren sidebar truoc')
+    ElMessage.warning('Hãy chọn project trên sidebar trước.')
     return
   }
 
@@ -807,10 +919,10 @@ const createBacklogItems = async (mode) => {
       notifyProjectRealtime('project-settings-updated', { source: 'ai-repo-create' })
     }
 
-    ElMessage.success(response.data?.message || `Đã tạo ${created.length} công việc`)
-    repoStatus.value = `Đã tạo ${created.length} công việc vào dự án ${activeProjectName.value}.`
+    ElMessage.success(response.data?.message || `Da tao ${created.length} work items`)
+    repoStatus.value = `Da tao ${created.length} work items vao ${activeProjectName.value}.`
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || 'Khong tao duoc AI backlog items')
+    ElMessage.error(error.response?.data?.message || 'Không tạo được AI backlog items.')
   } finally {
     createBacklogLoading.value = ''
   }
@@ -818,12 +930,12 @@ const createBacklogItems = async (mode) => {
 
 const createReviewedBacklogItems = async () => {
   if (!repoAnalysis.value) {
-    ElMessage.warning('Hay phan tich repo truoc')
+    ElMessage.warning('Hãy phân tích repo trước.')
     return
   }
 
   if (!currentProjectId.value) {
-    ElMessage.warning('Hay chon project tren sidebar truoc')
+    ElMessage.warning('Hãy chọn project trên sidebar trước.')
     return
   }
 
@@ -833,7 +945,7 @@ const createReviewedBacklogItems = async () => {
   }
 
   if (!selectedBacklogItems.value.length) {
-    ElMessage.warning('Hay chon it nhat mot AI backlog item')
+    ElMessage.warning('Hãy chọn ít nhất một AI backlog item.')
     return
   }
 
@@ -869,10 +981,10 @@ const createReviewedBacklogItems = async () => {
       notifyProjectRealtime('project-settings-updated', { source: 'ai-operational-review' })
     }
 
-    ElMessage.success(response.data?.message || `Đã tạo ${created.length} công việc`)
-    repoStatus.value = `Đã tạo ${created.length} công việc vào ${reviewTargetSprintLabel.value}.`
+    ElMessage.success(response.data?.message || `Da tao ${created.length} work items`)
+    repoStatus.value = `Da tao ${created.length} work items vao ${reviewTargetSprintLabel.value}.`
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || 'Khong tao duoc reviewed AI backlog items')
+    ElMessage.error(error.response?.data?.message || 'Không tạo được reviewed AI backlog items.')
   } finally {
     createBacklogLoading.value = ''
   }
@@ -905,11 +1017,17 @@ const loadAiUsage = async () => {
 }
 
 onMounted(() => {
+  siteStore.fetchSites()
+    .then(() => {
+      syncSelectedWorkspace()
+      loadConversations(true)
+    })
+    .catch(() => loadConversations(true))
+  window.addEventListener('sprinta-workspace-changed', handleWorkspaceChanged)
+  window.addEventListener(AUTH_SESSION_CHANGED, refreshCurrentUser)
   clearLegacyGitHubCredentialStorage()
   projectStore.fetchAllProjects().catch(() => [])
   loadAiUsage()
-  loadConversations(true)
-  nextTick(resizeFullComposer)
   if (currentProjectId.value) {
     sprintStore.fetchSprints(currentProjectId.value).catch(() => [])
     signalRService.startConnection(`${currentProjectId.value}`)
@@ -962,6 +1080,8 @@ watch(repoAnalysis, () => {
 
 onBeforeUnmount(() => {
   clearProgressTimer()
+  window.removeEventListener('sprinta-workspace-changed', handleWorkspaceChanged)
+  window.removeEventListener(AUTH_SESSION_CHANGED, refreshCurrentUser)
 })
 
 const handleSidebarSaved = (prefs) => {
@@ -985,7 +1105,7 @@ const handleSidebarSaved = (prefs) => {
   width: 100%;
   max-width: 1440px;
   margin: 0 auto;
-  background: var(--bg-primary);
+  background: var(--color-bg);
 }
 
 .ai-container {
@@ -1015,20 +1135,20 @@ const handleSidebarSaved = (prefs) => {
 .header-pill {
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--bg-tertiary);
-  color: var(--accent-color);
+  background: var(--color-surface-hover);
+  color: var(--color-accent);
   font-size: 12px;
   font-weight: 600;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
 }
 
 .credit-pill {
   margin-left: auto;
   padding: 5px 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -1036,9 +1156,9 @@ const handleSidebarSaved = (prefs) => {
 .repo-panel {
   margin: 0 32px 12px;
   padding: 16px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: var(--bg-secondary);
+  background: var(--color-surface);
 }
 
 .repo-analysis-preview {
@@ -1066,8 +1186,8 @@ const handleSidebarSaved = (prefs) => {
   margin-bottom: 14px;
   padding: 12px;
   border-radius: 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
 }
 
 .analysis-project {
@@ -1099,7 +1219,7 @@ const handleSidebarSaved = (prefs) => {
   padding: 16px;
   border: 1px solid var(--color-border);
   border-radius: 16px;
-  background: color-mix(in srgb, var(--color-surface-elevated, #141722) 92%, #0ea5e9 8%);
+  background: color-mix(in srgb, var(--color-surface-elevated) 92%, var(--color-accent) 8%);
 }
 
 .review-head {
@@ -1125,7 +1245,7 @@ const handleSidebarSaved = (prefs) => {
   min-width: 84px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(15, 23, 42, 0.45);
+  background: color-mix(in srgb, var(--color-surface-hover) 72%, transparent);
   border: 1px solid var(--color-border);
 }
 
@@ -1210,7 +1330,7 @@ const handleSidebarSaved = (prefs) => {
 .analysis-col {
   padding: 12px;
   border-radius: 8px;
-  background: var(--bg-tertiary);
+  background: var(--color-surface-hover);
 }
 
 .analysis-col-title {
@@ -1273,15 +1393,15 @@ const handleSidebarSaved = (prefs) => {
 .repo-input {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
   padding: 10px 12px;
   outline: none;
 }
 .repo-input:focus {
-  border-color: var(--accent-color);
+  border-color: var(--color-accent);
 }
 
 .repo-actions {
@@ -1327,14 +1447,14 @@ const handleSidebarSaved = (prefs) => {
 }
 
 .bot-icon-circle {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  color: var(--accent-color);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-accent);
 }
 
 .user-avatar-circle {
-  background: var(--accent-color);
-  color: #ffffff;
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
   font-weight: 700;
 }
 
@@ -1343,17 +1463,17 @@ const handleSidebarSaved = (prefs) => {
   max-width: 100%;
   padding: 10px 14px;
   border-radius: 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
   line-height: 1.5;
   font-size: 14px;
 }
 
 .bubble.primary {
-  background: var(--accent-color);
-  color: #ffffff;
-  border-color: var(--accent-color);
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  border-color: var(--color-accent);
 }
 
 .thinking-steps {
@@ -1379,22 +1499,22 @@ const handleSidebarSaved = (prefs) => {
 .input-box {
   align-items: center;
   gap: 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
-  background: var(--bg-tertiary);
+  background: var(--color-surface-hover);
   padding: 0 14px;
   transition: all 0.2s;
 }
 .input-box:focus-within {
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .input-box input {
   flex: 1;
   border: 0;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   padding: 12px 0;
   outline: none;
   font-size: 14px;
@@ -1407,7 +1527,7 @@ const handleSidebarSaved = (prefs) => {
 .send-btn {
   border: 0;
   background: transparent;
-  color: #0ea5e9;
+  color: var(--color-accent);
   cursor: pointer;
 }
 
@@ -1426,8 +1546,8 @@ const handleSidebarSaved = (prefs) => {
 .ai-details-panel {
   width: 300px;
   padding: 24px 20px;
-  border-left: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  border-left: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
 .section-label {
@@ -1448,20 +1568,24 @@ const handleSidebarSaved = (prefs) => {
   gap: 10px;
 }
 
+.quick-more { margin-top: 10px; border-top: 1px solid var(--color-border); padding-top: 10px; }
+.quick-more summary { color: var(--color-accent); font-size: 12px; font-weight: 750; cursor: pointer; }
+.quick-links-more { margin-top: 10px; }
+
 .q-link {
   width: 100%;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
   padding: 10px 12px;
   text-align: left;
   cursor: pointer;
   transition: all 0.2s;
 }
 .q-link:hover {
-  background: var(--hover-bg);
-  border-color: var(--accent-color);
+  background: var(--color-surface-hover);
+  border-color: var(--color-accent);
 }
 
 .mt-30 {
@@ -1477,14 +1601,18 @@ const handleSidebarSaved = (prefs) => {
 }
 
 .upgrade-card {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: var(--bg-tertiary);
+  background: var(--color-surface-hover);
   padding: 18px;
 }
 
+.credit-balance { display: block; margin-bottom: 10px; color: var(--color-text-primary); font-size: 22px; }
+.credit-meter { height: 7px; margin-bottom: 10px; overflow: hidden; border-radius: 999px; background: var(--color-border); }
+.credit-meter span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); }
+
 .plan-label {
-  color: #0ea5e9;
+  color: var(--color-accent);
   font-size: 12px;
   font-weight: 700;
   margin-bottom: 8px;
@@ -1500,8 +1628,8 @@ const handleSidebarSaved = (prefs) => {
 .btn-upgrade {
   border: 0;
   border-radius: 6px;
-  background: #0ea5e9;
-  color: #ffffff;
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
   padding: 10px 14px;
   cursor: pointer;
 }
@@ -1571,6 +1699,14 @@ const handleSidebarSaved = (prefs) => {
 .ai-container { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; max-width: none; padding: 24px clamp(18px, 4vw, 58px) 0; background: var(--color-bg); }
 .ai-page-header { flex: 0 0 auto; align-items: center; min-height: 52px; margin-bottom: 16px; }
 .header-left { min-width: 0; }
+.workspace-context-pill { display: inline-flex; align-items: center; gap: 6px; max-width: 280px; padding: 6px 9px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-context-pill i { color: var(--color-accent); }
+.workspace-selector { display: inline-flex; align-items: center; gap: 7px; min-height: 30px; max-width: 220px; padding: 0 9px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-text-secondary); }
+.workspace-selector:focus-within { border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--sa-primary-soft); }
+.workspace-selector i { color: var(--color-accent); font-size: 11px; }
+.workspace-selector select { min-width: 0; max-width: 180px; border: 0; outline: 0; background: transparent; color: var(--color-text-primary); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.workspace-selector option { background: var(--color-surface); color: var(--color-text-primary); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .credit-buy-inline { min-height: 30px; padding: 0 9px; border: 1px solid var(--color-border); border-radius: 8px; background: transparent; color: var(--color-accent); font-size: 11px; font-weight: 800; cursor: pointer; }
 .credit-buy-inline:hover, .credit-buy-inline:focus-visible { border-color: var(--color-accent); background: var(--sa-primary-soft); outline: none; }
 .header-actions { gap: 7px; }
@@ -1606,10 +1742,10 @@ const handleSidebarSaved = (prefs) => {
 .page-action-card dd { margin: 0; overflow-wrap: anywhere; }
 .cancel-action, .confirm-action { min-height: 36px; padding: 0 12px; border-radius: 8px; font-size: 11px; font-weight: 800; cursor: pointer; }
 .cancel-action { border: 1px solid var(--color-border); background: transparent; color: var(--color-text-secondary); }
-.confirm-action { border: 1px solid var(--color-accent); background: var(--color-accent); color: #fff; }
+.confirm-action { border: 1px solid var(--color-accent); background: var(--color-accent); color: var(--color-text-inverse); }
 .cancel-action:disabled, .confirm-action:disabled { cursor: not-allowed; opacity: .55; }
-.page-action-error { color: var(--color-danger, #dc2626) !important; }
-.page-action-success, .page-read-note { color: var(--color-success, #16803c) !important; }
+.page-action-error { color: var(--color-danger) !important; }
+.page-action-success, .page-read-note { color: var(--color-success) !important; }
 
 @media (max-width: 1100px) {
   .ai-page-flex-wrapper { height: calc(100dvh - 56px); }
@@ -1628,5 +1764,119 @@ const handleSidebarSaved = (prefs) => {
   .ai-chat-input-wrapper { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
   .input-box { gap: 4px; }
   .full-composer-icon, .input-box .send-btn { width: 40px; height: 40px; flex-basis: 40px; }
+}
+
+/* Product polish: keep the full chat's shell and utility rail visually distinct
+   from the shared message/composer components without changing their contracts. */
+.ai-page-flex-wrapper {
+  background: var(--color-bg);
+}
+
+.ai-page-history {
+  background: linear-gradient(180deg, var(--color-surface), color-mix(in srgb, var(--color-surface) 88%, var(--color-accent)));
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.ai-page-history-head strong,
+.page-title,
+.section-title,
+.credit-balance {
+  color: var(--color-text-primary);
+}
+
+.ai-page-history-head strong { font-size: 14px; letter-spacing: -.01em; }
+.ai-page-history > input,
+.workspace-selector,
+.workspace-context-pill,
+.return-floating-btn,
+.header-icon-btn {
+  box-shadow: var(--shadow-xs, 0 1px 2px color-mix(in srgb, var(--color-text-primary) 8%, transparent));
+}
+
+.ai-page-history > input:focus,
+.workspace-tools > summary:focus-visible,
+.ai-page-history-item:focus-visible,
+.history-more:focus-visible,
+.workspace-selector:focus-within,
+.header-icon-btn:focus-visible,
+.return-floating-btn:focus-visible,
+.credit-buy-inline:focus-visible,
+.q-link:focus-visible,
+.quick-more > summary:focus-visible,
+.btn-upgrade:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.ai-page-history-item {
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.ai-page-history-item:hover { transform: translateX(2px); }
+
+.ai-container {
+  background:
+    radial-gradient(circle at 50% 0, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 34%),
+    var(--color-bg);
+}
+
+.page-title { font-size: clamp(24px, 2.1vw, 31px); letter-spacing: -.035em; }
+.header-pill { background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); color: var(--color-accent); }
+.workspace-context-pill { background: color-mix(in srgb, var(--color-surface) 86%, var(--color-accent)); }
+.credit-buy-inline { background: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface)); }
+
+.workspace-tools > summary {
+  background: color-mix(in srgb, var(--color-surface) 76%, var(--color-accent));
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.workspace-tools > summary:hover { border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border)); }
+.chat-history { scrollbar-color: var(--color-border) transparent; }
+.ai-chat-input-wrapper { background: linear-gradient(var(--color-bg), color-mix(in srgb, var(--color-bg) 90%, transparent) 78%, transparent); }
+
+.ai-details-panel {
+  width: 272px;
+  padding: 28px 20px 22px;
+  background: linear-gradient(180deg, var(--color-surface), color-mix(in srgb, var(--color-surface) 90%, var(--color-accent)));
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.panel-section + .panel-section { margin-top: 26px; }
+.section-label { color: var(--color-accent); font-size: 10px; font-weight: 900; letter-spacing: .13em; }
+.section-title { margin-top: 7px; font-size: 11px; letter-spacing: .1em; }
+.quick-links { gap: 7px; margin-top: 13px; }
+.q-link {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 92%, var(--color-accent));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface-hover) 78%, var(--color-surface));
+  color: var(--color-text-secondary);
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+.q-link:hover { transform: translateX(2px); }
+.quick-more > summary { color: var(--color-text-muted); }
+.sidebar-copy { max-width: 30ch; line-height: 1.65; }
+
+.upgrade-card {
+  padding: 17px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+  border-radius: 16px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--color-accent) 15%, var(--color-surface)), var(--color-surface)),
+    var(--color-surface);
+  box-shadow: 0 14px 32px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+.plan-label { color: var(--color-accent); font-size: 10px; font-weight: 900; letter-spacing: .1em; }
+.credit-balance { display: block; margin-top: 10px; font-size: 27px; letter-spacing: -.05em; }
+.credit-meter { background: color-mix(in srgb, var(--color-border) 78%, var(--color-bg)); }
+.credit-meter span { background: linear-gradient(90deg, var(--color-accent), var(--sa-primary)); }
+.plan-desc { margin-top: 10px; line-height: 1.55; }
+.btn-upgrade { min-height: 38px; border-radius: 10px; background: var(--color-accent); color: var(--color-on-accent, #fff); font-weight: 850; transition: filter 160ms ease, transform 160ms ease; }
+.btn-upgrade:hover { filter: brightness(1.06); transform: translateY(-1px); }
+
+@media (max-width: 1100px) {
+  .ai-details-panel { width: 100%; padding: 22px 18px; box-shadow: none; }
 }
 </style>

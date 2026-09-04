@@ -172,11 +172,18 @@
           </div>
         </div>
 
-        <AppEmptyState v-else icon="fa-regular fa-folder-open" :title="labels.noProjects" :description="labels.tryFilters">
-          <template #action>
-            <button type="button" @click="openCreateModal">{{ labels.createProject }}</button>
-          </template>
-        </AppEmptyState>
+        <div class="empty-state-large mt-16" v-else>
+          <div class="empty-spaces-icon" aria-hidden="true">
+            <i class="fa-regular fa-folder-open"></i>
+          </div>
+          <div class="empty-spaces-copy">
+            <h3>{{ labels.noProjects }}</h3>
+            <p>{{ labels.tryFilters }} <a href="#" @click.prevent="clearFilters" style="color: var(--color-accent); text-decoration: underline;">{{ labels.clearAllFilters }}</a>.</p>
+            <button class="empty-spaces-btn mt-3" type="button" @click="openCreateModal">
+              {{ labels.createProject }}
+            </button>
+          </div>
+        </div>
       </template>
     </div>
 
@@ -248,7 +255,6 @@ import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import FilterBar from '@/components/FilterBar.vue'
-import AppEmptyState from '@/components/common/Foundation/AppEmptyState.vue'
 
 const router = useRouter()
 const projectStore = useHomeProjectStore()

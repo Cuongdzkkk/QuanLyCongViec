@@ -14,6 +14,9 @@ export const dedupeParticipantsByUser = (participants = [], preferredConnectionI
   return [...unique.values()]
 }
 
+export const getBoundedCallStageParticipants = (participants = []) =>
+  participants.length > 4 ? participants.slice(0, 3) : participants
+
 export const getMeetingLayoutMode = ({
   hasPresenter,
   presentationFocused,

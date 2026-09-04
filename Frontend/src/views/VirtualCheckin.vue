@@ -164,16 +164,13 @@
     <div class="page-content">
 
       <!-- Checkin Cards List (Both checked-in and not checked-in members) -->
-      <div v-if="filteredTeamCheckins.length === 0" class="empty-spaces-flat">
+      <div v-if="filteredTeamCheckins.length === 0" class="empty-spaces-flat" style="padding: 80px 0;">
         <div class="empty-spaces-icon" aria-hidden="true">
           <i class="fa-regular fa-calendar-check"></i>
         </div>
         <div class="empty-spaces-copy">
           <h3>Chưa có báo cáo check-in</h3>
-          <p>Danh sách báo cáo công việc hàng ngày.</p>
-          <button v-if="!userCheckedIn" class="empty-spaces-btn mt-3" type="button" @click="openCheckinModal">
-            Báo cáo check-in
-          </button>
+          <p>Danh sách check-in hàng ngày của các thành viên sẽ xuất hiện ở đây.</p>
         </div>
       </div>
       <template v-else>
@@ -838,12 +835,15 @@ const renderMarkdown = (text) => {
   opacity: 0.9;
 }
 
-.checkin-page .page-content {
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0 !important;
-  padding: 18px !important;
-  box-sizing: border-box !important;
+.page-content {
+  padding: 0 var(--sa-page-x, 24px) 32px !important;
+  max-width: none;
+  margin: 0;
+}
+
+.checkin-page :deep(.project-page-toolbar) {
+  margin: 0 0 18px !important;
+  width: auto !important;
 }
 
 .ai-extract-header-btn {
@@ -1567,25 +1567,52 @@ body .custom-project-dropdown .el-select-dropdown__item.selected.is-hovering {
   border: 1px solid var(--color-border) !important;
 }
 
-.empty-spaces-btn {
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 9px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  transition: all 0.2s ease;
-  margin-top: 12px;
+/* Empty State Styles */
+.empty-spaces-flat {
+  min-height: 204px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 26px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-align: center;
 }
 
-.empty-spaces-btn:hover {
-  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+.empty-spaces-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
+  border-radius: 14px;
   background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
   color: var(--color-accent);
+  font-size: 23px;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12);
 }
 
+.empty-spaces-copy {
+  max-width: 380px;
+}
+
+.empty-spaces-copy h3 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.empty-spaces-copy p {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
 </style>

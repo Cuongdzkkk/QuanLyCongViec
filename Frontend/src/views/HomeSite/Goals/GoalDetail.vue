@@ -44,6 +44,7 @@
         Cập nhật <span v-if="updates.length" class="badge-count">{{ updates.length + 1 }}</span>
       </button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'jira' }" @click="currentTab = 'jira'">SprintA</button>
+      <button class="sprinta-tab-btn" :class="{ active: currentTab === 'projects' }" @click="currentTab = 'projects'">Dự án</button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'learnings' }" @click="currentTab = 'learnings'">Bài học rút ra</button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'risks' }" @click="currentTab = 'risks'">Rủi ro</button>
       <button class="sprinta-tab-btn" :class="{ active: currentTab === 'decisions' }" @click="currentTab = 'decisions'">Quyết định</button>
@@ -93,7 +94,7 @@
               </div>
               <div v-else>
                 <div class="timeline-item" v-for="entry in goalHistory" :key="entry.id" style="display: flex; align-items: flex-start; gap: 12px;">
-                   <AppAvatar :src="entry.avatarUrl || entry.actorAvatarUrl" :name="entry.actor" :email="entry.email" size="xs" />
+                   <AppAvatar :user="{ fullName: entry.actor, email: entry.email }" :size="24" />
                    <div style="flex: 1;">
                       <div style="display: flex; justify-content: space-between; align-items: center;">
                          <span style="font-size: 14px; color: #172B4D;"><strong>{{ entry.actor }}</strong> {{ entry.action }}</span>
@@ -194,7 +195,7 @@
             <div class="timeline-post" style="margin-bottom: 24px; border: 1px solid #DFE1E6; padding: 16px; border-radius: 3px; background: white;" v-for="update in goalStore.updates" :key="update.id">
               <div class="post-header">
                 <div class="post-user">
-                  <AppAvatar :src="update.userAvatarUrl || update.userAvatar" :name="update.userName" :email="update.userEmail" size="sm" />
+                  <AppAvatar :user="{ id: update.userId, fullName: update.userName, avatarUrl: update.userAvatar }" :size="32" />
                   <div class="user-info">
                     <span class="user-name">{{ update.userName }}</span>
                     <span class="post-time">{{ new Date(update.createdAt).toLocaleString('vi-VN') }}</span>
@@ -259,15 +260,6 @@
         <template v-if="currentTab === 'jira'">
           <div class="section-header-row">
             <h3>Công việc SprintA</h3>
-            <div v-if="goalOwnerData" style="display:flex;align-items:center;gap:8px;font-size:12px;color:#5E6C84;">
-              <span>Leader</span><AppAvatar :src="goalOwnerData.avatarUrl" :name="goalOwnerData.fullName" :email="goalOwnerData.email" size="xs" />
-            </div>
-          </div>
-          <div v-if="goalStore.linkedProjects?.length" class="goal-sprint-projects">
-            <button v-for="project in goalStore.linkedProjects" :key="project.id" type="button" class="goal-sprint-project" @click="goToProjectDetail(project.id)">
-              <span><i class="fa-solid fa-rocket"></i>{{ project.name || project.title }}</span>
-              <span style="display:flex;align-items:center;gap:10px;"><button v-if="isOwner" type="button" class="icon-btn-micro" title="Hủy liên kết project" @click.stop="unlinkProject(project)"><i class="fa-solid fa-ellipsis-vertical"></i></button><i class="fa-solid fa-chevron-right"></i></span>
-            </button>
           </div>
           <div style="border: 1px solid #DFE1E6; border-radius: 3px; padding: 24px; display: flex; align-items: flex-start; gap: 24px; background: white;">
              <div style="position: relative;">
@@ -378,14 +370,13 @@
             <div class="timeline-post" v-for="item in goalStore.lessons" :key="item.id" style="margin-bottom: 16px;">
                 <div class="post-header">
                   <div class="post-user">
-                    <AppAvatar :src="item.creatorAvatarUrl" :name="item.creatorName" :email="item.creatorEmail" size="sm" />
+                    <AppAvatar :user="{ id: item.creatorId, fullName: item.creatorName, avatarUrl: item.creatorAvatarUrl, email: item.creatorEmail }" :size="32" />
                     <div class="user-info">
                       <span class="user-name">{{ item.creatorName }}</span>
                       <span class="post-time">{{ new Date(item.createdAt).toLocaleString('vi-VN') }}</span>
                     </div>
                   </div>
                 </div>
-                <div class="goal-item-actions"><button type="button" class="icon-btn-micro" title="Tùy chọn" @click.stop="toggleGoalItemMenu(item, 'lessons')"><i class="fa-solid fa-ellipsis-vertical"></i></button><div v-if="openGoalItemMenu === goalItemMenuKey(item, 'lessons')" class="goal-item-menu"><button :disabled="!isMineGoalItem(item)" @click="editGoalItem(item, 'lessons')">Chỉnh sửa</button><button :disabled="!isMineGoalItem(item)" @click="deleteGoalItem(item, 'lessons')">Xóa</button></div></div>
                 <div class="post-content">
                   <h4 style="margin: 0 0 8px 0; color: #172B4D; font-size: 16px;"><i class="fa-regular fa-lightbulb" style="color: #FFAB00; margin-right: 6px;"></i> {{ item.title }}</h4>
                   <div v-html="sanitizeHtml(item.text)"></div>
@@ -435,14 +426,13 @@
             <div class="timeline-post" v-for="item in goalStore.risks" :key="item.id" style="margin-bottom: 16px;">
                 <div class="post-header">
                   <div class="post-user">
-                    <AppAvatar :src="item.creatorAvatarUrl" :name="item.creatorName" :email="item.creatorEmail" size="sm" />
+                    <AppAvatar :user="{ id: item.creatorId, fullName: item.creatorName, avatarUrl: item.creatorAvatarUrl, email: item.creatorEmail }" :size="32" />
                     <div class="user-info">
                       <span class="user-name">{{ item.creatorName }}</span>
                       <span class="post-time">{{ new Date(item.createdAt).toLocaleString('vi-VN') }}</span>
                     </div>
                   </div>
                 </div>
-                <div class="goal-item-actions"><button type="button" class="icon-btn-micro" title="Tùy chọn" @click.stop="toggleGoalItemMenu(item, 'risks')"><i class="fa-solid fa-ellipsis-vertical"></i></button><div v-if="openGoalItemMenu === goalItemMenuKey(item, 'risks')" class="goal-item-menu"><button :disabled="!isMineGoalItem(item)" @click="editGoalItem(item, 'risks')">Chỉnh sửa</button><button :disabled="!isMineGoalItem(item)" @click="deleteGoalItem(item, 'risks')">Xóa</button></div></div>
                 <div class="post-content">
                   <h4 style="margin: 0 0 8px 0; color: #172B4D; font-size: 16px;"><i class="fa-solid fa-triangle-exclamation" style="color: #FF5630; margin-right: 6px;"></i> {{ item.title }}</h4>
                   <div v-html="sanitizeHtml(item.text)"></div>
@@ -492,14 +482,13 @@
             <div class="timeline-post" v-for="item in goalStore.decisions" :key="item.id" style="margin-bottom: 16px;">
                 <div class="post-header">
                   <div class="post-user">
-                    <AppAvatar :src="item.creatorAvatarUrl" :name="item.creatorName" :email="item.creatorEmail" size="sm" />
+                    <AppAvatar :user="{ id: item.creatorId, fullName: item.creatorName, avatarUrl: item.creatorAvatarUrl, email: item.creatorEmail }" :size="32" />
                     <div class="user-info">
                       <span class="user-name">{{ item.creatorName }}</span>
                       <span class="post-time">{{ new Date(item.createdAt).toLocaleString('vi-VN') }}</span>
                     </div>
                   </div>
                 </div>
-                <div class="goal-item-actions"><button type="button" class="icon-btn-micro" title="Tùy chọn" @click.stop="toggleGoalItemMenu(item, 'decisions')"><i class="fa-solid fa-ellipsis-vertical"></i></button><div v-if="openGoalItemMenu === goalItemMenuKey(item, 'decisions')" class="goal-item-menu"><button :disabled="!isMineGoalItem(item)" @click="editGoalItem(item, 'decisions')">Chỉnh sửa</button><button :disabled="!isMineGoalItem(item)" @click="deleteGoalItem(item, 'decisions')">Xóa</button></div></div>
                 <div class="post-content">
                   <h4 style="margin: 0 0 8px 0; color: #172B4D; font-size: 16px;"><i class="fa-solid fa-check-circle" style="color: #36B37E; margin-right: 6px;"></i> {{ item.title }}</h4>
                   <div v-html="sanitizeHtml(item.text)"></div>
@@ -777,24 +766,12 @@ const showUpdateForm = ref(false)
 const isFollowersModalOpen = ref(false)
 const showStatusOptions = ref(false)
 
-
-
-const archiveGoal = async () => {
-  if (goal.value) {
-    await goalStore.toggleArchive()
-  }
+const archiveGoal = () => {
+  console.log('Archive goal clicked')
 }
 
-const deleteGoal = async () => {
-  if (goal.value && confirm('Bạn có chắc chắn muốn xóa mục tiêu này?')) {
-    try {
-      const workspaceId = await goalStore.ensureWorkspaceId()
-      await axiosClient.delete(`/workspaces/${workspaceId}/goals/${goal.value.id}`)
-      router.push(goalsBasePath.value)
-    } catch (err) {
-      console.error('Failed to delete goal', err)
-    }
-  }
+const deleteGoal = () => {
+  console.log('Delete goal clicked')
 }
 
 const isUpdateStatusOpen = ref(false)
@@ -870,9 +847,6 @@ onMounted(async () => {
   if (peopleStore.users.length === 0) await peopleStore.fetchPeople('', 1, 100);
   if (route.params.id) {
     await goalStore.fetchGoalDetail(route.params.id)
-    linkedTeams.value = goal.value?.departmentId
-      ? teamStore.allTeams.filter(team => `${team.id}` === `${goal.value.departmentId}`)
-      : []
     const dateValue = goal.value?.startDate || goal.value?.dueDate || goal.value?.date || null
     startDate.value = dateValue
     startDateInput.value = dateValue ? new Date(dateValue).toISOString().slice(0, 10) : ''
@@ -977,61 +951,11 @@ const addSubGoal = (g) => {
 }
 const removeSubGoal = (id) => { linkedSubGoals.value = linkedSubGoals.value.filter(x => x.id !== id) }
 
-const addTeam = async t => {
-  if (!isOwner.value || linkedTeams.value.find(x => x.id === t.id)) return
-  await goalStore.updateGoal(goal.value.id, { departmentId: t.id })
-  linkedTeams.value = [t]
+const addTeam = (t) => {
+  if (!linkedTeams.value.find(x => x.id === t.id)) linkedTeams.value.push(t)
   popovers.value.teams = false
 }
-
-const linkProject = async project => {
-  if (!isOwner.value || !goal.value?.id) return
-  const workspaceId = await projectStore.ensureWorkspaceId()
-  await axiosClient.post(`/workspaces/${workspaceId}/projects/${project.id}/links`, {
-    linkedType: 'Goal',
-    linkedId: goal.value.id
-  })
-  await goalStore.fetchGoalDetail(goal.value.id)
-}
-
-const unlinkProject = async project => {
-  if (!isOwner.value || !goal.value?.id || !window.confirm('Hủy liên kết project với mục tiêu này?')) return
-  const workspaceId = await projectStore.ensureWorkspaceId()
-  const response = await axiosClient.get(`/workspaces/${workspaceId}/projects/${project.id}/links`)
-  const links = response.data?.data || response.data || []
-  const link = links.find(item => `${item.linkedType || item.LinkedType}`.toLowerCase() === 'goal' && `${item.linkedId || item.LinkedId}` === `${goal.value.id}`)
-  if (link?.id) await axiosClient.delete(`/workspaces/${workspaceId}/projects/${project.id}/links/${link.id}`)
-  await goalStore.fetchGoalDetail(goal.value.id)
-}
-const removeTeam = async id => {
-  if (!isOwner.value) return
-  await goalStore.updateGoal(goal.value.id, { departmentId: null })
-  linkedTeams.value = linkedTeams.value.filter(x => x.id !== id)
-}
-
-const openGoalItemMenu = ref(null)
-const goalItemMenuKey = (item, tab) => `${tab}:${item.id}`
-const isMineGoalItem = item => `${item.creatorId || ''}` === `${authStore.userId || ''}`
-const toggleGoalItemMenu = (item, tab) => {
-  const key = goalItemMenuKey(item, tab)
-  openGoalItemMenu.value = openGoalItemMenu.value === key ? null : key
-}
-const editGoalItem = async (item, tab) => {
-  if (!isMineGoalItem(item)) return
-  const workspaceId = await goalStore.ensureWorkspaceId()
-  const content = window.prompt('Chỉnh sửa nội dung', item.text || item.title || '')
-  if (content === null || !content.trim()) return
-  await axiosClient.put(`/workspaces/${workspaceId}/goals/${goal.value.id}/${tab}/${item.id}`, { text: content })
-  item.text = content
-  openGoalItemMenu.value = null
-}
-const deleteGoalItem = async (item, tab) => {
-  if (!isMineGoalItem(item) || !window.confirm('Bạn có chắc muốn xóa nội dung này?')) return
-  const workspaceId = await goalStore.ensureWorkspaceId()
-  await axiosClient.delete(`/workspaces/${workspaceId}/goals/${goal.value.id}/${tab}/${item.id}`)
-  goalStore[tab] = (goalStore[tab] || []).filter(value => value.id !== item.id)
-  openGoalItemMenu.value = null
-}
+const removeTeam = (id) => { linkedTeams.value = linkedTeams.value.filter(x => x.id !== id) }
 
 const saveStartDate = async () => {
   if (!goal.value?.workspaceId || !goal.value?.id || !startDateInput.value) {
@@ -1201,39 +1125,6 @@ const postUpdate = () => {
 </script>
 
 <style scoped>
-.goal-sprint-projects {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.goal-sprint-project {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 13px 16px;
-  border: 1px solid #dfe1e6;
-  border-radius: 8px;
-  background: #fff;
-  color: #172b4d;
-  cursor: pointer;
-  text-align: left;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.goal-sprint-project:hover { background: #f7f9fc; }
-.goal-sprint-project i:first-child { color: #0052cc; margin-right: 10px; }
-.goal-sprint-project > i { color: #6b778c; }
-.goal-item-actions { display:flex; justify-content:flex-end; margin-top:-34px; margin-bottom:8px; min-height:28px; position:relative; z-index:2; }
-.goal-item-menu { position:absolute; right:0; top:32px; display:flex; flex-direction:column; min-width:120px; padding:4px; background:#fff; border:1px solid #DFE1E6; border-radius:6px; box-shadow:0 4px 12px rgba(9,30,66,.2); }
-.goal-item-menu button { border:0; background:transparent; padding:8px 10px; text-align:left; border-radius:4px; cursor:pointer; color:#172B4D; }
-.goal-item-menu button:hover:not(:disabled) { background:#EBECF0; }
-.goal-item-menu button:disabled { color:#A5ADBA; cursor:not-allowed; }
-.goal-item-actions .icon-btn-micro { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; color:#42526E; background:#F4F5F7; border:1px solid #DFE1E6; border-radius:4px; cursor:pointer; }
-.goal-item-actions .icon-btn-micro:hover { background:#EBECF0; color:#172B4D; }
 .goal-detail-wrapper {
   display: flex;
   flex-direction: column;

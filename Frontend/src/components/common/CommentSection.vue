@@ -35,14 +35,8 @@
             <div class="comment-header">
               <span class="comment-author">{{ comment.fullName }}</span>
               <span class="comment-time">{{ formatDate(comment.createdAt) }}</span>
-              <div v-if="isMine(comment)" class="comment-menu">
-                <button type="button" class="reaction-btn" @click="editComment(comment)"><i class="fa-solid fa-pen"></i></button>
-                <button type="button" class="reaction-btn danger" @click="deleteComment(comment)"><i class="fa-solid fa-trash"></i></button>
-              </div>
             </div>
-            <textarea v-if="editingId === comment.id" v-model="editingContent" rows="2" class="comment-edit-input"></textarea>
-            <div v-else class="comment-content" v-html="sanitizeHtml(comment.content)"></div>
-            <div v-if="editingId === comment.id" class="comment-edit-actions"><button class="primary-btn" @click="saveEdit(comment)">Lưu</button><button class="cancel-btn" @click="editingId = null">Hủy</button></div>
+            <div class="comment-content" v-html="sanitizeHtml(comment.content)"></div>
             <div class="comment-footer-actions">
               <span class="action-link">Thích</span>
               <span class="action-link">Phản hồi</span>
@@ -100,21 +94,6 @@ const comments = ref([])
 const newComment = ref('')
 const isLoading = ref(false)
 const isSubmitting = ref(false)
-const editingId = ref(null)
-const editingContent = ref('')
-const isMine = comment => `${comment.userId || comment.user?.id || ''}` === `${currentUser.value.id || ''}`
-const editComment = comment => { editingId.value = comment.id; editingContent.value = comment.content || '' }
-const saveEdit = async comment => {
-  await axiosClient.put(`/comments/comments/${comment.id}`, { content: editingContent.value })
-  comment.content = editingContent.value
-  comment.updatedAt = new Date().toISOString()
-  editingId.value = null
-}
-const deleteComment = async comment => {
-  if (!window.confirm('Xóa bình luận này?')) return
-  await axiosClient.delete(`/comments/comments/${comment.id}`)
-  comments.value = comments.value.filter(item => item.id !== comment.id)
-}
 
 const sortedComments = computed(() => {
   return [...comments.value].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -181,11 +160,6 @@ onMounted(() => {
 .comment-section {
   margin-top: 24px;
 }
-
-.comment-menu { margin-left: auto; display: flex; gap: 4px; }
-.reaction-btn.danger { color: #de350b; }
-.comment-edit-input { width: 100%; box-sizing: border-box; margin-top: 8px; }
-.comment-edit-actions { display: flex; gap: 8px; margin-top: 8px; }
 
 .badge-count {
   background: #EBECF0;

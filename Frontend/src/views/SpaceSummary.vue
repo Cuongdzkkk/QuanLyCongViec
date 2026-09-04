@@ -447,7 +447,12 @@
                   <i class="status-icon" :class="group.icon" :style="{ color: group.color }"></i>
                   <span class="group-name" style="font-weight: 600; font-size: 13.5px; color: var(--color-text-primary);">{{ group.name }}</span>
                   <span class="group-count" style="font-size: 11px; padding: 1px 6px; border-radius: 999px; background: rgba(148, 163, 184, 0.1); color: var(--color-text-secondary);">{{ group.items.length }}</span>
-
+                  <span v-if="group.items.length > 0" class="group-progress" style="font-size: 11px; color: var(--color-text-muted); margin-left: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;">
+                    <span>{{ group.items.filter(t => (t.statusName || '').toUpperCase() === 'DONE').length }}/{{ group.items.length }} {{ tr('completed', 'hoàn thành') }}</span>
+                    <span style="width: 50px; height: 4px; background: rgba(148, 163, 184, 0.1); border-radius: 999px; display: inline-block; overflow: hidden; position: relative; top: 1px;">
+                      <span :style="{ width: `${(group.items.filter(t => (t.statusName || '').toUpperCase() === 'DONE').length / group.items.length * 100)}%`, background: '#10B981', height: '100%', display: 'block', borderRadius: '999px', transition: 'width 0.3s ease' }"></span>
+                    </span>
+                  </span>
                 </div>
                 <div class="gh-right" style="display: flex; align-items: center;">
                   <i class="fa-solid fa-plus add-icon cursor-pointer text-gray-400 hover:text-sky-500" @click.stop="openCreateTask(group.statusName)"></i>
@@ -611,7 +616,14 @@
               </div>
               <i v-if="canCurrentUserCreateTask && col.name !== 'FALLBACK_UNCLASSIFIED'" class="fa-solid fa-plus add-btn cursor-pointer text-gray-400 hover:text-sky-500" @click="openCreateTask(col.name)"></i>
             </div>
-
+            <div v-if="col.items.length > 0" style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px;">
+              <span style="font-size: 10px; color: var(--color-text-muted);">
+                {{ col.items.filter(t => (t.statusName || '').toUpperCase() === 'DONE').length }}/{{ col.items.length }} {{ tr('done', 'hoàn thành') }}
+              </span>
+              <div style="width: 60px; height: 3px; background: rgba(148, 163, 184, 0.1); border-radius: 999px; overflow: hidden; margin-left: 8px;">
+                <div :style="{ width: `${(col.items.filter(t => (t.statusName || '').toUpperCase() === 'DONE').length / col.items.length * 100)}%`, background: 'linear-gradient(90deg, #10B981, #34D399)', height: '100%', borderRadius: '999px', transition: 'width 0.3s ease' }"></div>
+              </div>
+            </div>
           </div>
           <div v-if="col.isFallback" class="fallback-desc-container" style="padding: 6px 12px; background: rgba(244, 63, 94, 0.05); border-bottom: 1px solid rgba(244, 63, 94, 0.1);">
             <small style="color: #f43f5e; font-size: 11px; font-style: italic;">
