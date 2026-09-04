@@ -172,18 +172,11 @@
           </div>
         </div>
 
-        <div class="empty-state-large mt-16" v-else>
-          <div class="empty-spaces-icon" aria-hidden="true">
-            <i class="fa-regular fa-folder-open"></i>
-          </div>
-          <div class="empty-spaces-copy">
-            <h3>{{ labels.noProjects }}</h3>
-            <p>{{ labels.tryFilters }} <a href="#" @click.prevent="clearFilters" style="color: var(--color-accent); text-decoration: underline;">{{ labels.clearAllFilters }}</a>.</p>
-            <button class="empty-spaces-btn mt-3" type="button" @click="openCreateModal">
-              {{ labels.createProject }}
-            </button>
-          </div>
-        </div>
+        <AppEmptyState v-else icon="fa-regular fa-folder-open" :title="labels.noProjects" :description="labels.tryFilters">
+          <template #action>
+            <button type="button" @click="openCreateModal">{{ labels.createProject }}</button>
+          </template>
+        </AppEmptyState>
       </template>
     </div>
 
@@ -255,6 +248,7 @@ import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import AppEmptyState from '@/components/common/Foundation/AppEmptyState.vue'
 
 const router = useRouter()
 const projectStore = useHomeProjectStore()
@@ -1856,24 +1850,5 @@ const isCompletedStatus = (status) => {
   overflow: visible;
 }
 
-.empty-spaces-btn {
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 9px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  transition: all 0.2s ease;
-  margin-top: 12px;
-}
 
-.empty-spaces-btn:hover {
-  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
-  color: var(--color-accent);
-}
 </style>

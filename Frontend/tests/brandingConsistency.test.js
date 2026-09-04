@@ -35,7 +35,7 @@ test('canonical wordmark stays crisp and billing branding has collision-safe lay
   assert.match(brand, /\.sprinta-brand__name[\s\S]*?filter: none;/)
   assert.match(brand, /-webkit-font-smoothing: antialiased;/)
   assert.match(brand, /text-rendering: geometricPrecision;/)
-  assert.match(brand, /\.sprinta-brand--site-selection \.sprinta-brand__name \{[\s\S]*?color: var\(--color-text-primary\);/)
+  assert.match(brand, /\.sprinta-brand--site-selection \.sprinta-brand__name \{[\s\S]*?color: #f7fbff;/)
   assert.match(billingCheckout, /\.checkout-page \.brand \{[\s\S]*?display: flex;[\s\S]*?gap: 12px;[\s\S]*?min-width: 0;/)
   assert.match(billingCheckout, /@media \(max-width: 520px\)[\s\S]*?\.checkout-page \.checkout-nav \{[\s\S]*?height: auto;[\s\S]*?flex-wrap: wrap;/)
   assert.match(billingCheckout, /\.checkout-page \.back-button \{[\s\S]*?min-width: 0;/)

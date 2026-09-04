@@ -52,15 +52,17 @@
           <span>{{ t('common.shown', { count: filteredProjects.length }) }}</span>
         </div>
 
-        <div v-if="projectStore.loading" class="empty-state">
-          <i class="fa-solid fa-spinner fa-spin"></i>
+        <div v-if="projectStore.loading" class="empty-state" style="border: none; background: transparent;">
+          <i class="fa-solid fa-circle-notch fa-spin"></i>
           <p>{{ t('dashboard.loadingProjects') }}</p>
         </div>
 
-        <div v-else-if="filteredProjects.length === 0" class="empty-state">
-          <i class="fa-regular fa-folder-open"></i>
-          <p>{{ t('dashboard.noProjectsMatch') }}</p>
-        </div>
+        <ProjectEmptyState
+          v-else-if="filteredProjects.length === 0"
+          icon="fa-regular fa-folder-open"
+          :title="t('dashboard.noProjectsMatch')"
+          description=""
+        />
 
         <div v-else class="project-grid">
           <article v-for="project in filteredProjects" :key="project.id" class="project-card">
@@ -214,6 +216,7 @@ import DailyFocusWidget from '@/components/DailyFocusWidget.vue'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import { getProjectBackgroundStyle } from '@/config/projectAppearance'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 import { buildSpacePath } from '@/utils/spaceRoute'
 
 const router = useRouter()

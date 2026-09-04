@@ -1519,26 +1519,7 @@ onUnmounted(() => {
   line-height: 1.4;
 }
 
-.empty-spaces-btn {
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 9px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  transition: all 0.2s ease;
-  margin-top: 12px;
-}
 
-.empty-spaces-btn:hover {
-  border-color: color-mix(in srgb, var(--color-accent, #0ea5e9) 55%, var(--color-border));
-  background: color-mix(in srgb, var(--color-accent, #0ea5e9) 10%, var(--color-surface));
-  color: var(--color-accent, #0ea5e9);
-}
 
 .link-btn {
   color: #0052CC;

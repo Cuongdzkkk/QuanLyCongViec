@@ -9,19 +9,23 @@
       </div>
 
       <div class="recent-content">
-        <div v-if="loading" class="loading-state">
+        <div v-if="loading" class="loading-state" style="border: none; background: transparent;">
           <i class="fa-solid fa-circle-notch fa-spin"></i>
           <span>Đang tải...</span>
         </div>
 
-        <div v-else-if="recentTasks.length === 0" class="empty-state">
-          <div class="empty-illustration">
-            <i class="fa-solid fa-clock-rotate-left"></i>
-          </div>
-          <h3>Chưa có hoạt động nào</h3>
-          <p>Bắt đầu làm việc trong các Không gian để thấy công việc gần đây của bạn ở đây.</p>
-          <el-button type="primary" @click="$router.push('/dashboard')">Quay về Bảng điều khiển</el-button>
-        </div>
+        <ProjectEmptyState
+          v-else-if="recentTasks.length === 0"
+          icon="fa-solid fa-clock-rotate-left"
+          title="Chưa có hoạt động nào"
+          description="Bắt đầu làm việc trong các Không gian để thấy công việc gần đây của bạn ở đây."
+        >
+          <template #action>
+            <button class="empty-spaces-btn" @click="$router.push('/dashboard')">
+              Quay về Bảng điều khiển
+            </button>
+          </template>
+        </ProjectEmptyState>
 
         <div v-else class="tasks-grid">
           <div v-for="task in recentTasks" :key="task.id" class="recent-task-card" @click="goToTask(task)">
@@ -49,6 +53,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 
 
 const router = useRouter()

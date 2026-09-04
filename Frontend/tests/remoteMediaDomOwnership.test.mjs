@@ -198,12 +198,6 @@ test('visible remote video and persistent audio follow the current connection th
     participantsInCall: [oldParticipant],
     remoteStreams: oldStreams
   })
-  const visibleCallStageParticipants = computed(() => state.callLayoutMode === 'CAMERA_GRID'
-    ? state.participantsInCall.slice(0, 3)
-    : state.cameraStageParticipants)
-  const callOverflowCount = computed(() => state.callLayoutMode === 'CAMERA_GRID'
-    ? Math.max(state.participantsInCall.length - visibleCallStageParticipants.value.length, 0)
-    : 0)
   const remoteAudioParticipants = computed(() => state.participantsInCall.filter(user => {
     const stream = state.remoteStreams.get(user.connectionId)?.audioStream
     return user.connectionId !== state.callConnectionId &&
@@ -214,8 +208,6 @@ test('visible remote video and persistent audio follow the current connection th
     render,
     setup: () => ({
       ...toRefs(state),
-      visibleCallStageParticipants,
-      callOverflowCount,
       remoteAudioParticipants,
       focusParticipant: () => {},
       isParticipantSpeaking: () => false,
@@ -248,7 +240,6 @@ test('visible remote video and persistent audio follow the current connection th
   assert.ok(nodesByTag(root, 'audio')[0] === persistentAudioElement, 'participant state updates must preserve the audio output element')
 
   state.cameraStageParticipants = []
-  state.callLayoutMode = 'CAMERA_FOCUS'
   state.callRailParticipants = state.participantsInCall
   await nextTick()
   syncCallVideoElements()

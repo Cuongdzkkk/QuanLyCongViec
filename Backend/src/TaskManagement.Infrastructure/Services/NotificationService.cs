@@ -19,7 +19,7 @@ namespace TaskManagement.Infrastructure.Services
             _clientNotifier = clientNotifier;
         }
 
-        public async Task SendNotificationAsync(Guid userId, string title, string content, string type, string? linkUrl = null, Guid? triggeredByUserId = null)
+        public async Task SendNotificationAsync(Guid userId, string title, string content, string type, string? linkUrl = null, Guid? triggeredByUserId = null, Guid? relatedSiteAccountLinkRequestId = null)
         {
             var notification = new Notification
             {
@@ -30,6 +30,7 @@ namespace TaskManagement.Infrastructure.Services
                 NotificationType = type,
                 LinkUrl = linkUrl,
                 TriggeredByUserId = triggeredByUserId,
+                RelatedSiteAccountLinkRequestId = relatedSiteAccountLinkRequestId,
                 CreatedAt = DateTime.UtcNow,
                 IsRead = false
             };
