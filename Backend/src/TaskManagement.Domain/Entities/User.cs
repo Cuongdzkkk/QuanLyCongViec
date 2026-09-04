@@ -60,6 +60,8 @@ namespace TaskManagement.Domain.Entities
         // === Workspace-level navigation ===
         public ICollection<WorkspaceMember> WorkspaceMemberships { get; set; } = new List<WorkspaceMember>();
         public ICollection<Workspace> OwnedWorkspaces { get; set; } = new List<Workspace>();
+        public ICollection<SiteAccountLinkRequest> OutgoingSiteAccountLinkRequests { get; set; } = new List<SiteAccountLinkRequest>();
+        public ICollection<SiteAccountLinkRequest> IncomingSiteAccountLinkRequests { get; set; } = new List<SiteAccountLinkRequest>();
         
         // Concurrent Sessions
         public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();

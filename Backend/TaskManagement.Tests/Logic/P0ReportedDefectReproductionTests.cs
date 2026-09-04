@@ -323,8 +323,11 @@ public sealed class P0ReportedDefectReproductionTests
         await using var context = CreateContext();
         var workspaceId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        context.Users.Add(new User { Id = userId, Email = "inactive@example.com", FullName = "Inactive", PasswordHash = "unused", IsActive = true });
-        context.Workspaces.Add(new Workspace { Id = workspaceId, Name = "Workspace", Slug = "ws", OwnerId = userId });
+        var ownerId = Guid.NewGuid();
+        context.Users.AddRange(
+            new User { Id = userId, Email = "inactive@example.com", FullName = "Inactive", PasswordHash = "unused", IsActive = true },
+            new User { Id = ownerId, Email = "owner@example.com", FullName = "Owner", PasswordHash = "unused", IsActive = true });
+        context.Workspaces.Add(new Workspace { Id = workspaceId, Name = "Workspace", Slug = "ws", OwnerId = ownerId });
         context.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = workspaceId, UserId = userId, WorkspaceRole = "MEMBER", IsActive = false });
         await context.SaveChangesAsync();
 

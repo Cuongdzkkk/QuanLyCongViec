@@ -60,17 +60,45 @@ public sealed class AiCreditUsageService : IAiCreditUsageService
             var subscriptionPlan = subscription?.PlanCode ?? "free";
             var total = buckets.Sum(x => Math.Max(0, x.RemainingCredits));
             var paidPlan = !string.Equals(subscriptionPlan, "free", StringComparison.OrdinalIgnoreCase);
+            var bucketPeriodStart = subscription?.CurrentPeriodStart ?? MonthStart(now);
+            var bucketPeriodEnd = subscription?.CurrentPeriodEnd ?? bucketPeriodStart.AddMonths(1);
+            var bucketTotalTokens = await _context.AITokenUsages.AsNoTracking()
+                .Where(x => x.UserId == userId && x.CreatedAt >= bucketPeriodStart && x.CreatedAt < bucketPeriodEnd)
+                .SumAsync(x => (long?)x.TokensUsed, cancellationToken) ?? 0;
+            var bucketLedgerCredits = await _context.AiUsageLedgerEntries.AsNoTracking()
+                .Where(x => x.UserId == userId && x.OccurredAt >= bucketPeriodStart && x.OccurredAt < bucketPeriodEnd)
+                .SumAsync(x => (int?)x.CreditsConsumed, cancellationToken) ?? 0;
+            var bucketAdjustmentCredits = await _context.AiCreditAdjustments.AsNoTracking()
+                .Where(x => x.UserId == userId &&
+                            x.EffectivePeriodStart <= bucketPeriodStart &&
+                            x.EffectivePeriodEnd >= bucketPeriodEnd &&
+                            x.AdjustmentType == "Credit")
+                .SumAsync(x => (int?)x.Amount, cancellationToken) ?? 0;
+            var bucketUsage = buckets.Sum(x => x.GrantedCredits - x.RemainingCredits);
+            var hasLegacyUsage = bucketTotalTokens > 0 || bucketLedgerCredits > 0 || bucketAdjustmentCredits != 0 ||
+                                 buckets.Any(x => x.SourceType == "LegacyCutover");
+            var bucketUsedCredits = Math.Max(0, bucketUsage + (hasLegacyUsage ? bucketAdjustmentCredits : 0));
+            var bucketTokenDerivedCredits = EstimateCredits(bucketTotalTokens);
+            var bucketUsageSource = bucketLedgerCredits > 0 && bucketTokenDerivedCredits > 0
+                ? "reconciled-ledger-and-token-usage"
+                : bucketLedgerCredits > 0
+                    ? "ai-usage-ledger"
+                    : bucketTokenDerivedCredits > 0
+                        ? "ai-token-usage"
+                        : "ai-credit-buckets";
             return new AiCreditUsageDto
             {
                 PlanCode = subscriptionPlan,
                 EntitlementSource = "ai-credit-buckets",
-                UsageSource = "ai-credit-buckets",
+                UsageSource = bucketUsageSource,
                 IncludedCredits = buckets.Sum(x => x.GrantedCredits),
-                UsedCredits = buckets.Sum(x => x.GrantedCredits - x.RemainingCredits),
+                UsedCredits = bucketUsedCredits,
+                AdjustmentCredits = bucketAdjustmentCredits,
                 TotalRemainingCredits = total,
                 HasConfiguredEntitlement = paidPlan || total > 0,
-                CurrentPeriodStart = subscription?.CurrentPeriodStart ?? MonthStart(now),
-                CurrentPeriodEnd = subscription?.CurrentPeriodEnd ?? MonthStart(now).AddMonths(1),
+                TotalTokens = bucketTotalTokens,
+                CurrentPeriodStart = bucketPeriodStart,
+                CurrentPeriodEnd = bucketPeriodEnd,
                 SubscriptionStatus = subscription?.Status ?? "Active"
             };
         }

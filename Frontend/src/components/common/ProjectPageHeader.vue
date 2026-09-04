@@ -30,7 +30,8 @@ defineProps({
   justify-content: space-between;
   align-items: center;
   gap: 14px;
-  min-height: 46px;
+  height: 54px;
+  min-height: 54px;
   padding: 0 0 8px;
   overflow: visible;
 }
@@ -40,6 +41,7 @@ defineProps({
   align-items: center;
   gap: 12px;
   min-width: 0;
+  height: 46px;
   min-height: 46px;
   overflow: visible;
 }
@@ -73,17 +75,23 @@ defineProps({
   font-weight: 900;
   color: var(--color-text-primary, #172b4d);
   line-height: 1.2;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .pph-desc {
   margin: 0;
   font-size: 13px;
   color: var(--color-text-muted, #6b778c);
-  line-height: 1.35;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .pph-right {
   display: flex;
   align-items: center;
+  min-height: 46px;
   gap: 12px;
   flex-shrink: 0;
 }

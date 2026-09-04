@@ -232,7 +232,7 @@
                   <h3>Bảng xếp hạng theo project</h3>
                   <p>Điểm gồm giao dịch từ task trong project cộng với điều chỉnh tay.</p>
                 </div>
-                <div v-if="!pointManagement.leaderboard?.length" class="empty-state">Chưa có dữ liệu điểm trong project.</div>
+                <ProjectEmptyState v-if="!pointManagement.leaderboard?.length" icon="fa-solid fa-ranking-star" title="Chưa có dữ liệu điểm trong project." description="Hãy bắt đầu làm việc để tích lũy điểm thưởng và vinh danh." />
                 <div v-else class="stack-list">
                   <div v-for="member in pointManagement.leaderboard" :key="`lb-${member.userId}`" class="stack-row">
                     <div class="row-main">
@@ -251,7 +251,7 @@
                   <h3>Lịch sử điểm gần nhất</h3>
                   <p>Hiển thị cả giao dịch task và điều chỉnh tay ở cấp project.</p>
                 </div>
-                <div v-if="!pointManagement.history?.length" class="empty-state">Chưa có lịch sử điểm.</div>
+                <ProjectEmptyState v-if="!pointManagement.history?.length" icon="fa-solid fa-clock-rotate-left" title="Chưa có lịch sử điểm." description="Chưa có biến động điểm nào được ghi nhận cho dự án này." />
                 <div v-else class="stack-list compact-list">
                   <div v-for="entry in pointManagement.history" :key="`history-${entry.id}`" class="stack-row">
                     <div class="row-main">
@@ -356,7 +356,7 @@
               </button>
             </div>
 
-            <div v-if="!milestones.length" class="empty-state">Chưa có milestone nào.</div>
+            <ProjectEmptyState v-if="!milestones.length" icon="fa-solid fa-flag" title="Chưa có milestone nào." description="Hãy tạo milestone đầu tiên để theo dõi tiến độ phát hành." />
             <div v-else class="stack-list">
               <div v-for="milestone in milestones" :key="milestone.id" class="stack-row">
                 <div class="row-main editable-grid">
@@ -574,7 +574,7 @@
                 <div class="section-split">
                   <h3>Top contributors</h3>
                 </div>
-                <div v-if="!operationalDashboard.topContributors?.length" class="empty-state">Chưa có leaderboard project.</div>
+                <ProjectEmptyState v-if="!operationalDashboard.topContributors?.length" icon="fa-solid fa-trophy" title="Chưa có leaderboard project." description="Bảng xếp hạng đóng góp của dự án đang trống." />
                 <div v-else class="stack-list compact-list">
                   <div v-for="member in operationalDashboard.topContributors" :key="`dash-points-${member.userId}`" class="stack-row">
                     <div class="row-main">
@@ -592,7 +592,7 @@
                 <div class="section-split">
                   <h3>Capacity snapshot</h3>
                 </div>
-                <div v-if="!operationalDashboard.capacityHealth?.rows?.length" class="empty-state">Chưa có dữ liệu capacity.</div>
+                <ProjectEmptyState v-if="!operationalDashboard.capacityHealth?.rows?.length" icon="fa-solid fa-battery-empty" title="Chưa có dữ liệu capacity." description="Chưa có thông tin tải công việc của thành viên dự án." />
                 <div v-else class="stack-list compact-list">
                   <div v-for="row in operationalDashboard.capacityHealth.rows" :key="`dash-load-${row.userId}`" class="stack-row">
                     <div class="row-main">
@@ -611,7 +611,7 @@
               <div class="section-split">
                 <h3>Milestone snapshot</h3>
               </div>
-              <div v-if="!operationalDashboard.milestones?.length" class="empty-state">Chưa có milestone để theo dõi.</div>
+              <ProjectEmptyState v-if="!operationalDashboard.milestones?.length" icon="fa-solid fa-flag" title="Chưa có milestone để theo dõi." description="Chưa có mục tiêu hoặc đợt phát hành nào đang hoạt động." />
               <div v-else class="stack-list">
                 <div v-for="milestone in operationalDashboard.milestones" :key="`dash-ms-${milestone.id}`" class="stack-row">
                   <div class="row-main">
@@ -754,7 +754,7 @@
               <h3>Vai trò của thành viên trong dự án</h3>
               <p>Gán vai trò trực tiếp cho các thành viên trong dự án này.</p>
             </div>
-            <div v-if="members.length === 0" class="empty-state">Không tìm thấy thành viên nào.</div>
+            <ProjectEmptyState v-if="members.length === 0" icon="fa-solid fa-users-slash" title="Không tìm thấy thành viên nào." description="Dự án hiện chưa có thành viên nào được phân quyền." />
             <div v-else class="stack-list">
               <div v-for="member in members" :key="`permission-member-${member.userId}`" class="stack-row">
                 <div class="row-main">
@@ -794,7 +794,7 @@
               </button>
             </div>
 
-            <div v-if="members.length === 0" class="empty-state">No project members found.</div>
+            <ProjectEmptyState v-if="members.length === 0" icon="fa-solid fa-users-slash" title="No project members found." description="Hãy mời thành viên đầu tiên vào dự án của bạn." />
             <div v-else class="stack-list">
               <div v-for="member in members" :key="member.userId" class="stack-row">
                 <div class="row-main">
@@ -878,7 +878,7 @@
               </button>
             </div>
 
-            <div v-if="labels.length === 0" class="empty-state">No labels configured yet.</div>
+            <ProjectEmptyState v-if="labels.length === 0" icon="fa-solid fa-tags" title="Chưa có nhãn nào được tạo." description="Hãy tạo nhãn để dễ dàng phân loại công việc." />
             <div v-else class="stack-list">
               <div v-for="label in labels" :key="label.id" class="stack-row">
                 <div class="row-main editable-grid compact-grid">
@@ -980,7 +980,7 @@
                 </div>
               </div>
 
-              <div v-if="modules.length === 0" class="empty-state">No modules configured yet.</div>
+              <ProjectEmptyState v-if="modules.length === 0" icon="fa-solid fa-cubes" title="Chưa có phân hệ nào." description="Hãy tạo phân hệ (module) để tổ chức cấu trúc dự án." />
               <template v-else>
                 <div class="section-split">
                   <h3>Active modules</h3>
@@ -1042,7 +1042,7 @@
                   <h3>Disabled modules</h3>
                   <p>Restore here when you want the module to appear again in project workspaces.</p>
                 </div>
-                <div v-if="disabledModules.length === 0" class="empty-state">No disabled modules.</div>
+                <ProjectEmptyState v-if="disabledModules.length === 0" icon="fa-solid fa-cubes" title="Không có phân hệ bị vô hiệu hóa." description="Các phân hệ bị vô hiệu hóa sẽ hiển thị tại đây để bạn có thể khôi phục." />
                 <div v-else class="stack-list">
                   <div v-for="module in disabledModules" :key="`disabled-${module.id}`" class="stack-row">
                     <div class="row-main editable-grid">
@@ -1128,7 +1128,7 @@
               </button>
             </div>
 
-            <div v-if="sprints.length === 0" class="empty-state">No cycles configured yet.</div>
+            <ProjectEmptyState v-if="sprints.length === 0" icon="fa-solid fa-arrows-spin" title="Chưa có chu kỳ nào." description="Tạo chu kỳ (cycle/sprint) để quản lý tiến độ từng đợt phát triển." />
             <div v-else class="stack-list">
               <div v-for="sprint in sprints" :key="sprint.id" class="stack-row">
                 <div class="row-main editable-grid compact-grid">
@@ -1190,9 +1190,7 @@
               </div>
             </div>
 
-            <div v-if="integrations.length === 0" class="empty-state">
-              GitHub integration is not configured for this project yet.
-            </div>
+            <ProjectEmptyState v-if="integrations.length === 0" icon="fa-brands fa-github" title="Chưa tích hợp GitHub." description="Kết nối GitHub để AI phân tích và tự động tạo công việc từ repository của bạn." />
             <div v-else class="stack-list">
               <div v-for="integration in integrations" :key="integration.provider" class="stack-row">
                 <div class="row-main editable-grid integration-grid">
@@ -1247,7 +1245,7 @@
               </button>
             </div>
 
-            <div class="empty-state helper-panel">
+            <div class="helper-panel" style="padding: 18px; border-radius: 10px; border: 1px dashed var(--color-border); color: var(--color-text-muted); background: var(--color-surface-hover);">
               Only GitHub is available here so AI can analyze the connected repository and break work into tasks later.
               For public repos you can try without a token first, but if GitHub returns 403 you should add a Fine-grained Personal Access Token with read-only access to Metadata and Contents.
             </div>
@@ -1298,10 +1296,12 @@
             </div>
 
             <!-- Empty State -->
-            <div v-if="!customFields.length" class="empty-state-container" style="padding: 40px; text-align: center; color: var(--color-text-muted);">
-              <i class="fa-solid fa-folder-open" style="font-size: 48px; margin-bottom: 16px; color: var(--border-color);"></i>
-              <p>Dự án này chưa có trường tùy chỉnh. Hãy tạo trường đầu tiên để bổ sung thông tin riêng cho công việc.</p>
-            </div>
+            <ProjectEmptyState 
+              v-if="!customFields.length" 
+              icon="fa-regular fa-folder-open" 
+              title="Dự án này chưa có trường tùy chỉnh." 
+              description="Hãy tạo trường đầu tiên để bổ sung thông tin riêng cho công việc." 
+            />
 
             <!-- List Table -->
             <div v-else class="table-container">
@@ -1420,6 +1420,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 import axiosClient from '@/api/axiosClient'
 import { useProjectStore } from '@/store/useProjectStore'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 import { useSprintStore } from '@/store/useSprintStore'
 import { broadcastAdminRealtime, subscribeAdminRealtime } from '@/utils/adminRealtime'
 import { signalRService } from '@/api/signalrService'
@@ -3712,13 +3713,7 @@ input:disabled {
   color: #dc2626;
 }
 
-.empty-state {
-  padding: 18px;
-  border-radius: 10px;
-  border: 1px dashed var(--color-border);
-  color: var(--color-text-muted);
-  background: var(--color-surface-hover);
-}
+
 
 .section-split {
   margin: 18px 0 12px;
