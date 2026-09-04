@@ -54,9 +54,9 @@
           </div>
           <div class="ai-context-bar">
             <div class="context-summary">
-              <span class="context-kicker"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i> AI ĐANG LÀM VIỆC TRONG</span>
+              <span class="context-kicker"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i> PHẠM VI AI</span>
               <strong>{{ activeWorkspaceName }} <span aria-hidden="true">·</span> {{ activeProjectName }}</strong>
-              <small>Trang: {{ currentPageLabel }} · Chọn workspace và project cho ngữ cảnh AI.</small>
+              <small>Workspace/project được chọn cho các thao tác AI.</small>
             </div>
             <div class="context-controls">
               <span class="workspace-context-pill" :title="currentWorkspaceId ? `Workspace ${currentWorkspaceId}` : 'Chưa chọn workspace'">
@@ -86,6 +86,10 @@
                 {{ aiRemainingCredits }} credits còn lại
               </span>
               <button v-if="aiUsage" class="credit-buy-inline" type="button" @click="openAiCreditPurchase">Mua thêm</button>
+            </div>
+            <div class="current-page-summary">
+              <span>TRANG HIỆN TẠI</span>
+              <strong>{{ currentPageLabel }}</strong>
             </div>
           </div>
         </div>
@@ -393,6 +397,7 @@ import { clearScopedCurrentProjectId, getScopedCurrentProjectId, setScopedCurren
 import { clearLegacyGitHubCredentialStorage, runWithEphemeralGitHubToken } from '@/utils/githubCredentials'
 import { useAiConversationStore } from '@/store/useAiConversationStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
+import { useAiScopeStore } from '@/store/useAiScopeStore'
 import { buildAiContextKey, isAiContextMatch, isComposerSendKey } from '@/utils/aiWorkspace'
 import { useAiComposer } from '@/composables/useAiComposer'
 import { AI_QUICK_ACTIONS } from '@/utils/aiActionUi'
@@ -402,14 +407,21 @@ const route = useRoute()
 const aiComposerRef = ref(null)
 const aiConversationStore = useAiConversationStore()
 const aiPetStore = useAiPetStore()
+const aiScopeStore = useAiScopeStore()
 const projectStore = useProjectStore()
 const workTaskStore = useWorkTaskStore()
 const siteStore = useSiteStore()
 const sprintStore = useSprintStore()
 const i18nStore = useI18nStore()
 const currentUser = ref(getStoredUserSession())
-const selectedWorkspaceId = ref('')
-const selectedProjectId = ref(getScopedCurrentProjectId())
+const selectedWorkspaceId = computed({
+  get: () => aiScopeStore.workspaceId,
+  set: value => aiScopeStore.setWorkspace(value)
+})
+const selectedProjectId = computed({
+  get: () => aiScopeStore.projectId || getScopedCurrentProjectId(),
+  set: value => aiScopeStore.setProject(value)
+})
 const showCustomizeModal = ref(false)
 const sidebarPreferences = ref({ audit: true, users: true })
 
@@ -555,7 +567,7 @@ const userInitials = computed(() => {
   return name.substring(0, 2).toUpperCase()
 })
 
-const currentProjectId = computed(() => selectedProjectId.value || getScopedCurrentProjectId())
+const currentProjectId = computed(() => selectedProjectId.value || null)
 const aiContextKey = computed(() => buildAiContextKey(currentWorkspaceId.value, currentProjectId.value))
 const aiContextRevision = ref(0)
 const activeProjectName = computed(() => {
@@ -580,19 +592,19 @@ const syncSelectedWorkspace = () => {
     || siteStore.activeSite?.Id
     || ''
   const preferredWorkspace = workspaceOptions.value.find(item => `${workspaceIdOf(item)}` === `${preferredId}`)
-  selectedWorkspaceId.value = workspaceIdOf(preferredWorkspace) || workspaceIdOf(workspaceOptions.value[0])
+  aiScopeStore.hydrate({ workspaceId: workspaceIdOf(preferredWorkspace) || workspaceIdOf(workspaceOptions.value[0]) })
 }
 const syncSelectedProject = () => {
   const candidate = selectedProjectId.value || getScopedCurrentProjectId()
   const selected = availableProjects.value.find(project => `${project.id}` === `${candidate}`)
   if (selected) {
-    selectedProjectId.value = selected.id
+    aiScopeStore.hydrate({ projectId: selected.id })
     setScopedCurrentProjectId(selected.id)
     projectStore.clearProjectContext(selected.id)
     return selected.id
   }
 
-  selectedProjectId.value = ''
+  aiScopeStore.clearProject()
   clearScopedCurrentProjectId()
   projectStore.clearProjectContext()
   return ''
@@ -604,8 +616,7 @@ const resetAiConversation = () => {
 const handleWorkspaceChanged = async event => {
   const workspaceId = event?.detail?.workspaceId
   if (!workspaceId || `${workspaceId}` === `${selectedWorkspaceId.value}`) return
-  selectedWorkspaceId.value = workspaceId
-  selectedProjectId.value = ''
+  aiScopeStore.setWorkspace(workspaceId)
   aiContextRevision.value += 1
   clearScopedCurrentProjectId()
   projectStore.clearWorkspaceData()
@@ -618,11 +629,11 @@ const handleWorkspaceChange = async () => {
   const workspace = workspaceOptions.value.find(item => `${workspaceIdOf(item)}` === `${selectedWorkspaceId.value}`)
   if (!workspace) return
 
-  const previousWorkspaceId = currentWorkspaceId.value
+  const previousWorkspaceId = siteStore.activeSite?.id || siteStore.activeSite?.Id || null
   siteStore.setRecentSite(workspace)
   if (`${previousWorkspaceId || ''}` === `${selectedWorkspaceId.value}`) return
 
-  selectedProjectId.value = ''
+  aiScopeStore.setWorkspace(selectedWorkspaceId.value)
   aiContextRevision.value += 1
   clearScopedCurrentProjectId()
   projectStore.clearWorkspaceData()
@@ -638,6 +649,7 @@ const handleProjectChange = async () => {
     return
   }
 
+  aiScopeStore.setProject(selected.id)
   setScopedCurrentProjectId(selected.id)
   projectStore.clearProjectContext(selected.id)
   aiContextRevision.value += 1
@@ -2529,5 +2541,60 @@ const handleSidebarSaved = (prefs) => {
   .context-controls .workspace-selector {
     flex: 1 1 170px;
   }
+}
+
+/* Responsive contract: the desktop shell keeps three bounded columns; below
+   tablet width, history becomes a drawer and the utility rail is removed so
+   the conversation remains the only expanding surface. */
+.ai-page-flex-wrapper,
+.ai-container,
+.ai-page-header,
+.ai-context-bar,
+.context-summary,
+.context-controls,
+.chat-history,
+.ai-details-panel {
+  min-width: 0;
+}
+
+.ai-page-flex-wrapper { width: 100%; max-width: none; overflow: hidden; }
+.ai-container { min-height: 0; overflow-x: hidden; }
+.ai-context-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(140px, .55fr);
+  align-items: center;
+}
+.current-page-summary {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  justify-items: end;
+}
+.current-page-summary span {
+  color: var(--color-text-muted);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .1em;
+}
+.current-page-summary strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-details-panel { overflow-x: hidden; }
+
+@media (max-width: 1100px) {
+  .ai-context-bar { display: flex; align-items: flex-start; }
+  .current-page-summary { width: 100%; justify-items: start; }
+  .ai-details-panel { display: none; }
+}
+
+@media (max-width: 620px) {
+  .ai-context-bar { gap: 12px; }
+  .context-summary strong { white-space: normal; overflow-wrap: anywhere; }
+  .current-page-summary strong { white-space: normal; overflow-wrap: anywhere; }
 }
 </style>

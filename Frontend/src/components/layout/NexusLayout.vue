@@ -194,9 +194,13 @@
 
           <div class="ai-context-card">
             <div>
-              <strong>{{ aiCopy.contextTitle }}</strong>
-              <span>{{ currentRouteLabel }}</span>
-              <small>{{ currentProjectLabel }}</small>
+              <span class="ai-context-eyebrow">PHẠM VI AI</span>
+              <strong>Workspace: {{ currentWorkspaceLabel }}</strong>
+              <small>Project: {{ currentProjectLabel }}</small>
+              <div class="ai-page-context">
+                <span>TRANG HIỆN TẠI</span>
+                <strong>{{ currentRouteLabel }}</strong>
+              </div>
             </div>
             <button type="button" @click="runQuickPrompt(`${aiCopy.currentPagePrompt}: ${currentRouteLabel}`)">
               <i class="fa-solid fa-wand-magic-sparkles"></i>
@@ -376,11 +380,13 @@ import AiMessage from '@/components/ai/AiMessage.vue'
 import AiCreditsPurchaseModal from '@/components/ai/AiCreditsPurchaseModal.vue'
 import { useI18nStore } from '@/store/useI18nStore'
 import { useAiPetStore } from '@/store/useAiPetStore'
+import { useAiScopeStore } from '@/store/useAiScopeStore'
 import { useAiConversationStore } from '@/store/useAiConversationStore'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useGoalStore } from '@/store/useGoalStore'
 import { useSprintStore } from '@/store/useSprintStore'
+import { useSiteStore } from '@/store/useSiteStore'
 import { useVoiceCallStore } from '@/store/useVoiceCallStore'
 import { AUTH_SESSION_CHANGED, getStoredUserSession } from '@/utils/authSession'
 import { getDefaultPermissionMatrix, hasPermission } from '@/utils/permissionGuard'
@@ -425,11 +431,13 @@ const router = useRouter()
 const i18nStore = useI18nStore()
 const workTaskStore = useWorkTaskStore()
 const projectStore = useProjectStore()
+const siteStore = useSiteStore()
 const goalStore = useGoalStore()
 const sprintStore = useSprintStore()
 const stickyStore = useStickyStore()
 const sidebarVisible = ref(window.innerWidth > 1024)
 const aiPetStore = useAiPetStore()
+const aiScopeStore = useAiScopeStore()
 const aiConversationStore = useAiConversationStore()
 const aiVisible = computed({ get: () => aiPetStore.isPanelOpen, set: value => aiPetStore.setPanelOpen(value) })
 const notesVisible = ref(false)
@@ -1338,7 +1346,9 @@ const startNewConversation = () => {
   clearPendingAttachments()
 }
 
-const handleAiWorkspaceChanged = () => {
+const handleAiWorkspaceChanged = event => {
+  const workspaceId = event?.detail?.workspaceId
+  if (workspaceId) aiScopeStore.setWorkspace(workspaceId)
   aiContextRevision.value += 1
   aiInput.value = ''
   if (currentConversationId.value) startNewConversation()
@@ -1957,12 +1967,19 @@ const normalizeAiText = (value = '') =>
     .toLowerCase()
 
 const currentProjectId = computed(() => {
+  if (aiScopeStore.projectId) {
+    const scopedProject = projectStore.allProjects.find(item => `${item.id || item.Id}` === `${aiScopeStore.projectId}`)
+    const scopedWorkspaceId = scopedProject?.workspaceId || scopedProject?.WorkspaceId
+    if (!scopedWorkspaceId || !aiScopeStore.workspaceId || `${scopedWorkspaceId}` === `${aiScopeStore.workspaceId}`) return aiScopeStore.projectId
+    return null
+  }
   const routeId = route.params?.id
   if (typeof routeId === 'string' && routeId.length >= 30) return routeId
   return projectStore.currentProject?.id || projectStore.currentProject?.Id || workTaskStore.currentProjectId || null
 })
 
 const currentWorkspaceId = computed(() => {
+  if (aiScopeStore.workspaceId) return aiScopeStore.workspaceId
   const routeWorkspaceId = route.params?.workspaceId || route.params?.spaceId
   if (typeof routeWorkspaceId === 'string' && routeWorkspaceId.length >= 30) return routeWorkspaceId
   const project = projectStore.allProjects.find(item => `${item.id || item.Id}` === `${currentProjectId.value || ''}`)
@@ -1977,6 +1994,12 @@ const currentProjectLabel = computed(() => {
   const project = projectStore.allProjects.find(item => `${item.id || item.Id}` === `${currentProjectId.value || ''}`)
     || projectStore.currentProject
   return project?.name || project?.Name || (currentProjectId.value ? 'Project hiện tại' : 'Chưa chọn project')
+})
+
+const currentWorkspaceLabel = computed(() => {
+  const workspaceId = currentWorkspaceId.value
+  const workspace = siteStore.sites.find(item => `${item.id || item.Id}` === `${workspaceId || ''}`)
+  return workspace?.name || workspace?.Name || (workspaceId ? 'Workspace hiện tại' : 'Chưa chọn workspace')
 })
 
 const stickyContext = computed(() => ({
@@ -4199,6 +4222,44 @@ const handleProjectCreated = (newProject) => {
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ai-context-card > div {
+  min-width: 0;
+}
+.ai-context-eyebrow,
+.ai-page-context > span {
+  margin-top: 0 !important;
+  color: var(--color-accent) !important;
+  font-size: 9px !important;
+  font-weight: 850;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.ai-page-context {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+}
+.ai-page-context strong {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-sidebar,
+.ai-hero,
+.ai-content,
+.ai-history-panel,
+.ai-content :deep(.ai-composer) {
+  min-width: 0;
+}
+.ai-content {
+  overflow-x: hidden;
 }
 
 @media (max-width: 760px) {

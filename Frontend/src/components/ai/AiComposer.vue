@@ -80,9 +80,10 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
+import { measureAiComposerHeight, AI_COMPOSER_MAX_HEIGHT } from '@/utils/aiComposer'
 
-defineProps({
+const props = defineProps({
   modelValue: { type: String, default: '' },
   placeholder: { type: String, default: 'Hỏi SprintA AI bất cứ điều gì...' },
   enterHint: { type: String, default: 'Enter để gửi · Shift + Enter để xuống dòng' },
@@ -109,13 +110,21 @@ const emit = defineEmits([
 ])
 
 const fileInput = ref(null)
+const resizeTextarea = () => {
+  const textarea = textareaInput.value
+  if (!textarea) return
+  const maxHeight = Number.parseFloat(window.getComputedStyle(textarea).maxHeight) || AI_COMPOSER_MAX_HEIGHT
+  textarea.style.height = '0px'
+  const { height, overflowY } = measureAiComposerHeight(textarea.scrollHeight, maxHeight)
+  textarea.style.height = `${height}px`
+  textarea.style.overflowY = overflowY
+}
 const textareaInput = ref(null)
 const handleInput = event => {
   const textarea = event.target
-  textarea.style.height = 'auto'
-  textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`
   emit('update:modelValue', textarea.value)
   emit('input', event)
+  nextTick(resizeTextarea)
 }
 const formatBytes = bytes => {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
@@ -129,8 +138,12 @@ const statusIcon = status => ({ uploading: 'fa-solid fa-arrow-up-from-bracket fa
 
 defineExpose({
   openFilePicker: () => fileInput.value?.click(),
-  focusInput: () => textareaInput.value?.focus()
+  focusInput: () => textareaInput.value?.focus(),
+  resetTextarea: resizeTextarea
 })
+
+watch(() => props.modelValue, () => nextTick(resizeTextarea), { flush: 'post' })
+onMounted(() => nextTick(resizeTextarea))
 </script>
 
 <style scoped>
@@ -275,7 +288,8 @@ defineExpose({
 .ai-composer-row :deep(.el-dropdown) { width: 46px; }
 .ai-composer-row textarea {
   min-height: 52px;
-  max-height: 180px;
+  max-height: 184px;
+  overflow-y: auto;
   padding: 12px 4px;
   font-size: 14px;
   line-height: 1.55;
@@ -309,7 +323,7 @@ defineExpose({
   .ai-attachment-card.is-file { flex-basis: 100%; max-width: none; }
   .ai-composer-row { grid-template-columns: 42px minmax(0, 1fr) 42px 46px; gap: 5px; padding-inline: 5px; }
   .ai-composer-row :deep(.el-dropdown) { width: 42px; }
-  .ai-composer-row textarea { min-height: 50px; padding-inline: 3px; }
+  .ai-composer-row textarea { min-height: 52px; max-height: 152px; padding-inline: 3px; }
   .ai-composer-icon-btn { width: 40px; height: 40px; flex-basis: 40px; }
   .ai-composer-send { width: 46px; height: 46px; flex-basis: 46px; }
 }
