@@ -537,8 +537,27 @@ namespace TaskManagement.Infrastructure.Services
                 throw new ArgumentException("User is required.");
             }
 
+            if (!_context.Database.IsRelational() || _context.Database.CurrentTransaction != null)
+            {
+                return await AddExistingMemberCoreAsync(projectId, request, useTransaction: false);
+            }
+
+            return await _context.Database.CreateExecutionStrategy()
+                .ExecuteAsync(() => AddExistingMemberCoreAsync(projectId, request, useTransaction: true));
+        }
+
+        private async Task<ProjectMemberResponseDto> AddExistingMemberCoreAsync(
+            Guid projectId,
+            AddExistingProjectMemberRequestDto request,
+            bool useTransaction)
+        {
+            if (useTransaction)
+            {
+                _context.ChangeTracker.Clear();
+            }
+
             IDbContextTransaction? transaction = null;
-            if (_context.Database.IsRelational())
+            if (useTransaction)
             {
                 transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             }
