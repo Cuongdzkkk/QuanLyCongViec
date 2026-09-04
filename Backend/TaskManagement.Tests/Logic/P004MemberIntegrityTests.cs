@@ -80,6 +80,8 @@ public sealed class P004MemberIntegrityTests
         var assignment = await fixture.Context.TaskAssignments
             .Include(item => item.User)
             .SingleAsync(item => item.WorkTaskId == taskId && item.UserId == fixture.MemberId);
+        (await fixture.Context.Users.AnyAsync(user => user.Id == fixture.MemberId))
+            .Should().BeTrue("removing project access must not delete the user account");
         assignment.Status.Should().BeFalse();
         assignment.RemovedAt.Should().NotBeNull();
         assignment.RemovedBy.Should().Be(fixture.OwnerId);
@@ -120,6 +122,19 @@ public sealed class P004MemberIntegrityTests
         assignment.RemovedBy.Should().BeNull();
         assignment.RemovalReason.Should().BeNull();
         assignment.ProgressPercent.Should().Be(75, "explicit reassignment reuses the contribution record without contradictory removal state");
+    }
+
+    [Fact]
+    public async Task RemoveMember_UnknownActiveMembershipReturnsNotFoundError()
+    {
+        await using var fixture = await MemberFixture.CreateInMemoryAsync();
+
+        await FluentActions.Invoking(() => fixture.Service.RemoveMemberAsync(
+                fixture.ProjectId,
+                Guid.NewGuid(),
+                fixture.OwnerId))
+            .Should().ThrowAsync<KeyNotFoundException>()
+            .WithMessage("*does not exist*");
     }
 
     private sealed class MemberFixture : IAsyncDisposable
@@ -297,6 +312,41 @@ public sealed class P004SqlServerIntegrationTests
 
     [Fact]
     [Trait("Database", "SqlServer")]
+    public async Task RemoveMember_WithSqlServerRetryingExecutionStrategy_Commits()
+    {
+        var databaseName = $"TaskManagement_P004_Remove_{Guid.NewGuid():N}";
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlServer(
+                SqlServerTestConfiguration.ConnectionString(databaseName),
+                sqlServer => sqlServer.EnableRetryOnFailure())
+            .Options;
+        await using var setup = new ApplicationDbContext(options);
+        try
+        {
+            await setup.Database.MigrateAsync();
+            var seed = await SeedRemovalProjectAsync(setup);
+            var emailService = new Mock<IEmailService>();
+            var service = new ProjectMemberService(
+                setup,
+                emailService.Object,
+                TestConfiguration());
+
+            await service.RemoveMemberAsync(seed.ProjectId, seed.MemberId, seed.OwnerId);
+
+            (await setup.ProjectMembers.SingleAsync(member =>
+                    member.ProjectId == seed.ProjectId && member.UserId == seed.MemberId))
+                .Status.Should().BeFalse();
+            (await setup.Users.AnyAsync(user => user.Id == seed.MemberId))
+                .Should().BeTrue();
+        }
+        finally
+        {
+            await setup.Database.EnsureDeletedAsync();
+        }
+    }
+
+    [Fact]
+    [Trait("Database", "SqlServer")]
     public async Task PreserveAssignmentHistoryMigration_UpDownAndReapplyPasses()
     {
         var databaseName = $"TaskManagement_P004_Migration_{Guid.NewGuid():N}";
@@ -331,7 +381,7 @@ public sealed class P004SqlServerIntegrationTests
         .AddInMemoryCollection(new Dictionary<string, string?> { ["Frontend:BaseUrl"] = "http://localhost:5173" })
         .Build();
 
-    private static async Task<(Guid ProjectId, Guid WorkspaceId)> SeedInvitationProjectAsync(ApplicationDbContext context)
+    private static async Task<(Guid ProjectId, Guid WorkspaceId, Guid OwnerId)> SeedInvitationProjectAsync(ApplicationDbContext context)
     {
         var ownerId = Guid.NewGuid();
         var workspaceId = Guid.NewGuid();
@@ -343,7 +393,39 @@ public sealed class P004SqlServerIntegrationTests
         context.ProjectMembers.Add(new ProjectMember { ProjectId = projectId, UserId = ownerId, ProjectRole = "PM", Status = true, JoinedAt = DateTime.UtcNow });
         context.Roles.Add(new Role { Id = Guid.NewGuid(), Name = "Developer" });
         await context.SaveChangesAsync();
-        return (projectId, workspaceId);
+        return (projectId, workspaceId, ownerId);
+    }
+
+    private static async Task<(Guid ProjectId, Guid WorkspaceId, Guid OwnerId, Guid MemberId)> SeedRemovalProjectAsync(
+        ApplicationDbContext context)
+    {
+        var seed = await SeedInvitationProjectAsync(context);
+        var memberId = Guid.NewGuid();
+        context.Users.Add(new User
+        {
+            Id = memberId,
+            Email = $"member-{memberId:N}@example.com",
+            FullName = "Member",
+            PasswordHash = "unused",
+            IsActive = true
+        });
+        context.WorkspaceMembers.Add(new WorkspaceMember
+        {
+            WorkspaceId = seed.WorkspaceId,
+            UserId = memberId,
+            WorkspaceRole = "MEMBER",
+            IsActive = true
+        });
+        context.ProjectMembers.Add(new ProjectMember
+        {
+            ProjectId = seed.ProjectId,
+            UserId = memberId,
+            ProjectRole = "Developer",
+            Status = true,
+            JoinedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+        return (seed.ProjectId, seed.WorkspaceId, seed.OwnerId, memberId);
     }
 
     private static async Task<bool> HasColumnAsync(
