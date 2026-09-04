@@ -403,40 +403,42 @@
         </template>
       </ProjectPageToolbar>
       <!-- Global Empty State for Work Items (List/Board views) -->
-      <div v-if="!activeModuleFilterId && !store.loading && filteredTasksList.length === 0 && (currentTab === 'list' || currentTab === 'board')" class="empty-state-global">
-        <div class="empty-spaces-icon" aria-hidden="true">
-          <i class="fa-regular fa-folder-open"></i>
-        </div>
-        <div class="empty-spaces-copy">
-          <h3>Chưa có công việc nào trong dự án này.</h3>
-          <p style="margin-top: 6px;">Hãy tạo công việc đầu tiên hoặc nạp dữ liệu công việc từ Excel/CSV.</p>
-        </div>
-        <div style="display: flex; gap: 12px; justify-content: center; margin-top: 8px;">
-          <button
-            type="button"
-            class="empty-spaces-btn"
-            :class="{ active: selectedTask && selectedTask.isNew }"
-            @click="openCreateTask('TO DO')"
-            :disabled="!canCurrentUserCreateTask"
-          >
-            <i class="fa-solid fa-plus mr-1"></i> Tạo công việc mới
-          </button>
-          <button
-            type="button"
-            class="empty-spaces-btn"
-            :class="{ active: showDataImportModal }"
-            @click="showDataImportModal = true"
-            :disabled="!canCurrentUserCreateTask"
-          >
-            <i class="fa-solid fa-file-import mr-1"></i> Nạp dữ liệu công việc
-          </button>
-        </div>
-      </div>
-      <div v-if="activeModuleFilterId && moduleDetail && moduleDetail.taskCount === 0 && !moduleDetailLoading && !moduleDetailError" class="module-empty-state">
-        <i class="fa-regular fa-folder-open" aria-hidden="true"></i>
-        <strong>{{ tr('This module has no work items yet.', 'Module này chưa có công việc.') }}</strong>
-        <span>{{ tr('Work items assigned to this module will appear here.', 'Công việc được gán vào Module sẽ hiển thị tại đây.') }}</span>
-      </div>
+      <ProjectEmptyState
+        v-if="!activeModuleFilterId && !store.loading && filteredTasksList.length === 0 && (currentTab === 'list' || currentTab === 'board')"
+        icon="fa-regular fa-folder-open"
+        title="Chưa có công việc nào được tạo."
+        description="Bắt đầu bằng cách tạo công việc mới hoặc nhập dữ liệu từ tệp Excel/CSV để quản lý dự án."
+      >
+        <template #action>
+          <div style="display: flex; gap: 12px; justify-content: center; margin-top: 8px;">
+            <button
+              type="button"
+              class="empty-spaces-btn"
+              :class="{ active: selectedTask && selectedTask.isNew }"
+              @click="openCreateTask('TO DO')"
+              :disabled="!canCurrentUserCreateTask"
+            >
+              <i class="fa-solid fa-plus mr-1"></i> Tạo công việc mới
+            </button>
+            <button
+              type="button"
+              class="empty-spaces-btn"
+              :class="{ active: showDataImportModal }"
+              @click="showDataImportModal = true"
+              :disabled="!canCurrentUserCreateTask"
+            >
+              <i class="fa-solid fa-file-import mr-1"></i> Nạp dữ liệu công việc
+            </button>
+          </div>
+        </template>
+      </ProjectEmptyState>
+      
+      <ProjectEmptyState
+        v-if="activeModuleFilterId && moduleDetail && moduleDetail.taskCount === 0 && !moduleDetailLoading && !moduleDetailError"
+        icon="fa-regular fa-folder-open"
+        :title="tr('This module has no work items yet.', 'Module này chưa có công việc.')"
+        :description="tr('Work items assigned to this module will appear here.', 'Công việc được gán vào Module sẽ hiển thị tại đây.')"
+      />
       <!-- Other Tab Views -->
       <div v-if="currentTab === 'list' && filteredTasksList.length > 0 && !moduleDetailLoading && !moduleDetailError" class="list-wrapper" style="padding: 16px;">
          <div class="plane-list-view">
@@ -1135,6 +1137,7 @@ import CalendarTab from '@/components/CalendarTab.vue'
 import TimelineTab from '@/components/TimelineTab.vue'
 import SpreadsheetTab from '@/components/SpreadsheetTab.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore';
 import { useProjectStore } from '@/store/useProjectStore';
 import { useStarredStore } from '@/store/useStarredStore';
@@ -3521,29 +3524,7 @@ onUnmounted(() => {
 .module-summary-item.is-overdue { border-left-color: #ef4444; }
 .module-summary-item span { overflow-wrap: anywhere; color: var(--color-text-muted); font-size: 12px; }
 .module-summary-item strong { color: var(--color-text-primary); font-size: 17px; }
-.module-empty-state {
-  display: flex;
-  flex: 1;
-  min-height: 220px;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 8px;
-  padding: 24px;
-  color: var(--color-text-muted);
-  text-align: center;
-}
-.module-empty-state i {
-  margin-bottom: 4px;
-  font-size: 38px;
-}
-.module-empty-state strong {
-  color: var(--color-text-primary);
-  font-size: 15px;
-}
-.module-empty-state span {
-  font-size: 13px;
-}
+
 @media (max-width: 640px) {
   .module-detail-context {
     padding: 10px 12px;
@@ -6051,52 +6032,7 @@ onUnmounted(() => {
   font-weight: 600 !important;
 }
 
-/* Global Empty State layout matching YourWorkView */
-.empty-state-global {
-  min-height: 204px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 60px 20px !important;
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  text-align: center;
-  margin: 16px auto !important;
-}
-.empty-spaces-icon {
-  width: 54px;
-  height: 54px;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
-  color: var(--color-accent);
-  font-size: 23px;
-  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12);
-}
-.empty-spaces-copy {
-  max-width: 380px;
-  text-align: center;
-}
-.empty-spaces-copy h3 {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: 15px;
-  font-weight: 800;
-  line-height: 1.35;
-}
-.empty-spaces-copy p {
-  margin: 3px 0 0;
-  color: var(--color-text-muted);
-  font-size: 13px;
-  line-height: 1.4;
-}
+
 
 .timeline-filter-trigger:active,
 .timeline-filter-trigger.active,

@@ -71,16 +71,18 @@
       <div v-if="loadingMembers" class="loading-state">
         <el-icon class="is-loading"><Loading /></el-icon> Đang tải dữ liệu...
       </div>
-      <div v-else-if="filteredMembers.length === 0" class="empty-state-global">
-        <div class="empty-spaces-icon"><i class="fa-solid fa-users-slash"></i></div>
-        <div class="empty-spaces-copy">
-          <h3>Không tìm thấy thành viên nào phù hợp.</h3>
-          <p>Thử điều chỉnh bộ lọc hoặc từ khóa tìm kiếm.</p>
-        </div>
-        <button class="empty-spaces-btn" type="button" @click="showAddMemberModal = true">
-          <i class="fa-solid fa-plus"></i> Thêm thành viên
-        </button>
-      </div>
+      <ProjectEmptyState
+        v-else-if="filteredMembers.length === 0"
+        icon="fa-solid fa-users-slash"
+        title="Không tìm thấy thành viên nào phù hợp."
+        description="Thử điều chỉnh bộ lọc hoặc từ khóa tìm kiếm."
+      >
+        <template #action>
+          <button class="empty-spaces-btn" type="button" @click="showAddMemberModal = true">
+            <i class="fa-solid fa-plus"></i> Thêm thành viên
+          </button>
+        </template>
+      </ProjectEmptyState>
       <WorkItemsListTable :columns="memberTableColumns" :rows="filteredMembers" min-width="1060" @row-click="row => goToMemberProfile(row.userId)">
         <template #cell-member="{ row }">
           <div class="member-info flex items-center gap-3">
@@ -127,16 +129,18 @@
       <div v-if="loadingTeams" class="loading-state">
         <el-icon class="is-loading"><Loading /></el-icon> Đang phân tích dữ liệu phòng ban...
       </div>
-      <div v-else-if="linkedTeams.length === 0" class="empty-state-global">
-        <div class="empty-spaces-icon"><i class="fa-solid fa-users-rectangle"></i></div>
-        <div class="empty-spaces-copy">
-          <h3>Chưa có team nào được liên kết</h3>
-          <p>Liên kết team với dự án này để mọi người làm việc cùng nhau.</p>
-        </div>
-        <button class="empty-spaces-btn" type="button" @click="openLinkTeamModal">
-          <i class="fa-solid fa-link"></i> Liên kết Team ngay
-        </button>
-      </div>
+      <ProjectEmptyState
+        v-else-if="linkedTeams.length === 0"
+        icon="fa-solid fa-users-rectangle"
+        title="Chưa có team nào được liên kết"
+        description="Liên kết team với dự án này để mọi người làm việc cùng nhau."
+      >
+        <template #action>
+          <button class="empty-spaces-btn" type="button" @click="openLinkTeamModal">
+            <i class="fa-solid fa-link"></i> Liên kết Team ngay
+          </button>
+        </template>
+      </ProjectEmptyState>
       <WorkItemsListTable :columns="linkedTeamTableColumns" :rows="linkedTeams" min-width="1050" @row-click="row => row.manager && goToMemberProfile(row.manager.id || row.manager.userId)">
         <template #cell-team="{ row }">
           <div class="flex items-center gap-3">
@@ -321,6 +325,7 @@ import { useProjectStore } from '@/store/useProjectStore'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 import ToolbarValueFilter from '@/components/common/ToolbarValueFilter.vue'
 import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'

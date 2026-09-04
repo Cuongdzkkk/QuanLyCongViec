@@ -109,6 +109,7 @@ import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
 import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import { useSiteStore } from '@/store/useSiteStore'
 
 const activeFilters = ref([])
 
@@ -148,6 +149,7 @@ const router = useRouter()
 const route = useRoute()
 const teamsBasePath = computed(() => route.path.startsWith('/teams') ? '/teams' : '/home/teams')
 const teamStore = useTeamStore()
+const siteStore = useSiteStore()
 
 const searchQuery = ref('')
 const viewMode = ref('table')
@@ -181,9 +183,10 @@ const handleOutsideClick = (e) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   teamStore.initializeRealtime()
-  teamStore.fetchAllTeams()
+  if (!siteStore.recentSite?.id && !siteStore.recentSite?.Id) await siteStore.fetchSites()
+  teamStore.fetchWorkspaceTeams(siteStore.recentSite?.id || siteStore.recentSite?.Id)
   document.addEventListener('click', handleOutsideClick)
 })
 

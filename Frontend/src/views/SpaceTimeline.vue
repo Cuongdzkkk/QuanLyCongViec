@@ -96,7 +96,13 @@
                 </div>
               </div>
             </div>
-            <div v-if="filteredTasks.length === 0" class="empty-state">No work items found.</div>
+            <div v-if="filteredTasks.length === 0" style="padding: 24px 0;">
+              <ProjectEmptyState
+                icon="fa-solid fa-list-check"
+                :title="t('common.noData')"
+                description="No work items match your criteria."
+              />
+            </div>
           </div>
         </div>
         
@@ -203,7 +209,7 @@ import { ref, computed, onMounted, watch, nextTick, onUnmounted } from 'vue'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
-
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 
 import { useRoute } from 'vue-router'
 import { useWorkTaskStore } from '@/store/useWorkTaskStore'
@@ -1235,12 +1241,6 @@ const openTaskDetail = (task) => {
 .tt-val {
   font-weight: 600;
   color: #0f172a;
-}
-.empty-state {
-  padding: 32px;
-  text-align: center;
-  color: var(--sa-text-muted);
-  font-size: 13px;
 }
 
 /* SprintA premium timeline pass */

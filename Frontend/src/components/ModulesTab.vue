@@ -8,6 +8,7 @@ import { subscribeAdminRealtime } from '@/utils/adminRealtime'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 import { buildSpacePath } from '@/utils/spaceRoute'
@@ -68,6 +69,13 @@ const handleOutsideClick = (e) => {
 }
 
 const viewMode = ref('list')
+const moduleTableColumns = [
+  { key: 'name', label: 'Module', icon: 'fa-solid fa-cubes', width: '36%', minWidth: '260px', sticky: true },
+  { key: 'status', label: 'Status', icon: 'fa-solid fa-circle-half-stroke', width: '20%', minWidth: '160px' },
+  { key: 'taskCount', label: 'Work items', icon: 'fa-solid fa-layer-group', width: '16%', minWidth: '140px' },
+  { key: 'progress', label: 'Progress', icon: 'fa-solid fa-chart-line', width: '14%', minWidth: '130px' },
+  { key: 'updatedAt', label: 'Updated', icon: 'fa-regular fa-clock', width: '14%', minWidth: '140px' }
+]
 const activeModule = ref(null)
 
 const modulePagination = ref({
@@ -540,6 +548,7 @@ onUnmounted(() => {
         <template #left>
           <div class="view-toggles">
             <button class="toggle-btn" :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'" :title="t('modules.listView', 'List view')"><i class="fa-solid fa-bars"></i></button>
+            <button class="toggle-btn" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'" title="Danh sách mẫu"><i class="fa-solid fa-table-list"></i></button>
             <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" :title="t('modules.gridView', 'Grid view')"><i class="fa-solid fa-border-all"></i></button>
             <button class="toggle-btn" :class="{ active: viewMode === 'status' }" @click="viewMode = 'status'" :title="t('modules.statusView', 'Status view')"><i class="fa-solid fa-table-list"></i></button>
           </div>
@@ -549,8 +558,8 @@ onUnmounted(() => {
     <ProjectEmptyState 
       v-if="!loadingModules && filteredModules.length === 0"
       icon="fa-solid fa-cubes"
-      :title="t('modules.noModulesFound', 'No modules found')"
-      :description="t('modules.noModulesFoundDesc', 'Create a module, adjust the status, then assign work items into it.')"
+      :title="t('modules.noModulesFound', 'Chưa có phân hệ nào được tạo.')"
+      :description="t('modules.noModulesFoundDesc', 'Tạo phân hệ (Module) để nhóm các công việc liên quan và theo dõi tiến độ tổng thể.')"
     >
       <template #action>
         <button class="empty-spaces-btn" type="button" @click="openCreateModal">
@@ -562,7 +571,14 @@ onUnmounted(() => {
     <div v-show="loadingModules || filteredModules.length > 0" class="modules-body" v-loading="loadingModules">
 
       <!-- List View Mode -->
-      <div v-if="viewMode === 'list'" class="modules-list">
+      <WorkItemsListTable v-if="viewMode === 'table'" :columns="moduleTableColumns" :rows="filteredModules" min-width="900">
+        <template #cell-name="{ row }"><strong>{{ row.name }}</strong></template>
+        <template #cell-status="{ row }"><span>{{ getStatusLabel(row.statusKey || row.status) }}</span></template>
+        <template #cell-taskCount="{ row }"><span>{{ row.taskCount ?? row.workItemCount ?? 0 }}</span></template>
+        <template #cell-progress="{ row }"><span>{{ row.progressPercent ?? row.progress ?? 0 }}%</span></template>
+        <template #cell-updatedAt="{ row }"><span>{{ row.updatedAt ? new Date(row.updatedAt).toLocaleDateString() : '—' }}</span></template>
+      </WorkItemsListTable>
+      <div v-else-if="viewMode === 'list'" class="modules-list">
         <div class="module-row" v-for="module in filteredModules" :key="module.id" @click="openModuleTaskView(module)">
           <div class="mr-left">
             <div class="m-progress-ring">{{ Math.round(module.progress) }}%</div>
@@ -1333,8 +1349,7 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
-.empty-spaces-btn {
-}
+
 
 /* Modal Redesigns */
 .modal-overlay {

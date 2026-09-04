@@ -594,7 +594,7 @@
       @close="closeNotes"
     />
 
-    <CreateSpaceModal v-model:visible="createSpaceVisible" @created="handleSpaceCreated" />
+    <CreateSpaceModal v-model:visible="createSpaceVisible" @created="handleSiteCreated" />
     <CreateProjectModal v-model:visible="createVisible" @created="handleProjectCreated" />
 
     <transition name="fade">
@@ -3130,9 +3130,9 @@ const sendAiMessage = async () => {
   }
 }
 
-const handleSpaceCreated = (newSpace) => {
-  if (newSpace && newSpace.id) {
-    window.location.href = buildSpacePath(newSpace, 'work-items')
+const handleSiteCreated = (newSite) => {
+  if (newSite && newSite.id) {
+    window.location.href = buildSpacePath(newSite, 'work-items')
   } else {
     window.location.reload()
   }

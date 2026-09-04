@@ -19,7 +19,7 @@ namespace TaskManagement.Infrastructure.Services
             Guid workspaceId,
             string permissionCode)
         {
-            var membership = await _dbContext.WorkspaceMembers
+            var workspaceRole = await _dbContext.WorkspaceMembers
                 .AsNoTracking()
                 .Where(member =>
                     member.UserId == userId &&
@@ -28,20 +28,56 @@ namespace TaskManagement.Infrastructure.Services
                     !member.Workspace.IsDeleted &&
                     member.User.IsActive &&
                     !member.User.IsDeleted)
-                .Select(member => new { member.WorkspaceRole })
+                .Select(member => member.WorkspaceRole)
                 .FirstOrDefaultAsync();
 
-            if (membership == null)
+            if (string.IsNullOrWhiteSpace(workspaceRole))
             {
-                return new(false, FailureReason: "Active workspace membership is required.");
+                var isOwner = await _dbContext.Workspaces
+                    .AsNoTracking()
+                    .AnyAsync(workspace =>
+                        workspace.Id == workspaceId &&
+                        workspace.OwnerId == userId &&
+                        !workspace.IsDeleted &&
+                        workspace.Owner.IsActive &&
+                        !workspace.Owner.IsDeleted);
+                if (isOwner)
+                {
+                    workspaceRole = "OWNER";
+                }
             }
 
-            if (!ResourcePermissionPolicy.WorkspaceRoleHasPermission(membership.WorkspaceRole, permissionCode))
+            if (string.IsNullOrWhiteSpace(workspaceRole))
             {
-                return new(false, membership.WorkspaceRole, FailureReason: "Workspace permission is required.");
+                var hasTeamAccess = await _dbContext.WorkspaceDepartmentAccesses
+                    .AsNoTracking()
+                    .AnyAsync(access =>
+                        access.WorkspaceId == workspaceId &&
+                        !access.Workspace.IsDeleted &&
+                        access.Department.IsActive &&
+                        !access.Department.IsDeleted &&
+                        access.Department.DepartmentMembers.Any(member =>
+                            member.UserId == userId &&
+                            member.LeftAt == null &&
+                            member.User.IsActive &&
+                            !member.User.IsDeleted));
+                if (hasTeamAccess)
+                {
+                    workspaceRole = "MEMBER";
+                }
             }
 
-            return new(true, membership.WorkspaceRole);
+            if (string.IsNullOrWhiteSpace(workspaceRole))
+            {
+                return new(false, FailureReason: "Direct or team workspace access is required.");
+            }
+
+            if (!ResourcePermissionPolicy.WorkspaceRoleHasPermission(workspaceRole, permissionCode))
+            {
+                return new(false, workspaceRole, FailureReason: "Workspace permission is required.");
+            }
+
+            return new(true, workspaceRole);
         }
 
         public async Task<ResourceAuthorizationResult> AuthorizeDepartmentAsync(
@@ -122,7 +158,42 @@ namespace TaskManagement.Infrastructure.Services
                 .FirstOrDefaultAsync();
             if (string.IsNullOrWhiteSpace(workspaceMembership))
             {
-                return new(false, FailureReason: "Active workspace membership is required.");
+                var isOwner = await _dbContext.Workspaces
+                    .AsNoTracking()
+                    .AnyAsync(workspace =>
+                        workspace.Id == project.WorkspaceId &&
+                        workspace.OwnerId == userId &&
+                        !workspace.IsDeleted &&
+                        workspace.Owner.IsActive &&
+                        !workspace.Owner.IsDeleted);
+                if (isOwner)
+                {
+                    workspaceMembership = "OWNER";
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(workspaceMembership))
+            {
+                var hasTeamAccess = await _dbContext.WorkspaceDepartmentAccesses
+                    .AsNoTracking()
+                    .AnyAsync(access =>
+                        access.WorkspaceId == project.WorkspaceId &&
+                        access.Department.IsActive &&
+                        !access.Department.IsDeleted &&
+                        access.Department.DepartmentMembers.Any(member =>
+                            member.UserId == userId &&
+                            member.LeftAt == null &&
+                            member.User.IsActive &&
+                            !member.User.IsDeleted));
+                if (hasTeamAccess)
+                {
+                    workspaceMembership = "MEMBER";
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(workspaceMembership))
+            {
+                return new(false, FailureReason: "Direct or team workspace access is required.");
             }
 
             if (ProjectAccessPolicy.IsUnrestricted && !requireDirectProjectMembership)
@@ -350,9 +421,18 @@ namespace TaskManagement.Infrastructure.Services
             var query = _dbContext.Projects
                 .AsNoTracking()
                 .Where(project =>
-                    project.Workspace.Members.Any(member =>
-                        member.UserId == userId &&
-                        member.IsActive) &&
+                    (project.Workspace.OwnerId == userId ||
+                     project.Workspace.Members.Any(member =>
+                         member.UserId == userId &&
+                         member.IsActive) ||
+                     project.Workspace.TeamAccesses.Any(access =>
+                         access.Department.IsActive &&
+                         !access.Department.IsDeleted &&
+                         access.Department.DepartmentMembers.Any(member =>
+                             member.UserId == userId &&
+                             member.LeftAt == null &&
+                             member.User.IsActive &&
+                             !member.User.IsDeleted))) &&
                     (includeDeleted || !project.IsDeleted) &&
                     (includeArchived || !project.IsArchived));
 

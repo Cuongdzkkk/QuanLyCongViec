@@ -53,6 +53,64 @@ public sealed class ResourceAuthorizationTests
     }
 
     [Fact]
+    public async Task WorkspaceOwner_CanReadWithoutMembershipRow()
+    {
+        await using var fixture = await AuthorizationFixture.CreateAsync("Developer");
+        var workspace = await fixture.Context.Workspaces.SingleAsync(item => item.Id == fixture.WorkspaceId);
+        workspace.OwnerId = fixture.UserId;
+        fixture.Context.WorkspaceMembers.RemoveRange(fixture.Context.WorkspaceMembers);
+        await fixture.Context.SaveChangesAsync();
+
+        (await fixture.Service.AuthorizeWorkspaceAsync(
+            fixture.UserId,
+            fixture.WorkspaceId,
+            ResourcePermissionCodes.WorkspaceRead)).Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ActiveTeamMember_CanReadWorkspaceWithoutDirectInvitation()
+    {
+        await using var fixture = await AuthorizationFixture.CreateAsync("Developer");
+        fixture.Context.WorkspaceMembers.RemoveRange(fixture.Context.WorkspaceMembers);
+        var departmentId = Guid.NewGuid();
+        fixture.Context.Departments.Add(new Department
+        {
+            Id = departmentId,
+            Name = "Product Team",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        fixture.Context.DepartmentMembers.Add(new DepartmentMember
+        {
+            DepartmentId = departmentId,
+            UserId = fixture.UserId,
+            JoinedAt = DateTime.UtcNow
+        });
+        fixture.Context.WorkspaceDepartmentAccesses.Add(new WorkspaceDepartmentAccess
+        {
+            WorkspaceId = fixture.WorkspaceId,
+            DepartmentId = departmentId,
+            GrantedByUserId = Guid.NewGuid(),
+            GrantedAt = DateTime.UtcNow
+        });
+        await fixture.Context.SaveChangesAsync();
+
+        (await fixture.Service.AuthorizeWorkspaceAsync(
+            fixture.UserId,
+            fixture.WorkspaceId,
+            ResourcePermissionCodes.WorkspaceRead)).Succeeded.Should().BeTrue();
+
+        var membership = await fixture.Context.DepartmentMembers.SingleAsync();
+        membership.LeftAt = DateTime.UtcNow;
+        await fixture.Context.SaveChangesAsync();
+
+        (await fixture.Service.AuthorizeWorkspaceAsync(
+            fixture.UserId,
+            fixture.WorkspaceId,
+            ResourcePermissionCodes.WorkspaceRead)).Succeeded.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task InactiveWorkspaceMember_IsDeniedForWorkspaceAndProject()
     {
         await using var fixture = await AuthorizationFixture.CreateAsync("PM", workspaceActive: false);
@@ -252,6 +310,7 @@ public sealed class ResourceAuthorizationTests
                 .Options;
             var context = new ApplicationDbContext(options);
             var userId = Guid.NewGuid();
+            var ownerId = Guid.NewGuid();
             var workspaceId = Guid.NewGuid();
             var projectId = Guid.NewGuid();
             var user = new User
@@ -262,13 +321,20 @@ public sealed class ResourceAuthorizationTests
                 PasswordHash = "unused",
                 IsActive = true
             };
-            context.Users.Add(user);
+            context.Users.AddRange(user, new User
+            {
+                Id = ownerId,
+                Email = "owner@example.com",
+                FullName = "Owner",
+                PasswordHash = "unused",
+                IsActive = true
+            });
             context.Workspaces.Add(new Workspace
             {
                 Id = workspaceId,
                 Name = "Workspace",
                 Slug = "workspace",
-                OwnerId = userId,
+                OwnerId = ownerId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             });

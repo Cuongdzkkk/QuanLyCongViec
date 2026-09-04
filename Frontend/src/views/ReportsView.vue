@@ -19,9 +19,8 @@
     <ProjectEmptyState 
       v-else-if="allTasks.length === 0"
       icon="fa-solid fa-chart-line"
-      style="margin-top: 56px;"
-      :title="'Chưa có dữ liệu thống kê'"
-      :description="'Vui lòng tạo công việc để xem phân tích, biểu đồ và tiến độ dự án.'"
+      :title="'Chưa đủ dữ liệu thống kê'"
+      :description="'Hệ thống cần có ít nhất một công việc để tạo báo cáo và biểu đồ phân tích dự án.'"
     >
       <template #action>
         <button class="empty-spaces-btn" @click="router.push(buildSpacePath(projectId, 'work-items'))">

@@ -29,7 +29,7 @@
         </h1>
       </div>
 
-      <div class="card-section">
+        <div class="card-section">
         <div class="card-header-row">
           <span class="pickup-text">
             {{ t('siteSelection.pickUpIn') }}
@@ -53,9 +53,12 @@
         </div>
 
         <!-- No sites -->
-        <div v-else-if="!recentSite" class="state-box empty-box">
-          <i class="fa-regular fa-folder-open"></i>
-          <span>{{ t('siteSelection.noSites') }}</span>
+          <div v-else-if="!recentSite" class="state-box empty-box">
+          <button type="button" class="empty-site-placeholder" @click="openCreateModal">
+            <i class="fa-solid fa-plus"></i>
+            <span>{{ t('siteSelection.createNewSite') }}</span>
+            <small>{{ t('siteSelection.noSites') }}</small>
+          </button>
         </div>
 
         <!-- Recent site card -->
@@ -77,8 +80,8 @@
               class="pill-btn orange site-entry-link"
               to="/dashboard"
               :data-site-id="getSiteId(recentSite)"
-              @click.stop.prevent="goToSpaceProject(getSiteId(recentSite))"
-              @keydown.enter.stop.prevent="goToSpaceProject(getSiteId(recentSite))"
+              @click.stop.prevent="goToSite(getSiteId(recentSite))"
+              @keydown.enter.stop.prevent="goToSite(getSiteId(recentSite))"
             >{{ t('siteSelection.goToSpace') }}</router-link>
           </div>
         </div>
@@ -187,8 +190,8 @@
                   class="pill-btn blue small site-entry-link"
                   to="/dashboard"
                   :data-site-id="getSiteId(site)"
-                  @click.stop.prevent="goToSpaceProject(getSiteId(site))"
-                  @keydown.enter.stop.prevent="goToSpaceProject(getSiteId(site))"
+                  @click.stop.prevent="goToSite(getSiteId(site))"
+                  @keydown.enter.stop.prevent="goToSite(getSiteId(site))"
                 >{{ t('siteSelection.goToSprintA') }}</router-link>
               </div>
             </div>
@@ -302,7 +305,7 @@ const submitCreateSite = async () => {
   errorMessage.value = ''
   try {
     const site = await siteStore.createSite({ name: newSiteName.value })
-    goToSpaceProject(site.id)
+    goToSite(site.id)
   } catch (error) {
     validationState.value = 'error'
     errorMessage.value = error.message || t('siteSelection.createSiteFailed')
@@ -318,7 +321,7 @@ const setRecentSiteForNavigation = (site) => {
   siteStore.setRecentSite(matchedSite || { ...site, id: siteId })
 }
 
-const goToSpaceProject = async (siteId) => {
+const goToSite = async (siteId) => {
   if (!siteId) return
   const site = siteStore.sites.find(s => getSiteId(s) === siteId) || { id: siteId }
   siteStore.setRecentSite(site)
@@ -501,6 +504,31 @@ const goToSpaceProject = async (siteId) => {
 .loading-box { color: #0052cc; }
 .error-box { color: #de350b; border-color: #ff8f73; }
 .empty-box { color: #5e6c84; }
+
+.empty-site-placeholder {
+  width: min(100%, 520px);
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: #0052cc;
+  background: #fff;
+  border: 1px dashed #b7d9f5;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: background-color .2s, border-color .2s, transform .2s;
+}
+
+.empty-site-placeholder i { font-size: 18px; }
+.empty-site-placeholder small { color: #6b778c; font-weight: 400; }
+.empty-site-placeholder:hover {
+  background: #f0f8ff;
+  border-color: #0ea5e9;
+  transform: translateY(-1px);
+}
 .retry-btn {
   margin-left: auto;
   background: none;

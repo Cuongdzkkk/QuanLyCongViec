@@ -29,6 +29,7 @@ namespace TaskManagement.Domain.Entities
 
         // Navigation properties
         public ICollection<WorkspaceMember> Members { get; set; } = new List<WorkspaceMember>();
+        public ICollection<WorkspaceDepartmentAccess> TeamAccesses { get; set; } = new List<WorkspaceDepartmentAccess>();
         public ICollection<Project> Projects { get; set; } = new List<Project>();
     }
 }

@@ -18,6 +18,7 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
 import ProjectAvatar from '@/components/project/ProjectAvatar.vue'
 import TaskDetailModal from '@/components/TaskDetailModal.vue'
 import { DEFAULT_PROJECT_BACKGROUND, DEFAULT_PROJECT_ICON } from '@/config/projectAppearance'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 import { buildSpacePath } from '@/utils/spaceRoute'
 
 const router = useRouter()
@@ -658,15 +659,12 @@ const getInitials = (name) => {
             <i class="fa-solid fa-spinner fa-spin"></i> {{ t('forYou.loadingSpaces') }}
           </div>
           
-          <div v-else-if="sortedSpaces.length === 0" class="empty-spaces-flat">
-            <div class="empty-spaces-icon" aria-hidden="true">
-              <i class="fa-regular fa-folder-open"></i>
-            </div>
-            <div class="empty-spaces-copy">
-              <h3>{{ t('forYou.noActiveSpaces') }}</h3>
-              <p>{{ t('forYou.noActiveSpacesDesc') }}</p>
-            </div>
-          </div>
+          <ProjectEmptyState
+            v-else-if="sortedSpaces.length === 0"
+            icon="fa-regular fa-folder-open"
+            :title="t('forYou.noActiveSpaces')"
+            :description="t('forYou.noActiveSpacesDesc')"
+          />
           
           <div v-else class="spaces-row">
             <div 
@@ -795,12 +793,11 @@ const getInitials = (name) => {
               <span>{{ t('yourWork.activityFailed') }}</span>
               <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
             </div>
-            <div v-else-if="recentActivity.length === 0" class="personal-state recent-empty-state">
-              <div class="recent-empty-icon" aria-hidden="true">
-                <i class="fa-solid fa-clock-rotate-left"></i>
-              </div>
-              <span>{{ t('yourWork.noActivity') }}</span>
-            </div>
+            <ProjectEmptyState
+              v-else-if="recentActivity.length === 0"
+              icon="fa-solid fa-clock-rotate-left"
+              :title="t('yourWork.noActivity')"
+            />
             <div class="list-row" style="cursor: default;" v-for="activity in recentActivity" :key="activity.id">
               <div class="lr-left">
                 <span class="lr-id" style="min-width: 30px;"><i class="fa-solid fa-clock-rotate-left" style="color: #A1A1AA"></i></span>
@@ -835,15 +832,12 @@ const getInitials = (name) => {
                 <span>{{ t('yourWork.loadFailed') }}</span>
                 <button class="plane-primary-btn" @click="retryCurrentView">{{ t('yourWork.retry') }}</button>
               </div>
-              <div v-else-if="listData.length === 0" key="state-empty" class="empty-state-global">
-                <div class="empty-spaces-icon" aria-hidden="true">
-                  <i class="fa-solid fa-layer-group"></i>
-                </div>
-                <div class="empty-spaces-copy">
-                  <h3>Không có công việc nào</h3>
-                  <p>{{ t(`yourWork.empty.${activeTab.toLowerCase()}`) || t('common.noData') }}</p>
-                </div>
-              </div>
+              <ProjectEmptyState
+                v-else-if="listData.length === 0" key="state-empty"
+                icon="fa-solid fa-layer-group"
+                title="Không có công việc nào"
+                :description="t(`yourWork.empty.${activeTab.toLowerCase()}`) || t('common.noData')"
+              />
               <div v-else key="state-list" class="list-row-container">
                 <div class="list-row cursor-pointer" v-for="item in listData" :key="item.id" @click="openTaskDetail(item)">
               <div class="lr-left">

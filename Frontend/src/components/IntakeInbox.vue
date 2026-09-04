@@ -12,6 +12,7 @@ import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 import { buildSpacePath } from '@/utils/spaceRoute'
 
 const props = defineProps({
@@ -293,31 +294,26 @@ function navigateToTask(taskId) {
     </ProjectPageToolbar>
 
     <!-- Error State -->
-    <div v-if="!loading && loadError" class="empty-state-global" role="alert">
-      <div class="empty-spaces-icon" aria-hidden="true">
-        <i class="fa-solid fa-shield-halved"></i>
-      </div>
-      <div class="empty-spaces-copy">
-        <h3>Không thể mở Intake</h3>
-        <p>{{ loadError }}</p>
-      </div>
-    </div>
+    <ProjectEmptyState
+      v-if="!loading && loadError"
+      icon="fa-solid fa-shield-halved"
+      title="Không thể mở Intake"
+      :description="loadError"
+    />
     
     <!-- Empty State -->
-    <div v-else-if="!loading && intakes.length === 0" class="empty-state-global">
-        <div class="empty-spaces-icon" aria-hidden="true">
-          <i class="fa-regular fa-envelope-open"></i>
-        </div>
-        <div class="empty-spaces-copy">
-          <h3>Chưa có yêu cầu nào</h3>
-          <p>Hãy tạo form yêu cầu để nhân viên gửi công việc vào SprintA.</p>
-        </div>
-        <div class="empty-spaces-actions">
-          <button v-if="intakePermissions.canCreate" class="empty-spaces-btn" @click="showCreate = true">
-            <i class="fa-solid fa-paper-plane mr-1"></i> Gửi yêu cầu mới
-          </button>
-        </div>
-      </div>
+    <ProjectEmptyState
+      v-else-if="!loading && intakes.length === 0"
+      icon="fa-regular fa-envelope-open"
+      title="Chưa có yêu cầu công việc nào."
+      description="Khởi tạo biểu mẫu để tiếp nhận và xét duyệt các yêu cầu từ thành viên hoặc khách hàng."
+    >
+      <template #action>
+        <button v-if="intakePermissions.canCreate" class="empty-spaces-btn" @click="showCreate = true">
+          <i class="fa-solid fa-paper-plane mr-1"></i> Gửi yêu cầu mới
+        </button>
+      </template>
+    </ProjectEmptyState>
 
     <!-- Inbox List -->
     <div v-else v-loading="loading" class="intake-content-area">

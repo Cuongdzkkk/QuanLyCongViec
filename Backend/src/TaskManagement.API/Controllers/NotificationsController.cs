@@ -73,6 +73,7 @@ namespace TaskManagement.API.Controllers
                     n.RelatedTaskId,
                     n.RelatedProjectId,
                     n.RelatedInvitationId,
+                    n.RelatedSiteAccountLinkRequestId,
                     n.ActionState,
                     n.CollaborationChannelId,
                     n.ChannelMessageId,

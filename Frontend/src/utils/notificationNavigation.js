@@ -1,12 +1,12 @@
 import { buildSpacePath } from './spaceRoute.js'
 
 export const isPendingInvitation = (notification) =>
-  notification?.notificationType?.toUpperCase() === 'PROJECT_INVITATION' &&
+  ['PROJECT_INVITATION', 'SITE_ACCOUNT_LINK_REQUEST'].includes(notification?.notificationType?.toUpperCase()) &&
   notification?.actionState?.toLowerCase() === 'pending' &&
-  Boolean(notification?.relatedInvitationId)
+  Boolean(notification?.relatedInvitationId || notification?.relatedSiteAccountLinkRequestId)
 
 export const isResolvedInvitation = (notification) =>
-  notification?.notificationType?.toUpperCase() === 'PROJECT_INVITATION' &&
+  ['PROJECT_INVITATION', 'SITE_ACCOUNT_LINK_REQUEST', 'SITE_ACCOUNT_LINK_RESOLVED'].includes(notification?.notificationType?.toUpperCase()) &&
   ['accepted', 'declined'].includes(notification?.actionState?.toLowerCase())
 
 const isSafeInternalPath = (value) => {

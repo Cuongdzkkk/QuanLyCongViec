@@ -58,8 +58,18 @@ export const useSiteStore = defineStore('site', {
           ...site,
           id: site.id || site.Id,
           name: site.name || site.Name,
+          logo: site.logo || site.Logo || null,
+          slug: site.slug || site.Slug || '',
+          ownerId: site.ownerId || site.OwnerId || null,
           ownerName: site.ownerName || site.OwnerName || '',
-          workspaceRole: site.workspaceRole || site.WorkspaceRole || ''
+          ownerEmail: site.ownerEmail || site.OwnerEmail || '',
+          ownerAvatarUrl: site.ownerAvatarUrl || site.OwnerAvatarUrl || null,
+          workspaceRole: site.workspaceRole || site.WorkspaceRole || '',
+          accessSource: site.accessSource || site.AccessSource || 'DIRECT',
+          projectCount: site.projectCount ?? site.ProjectCount ?? 0,
+          memberCount: site.memberCount ?? site.MemberCount ?? 0,
+          createdAt: site.createdAt || site.CreatedAt || null,
+          updatedAt: site.updatedAt || site.UpdatedAt || null
         }))
         
         // Find recent site based on most recently created or some local storage logic
@@ -93,8 +103,6 @@ export const useSiteStore = defineStore('site', {
           this.setRecentSite(newSite)
         }
         return newSite
-      } catch (err) {
-        throw err
       } finally {
         this.loading = false
       }

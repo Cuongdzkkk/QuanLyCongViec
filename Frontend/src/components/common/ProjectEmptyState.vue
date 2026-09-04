@@ -21,6 +21,6 @@ defineProps({
 })
 </script>
 
-<style scoped>
-/* Scoped styles removed in favor of global .empty-spaces-flat classes */
+<style>
+
 </style>

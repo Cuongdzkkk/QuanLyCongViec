@@ -14,10 +14,12 @@ import FilterBar from '@/components/FilterBar.vue'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 
 const route = useRoute()
 const projectId = computed(() => route.params.id || localStorage.getItem('currentProjectId') || 'default')
@@ -32,6 +34,12 @@ const showCreateModal = ref(false)
 const modalTab = ref('list')
 const viewType = ref('list') 
 const viewListMode = ref('list')
+const viewTableColumns = [
+  { key: 'name', label: 'View', icon: 'fa-solid fa-eye', width: '34%', minWidth: '250px', sticky: true },
+  { key: 'type', label: 'Type', icon: 'fa-solid fa-layer-group', width: '20%', minWidth: '160px' },
+  { key: 'description', label: 'Description', icon: 'fa-solid fa-align-left', width: '30%', minWidth: '280px' },
+  { key: 'favorite', label: 'Favorite', icon: 'fa-solid fa-star', width: '16%', minWidth: '130px' }
+]
 
 // Selected Filters State
 const activeFilters = ref([])
@@ -790,6 +798,7 @@ const getInitials = (name) => {
         <template #toggles>
           <div v-if="!activeView" class="view-toggles">
             <button class="toggle-btn" :class="{ active: viewListMode === 'list' }" type="button" title="List view" @click="viewListMode = 'list'"><i class="fa-solid fa-bars"></i></button>
+            <button class="toggle-btn" :class="{ active: viewListMode === 'table' }" type="button" title="Danh sách mẫu" @click="viewListMode = 'table'"><i class="fa-solid fa-table-list"></i></button>
             <button class="toggle-btn" :class="{ active: viewListMode === 'grid' }" type="button" title="Grid view" @click="viewListMode = 'grid'"><i class="fa-solid fa-table-cells-large"></i></button>
           </div>
         </template>
@@ -798,12 +807,18 @@ const getInitials = (name) => {
         </template>
       </ProjectPageToolbar>
 
-    <AppEmptyState v-if="!activeView && views.length === 0" icon="fa-solid fa-layer-group" :title="t('No custom views here.')" :description="t('Create a filtered view to keep important work easy to find.')">
+    <ProjectEmptyState v-if="!activeView && views.length === 0" icon="fa-solid fa-layer-group" :title="t('Chưa có chế độ xem tùy chỉnh.')" :description="t('Tạo bộ lọc và lưu lại thành chế độ xem riêng để truy cập nhanh các công việc quan trọng.')">
       <template #action><button type="button" class="empty-spaces-btn" @click="openCreateModal"><i class="fa-solid fa-plus"></i> {{ t('Add view') }}</button></template>
-    </AppEmptyState>
+    </ProjectEmptyState>
 
     <main v-else class="views-content">
-      <div v-if="!activeView" class="views-list" :class="{ 'views-grid': viewListMode === 'grid' }">
+      <WorkItemsListTable v-if="!activeView && viewListMode === 'table'" :columns="viewTableColumns" :rows="filteredViews" min-width="820" @row-click="selectView">
+        <template #cell-name="{ row }"><strong>{{ row.name }}</strong></template>
+        <template #cell-type="{ row }"><span>{{ row.viewType || row.type || 'Custom' }}</span></template>
+        <template #cell-description="{ row }"><span>{{ row.description || '—' }}</span></template>
+        <template #cell-favorite="{ row }"><span>{{ row.isFavorite ? 'Có' : 'Không' }}</span></template>
+      </WorkItemsListTable>
+      <div v-else-if="!activeView" class="views-list" :class="{ 'views-grid': viewListMode === 'grid' }">
 
 
 
