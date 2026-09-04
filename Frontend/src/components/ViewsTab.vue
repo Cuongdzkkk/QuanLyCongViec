@@ -799,7 +799,7 @@ const getInitials = (name) => {
       </ProjectPageToolbar>
 
     <AppEmptyState v-if="!activeView && views.length === 0" icon="fa-solid fa-layer-group" :title="t('No custom views here.')" :description="t('Create a filtered view to keep important work easy to find.')">
-      <template #action><button type="button" @click="openCreateModal"><i class="fa-solid fa-plus"></i> {{ t('Add view') }}</button></template>
+      <template #action><button type="button" class="empty-spaces-btn" @click="openCreateModal"><i class="fa-solid fa-plus"></i> {{ t('Add view') }}</button></template>
     </AppEmptyState>
 
     <main v-else class="views-content">
