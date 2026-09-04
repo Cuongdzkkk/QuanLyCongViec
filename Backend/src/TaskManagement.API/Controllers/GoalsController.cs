@@ -21,12 +21,18 @@ namespace TaskManagement.API.Controllers
         private readonly IGoalService _goalService;
         private readonly IHubContext<KanbanHub> _hub;
         private readonly ApplicationDbContext _context;
+        private readonly IResourceAuthorizationService _authorizationService;
 
-        public GoalsController(IGoalService goalService, IHubContext<KanbanHub> hub, ApplicationDbContext context)
+        public GoalsController(
+            IGoalService goalService,
+            IHubContext<KanbanHub> hub,
+            ApplicationDbContext context,
+            IResourceAuthorizationService authorizationService)
         {
             _goalService = goalService;
             _hub = hub;
             _context = context;
+            _authorizationService = authorizationService;
         }
 
         [HttpPut("{id}/{tab}/{itemId}")]
@@ -83,6 +89,9 @@ namespace TaskManagement.API.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(Guid workspaceId, Guid id)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             var result = await _goalService.GetByIdAsync(id);
             if (result == null) return NotFound();
             return Ok(result);
@@ -122,6 +131,9 @@ namespace TaskManagement.API.Controllers
         [RequirePermission("goals.dashboard.edit")]
         public async Task<IActionResult> Update(Guid workspaceId, Guid id, [FromBody] object dto)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             var result = await _goalService.UpdateAsync(id, dto);
             await _hub.PublishWorkspaceEntityChangedAsync(workspaceId, "goal", "upsert", id, result);
             return Ok(result);
@@ -131,6 +143,9 @@ namespace TaskManagement.API.Controllers
         [RequirePermission("goals.dashboard.delete")]
         public async Task<IActionResult> Archive(Guid workspaceId, Guid id)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             await _goalService.ArchiveAsync(id);
             var goal = await _goalService.GetByIdAsync(id);
             await _hub.PublishWorkspaceEntityChangedAsync(workspaceId, "goal", "upsert", id, goal);
@@ -141,6 +156,9 @@ namespace TaskManagement.API.Controllers
         [RequirePermission("goals.dashboard.delete")]
         public async Task<IActionResult> Delete(Guid workspaceId, Guid id)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             await _goalService.DeleteAsync(id);
             await _hub.PublishWorkspaceEntityChangedAsync(workspaceId, "goal", "deleted", id);
             return NoContent();
@@ -149,6 +167,9 @@ namespace TaskManagement.API.Controllers
         [HttpPost("{id}/updates")]
         public async Task<IActionResult> AddUpdate(Guid workspaceId, Guid id, [FromBody] object dto)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
             var result = await _goalService.AddUpdateAsync(id, userId, dto);
             await PublishActivityAsync(workspaceId, id, "update", "upsert", result);
@@ -158,6 +179,9 @@ namespace TaskManagement.API.Controllers
         [HttpGet("{id}/updates")]
         public async Task<IActionResult> GetUpdates(Guid workspaceId, Guid id)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             var result = await _goalService.GetUpdatesAsync(id);
             return Ok(result);
         }
@@ -165,6 +189,9 @@ namespace TaskManagement.API.Controllers
         [HttpPut("{id}/updates/{updateId}")]
         public async Task<IActionResult> UpdateUpdate(Guid workspaceId, Guid id, Guid updateId, [FromBody] object dto)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             var result = await _goalService.UpdateUpdateAsync(id, updateId, dto);
             await PublishActivityAsync(workspaceId, id, "update", "upsert", result, updateId);
             return Ok(result);
@@ -173,6 +200,9 @@ namespace TaskManagement.API.Controllers
         [HttpDelete("{id}/updates/{updateId}")]
         public async Task<IActionResult> DeleteUpdate(Guid workspaceId, Guid id, Guid updateId)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             await _goalService.DeleteUpdateAsync(id, updateId);
             await PublishActivityAsync(workspaceId, id, "update", "deleted", new { id = updateId }, updateId);
             return NoContent();
@@ -181,6 +211,9 @@ namespace TaskManagement.API.Controllers
         [HttpGet("{id}/lessons")]
         public async Task<IActionResult> GetLessons(Guid workspaceId, Guid id)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             var result = await _goalService.GetLessonsAsync(id);
             return Ok(result);
         }
@@ -188,6 +221,9 @@ namespace TaskManagement.API.Controllers
         [HttpPost("{id}/lessons")]
         public async Task<IActionResult> AddLesson(Guid workspaceId, Guid id, [FromBody] object dto)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
             var result = await _goalService.AddLessonAsync(id, userId, dto);
             await PublishActivityAsync(workspaceId, id, "lesson", "upsert", result);
@@ -197,6 +233,9 @@ namespace TaskManagement.API.Controllers
         [HttpGet("{id}/risks")]
         public async Task<IActionResult> GetRisks(Guid workspaceId, Guid id)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             var result = await _goalService.GetRisksAsync(id);
             return Ok(result);
         }
@@ -204,6 +243,9 @@ namespace TaskManagement.API.Controllers
         [HttpPost("{id}/risks")]
         public async Task<IActionResult> AddRisk(Guid workspaceId, Guid id, [FromBody] object dto)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
             var result = await _goalService.AddRiskAsync(id, userId, dto);
             await PublishActivityAsync(workspaceId, id, "risk", "upsert", result);
@@ -213,6 +255,9 @@ namespace TaskManagement.API.Controllers
         [HttpGet("{id}/decisions")]
         public async Task<IActionResult> GetDecisions(Guid workspaceId, Guid id)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             var result = await _goalService.GetDecisionsAsync(id);
             return Ok(result);
         }
@@ -220,6 +265,9 @@ namespace TaskManagement.API.Controllers
         [HttpPost("{id}/decisions")]
         public async Task<IActionResult> AddDecision(Guid workspaceId, Guid id, [FromBody] object dto)
         {
+            var access = await AuthorizeGoalAsync(workspaceId, id);
+            if (access != null) return access;
+
             var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
             var result = await _goalService.AddDecisionAsync(id, userId, dto);
             await PublishActivityAsync(workspaceId, id, "decision", "upsert", result);
@@ -246,6 +294,30 @@ namespace TaskManagement.API.Controllers
             {
                 await _hub.PublishWorkspaceEntityChangedAsync(workspaceId, "goal", "upsert", goalId, goal);
             }
+        }
+
+        private async Task<IActionResult?> AuthorizeGoalAsync(Guid workspaceId, Guid goalId)
+        {
+            var userIdValue = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdValue, out var userId) || userId == Guid.Empty)
+            {
+                return Unauthorized();
+            }
+
+            var workspaceAccess = await _authorizationService.AuthorizeWorkspaceAsync(
+                userId,
+                workspaceId,
+                "workspace.read");
+            if (!workspaceAccess.Succeeded)
+            {
+                return Forbid();
+            }
+
+            var goalBelongsToWorkspace = await _context.Goals
+                .AsNoTracking()
+                .AnyAsync(goal => goal.Id == goalId && goal.WorkspaceId == workspaceId);
+
+            return goalBelongsToWorkspace ? null : NotFound();
         }
 
         private static Guid GetEntityId(object? value, Guid? fallback = null)
