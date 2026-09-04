@@ -59,6 +59,7 @@ namespace TaskManagement.API.Controllers
                 return Unauthorized(new { statusCode = 401, message = "Không có quyền truy cập." });
 
             var user = await _context.Users
+                .AsNoTracking()
                 .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
                 .Include(u => u.DepartmentMemberships)

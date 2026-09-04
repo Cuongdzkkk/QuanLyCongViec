@@ -1,5 +1,5 @@
 <template>
-  <ProjectPageContainer class="space-members-view">
+  <ProjectPageContainer :scrollable="true" class="space-members-view">
     <ProjectPageHeader
       icon="fa-solid fa-users"
       title="Quản lý thành viên & Đội ngũ"
@@ -888,7 +888,7 @@ onUnmounted(() => {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  overflow: hidden;
+  overflow: auto;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
   margin-top: 14px;
 }

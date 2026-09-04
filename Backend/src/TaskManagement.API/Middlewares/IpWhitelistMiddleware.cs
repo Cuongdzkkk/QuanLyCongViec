@@ -36,7 +36,7 @@ namespace TaskManagement.API.Middlewares
                 whitelistedIps = new List<string>();
                 try
                 {
-                    var tenantConfig = await dbContext.TenantConfigs.FirstOrDefaultAsync();
+                    var tenantConfig = await dbContext.TenantConfigs.AsNoTracking().OrderBy(t => t.Id).FirstOrDefaultAsync();
                     if (tenantConfig != null && !string.IsNullOrEmpty(tenantConfig.IpWhitelist))
                     {
                         try
