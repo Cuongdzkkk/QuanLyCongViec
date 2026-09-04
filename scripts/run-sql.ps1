@@ -13,7 +13,6 @@ if ([string]::IsNullOrWhiteSpace($InputFile) -and [string]::IsNullOrWhiteSpace($
 
 Add-Type -AssemblyName System.Data
 
-# Build connection string matching appsettings.json
 $connectionString = "Data Source=$Server;Initial Catalog=$Database;Integrated Security=SSPI;TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True;Connection Timeout=300"
 $connection = New-Object System.Data.SqlClient.SqlConnection($connectionString)
 try {

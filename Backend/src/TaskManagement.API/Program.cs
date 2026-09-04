@@ -15,6 +15,11 @@ HostingConfigurationExtensions.ValidateEnvironmentConfiguration(builder.Configur
 ProjectAccessPolicy.Configure(
     builder.Configuration.GetValue("Features:ProjectAccessRestrictionsEnabled", true));
 
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 50 * 1024 * 1024;
+    options.ValueLengthLimit = 50 * 1024 * 1024;
+});
 builder.Services.AddControllers();
 builder.Services.AddSignalR(options =>
 {

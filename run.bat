@@ -135,7 +135,9 @@ if /I "%resetDB%"=="Y" (
     powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Path '..\..' -Recurse -Filter '*.dll' | Unblock-File"
     dotnet ef database update --project ../TaskManagement.Infrastructure --startup-project . --no-build
     if errorlevel 1 (
-        echo WARNING: Cap nhat database that bai ^(Co the do Application Control^). Bo qua va tiep tuc khoi dong...
+        echo Cap nhat database ef update that bai.
+        pause
+        goto :startup_failed
     )
 
     echo Dang nap demo data cho admin dev@sprinta.local...

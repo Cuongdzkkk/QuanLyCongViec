@@ -62,7 +62,9 @@ export const collaborationApi = {
         : { content: payload.content, mentions, replyToMessageId: payload.replyToMessageId || null },
       {
         signal: options.signal,
-        headers: files.length ? { 'Content-Type': 'multipart/form-data' } : undefined
+        timeout: 60000,
+        headers: files.length ? { 'Content-Type': 'multipart/form-data' } : undefined,
+        onUploadProgress: options.onUploadProgress
       }
     )
     return unwrapData(response)
@@ -229,7 +231,9 @@ export const collaborationApi = {
       files.length ? messageForm(content, files) : { content },
       {
         signal: options.signal,
-        headers: files.length ? { 'Content-Type': 'multipart/form-data' } : undefined
+        timeout: 60000,
+        headers: files.length ? { 'Content-Type': 'multipart/form-data' } : undefined,
+        onUploadProgress: options.onUploadProgress
       }
     )
     return unwrapData(response)

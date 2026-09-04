@@ -1,5 +1,12 @@
 <template>
-  <main class="chat-container chat-workspace" :class="{ 'has-context-panel': showMembersSidebar && !showVoiceCallMain, 'is-sidebar-open': sidebarOpen }" aria-label="Không gian cộng tác SprintA">
+  <main
+    class="chat-container chat-workspace relative"
+    :class="{ 'has-context-panel': showMembersSidebar && !showVoiceCallMain, 'is-sidebar-open': sidebarOpen }"
+    aria-label="Không gian cộng tác SprintA"
+    @dragover="handleDragOver"
+    @dragleave="handleDragLeave"
+    @drop="handleDropFile"
+  >
     <button
       v-if="sidebarOpen"
       type="button"
@@ -576,7 +583,14 @@
             <span v-for="reaction in callReactions" :key="reaction.id" class="call-reaction-bubble">{{ reaction.emoji }} <small>{{ reaction.displayName }}</small></span>
           </div>
           <div class="sr-only" aria-live="polite">{{ callLiveNotice }}</div>
-          <aside v-if="callChatOpen || showMembersSidebar" class="call-chat-panel" :aria-label="callChatOpen ? 'Call chat' : 'Call participants'">
+          <aside
+            v-if="callChatOpen || showMembersSidebar"
+            class="call-chat-panel relative"
+            :aria-label="callChatOpen ? 'Call chat' : 'Call participants'"
+            @dragover="handleDragOver"
+            @dragleave="handleDragLeave"
+            @drop="handleDropFile"
+          >
             <div class="call-chat-panel-header">
               <div class="call-chat-panel-title">
                 <span class="context-kicker">MEETING</span>
@@ -601,7 +615,17 @@
             </div>
             <div v-if="callChatOpen" ref="callChatThread" class="call-chat-thread">
               <template v-if="callChatDisplayMessages.length">
-                <div v-for="msg in callChatDisplayMessages" :key="`call-${msg.messageId || msg.clientMessageId}`" class="call-chat-message" :class="{ 'is-own': isOwnCallMessage(msg), 'mine': isOwnCallMessage(msg) }">
+                <div
+                  v-for="msg in callChatDisplayMessages"
+                  :key="`call-${msg.messageId || msg.clientMessageId}`"
+                  class="call-chat-message"
+                  :class="{
+                    'is-own': isOwnCallMessage(msg),
+                    'mine': isOwnCallMessage(msg),
+                    'is-media-only': !msg.content && msg.attachments?.length && msg.attachments.every(a => a.isImage || a.previewUrl || isImageFile(a.originalFileName || a.fileName)),
+                    'is-audio-only': (!msg.content || !msg.content.trim()) && msg.attachments?.length && msg.attachments.some(a => isAudioMedia(a))
+                  }"
+                >
                   <div class="call-chat-message-body">
                     <!-- Reply Quote Box -->
                     <button v-if="msg.replyTo" type="button" class="message-reply-quote mb-1" @click="focusMessage(msg.replyTo.messageId)">
@@ -610,7 +634,15 @@
                     </button>
 
                     <div class="message-bubble-wrapper">
-                      <div class="call-msg-bubble" :class="{ 'is-revoked': msg.isRevoked }">
+                      <div
+                        class="call-msg-bubble"
+                        :class="{
+                          'is-revoked': msg.isRevoked,
+                          'is-media-only': !msg.content && msg.attachments?.length && msg.attachments.every(a => a.isImage || a.previewUrl || isImageFile(a.originalFileName || a.fileName)),
+                          'is-audio-only': (!msg.content || !msg.content.trim()) && msg.attachments?.length && msg.attachments.some(a => isAudioMedia(a))
+                        }"
+                        @click="onMessageBodyClick($event, msg)"
+                      >
                         <div class="call-msg-inline-header">
                           <el-avatar :size="20" :src="msg.senderAvatar || ''" class="call-msg-avatar">
                             {{ (msg.senderName || '?').charAt(0).toUpperCase() }}
@@ -622,16 +654,57 @@
                         <span v-if="msg.isRevoked" class="revoked-text" style="font-style: italic; opacity: 0.65;">
                           <i class="fa-solid fa-ban mr-1"></i> Tin nhắn đã được thu hồi
                         </span>
-                        <!-- Attachments inside bubble -->
                         <div v-if="msg.attachments?.length" class="call-msg-attachments mt-1.5 flex flex-col gap-1.5">
-                          <div v-for="att in msg.attachments" :key="att.attachmentId" class="call-msg-att-item">
-                            <template v-if="att.previewUrl || isImageFile(att.originalFileName)">
-                              <img :src="att.previewUrl || att.fileUrl" alt="" class="max-w-full max-h-48 rounded-lg object-cover shadow-sm cursor-pointer border border-white/20" />
+                          <div v-for="att in msg.attachments" :key="att.attachmentId" class="call-msg-att-item relative">
+                            <!-- Uploading overlay when message is sending -->
+                            <div v-if="(msg.status === 'sending' || msg.uploadProgress !== undefined) && (msg.uploadProgress || 0) < 100" class="mb-1 rounded-xl p-2 bg-black/40 backdrop-blur-sm border border-sky-400/30 flex flex-col gap-1.5">
+                              <div class="flex items-center justify-between text-xs text-sky-200 font-semibold px-1">
+                                <span class="flex items-center gap-1.5">
+                                  <i class="fa-solid fa-spinner animate-spin text-sky-400"></i>
+                                  Đang tải lên...
+                                </span>
+                                <span class="text-sky-300 font-bold">{{ msg.uploadProgress || 0 }}%</span>
+                              </div>
+                              <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-sky-400 to-blue-500 rounded-full transition-all duration-150" :style="{ width: `${msg.uploadProgress || 0}%` }"></div>
+                              </div>
+                            </div>
+
+                            <template v-if="isAudioMedia(att)">
+                              <div class="msg-audio-player-card my-1.5 p-2.5 rounded-2xl bg-slate-800 text-white flex flex-col gap-1.5 min-w-[240px] max-w-[280px]">
+                                <div class="flex items-center justify-between gap-2 px-1">
+                                  <div class="flex items-center gap-1.5 text-sky-300 font-bold text-[11px]">
+                                    <i class="fa-solid fa-microphone text-xs animate-pulse text-sky-400"></i>
+                                    <span>Tin nhắn thoại</span>
+                                  </div>
+                                  <span v-if="att.durationSeconds || att.duration" class="text-[10px] font-mono font-bold text-sky-200 bg-sky-900/60 px-2 py-0.5 rounded-md">
+                                    {{ formatRecordingTimer(att.durationSeconds || att.duration) }}
+                                  </span>
+                                </div>
+                                <audio controls controlsList="nodownload noplaybackrate" class="w-full h-8 rounded-lg" :src="getAttachmentDisplayUrl(att) || att.previewUrl || att.fileUrl"></audio>
+                              </div>
+                            </template>
+                            <template v-else-if="att.isImage || isImageFile(att.originalFileName || att.fileName || att.name || '')">
+                              <div class="msg-inline-image-wrapper my-1 max-w-[180px] max-h-[130px] rounded-xl overflow-hidden shadow-md cursor-pointer hover:opacity-95 transition-all bg-transparent relative block" @click.stop="openImageLightbox(getAttachmentDisplayUrl(att) || att.previewUrl || att.fileUrl, att)" title="Nhấn để phóng to hình ảnh">
+                                <div v-if="att.previewLoading || (!att.previewUrl && !att.fileUrl && !att.url)" class="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm gap-2 text-sky-300 text-xs font-semibold p-2">
+                                  <i class="fa-solid fa-circle-notch animate-spin text-xs text-sky-400"></i>
+                                  <span>Đang tải...</span>
+                                </div>
+                                <img :src="getAttachmentDisplayUrl(att) || att.previewUrl || att.fileUrl || att.url" :alt="att.originalFileName || att.fileName || att.name" class="w-full h-full object-cover block rounded-xl" />
+                              </div>
                             </template>
                             <template v-else>
-                              <div class="flex items-center gap-2 p-2 rounded-lg bg-black/15 border border-white/10">
-                                <i :class="getFileIconClass(att.originalFileName)" class="text-lg"></i>
-                                <span class="truncate text-xs font-medium flex-1">{{ att.originalFileName }}</span>
+                              <div class="msg-file-card min-w-[240px] max-w-[300px] flex items-center justify-between gap-3.5 px-3.5 py-2.5 my-1.5 rounded-2xl bg-black/25 dark:bg-black/40 hover:bg-black/35 dark:hover:bg-black/55 cursor-pointer transition-all shadow-md" @click="downloadAttachment(att)" title="Tải xuống tệp">
+                                <div class="w-10 h-10 rounded-xl bg-white/20 dark:bg-sky-500/30 flex items-center justify-center flex-shrink-0 shadow-inner">
+                                  <i :class="getFileIconClass(att.originalFileName)" class="text-base text-white dark:text-sky-400"></i>
+                                </div>
+                                <div class="flex flex-col flex-1 justify-center min-w-0 px-1">
+                                  <span class="truncate text-xs font-bold text-white tracking-wide leading-snug">{{ att.originalFileName }}</span>
+                                  <span v-if="att.sizeBytes" class="text-[11px] text-white/80 font-normal leading-tight mt-1">{{ formatFileSize(att.sizeBytes) }}</span>
+                                </div>
+                                <div class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/35 flex items-center justify-center transition-colors flex-shrink-0 shadow-sm ml-1">
+                                  <i class="fa-solid fa-download text-xs text-white"></i>
+                                </div>
                               </div>
                             </template>
                           </div>
@@ -734,17 +807,54 @@
                 ref="fileInputRef" 
                 style="display: none;" 
                 multiple
-                accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.docx,.xlsx,.zip,.rar,.7z"
+                accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.zip,.rar,.7z,.tar,.gz,.bz2,.xz,.iso,.tgz,.mp3,.wav,.ogg,.m4a,.mp4,.webm,.mkv,.avi,.json,.xml,.sql,.js,.ts,.html,.css,.py,.cs,.java"
                 @change="handleFileChange" 
               />
 
-              <!-- Attached File Preview Bar -->
-              <div v-if="attachedFiles.length" class="call-attached-preview">
-                <div v-for="file in attachedFiles" :key="file.id" class="call-attached-file">
-                  <img v-if="file.previewUrl" :src="file.previewUrl" alt="" class="w-6 h-6 object-cover rounded mr-1" />
-                  <i v-else :class="getFileIconClass(file.name)"></i>
-                  <span class="truncate text-xs font-semibold">{{ file.name }}</span>
-                  <button type="button" @click="removeAttachedFile(file.id)"><i class="fa-solid fa-xmark"></i></button>
+              <!-- Live Voice Recording Banner (Animated Waveform & Realtime Timer) -->
+              <div v-if="isRecordingAudio" class="recording-live-banner px-3 py-2 border-b border-rose-500/30 bg-rose-950/40 rounded-t-xl flex items-center justify-between gap-3 animate-fade-in">
+                <div class="flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+                  <span class="text-xs font-bold text-rose-300 tracking-wide">Đang ghi âm...</span>
+                  <span class="text-xs font-mono font-semibold text-rose-200 bg-rose-900/60 px-2 py-0.5 rounded-md border border-rose-500/30">{{ formatRecordingTimer(recordingDurationSeconds) }}</span>
+                </div>
+                <!-- Live Animated Audio Equalizer Waveform Bars -->
+                <div class="flex items-center gap-1 h-5 px-2">
+                  <span v-for="(height, i) in recordingWaveBars" :key="i" class="w-1 bg-gradient-to-t from-rose-500 to-rose-300 rounded-full transition-all duration-100 shadow-sm" :style="{ height: `${height}%` }"></span>
+                </div>
+                <button type="button" class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-md flex items-center gap-1.5" @click="toggleVoiceRecording">
+                  <i class="fa-solid fa-square text-[10px]"></i>
+                  <span>Dừng & Nhập</span>
+                </button>
+              </div>
+
+              <!-- Attached File Preview Bar (Ultra Compact - Media Thumbnail Only) -->
+              <div v-if="attachedFiles.length" class="call-attached-preview px-2 py-1.5 border-b border-white/10 bg-black/40 rounded-t-lg">
+                <div class="flex flex-wrap gap-1.5 max-h-14 overflow-y-auto">
+                  <div v-for="file in attachedFiles" :key="file.id" class="relative group flex items-center gap-1.5 p-1 rounded-md bg-slate-800/90 border border-white/10">
+                    <template v-if="file.isAudio">
+                      <div class="w-7 h-7 rounded bg-rose-500/20 flex items-center justify-center text-rose-400">
+                        <i class="fa-solid fa-microphone text-xs animate-pulse"></i>
+                      </div>
+                      <div class="flex flex-col">
+                        <span class="truncate text-[10px] font-bold text-rose-300 max-w-[70px]">Thoại</span>
+                        <span v-if="file.durationSeconds" class="text-[9px] text-slate-300 font-mono">{{ formatRecordingTimer(file.durationSeconds) }}</span>
+                      </div>
+                    </template>
+                    <img v-else-if="file.previewUrl && (file.type?.startsWith('image/') || isImageFile(file.name))" :src="file.previewUrl" alt="" class="w-7 h-7 object-cover rounded shadow-sm" />
+                    <template v-else>
+                      <i :class="getFileIconClass(file.name)" class="text-xs text-sky-400 px-0.5"></i>
+                      <div class="flex flex-col max-w-[80px]">
+                        <span class="truncate text-[10px] font-medium text-slate-100 leading-tight">{{ file.name }}</span>
+                      </div>
+                    </template>
+                    <button type="button" class="ml-0.5 text-slate-400 hover:text-rose-400 transition-colors p-0.5" @click="removeAttachedFile(file.id)" title="Bỏ chọn tệp">
+                      <i class="fa-solid fa-xmark text-[9px]"></i>
+                    </button>
+                  </div>
+                  <button type="button" class="flex flex-col items-center justify-center w-7 h-7 rounded border border-dashed border-white/20 text-slate-400 hover:text-sky-400 hover:border-sky-400/50 transition-colors" title="Thêm tệp khác" @click="triggerAttachment">
+                    <i class="fa-solid fa-plus text-[9px]"></i>
+                  </button>
                 </div>
               </div>
 
@@ -753,6 +863,10 @@
                   <i class="fa-solid fa-paperclip"></i>
                 </button>
                 
+                <button type="button" class="call-composer-icon-btn" :class="{ 'recording-active-btn': isRecordingAudio }" :title="isRecordingAudio ? 'Đang ghi âm... Nhấn để dừng & gửi' : 'Ghi âm tin nhắn thoại'" @click="toggleVoiceRecording">
+                  <i :class="isRecordingAudio ? 'fa-solid fa-square' : 'fa-solid fa-microphone'"></i>
+                </button>
+
                 <el-popover placement="top-start" :width="260" trigger="click" popper-class="emoji-popover-popper">
                   <template #reference>
                     <button type="button" class="call-composer-icon-btn" title="Biểu tượng cảm xúc">
@@ -773,6 +887,7 @@
                   aria-label="Nội dung chat cuộc gọi"
                   placeholder="Gửi tin nhắn..."
                   @keydown.enter.exact.prevent="sendCallChatMessage"
+                  @paste="handleCallChatPaste"
                 ></textarea>
 
                 <button
@@ -848,11 +963,14 @@
           aria-atomic="true"
         >
           <i :class="connectionNoticeIcon" aria-hidden="true"></i>
-          <span>{{ connectionNotice }}</span>
+          <span class="flex-1">{{ connectionNotice }}</span>
+          <button type="button" class="connection-notice-close-btn" title="Đóng thông báo" @click="connectionNotice = ''">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
         </div>
 
         <!-- Main body layout with horizontal partition for Discord style members list -->
-        <div class="chat-content-split">
+        <div class="chat-content-split relative">
           <!-- Chat Area (Messages + Input) -->
           <div class="chat-thread-column">
             <!-- Pinned Messages Banner (Image 1 & Image 2) -->
@@ -986,7 +1104,13 @@
                   :key="msg.messageId"
                   class="message-card"
                   :data-message-id="msg.messageId"
-                  :class="{ 'is-own': isOwnMessage(msg), 'mine': isOwnMessage(msg), 'mention-target': msg.isMentioned, 'message-focus-target': highlightedMessageId === msg.messageId }"
+                  :class="{
+                    'is-own': isOwnMessage(msg),
+                    'mine': isOwnMessage(msg),
+                    'mention-target': msg.isMentioned,
+                    'message-focus-target': highlightedMessageId === msg.messageId,
+                    'is-audio-only': (!msg.content || !msg.content.trim()) && msg.attachments?.length && msg.attachments.some(a => isAudioMedia(a))
+                  }"
                 >
                   <el-avatar :size="36" :src="msg.senderAvatar || ''" class="sender-avatar">{{ msg.senderName?.charAt(0) || '?' }}</el-avatar>
                   <div class="message-content-wrapper">
@@ -1004,16 +1128,92 @@
                       <span class="reply-quote-content">{{ msg.replyTo.content || 'Tin nhắn không còn khả dụng' }}</span>
                     </button>
                     <div class="message-bubble-wrapper">
-                      <div class="message-body" :class="{ 'is-revoked': msg.isRevoked }">
+                      <div
+                        class="message-body"
+                        :class="{
+                          'is-revoked': msg.isRevoked,
+                          'is-media-only': !msg.content && msg.attachments?.length && msg.attachments.every(a => a.isImage || a.previewUrl || isImageFile(a.originalFileName || a.fileName)),
+                          'is-audio-only': (!msg.content || !msg.content.trim()) && msg.attachments?.length && msg.attachments.some(a => isAudioMedia(a))
+                        }"
+                        @click="onMessageBodyClick($event, msg)"
+                      >
                         <span v-if="msg.isRevoked" class="revoked-text" style="font-style: italic; opacity: 0.65;">
                           <i class="fa-solid fa-ban mr-1"></i> Tin nhắn đã được thu hồi
                         </span>
                         <template v-else>
-                          <span
-                            v-for="(segment, segmentIndex) in (msg.contentSegments || [{ text: msg.content, isMention: false }])"
-                            :key="`${msg.messageId}-${segmentIndex}`"
-                            :class="{ 'message-mention': segment.isMention }"
-                          >{{ segment.text }}</span>
+                          <!-- Image/File Attachments inside message body -->
+                          <div v-if="msg.attachments?.length" class="main-msg-attachments mb-1.5 flex flex-col gap-1.5">
+                            <div v-for="att in msg.attachments" :key="att.attachmentId || att.id" class="main-msg-att-item relative">
+                              <!-- Uploading overlay when message is sending -->
+                              <div v-if="(msg.status === 'sending' || msg.uploadProgress !== undefined) && (msg.uploadProgress || 0) < 100" class="mb-1 rounded-xl p-2 bg-black/40 backdrop-blur-sm flex flex-col gap-1.5">
+                                <div class="flex items-center justify-between text-xs text-sky-200 font-semibold px-1">
+                                  <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-spinner animate-spin text-sky-400"></i>
+                                    Đang tải lên...
+                                  </span>
+                                  <span class="text-sky-300 font-bold">{{ msg.uploadProgress || 0 }}%</span>
+                                </div>
+                                <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
+                                  <div class="h-full bg-gradient-to-r from-sky-400 to-blue-500 rounded-full transition-all duration-150" :style="{ width: `${msg.uploadProgress || 0}%` }"></div>
+                                </div>
+                              </div>
+
+                              <template v-if="isAudioMedia(att)">
+                                <div class="msg-audio-player-card my-1.5 p-3 rounded-2xl bg-slate-800 text-white flex flex-col gap-2 min-w-[260px] max-w-[300px]">
+                                  <div class="flex items-center justify-between gap-2 px-1">
+                                    <div class="flex items-center gap-2 text-sky-300 font-bold text-xs">
+                                      <i class="fa-solid fa-microphone text-xs animate-pulse text-sky-400"></i>
+                                      <span>Tin nhắn thoại</span>
+                                    </div>
+                                    <span v-if="att.durationSeconds || att.duration" class="text-xs font-mono font-bold text-sky-200 bg-sky-900/60 px-2 py-0.5 rounded-md">
+                                      {{ formatRecordingTimer(att.durationSeconds || att.duration) }}
+                                    </span>
+                                  </div>
+                                  <audio controls controlsList="nodownload noplaybackrate" class="w-full h-9 rounded-lg" :src="getAttachmentDisplayUrl(att) || att.previewUrl || att.fileUrl"></audio>
+                                </div>
+                              </template>
+                              <template v-else-if="att.isImage || isImageFile(att.originalFileName || att.fileName || att.name || '')">
+                                <div class="msg-inline-image-wrapper my-1 max-w-[420px] rounded-2xl overflow-hidden shadow-md cursor-pointer hover:opacity-95 transition-all bg-transparent relative block" @click.stop="openImageLightbox(getAttachmentDisplayUrl(att) || att.previewUrl || att.fileUrl, att)" title="Nhấn để phóng to hình ảnh">
+                                  <div v-if="att.previewLoading || (!att.previewUrl && !att.fileUrl && !att.url)" class="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm gap-2 text-sky-300 text-xs font-semibold p-4">
+                                    <i class="fa-solid fa-circle-notch animate-spin text-base text-sky-400"></i>
+                                    <span>Đang tải...</span>
+                                  </div>
+                                  <img :src="getAttachmentDisplayUrl(att) || att.previewUrl || att.fileUrl || att.url" :alt="att.originalFileName || att.fileName || att.name" class="w-auto h-auto max-w-full max-h-[380px] object-contain block rounded-2xl" />
+                                </div>
+                              </template>
+                              <template v-else>
+                                <div class="msg-file-card min-w-[260px] max-w-[340px] flex items-center justify-between gap-3.5 px-3.5 py-2.5 my-1.5 rounded-2xl bg-black/25 dark:bg-black/40 hover:bg-black/35 dark:hover:bg-black/55 cursor-pointer transition-all shadow-md" @click="downloadAttachment(att)" title="Tải xuống tệp">
+                                  <div class="w-10 h-10 rounded-xl bg-white/20 dark:bg-sky-500/30 flex items-center justify-center flex-shrink-0 shadow-inner">
+                                    <i :class="getFileIconClass(att.originalFileName || att.fileName)" class="text-base text-white"></i>
+                                  </div>
+                                  <div class="flex flex-col flex-1 justify-center min-w-0 px-1">
+                                    <span class="truncate text-xs font-bold text-white tracking-wide leading-snug">{{ att.originalFileName || att.fileName }}</span>
+                                    <span v-if="att.sizeBytes" class="text-[11px] text-white/80 font-medium leading-tight mt-1">{{ formatFileSize(att.sizeBytes) }}</span>
+                                  </div>
+                                  <div class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/35 flex items-center justify-center transition-colors flex-shrink-0 shadow-sm ml-1">
+                                    <i class="fa-solid fa-download text-xs text-white"></i>
+                                  </div>
+                                </div>
+                              </template>
+                            </div>
+                          </div>
+                          <template v-if="msg.content">
+                            <template v-for="(segment, segmentIndex) in (msg.contentSegments || [{ text: msg.content, isMention: false }])" :key="`${msg.messageId}-${segmentIndex}`">
+                              <a
+                                v-if="segment.isUrl"
+                                :href="segment.url"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="message-url-link underline font-medium text-sky-200 hover:text-white hover:underline transition-colors cursor-pointer"
+                                @click.stop
+                              >{{ segment.text }}</a>
+                              <span
+                                v-else
+                                class="message-text-segment"
+                                :class="{ 'message-mention': segment.isMention }"
+                              >{{ segment.text }}</span>
+                            </template>
+                          </template>
                         </template>
                       </div>
 
@@ -1094,7 +1294,18 @@
             </div>
 
             <!-- Input Bar -->
-            <div class="chat-input-area">
+            <div class="chat-input-area relative">
+              <!-- Dropzone: Xem trước khi gửi (Fits exact composer bar width and height) -->
+              <div
+                v-if="isDraggingFile"
+                class="absolute inset-0 z-[99999] flex flex-col items-center justify-center border-2 border-dashed border-sky-400 bg-sky-950/90 dark:bg-slate-900/95 backdrop-blur-md rounded-xl text-white p-3 shadow-2xl transition-all duration-200 pointer-events-none"
+              >
+                <div class="flex items-center gap-2 text-sky-400">
+                  <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
+                  <strong class="text-base font-bold text-sky-300">Xem trước khi gửi</strong>
+                </div>
+                <span class="text-xs text-slate-300 mt-0.5">Thả File hoặc Ảnh vào đây để xem lại trước khi gửi</span>
+              </div>
               <!-- Editing Target Preview Bar (Above Input) -->
               <div v-if="editingTarget" class="reply-composer-strip editing-composer-strip">
                 <div class="reply-content-box">
@@ -1144,10 +1355,18 @@
               <!-- Attached File Preview Bar -->
               <div v-if="attachedFiles.length" class="attached-files-preview" aria-label="File đã chọn">
                 <div v-for="file in attachedFiles" :key="file.id" class="attached-file-preview-bar">
-                  <img v-if="file.previewUrl" :src="file.previewUrl" alt="" class="selected-file-thumbnail" />
-                  <i v-else :class="getFileIconClass(file.name)" class="text-xl"></i>
-                  <span class="text-xs truncate font-semibold text-secondary">{{ file.name }}</span>
-                  <span class="text-xxs text-muted">({{ formatFileSize(file.sizeBytes) }})</span>
+                  <template v-if="file.isAudio">
+                    <div class="w-12 h-12 rounded-lg bg-rose-500/20 flex items-center justify-center text-rose-400 flex-shrink-0">
+                      <i class="fa-solid fa-microphone text-base animate-pulse"></i>
+                    </div>
+                    <span class="text-xs truncate font-semibold text-secondary">Tin nhắn thoại (Ghi âm)</span>
+                  </template>
+                  <img v-else-if="file.previewUrl && (file.type?.startsWith('image/') || isImageFile(file.name))" :src="file.previewUrl" alt="" class="selected-file-thumbnail" />
+                  <template v-else>
+                    <i :class="getFileIconClass(file.name)" class="text-xl"></i>
+                    <span class="text-xs truncate font-semibold text-secondary">{{ file.name }}</span>
+                    <span class="text-xxs text-muted">({{ formatFileSize(file.sizeBytes) }})</span>
+                  </template>
                   <button type="button" class="remove-attachment-btn ml-auto" @click="removeAttachedFile(file.id)" :aria-label="`Gỡ ${file.name}`" title="Gỡ file đính kèm">
                     <i class="fa-solid fa-xmark"></i>
                   </button>
@@ -1164,6 +1383,17 @@
                   @click="triggerAttachment"
                 >
                   <i class="fa-solid fa-paperclip"></i>
+                </el-button>
+
+                <el-button
+                  size="small"
+                  class="btn-secondary"
+                  :class="{ 'recording-active-btn': isRecordingAudio }"
+                  :title="isRecordingAudio ? 'Đang ghi âm... Nhấn để dừng & gửi' : 'Ghi âm tin nhắn thoại'"
+                  :disabled="composerDisabled"
+                  @click="toggleVoiceRecording"
+                >
+                  <i :class="isRecordingAudio ? 'fa-solid fa-square' : 'fa-solid fa-microphone'"></i>
                 </el-button>
                 
                 <!-- Emoji Picker Popover -->
@@ -1202,6 +1432,7 @@
                   :disabled="composerDisabled"
                   @input="handleComposerInput"
                   @keydown="handleComposerKeydown"
+                  @paste="handleCallChatPaste"
                 ></textarea>
                 <div
                   v-if="mentionMenuOpen"
@@ -1368,13 +1599,19 @@
               <div v-if="!channelMediaFiles.length" class="context-empty-small">Chưa có ảnh/video</div>
               <div v-else>
                 <div class="media-thumbnails-grid">
-                  <div v-for="item in (showMoreMedia ? channelMediaFiles : channelMediaFiles.slice(0, 8))" :key="`media-${item.attachmentId}`" class="media-thumbnail-item" @click="downloadAttachment(item)" title="Xem/Tải ảnh">
-                    <img v-if="item.previewUrl" :src="item.previewUrl" :alt="item.originalFileName" />
+                  <div v-for="item in (showMoreMedia ? channelMediaFiles : channelMediaFiles.slice(0, 8))" :key="`media-${item.attachmentId}`" class="media-thumbnail-item" @click="openImageLightbox(item.previewUrl || item.fileUrl, item.originalFileName)" title="Xem phóng to">
+                    <img v-if="item.previewUrl || item.fileUrl" :src="item.previewUrl || item.fileUrl" :alt="item.originalFileName" />
                     <div v-else class="media-thumb-placeholder"><i class="fa-solid fa-image"></i></div>
                   </div>
                 </div>
-                <button v-if="channelMediaFiles.length > 8" type="button" class="w-full text-center text-xs text-accent font-medium py-1.5 mt-2 rounded hover:bg-accent/10 transition-colors" @click="showMoreMedia = !showMoreMedia">
-                  {{ showMoreMedia ? 'Thu gọn' : `Xem thêm (${channelMediaFiles.length - 8} ảnh)` }}
+                <button
+                  v-if="channelMediaFiles.length > 8"
+                  type="button"
+                  class="sidebar-see-more-btn w-full text-center text-xs font-semibold py-2 mt-2.5 rounded-xl border border-sky-500/30 text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-1.5"
+                  @click="showMoreMedia = !showMoreMedia"
+                >
+                  <span>{{ showMoreMedia ? 'Thu gọn' : `Xem thêm (${channelMediaFiles.length - 8} ảnh)` }}</span>
+                  <i :class="showMoreMedia ? 'fa-solid fa-chevron-up text-[10px]' : 'fa-solid fa-chevron-down text-[10px]'"></i>
                 </button>
               </div>
             </div>
@@ -1390,19 +1627,31 @@
               <div v-if="!channelDocumentFiles.length" class="context-empty-small">Chưa có tệp tin</div>
               <div v-else>
                 <div class="context-files-list">
-                  <div v-for="file in (showMoreDocs ? channelDocumentFiles : channelDocumentFiles.slice(0, 5))" :key="`file-${file.attachmentId}`" class="context-file-item">
+                  <div
+                    v-for="file in (showMoreDocs ? channelDocumentFiles : channelDocumentFiles.slice(0, 4))"
+                    :key="`file-${file.attachmentId}`"
+                    class="context-file-item cursor-pointer hover:opacity-90"
+                    @click="file.messageId && focusMessage(file.messageId)"
+                    title="Đi đến tin nhắn chứa tệp này"
+                  >
                     <i :class="getFileIconClass(file.originalFileName)" class="text-lg"></i>
                     <div class="file-item-info">
                       <span class="file-name truncate">{{ file.originalFileName }}</span>
                       <span class="file-size">{{ formatFileSize(file.sizeBytes) }}</span>
                     </div>
-                    <button type="button" class="file-download-action" @click="downloadAttachment(file)" title="Tải xuống">
+                    <button type="button" class="file-download-action" @click.stop="downloadAttachment(file)" title="Tải xuống">
                       <i class="fa-solid fa-download"></i>
                     </button>
                   </div>
                 </div>
-                <button v-if="channelDocumentFiles.length > 5" type="button" class="w-full text-center text-xs text-accent font-medium py-1.5 mt-2 rounded hover:bg-accent/10 transition-colors" @click="showMoreDocs = !showMoreDocs">
-                  {{ showMoreDocs ? 'Thu gọn' : `Xem thêm (${channelDocumentFiles.length - 5} tệp)` }}
+                <button
+                  v-if="channelDocumentFiles.length > 4"
+                  type="button"
+                  class="sidebar-see-more-btn w-full text-center text-xs font-semibold py-2 mt-2.5 rounded-xl border border-sky-500/30 text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-1.5"
+                  @click="showMoreDocs = !showMoreDocs"
+                >
+                  <span>{{ showMoreDocs ? 'Thu gọn' : `Xem thêm (${channelDocumentFiles.length - 4} tệp)` }}</span>
+                  <i :class="showMoreDocs ? 'fa-solid fa-chevron-up text-[10px]' : 'fa-solid fa-chevron-down text-[10px]'"></i>
                 </button>
               </div>
             </div>
@@ -1418,17 +1667,31 @@
               <div v-if="!channelExtractedLinks.length" class="context-empty-small">Chưa có liên kết</div>
               <div v-else>
                 <div class="context-links-list">
-                  <a v-for="(link, idx) in (showMoreLinks ? channelExtractedLinks : channelExtractedLinks.slice(0, 5))" :key="`link-${idx}`" :href="link.url" target="_blank" rel="noopener noreferrer" class="context-link-item">
+                  <div
+                    v-for="(link, idx) in (showMoreLinks ? channelExtractedLinks : channelExtractedLinks.slice(0, 4))"
+                    :key="`link-${idx}`"
+                    class="context-link-item cursor-pointer hover:opacity-90"
+                    @click="link.messageId && focusMessage(link.messageId)"
+                    title="Đi đến tin nhắn chứa liên kết này"
+                  >
                     <i class="fa-solid fa-link link-item-icon"></i>
                     <div class="link-item-info">
-                      <span class="link-url truncate">{{ link.url }}</span>
+                      <span class="link-url truncate text-sky-400 underline">{{ link.url }}</span>
                       <span class="link-meta">{{ link.senderName }} • {{ formatTime(link.sentAt) }}</span>
                     </div>
-                    <i class="fa-solid fa-arrow-up-right-from-square link-ext-icon"></i>
-                  </a>
+                    <a :href="link.url" target="_blank" rel="noopener noreferrer" class="link-ext-icon p-1 hover:text-sky-400" @click.stop title="Mở liên kết trong tab mới">
+                      <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                    </a>
+                  </div>
                 </div>
-                <button v-if="channelExtractedLinks.length > 5" type="button" class="w-full text-center text-xs text-accent font-medium py-1.5 mt-2 rounded hover:bg-accent/10 transition-colors" @click="showMoreLinks = !showMoreLinks">
-                  {{ showMoreLinks ? 'Thu gọn' : `Xem thêm (${channelExtractedLinks.length - 5} liên kết)` }}
+                <button
+                  v-if="channelExtractedLinks.length > 4"
+                  type="button"
+                  class="sidebar-see-more-btn w-full text-center text-xs font-semibold py-2 mt-2.5 rounded-xl border border-sky-500/30 text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-1.5"
+                  @click="showMoreLinks = !showMoreLinks"
+                >
+                  <span>{{ showMoreLinks ? 'Thu gọn' : `Xem thêm (${channelExtractedLinks.length - 4} liên kết)` }}</span>
+                  <i :class="showMoreLinks ? 'fa-solid fa-chevron-up text-[10px]' : 'fa-solid fa-chevron-down text-[10px]'"></i>
                 </button>
               </div>
             </div>
@@ -1467,6 +1730,107 @@
     </div>
 
 
+
+    <!-- Fullscreen Professional Media Viewer Overlay (Sample 2 Pixel Perfect) -->
+    <Teleport to="body">
+      <!-- Image Lightbox Fullscreen Viewer (Dark Overlay Backdrop) -->
+      <Transition name="el-fade-in-linear">
+        <div v-if="showImageLightbox" class="fixed inset-0 z-[99999] flex flex-col bg-black/90 text-slate-100 overflow-hidden select-none font-sans" @click.self="showImageLightbox = false">
+          <!-- Top Bar Header (Centered title) -->
+          <div class="h-10 px-4 flex items-center justify-between bg-black/40 backdrop-blur-md border-b border-white/10 flex-shrink-0 relative z-20">
+            <div class="w-20"></div>
+            <div class="flex-1 text-center font-medium text-xs text-slate-200 truncate tracking-wide px-4">
+              {{ activeProject?.name || activeChat?.name || 'HÌNH ẢNH CHI TIẾT' }}
+            </div>
+            <div class="w-20 flex justify-end">
+              <button type="button" class="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-white hover:bg-white/10 rounded transition-colors" @click="showImageLightbox = false" title="Đóng (Esc)">
+                <i class="fa-solid fa-xmark text-base"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Main Workspace Row -->
+          <div class="flex-1 flex min-h-0 relative bg-black/80" @click.self="showImageLightbox = false">
+            <!-- Center Viewer Area (Click dark area to close) -->
+            <div class="flex-1 flex items-center justify-center p-4 relative bg-transparent overflow-hidden" @click.self="showImageLightbox = false">
+              <img
+                v-if="currentLightboxItem"
+                :src="currentLightboxItem.previewUrl || currentLightboxItem.fileUrl || currentLightboxItem.url"
+                :alt="currentLightboxItem.originalFileName"
+                class="max-w-[92vw] max-h-[88vh] object-contain shadow-2xl transition-all duration-200 cursor-default rounded"
+                @click.stop
+              />
+            </div>
+
+            <!-- Right Sidebar Media History Strip (Sample 2 vertical thumbnails + up/down arrows) -->
+            <div class="w-48 bg-[#252525] border-l border-[#353535] flex flex-col p-3 flex-shrink-0 relative">
+              <div class="text-[11px] font-medium text-slate-300 mb-2 px-1">Hôm nay</div>
+              
+              <div class="flex-1 overflow-y-auto pr-0 flex flex-col gap-3 scrollbar-none">
+                <div
+                  v-for="(item, idx) in lightboxMediaList"
+                  :key="`thumb-${item.attachmentId || idx}`"
+                  class="relative rounded overflow-hidden cursor-pointer transition-all aspect-[4/3] bg-[#1a1a1a] flex items-center justify-center"
+                  :class="idx === lightboxActiveIndex ? 'border-2 border-white shadow-md' : 'border border-transparent opacity-50 hover:opacity-100'"
+                  @click="selectLightboxIndex(idx)"
+                >
+                  <img :src="item.previewUrl || item.fileUrl" :alt="item.originalFileName" class="w-full h-full object-cover" />
+                </div>
+              </div>
+
+              <!-- Up & Down Nav Buttons on Right Sidebar (Sample 2 style) -->
+              <div v-if="lightboxMediaList.length > 1" class="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-10">
+                <button
+                  type="button"
+                  class="w-9 h-9 rounded-full bg-black/75 hover:bg-black text-white flex items-center justify-center border border-white/20 shadow-lg disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                  :disabled="lightboxActiveIndex <= 0"
+                  @click="selectLightboxIndex(lightboxActiveIndex - 1)"
+                  title="Ảnh trên"
+                >
+                  <i class="fa-solid fa-chevron-up text-sm"></i>
+                </button>
+                <button
+                  type="button"
+                  class="w-9 h-9 rounded-full bg-black/75 hover:bg-black text-white flex items-center justify-center border border-white/20 shadow-lg disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                  :disabled="lightboxActiveIndex >= lightboxMediaList.length - 1"
+                  @click="selectLightboxIndex(lightboxActiveIndex + 1)"
+                  title="Ảnh dưới"
+                >
+                  <i class="fa-solid fa-chevron-down text-sm"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Toolbar (Sample 2 toolbar icons & user info) -->
+          <div class="h-12 px-5 flex items-center justify-between bg-[#2d2d2d] border-t border-[#3d3d3d] flex-shrink-0 text-slate-300">
+            <div class="flex items-center gap-2.5">
+              <el-avatar :size="28" :src="currentLightboxItem?.senderAvatar" class="border border-white/20">{{ (currentLightboxItem?.senderName || '?').charAt(0) }}</el-avatar>
+              <div class="flex flex-col">
+                <span class="text-xs font-medium text-slate-200 leading-tight">{{ currentLightboxItem?.senderName || 'Thành viên' }}</span>
+                <span class="text-[10px] text-slate-400 leading-tight">{{ formatTime(currentLightboxItem?.sentAt) }} Hôm nay</span>
+              </div>
+            </div>
+
+            <!-- Toolbar Action Icons (Sample 2 center tools) -->
+            <div class="flex items-center gap-5 text-sm">
+              <button type="button" class="hover:text-white transition-colors" title="Chia sẻ"><i class="fa-solid fa-share-nodes"></i></button>
+              <button type="button" class="hover:text-white transition-colors" title="Tải xuống" @click="downloadCurrentLightboxImage"><i class="fa-solid fa-download"></i></button>
+              <span class="w-[1px] h-3.5 bg-white/20"></span>
+              <button type="button" class="hover:text-white transition-colors" title="Xoay ảnh"><i class="fa-solid fa-rotate-right"></i></button>
+              <button type="button" class="hover:text-white transition-colors" title="Phóng to"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+              <button type="button" class="hover:text-white transition-colors" title="Thu nhỏ"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+            </div>
+
+            <!-- Right Toolbar Icons -->
+            <div class="flex items-center gap-3 text-sm">
+              <button type="button" class="hover:text-white transition-colors" title="Thích"><i class="fa-regular fa-thumbs-up"></i></button>
+              <button type="button" class="hover:text-white transition-colors" title="Chế độ chia ô"><i class="fa-regular fa-rectangle-list"></i></button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Create Channel Dialog -->
     <el-dialog
@@ -2734,6 +3098,11 @@ const normalizeCallChatMessage = value => ({
   senderName: value?.senderName ?? value?.SenderName ?? 'SprintA user',
   senderAvatar: value?.senderAvatar ?? value?.SenderAvatar ?? null,
   content: value?.content ?? value?.Content ?? '',
+  attachments: value?.attachments ?? value?.Attachments ?? [],
+  replyTo: value?.replyTo ?? value?.ReplyTo ?? null,
+  isRevoked: value?.isRevoked ?? value?.IsRevoked ?? false,
+  isEdited: value?.isEdited ?? value?.IsEdited ?? false,
+  reactions: value?.reactions ?? value?.Reactions ?? [],
   sentAt: value?.createdAt ?? value?.CreatedAt ?? value?.sentAt ?? value?.SentAt ?? new Date().toISOString(),
   clientMessageId: value?.clientMessageId ?? value?.ClientMessageId ?? null,
   status: value?.status ?? 'sent'
@@ -3573,19 +3942,40 @@ const mapMentions = (items, content) => {
     .sort((left, right) => left.startIndex - right.startIndex)
 }
 
+const parseUrlsInText = (text) => {
+  if (!text) return []
+  const urlRegex = /(https?:\/\/[^\s<]+)/g
+  const result = []
+  let lastIdx = 0
+  let match
+  while ((match = urlRegex.exec(text)) !== null) {
+    if (match.index > lastIdx) {
+      result.push({ text: text.slice(lastIdx, match.index), isMention: false, isUrl: false })
+    }
+    result.push({ text: match[0], url: match[0], isMention: false, isUrl: true })
+    lastIdx = match.index + match[0].length
+  }
+  if (lastIdx < text.length) {
+    result.push({ text: text.slice(lastIdx), isMention: false, isUrl: false })
+  }
+  return result.length ? result : [{ text, isMention: false, isUrl: false }]
+}
+
 const buildContentSegments = (content, mentions) => {
   const segments = []
   let cursor = 0
   mentions.forEach(mention => {
     if (mention.startIndex < cursor) return
     if (mention.startIndex > cursor) {
-      segments.push({ text: content.slice(cursor, mention.startIndex), isMention: false })
+      const subText = content.slice(cursor, mention.startIndex)
+      segments.push(...parseUrlsInText(subText))
     }
-    segments.push({ text: mention.displayText, isMention: true })
+    segments.push({ text: mention.displayText, isMention: true, isUrl: false })
     cursor = mention.startIndex + mention.length
   })
   if (cursor < content.length || segments.length === 0) {
-    segments.push({ text: content.slice(cursor), isMention: false })
+    const subText = content.slice(cursor)
+    segments.push(...parseUrlsInText(subText))
   }
   return segments
 }
@@ -3681,7 +4071,9 @@ const mapChannelMessage = (item, expectedChannelId) => {
     isEdited,
     editedAt,
     mentions,
-    contentSegments: isRevoked ? [{ text: 'Tin nhắn đã được thu hồi', isMention: false }] : buildContentSegments(content, mentions),
+    contentSegments: isRevoked
+      ? [{ text: 'Tin nhắn đã được thu hồi', isMention: false }]
+      : (content ? buildContentSegments(content, mentions) : []),
     sentAt: item.createdAt,
     attachments: isRevoked ? [] : (Array.isArray(item.attachments) ? item.attachments.map(mapAttachment) : []),
     replyTo: item.replyTo ? {
@@ -3764,7 +4156,9 @@ const mapDirectMessage = (item, expectedConversationId) => {
     isEdited,
     editedAt,
     mentions: [],
-    contentSegments: isRevoked ? [{ text: 'Tin nhắn đã được thu hồi', isMention: false }] : [{ text: content, isMention: false }],
+    contentSegments: isRevoked
+      ? [{ text: 'Tin nhắn đã được thu hồi', isMention: false }]
+      : (content ? [{ text: content, isMention: false }] : []),
     sentAt: item.createdAt,
     attachments: isRevoked ? [] : (Array.isArray(item.attachments) ? item.attachments.map(mapAttachment) : [])
   }
@@ -3817,24 +4211,51 @@ const hydrateImagePreviews = async (messages) => {
 }
 
 const downloadAttachment = async (attachment) => {
-  if (!attachment?.attachmentId || attachment.downloading) return
+  if (attachment?.downloading) return
   attachment.downloading = true
   try {
-    const blob = await collaborationApi.downloadAttachment(attachment.attachmentId)
-    const url = URL.createObjectURL(blob)
+    let url = ''
+    let isTempUrl = false
+
+    if (attachment.rawFile) {
+      url = URL.createObjectURL(attachment.rawFile)
+      isTempUrl = true
+    } else if (attachment.previewUrl || attachment.fileUrl) {
+      url = attachment.previewUrl || attachment.fileUrl
+    } else if (attachment.attachmentId || attachment.id) {
+      const attId = attachment.attachmentId || attachment.id
+      try {
+        const blob = await collaborationApi.downloadAttachment(attId)
+        if (blob) {
+          url = URL.createObjectURL(blob)
+          isTempUrl = true
+        }
+      } catch (err) {
+        console.warn('API Blob download failed, falling back to direct download link', err)
+        url = `/api/attachments/${attId}/download`
+      }
+    } else {
+      throw new Error('No attachment source available')
+    }
+
     const link = document.createElement('a')
     link.href = url
-    link.download = attachment.originalFileName
-    link.rel = 'noopener'
+    link.download = attachment.originalFileName || attachment.fileName || 'downloaded-file'
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
     document.body.appendChild(link)
     link.click()
     link.remove()
-    URL.revokeObjectURL(url)
+    if (isTempUrl) {
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
+    }
   } catch (error) {
+    console.error('Download attachment failed:', error)
     const status = error?.response?.status
+    const msg = error?.response?.data?.message || apiErrorMessage(error, 'Không thể tải file đính kèm.')
     ElMessage.error(status === 404
       ? 'File không tồn tại hoặc bạn không còn quyền tải.'
-      : 'Không thể tải file đính kèm.')
+      : msg)
   } finally {
     attachment.downloading = false
   }
@@ -3936,7 +4357,12 @@ const markRenderedLatestMessageRead = (resourceType, resourceId) => {
 }
 
 const appendRealtimeMessage = async (message) => {
+  if (!message?.messageId) return
   if (activeMessages.value.some(item => item.messageId === message.messageId)) return
+  if (message.senderUserId === currentUser.value?.id || message.senderId === currentUser.value?.id) {
+    const hasSendingTemp = activeMessages.value.some(item => item.status === 'sending')
+    if (hasSendingTemp) return
+  }
   const shouldScroll = isNearMessageBottom()
   activeMessages.value = mergeMessages(activeMessages.value, [message])
   void hydrateImagePreviews([message])
@@ -4102,6 +4528,10 @@ const togglePin = async (message) => {
     ElMessage.error(apiErrorMessage(error, 'Bạn không có quyền ghim tin nhắn.'))
   }
 }
+
+const activeProject = computed(() => {
+  return projectOptions.value.find(p => p.id === activeProjectId.value) || null
+})
 
 const canManageChannels = computed(() => {
   if (!currentUser.value) return false
@@ -4281,23 +4711,108 @@ const openChannelUtility = async (mode) => {
   if (mode === 'pins') await loadPinnedMessages()
 }
 
-const searchChannelMessages = async () => {
-  if (!activeChannel.value?.id || !channelSearchQuery.value.trim()) return
-  channelSearchLoading.value = true
+const isRecordingAudio = ref(false)
+const recordingDurationSeconds = ref(0)
+const recordingWaveBars = ref([40, 70, 30, 90, 50, 80, 40, 60, 100, 45, 75, 35])
+let recordingTimerInterval = null
+let recordingWaveInterval = null
+let mediaRecorderInstance = null
+let audioChunks = []
+
+const formatRecordingTimer = (seconds) => {
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+}
+
+const toggleVoiceRecording = async () => {
+  if (isRecordingAudio.value) {
+    // Stop recording and process audio blob
+    if (mediaRecorderInstance && mediaRecorderInstance.state !== 'inactive') {
+      mediaRecorderInstance.stop()
+    }
+    return
+  }
+
+  // Start recording
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    ElMessage.error('Trình duyệt của bạn không hỗ trợ ghi âm trực tiếp.')
+    return
+  }
+
   try {
-    const result = await collaborationApi.searchChannelMessages(
-      activeChannel.value.id,
-      channelSearchQuery.value.trim(),
-      { page: 1, pageSize: 50 }
-    )
-    channelSearchResults.value = Array.isArray(result?.items)
-      ? result.items.map(item => mapChannelMessage(item, activeChannel.value.id))
-      : []
-  } catch (error) {
-    if (error?.response?.status === 401) clearCollaborationState()
-    else ElMessage.error(apiErrorMessage(error, 'Không thể tìm tin nhắn.'))
-  } finally {
-    channelSearchLoading.value = false
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    audioChunks = []
+    recordingDurationSeconds.value = 0
+    mediaRecorderInstance = new MediaRecorder(stream)
+
+    // Timer interval
+    clearInterval(recordingTimerInterval)
+    recordingTimerInterval = setInterval(() => {
+      recordingDurationSeconds.value++
+    }, 1000)
+
+    // Live wave height animation interval
+    clearInterval(recordingWaveInterval)
+    recordingWaveInterval = setInterval(() => {
+      recordingWaveBars.value = Array.from({ length: 12 }, () => Math.floor(Math.random() * 85) + 15)
+    }, 120)
+
+    mediaRecorderInstance.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        audioChunks.push(e.data)
+      }
+    }
+
+    mediaRecorderInstance.onstop = async () => {
+      isRecordingAudio.value = false
+      clearInterval(recordingTimerInterval)
+      clearInterval(recordingWaveInterval)
+      stream.getTracks().forEach(track => track.stop())
+      if (!audioChunks.length) return
+
+      const finalDuration = recordingDurationSeconds.value
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
+      const fileName = `VoiceNote_${Date.now()}.webm`
+      const voiceFile = new File([audioBlob], fileName, { type: 'audio/webm' })
+
+      // Convert audio file to Data URL for instant preview & persistence
+      const dataUrl = await new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onload = e => resolve(e.target?.result || '')
+        reader.onerror = () => resolve('')
+        reader.readAsDataURL(voiceFile)
+      })
+
+      if (!dataUrl) {
+        ElMessage.error('Không thể tạo file ghi âm.')
+        return
+      }
+
+      // Add to attachedFiles state
+      attachedFiles.value.push({
+        id: `voice-${Date.now()}`,
+        name: fileName,
+        sizeBytes: voiceFile.size,
+        type: 'audio/webm',
+        fileRaw: voiceFile,
+        rawFile: voiceFile,
+        previewUrl: dataUrl,
+        isAudio: true,
+        durationSeconds: finalDuration
+      })
+
+      ElMessage.success(`Đã hoàn tất ghi âm (${formatRecordingTimer(finalDuration)})! Nhấn Gửi để gửi tin nhắn thoại.`)
+    }
+
+    mediaRecorderInstance.start()
+    isRecordingAudio.value = true
+  } catch (err) {
+    console.error('Failed to start voice recording:', err)
+    ElMessage.error('Không thể truy cập Microphone. Vui lòng cấp quyền micro cho trang web.')
+    isRecordingAudio.value = false
+    clearInterval(recordingTimerInterval)
+    clearInterval(recordingWaveInterval)
   }
 }
 
@@ -4334,13 +4849,34 @@ const sendCallChatMessage = async () => {
   })
 
   if (attachedFiles.value.length) {
-    localMsg.attachments = attachedFiles.value.map(file => ({
-      attachmentId: file.id,
-      originalFileName: file.name,
-      contentType: file.type || 'application/octet-stream',
-      sizeBytes: file.sizeBytes,
-      previewUrl: file.previewUrl || ''
-    }))
+    const preparedAttachments = []
+    for (const file of attachedFiles.value) {
+      let persistentUrl = file.previewUrl || ''
+      if (file.fileRaw && file.fileRaw instanceof Blob) {
+        try {
+          persistentUrl = await new Promise((resolve) => {
+            const reader = new FileReader()
+            reader.onload = e => resolve(e.target?.result || '')
+            reader.onerror = () => resolve(file.previewUrl || '')
+            reader.readAsDataURL(file.fileRaw)
+          })
+        } catch {
+          persistentUrl = file.previewUrl || ''
+        }
+      }
+      preparedAttachments.push({
+        attachmentId: file.id,
+        originalFileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        sizeBytes: file.sizeBytes,
+        previewUrl: persistentUrl,
+        fileUrl: persistentUrl,
+        isImage: !file.isAudio,
+        isAudio: !!file.isAudio,
+        durationSeconds: file.durationSeconds || 0
+      })
+    }
+    localMsg.attachments = preparedAttachments
     attachedFiles.value = []
   }
 
@@ -5026,12 +5562,12 @@ const handleRealtimeState = ({ state, code, reconnected = false }) => {
   } else if (state === COLLABORATION_REALTIME_STATES.CONNECTED) {
     setConnectionNotice('')
   } else if (state === COLLABORATION_REALTIME_STATES.ERROR) {
-    setConnectionNotice(hubErrorMessage(code))
+    setConnectionNotice(hubErrorMessage(code), { clearAfter: 6000 })
   } else if (
     state === COLLABORATION_REALTIME_STATES.DISCONNECTED &&
     currentUser.value.id
   ) {
-    setConnectionNotice('Mất kết nối realtime. Tin nhắn vẫn được gửi và tải bằng REST.')
+    setConnectionNotice('Không thể kết nối realtime. Lịch sử REST vẫn khả dụng.', { clearAfter: 6000 })
   }
 }
 
@@ -5091,15 +5627,20 @@ const leaveActiveRealtimeGroup = async (chat = activeChat.value) => {
 }
 
 const handleRealtimeGroupFailure = async ({ scope, id, code }) => {
-  connectionState.value = COLLABORATION_REALTIME_STATES.ERROR
-  setConnectionNotice(hubErrorMessage(code))
   const sensitiveFailure = [
     'AUTH_REQUIRED',
     'USER_INACTIVE',
     'CHANNEL_NOT_FOUND_OR_FORBIDDEN',
-    'CONVERSATION_NOT_FOUND_OR_FORBIDDEN',
-    'INVALID_ID'
+    'CONVERSATION_NOT_FOUND_OR_FORBIDDEN'
   ].includes(code)
+
+  if (code === 'INVALID_ID') {
+    setConnectionNotice('', { clearAfter: 1 })
+    return
+  }
+  
+  connectionState.value = COLLABORATION_REALTIME_STATES.ERROR
+  setConnectionNotice(hubErrorMessage(code), { clearAfter: 5000 })
   if (!sensitiveFailure) return
 
   if (scope === 'channel' && activeChannel.value?.id === id) {
@@ -5493,11 +6034,119 @@ const activeServerMembers = computed(() => {
 const showMoreMedia = ref(false)
 const showMoreDocs = ref(false)
 const showMoreLinks = ref(false)
+const uploadProgressPercent = ref(0)
+
+const showImageLightbox = ref(false)
+const lightboxActiveIndex = ref(0)
+const lightboxMediaList = computed(() => channelMediaFiles.value || [])
+const currentLightboxItem = computed(() => {
+  if (lightboxActiveIndex.value === -1) return lightboxAdHocItem.value
+  return lightboxMediaList.value[lightboxActiveIndex.value] || lightboxAdHocItem.value || null
+})
+
+const lightboxAdHocItem = ref(null)
+
+const openImageLightbox = async (url, attachmentOrTitle = '') => {
+  let targetUrl = typeof url === 'string' ? url : ''
+  let attObj = typeof attachmentOrTitle === 'object' ? attachmentOrTitle : null
+
+  if (!targetUrl && attObj) {
+    targetUrl = attObj.previewUrl || attObj.fileUrl || attObj.url || ''
+  }
+
+  const attId = attObj?.attachmentId || attObj?.id
+
+  // Attempt blob download preview URL if no targetUrl or to guarantee displayable blob
+  if (!targetUrl && attId) {
+    try {
+      const blob = await collaborationApi.downloadAttachment(attId)
+      if (blob) {
+        targetUrl = URL.createObjectURL(blob)
+        if (attObj) attObj.previewUrl = targetUrl
+      }
+    } catch (e) {
+      console.warn('Failed to load lightbox image preview blob', e)
+    }
+  }
+
+  if (!targetUrl && attId) {
+    targetUrl = `/api/attachments/${attId}/download`
+  }
+
+  if (!targetUrl) {
+    ElMessage.warning('Không thể mở hình ảnh. Đính kèm không hợp lệ.')
+    return
+  }
+
+  const title = typeof attachmentOrTitle === 'string' ? attachmentOrTitle : (attObj?.originalFileName || attObj?.fileName || 'Hình ảnh')
+  
+  const fallbackObj = {
+    ...(attObj || {}),
+    previewUrl: targetUrl,
+    fileUrl: targetUrl,
+    originalFileName: title,
+    senderName: attObj?.senderName || currentUser.value?.name || 'Bạn',
+    senderAvatar: attObj?.senderAvatar || currentUser.value?.avatar,
+    sentAt: attObj?.sentAt || new Date().toISOString()
+  }
+
+  lightboxAdHocItem.value = fallbackObj
+
+  const list = lightboxMediaList.value
+  const foundIdx = list.findIndex(item => (
+    (item.previewUrl && item.previewUrl === targetUrl) ||
+    (item.fileUrl && item.fileUrl === targetUrl) ||
+    (item.url && item.url === targetUrl) ||
+    (attId && (item.attachmentId === attId || item.id === attId))
+  ))
+  
+  if (foundIdx !== -1) {
+    lightboxActiveIndex.value = foundIdx
+  } else {
+    lightboxActiveIndex.value = -1
+  }
+  showImageLightbox.value = true
+}
+
+const onMessageBodyClick = (evt, msg) => {
+  if (msg?.isRevoked) return
+  if (msg?.attachments?.length) {
+    const imgAtt = msg.attachments.find(att => att.isImage || att.previewUrl || isImageFile(att.originalFileName || att.fileName))
+    if (imgAtt) {
+      void openImageLightbox(imgAtt.previewUrl || imgAtt.fileUrl || imgAtt.url || '', imgAtt)
+    }
+  }
+}
+
+const selectLightboxIndex = (index) => {
+  if (index >= 0 && index < lightboxMediaList.value.length) {
+    lightboxActiveIndex.value = index
+  }
+}
+
+const downloadCurrentLightboxImage = () => {
+  const item = currentLightboxItem.value
+  if (!item) return
+  if (item.attachmentId) {
+    void downloadAttachment(item)
+  } else if (item.previewUrl || item.fileUrl) {
+    const link = document.createElement('a')
+    link.href = item.previewUrl || item.fileUrl
+    link.download = item.originalFileName || 'image.png'
+    link.click()
+  }
+}
 
 const fileInputRef = ref(null)
 const attachedFiles = ref([])
-const allowedAttachmentExtensions = new Set(['png', 'jpg', 'jpeg', 'webp', 'pdf', 'txt', 'docx', 'xlsx', 'zip', 'rar', '7z'])
-const maximumAttachmentBytes = 2 * 1024 * 1024
+const allowedAttachmentExtensions = new Set([
+  'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico',
+  'pdf', 'txt', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv',
+  'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'iso', 'tgz',
+  'mp3', 'wav', 'ogg', 'm4a', 'mp4', 'webm', 'mkv', 'avi',
+  'json', 'xml', 'sql', 'js', 'ts', 'html', 'css', 'py', 'cs', 'java'
+])
+const maximumAttachmentBytes = 50 * 1024 * 1024
 
 const triggerAttachment = () => {
   if (fileInputRef.value) {
@@ -5505,8 +6154,50 @@ const triggerAttachment = () => {
   }
 }
 
-const handleFileChange = (e) => {
-  const candidates = Array.from(e.target.files || [])
+const handleCallChatPaste = (e) => {
+  const clipboardData = e.clipboardData || globalThis.clipboardData
+  if (!clipboardData) return
+  const items = Array.from(clipboardData.items || [])
+  const imageItems = items.filter(item => item.type && item.type.startsWith('image/'))
+
+  if (!imageItems.length) return // let default text paste happen
+
+  const remaining = 5 - attachedFiles.value.length
+  if (remaining <= 0) {
+    ElMessage.warning('Mỗi tin nhắn chỉ được đính kèm tối đa 5 file.')
+    return
+  }
+
+  imageItems.slice(0, remaining).forEach((item, index) => {
+    const file = item.getAsFile()
+    if (!file) return
+
+    const ext = file.type.split('/')[1] || 'png'
+    const fileName = `pasted-image-${Date.now()}-${index + 1}.${ext}`
+
+    if (file.size <= 0 || file.size > maximumAttachmentBytes) {
+      ElMessage.warning(`Hình ảnh dán vượt quá giới hạn 50 MB.`)
+      return
+    }
+
+    const previewUrl = URL.createObjectURL(file)
+    attachedFiles.value.push({
+      id: typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      name: fileName,
+      sizeBytes: file.size,
+      previewUrl,
+      rawFile: file
+    })
+    ElMessage.success('Đã dán hình ảnh từ khay nhớ tạm!')
+  })
+}
+
+const isDraggingFile = ref(false)
+let dragLeaveTimer = null
+
+const processFileList = (files) => {
+  const candidates = Array.from(files || [])
+  if (!candidates.length) return
   const remaining = 5 - attachedFiles.value.length
   if (candidates.length > remaining) {
     ElMessage.warning('Mỗi tin nhắn chỉ được đính kèm tối đa 5 file.')
@@ -5518,7 +6209,7 @@ const handleFileChange = (e) => {
       return
     }
     if (file.size <= 0 || file.size > maximumAttachmentBytes) {
-      ElMessage.warning(`${file.name}: Dung lượng file vượt quá giới hạn 2 MB.`)
+      ElMessage.warning(`${file.name}: Dung lượng file vượt quá giới hạn 50 MB.`)
       return
     }
     const previewUrl = isImageFile(file.name) ? URL.createObjectURL(file) : ''
@@ -5529,7 +6220,39 @@ const handleFileChange = (e) => {
       previewUrl,
       rawFile: file
     })
+    ElMessage.success(`Đã đính kèm: ${file.name}`)
   })
+}
+
+const handleDragOver = (e) => {
+  e.preventDefault()
+  if (e.dataTransfer?.types?.includes('Files')) {
+    e.dataTransfer.dropEffect = 'copy'
+    isDraggingFile.value = true
+    if (dragLeaveTimer) clearTimeout(dragLeaveTimer)
+  }
+}
+
+const handleDragLeave = (e) => {
+  e.preventDefault()
+  if (dragLeaveTimer) clearTimeout(dragLeaveTimer)
+  dragLeaveTimer = setTimeout(() => {
+    isDraggingFile.value = false
+  }, 100)
+}
+
+const handleDropFile = (e) => {
+  e.preventDefault()
+  isDraggingFile.value = false
+  if (dragLeaveTimer) clearTimeout(dragLeaveTimer)
+  const dt = e.dataTransfer
+  if (dt && dt.files && dt.files.length) {
+    processFileList(dt.files)
+  }
+}
+
+const handleFileChange = (e) => {
+  processFileList(e.target.files)
   e.target.value = ''
 }
 
@@ -5550,7 +6273,91 @@ const removeAttachedFile = (fileId) => {
 const isImageFile = (fileName) => {
   if (!fileName) return false
   const ext = fileName.split('.').pop().toLowerCase()
-  return ['jpg', 'jpeg', 'png', 'webp'].includes(ext)
+  return ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(ext)
+}
+
+const currentActiveAudioInstance = ref(null)
+const currentActiveAudioAtt = ref(null)
+
+const toggleCustomAudioPlay = (att, audioUrl) => {
+  if (!att || !audioUrl) return
+  if (currentActiveAudioAtt.value && currentActiveAudioAtt.value !== att) {
+    if (currentActiveAudioInstance.value) {
+      currentActiveAudioInstance.value.pause()
+    }
+    currentActiveAudioAtt.value.isPlaying = false
+  }
+
+  if (att.isPlaying && att.audioInstance) {
+    att.audioInstance.pause()
+    att.isPlaying = false
+    return
+  }
+
+  if (!att.audioInstance) {
+    const audio = new Audio(audioUrl)
+    att.audioInstance = audio
+    audio.preload = 'metadata'
+    
+    const updateDuration = () => {
+      if (audio.duration && !isNaN(audio.duration) && audio.duration !== Infinity) {
+        att.audioDuration = Math.round(audio.duration)
+      }
+    }
+    audio.addEventListener('loadedmetadata', updateDuration)
+    audio.addEventListener('durationchange', updateDuration)
+
+    audio.addEventListener('timeupdate', () => {
+      att.currentTime = Math.round(audio.currentTime || 0)
+      if (audio.duration) {
+        att.playbackPercent = (audio.currentTime / audio.duration) * 100
+      }
+    })
+    audio.addEventListener('ended', () => {
+      att.isPlaying = false
+      att.currentTime = 0
+      att.playbackPercent = 0
+    })
+  }
+
+  currentActiveAudioInstance.value = att.audioInstance
+  currentActiveAudioAtt.value = att
+  att.audioInstance.play().then(() => {
+    att.isPlaying = true
+  }).catch(() => {
+    ElMessage.error('Không thể phát file âm thanh này.')
+  })
+}
+
+const seekCustomAudio = (att, event) => {
+  if (!att?.audioInstance || !event.currentTarget) return
+  const rect = event.currentTarget.getBoundingClientRect()
+  const clickX = event.clientX - rect.left
+  const percent = Math.max(0, Math.min(1, clickX / rect.width))
+  if (att.audioInstance.duration) {
+    att.audioInstance.currentTime = percent * att.audioInstance.duration
+    att.playbackPercent = percent * 100
+  }
+}
+
+const isAudioMedia = (att) => {
+  if (!att) return false
+  if (att.isAudio || att.audioUrl || att.recordingUrl || att.isVoiceNote) return true
+  const name = att.originalFileName || att.fileName || att.name || att.fileUrl || att.previewUrl || ''
+  const type = att.contentType || att.type || ''
+  if (name.toLowerCase().includes('voicenote') || name.toLowerCase().includes('recording') || type.startsWith('audio/')) return true
+  const ext = name.split('?')[0].split('#')[0].split('.').pop().toLowerCase()
+  return ['webm', 'wav', 'mp3', 'ogg', 'm4a', 'aac', 'flac'].includes(ext)
+}
+
+const getAttachmentDisplayUrl = (att) => {
+  if (!att) return ''
+  if (att.previewUrl) return att.previewUrl
+  if (att.fileUrl) return att.fileUrl
+  if (att.url) return att.url
+  const id = att.attachmentId || att.id
+  if (id) return `/api/attachments/${id}/download`
+  return ''
 }
 
 const getFileIconClass = (fileName) => {
@@ -5758,31 +6565,80 @@ const sendDirectMessage = async () => {
   const controller = new AbortController()
   sendMessageAbortController.value = controller
   sendingMessage.value = true
+  
+  const currentFiles = [...attachedFiles.value]
+  const currentDraft = newMessage.value
+
+  const clientMsgId = typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID() : `${Date.now()}`
+  const tempMessage = {
+    messageId: clientMsgId,
+    conversationId: conversation.id,
+    content,
+    senderUserId: currentUser.value?.id,
+    senderName: currentUser.value?.name || 'Bạn',
+    senderAvatar: currentUser.value?.avatar,
+    sentAt: new Date().toISOString(),
+    attachments: currentFiles.map(file => ({
+      attachmentId: file.id,
+      originalFileName: file.name,
+      contentType: file.rawFile?.type || 'application/octet-stream',
+      sizeBytes: file.sizeBytes,
+      previewUrl: file.previewUrl || '',
+      rawFile: file.rawFile
+    })),
+    status: 'sending',
+    uploadProgress: 0
+  }
+
+  activeMessages.value = [...activeMessages.value, tempMessage]
+  newMessage.value = ''
+  attachedFiles.value = []
+  cancelReply()
+  await nextTick()
+  scrollToBottom()
+
   try {
     const result = await collaborationApi.sendDirectMessage(
       conversation.id,
       content,
       {
         signal: controller.signal,
-        files: attachedFiles.value.map(file => file.rawFile)
+        files: currentFiles.map(file => file.rawFile || file.fileRaw).filter(Boolean),
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+            uploadProgressPercent.value = percent
+            activeMessages.value = activeMessages.value.map(msg =>
+              msg.messageId === clientMsgId ? { ...msg, uploadProgress: percent } : msg
+            )
+          }
+        }
       }
     )
     if (activeDirectConversation.value?.id !== conversation.id) return
     const message = mapDirectMessage(result, conversation.id)
-    const messageAlreadyPresent = activeMessages.value.some(
-      item => item.messageId === message.messageId
-    )
-    activeMessages.value = mergeMessages(activeMessages.value, [message])
-    if (!messageAlreadyPresent) {
-      messagePagination.value.totalCount += 1
+    if (message) {
+      if (message.attachments?.length && tempMessage.attachments?.length) {
+        message.attachments.forEach((att, idx) => {
+          if (tempMessage.attachments[idx]?.previewUrl) {
+            att.previewUrl = tempMessage.attachments[idx].previewUrl
+          }
+        })
+      }
+      activeMessages.value = activeMessages.value.map(msg =>
+        msg.messageId === clientMsgId ? message : msg
+      )
+      void hydrateImagePreviews([message])
     }
-    newMessage.value = ''
-    removeAttachedFile()
+    messagePagination.value.totalCount += 1
     await loadDirectConversations({ page: 1, selectFirst: false })
     await nextTick()
     if (shouldScroll) scrollToBottom()
   } catch (error) {
     if (isCanceledRequest(error)) return
+    activeMessages.value = activeMessages.value.filter(msg => msg.messageId !== clientMsgId)
+    newMessage.value = currentDraft
+    attachedFiles.value = currentFiles
     const status = error?.response?.status
     if (status === 401) {
       clearCollaborationState()
@@ -5828,37 +6684,89 @@ const sendChannelMessage = async () => {
       ? [{ userId: adjusted.userId, startIndex: adjusted.startIndex, length: adjusted.length }]
       : []
   })
+
+  // Capture files before clearing attachedFiles
+  const currentFiles = [...attachedFiles.value]
+  const currentDraft = newMessage.value
+
+  // Create optimistic local message so user sees image immediately
+  const clientMsgId = typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID() : `${Date.now()}`
+  const tempMessage = {
+    messageId: clientMsgId,
+    channelId: channel.id,
+    content,
+    senderUserId: currentUser.value?.id,
+    senderName: currentUser.value?.name || 'Bạn',
+    senderAvatar: currentUser.value?.avatar,
+    sentAt: new Date().toISOString(),
+    attachments: currentFiles.map(file => ({
+      attachmentId: file.id,
+      originalFileName: file.name,
+      contentType: file.rawFile?.type || 'application/octet-stream',
+      sizeBytes: file.sizeBytes,
+      previewUrl: file.previewUrl || '',
+      rawFile: file.rawFile
+    })),
+    status: 'sending'
+  }
+
+  activeMessages.value = [...activeMessages.value, tempMessage]
+  newMessage.value = ''
+  attachedFiles.value = []
+  cancelReply()
+  resetMentionComposer()
+  await nextTick()
+  scrollToBottom()
+
   const controller = new AbortController()
   sendMessageAbortController.value = controller
   sendingMessage.value = true
+
   try {
     const result = await collaborationApi.sendChannelMessage(
       channel.id,
       {
         content,
         mentions,
-        files: attachedFiles.value.map(file => file.rawFile),
+        files: currentFiles.map(file => file.rawFile || file.fileRaw).filter(Boolean),
         replyToMessageId: replyTarget.value?.messageId || null
       },
-      { signal: controller.signal }
+      {
+        signal: controller.signal,
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+            uploadProgressPercent.value = percent
+            activeMessages.value = activeMessages.value.map(msg =>
+              msg.messageId === clientMsgId ? { ...msg, uploadProgress: percent } : msg
+            )
+          }
+        }
+      }
     )
     if (activeChannel.value?.id !== channel.id) return
-    const message = mapChannelMessage(result, channel.id)
-    const messageAlreadyPresent = activeMessages.value.some(
-      item => item.messageId === message.messageId
-    )
-    activeMessages.value = mergeMessages(activeMessages.value, [message])
-    if (!messageAlreadyPresent) {
-      messagePagination.value.totalCount += 1
+    const serverMessage = mapChannelMessage(result, channel.id)
+    if (serverMessage) {
+      // Preserve client-side optimistic blob previewUrl for seamless transition
+      if (serverMessage.attachments?.length && tempMessage.attachments?.length) {
+        serverMessage.attachments.forEach((att, idx) => {
+          if (tempMessage.attachments[idx]?.previewUrl) {
+            att.previewUrl = tempMessage.attachments[idx].previewUrl
+          }
+        })
+      }
+      activeMessages.value = activeMessages.value.map(msg =>
+        msg.messageId === clientMsgId ? serverMessage : msg
+      )
+      void hydrateImagePreviews([serverMessage])
     }
-    newMessage.value = ''
-    cancelReply()
-    resetMentionComposer()
-    removeAttachedFile()
-    await nextTick()
-    scrollToBottom()
   } catch (error) {
     if (isCanceledRequest(error)) return
+    // Remove optimistic message on failure and restore draft
+    activeMessages.value = activeMessages.value.filter(msg => msg.messageId !== clientMsgId)
+    newMessage.value = currentDraft
+    attachedFiles.value = currentFiles
+
     const status = error?.response?.status
     if (status === 401) {
       clearCollaborationState()
@@ -5868,7 +6776,7 @@ const sendChannelMessage = async () => {
       ElMessage.error('Channel không còn khả dụng hoặc bạn không còn quyền gửi.')
       if (status === 404) await loadChannels({ page: 1 })
     } else {
-      ElMessage.error(apiErrorMessage(error, 'Không thể gửi tin nhắn. Nội dung vẫn được giữ lại.'))
+      ElMessage.error(apiErrorMessage(error, 'Gửi tin nhắn thất bại. Đã khôi phục lại bản nháp.'))
     }
   } finally {
     if (sendMessageAbortController.value === controller) {
@@ -5982,11 +6890,12 @@ const selectChat = async (item, type) => {
   switchTab(type === 'dm' ? 'dm' : 'channel')
   sidebarOpen.value = false
   if (type === 'channel') {
-    if (
-      !item?.id ||
-      item.projectId !== activeProjectId.value ||
-      !channels.value.some(channel => channel.id === item.id)
-    ) {
+    if (!item?.id) return
+    // Auto-select project if switching to a channel in another project tree
+    if (item.projectId && item.projectId !== activeProjectId.value) {
+      await selectProject(item.projectId)
+    }
+    if (!channels.value.some(channel => channel.id === item.id)) {
       return
     }
   } else if (
@@ -6615,9 +7524,101 @@ const fetchProjectMembers = async () => {
   background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface));
 }
 
-.connection-notice.is-error {
-  color: var(--color-danger);
-  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+.connection-notice.is-error,
+.connection-notice.is-disconnected {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.12);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.connection-notice-close-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+.connection-notice-close-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+audio::-webkit-media-controls-panel {
+  background: transparent !important;
+  border-radius: 12px !important;
+}
+
+audio::-webkit-media-controls-overflow-button,
+audio::-webkit-media-controls-overflow-menu-list {
+  display: none !important;
+}
+
+.recording-active-btn,
+button.recording-active-btn,
+.el-button.recording-active-btn {
+  background: #e11d48 !important;
+  background-color: #e11d48 !important;
+  color: #ffffff !important;
+  border-color: #f43f5e !important;
+  box-shadow: 0 0 10px rgba(225, 29, 72, 0.6) !important;
+  animation: pulse-red-recording 1.5s infinite ease-in-out !important;
+}
+
+.recording-active-btn i,
+button.recording-active-btn i,
+.el-button.recording-active-btn i {
+  color: #ffffff !important;
+}
+
+@keyframes pulse-red-recording {
+  0% {
+    box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(225, 29, 72, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(225, 29, 72, 0);
+  }
+}
+
+.message-body.is-audio-only,
+.call-msg-bubble.is-audio-only {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+audio,
+audio:focus,
+audio:active,
+.custom-voice-audio-element,
+.custom-voice-audio-element:focus,
+.custom-voice-audio-element:active,
+audio.custom-voice-audio-element,
+audio.custom-voice-audio-element:focus {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+audio::-webkit-media-controls-panel,
+.custom-voice-audio-element::-webkit-media-controls-panel {
+  background: rgba(15, 23, 42, 0.95) !important;
+  border-radius: 8px !important;
+  outline: none !important;
+  border: none !important;
+}
+
+audio::-webkit-media-controls-overflow-button,
+audio::-webkit-media-controls-overflow-menu-list,
+.custom-voice-audio-element::-webkit-media-controls-overflow-button,
+.custom-voice-audio-element::-webkit-media-controls-overflow-menu-list {
+  display: none !important;
 }
 
 .active-info {
@@ -9521,12 +10522,13 @@ background-color: #111c2d !important;
 }
 
 .attached-files-preview {
-  display: grid;
-  gap: 4px;
-  max-height: 190px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 140px;
   overflow-y: auto;
-  padding: 6px;
-  border-bottom: 1px solid var(--color-border);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--chat-line, var(--color-border));
 }
 
 .image-attachment img:hover {
@@ -9534,25 +10536,25 @@ background-color: #111c2d !important;
 }
 
 .attached-file-preview-bar {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  background-color: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
-  border-radius: 8px;
-  padding: 8px 12px;
-  border: 1px solid var(--color-border);
-  gap: 7px;
-  min-width: 0;
+  background-color: var(--chat-surface-2, color-mix(in srgb, var(--color-primary) 5%, var(--color-surface)));
+  border-radius: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--chat-line, var(--color-border));
+  gap: 8px;
+  max-width: 260px;
 }
 
 .attached-file-preview-bar .truncate {
-  max-width: min(260px, 45vw);
+  max-width: 140px;
 }
 
 .selected-file-thumbnail {
-  width: 30px;
-  height: 30px;
+  width: 56px;
+  height: 56px;
   flex: 0 0 auto;
-  border-radius: 6px;
+  border-radius: 10px;
   object-fit: cover;
 }
 
@@ -9763,8 +10765,35 @@ background-color: #111c2d !important;
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
 }
 
-.chat-workspace .message-card.is-own .message-body span,
-.chat-workspace .message-card.mine .message-body span {
+.chat-workspace .message-body.is-audio-only,
+.chat-workspace .message-card.is-own .message-body.is-audio-only,
+.chat-workspace .message-card.mine .message-body.is-audio-only,
+.chat-workspace .message-card.is-audio-only .message-body,
+.chat-workspace .message-card.is-audio-only.is-own .message-body,
+.chat-workspace .message-card.is-audio-only.mine .message-body,
+.chat-workspace .message-card.is-audio-only .message-content,
+.chat-workspace .message-card.is-audio-only.mine .message-content,
+.chat-workspace .message-card.is-audio-only .message-bubble-wrapper,
+.chat-workspace .call-msg-bubble.is-audio-only,
+.chat-workspace .call-chat-message.is-audio-only .call-msg-bubble,
+.chat-workspace .call-chat-message.is-audio-only.is-own .call-msg-bubble,
+.message-body.is-audio-only,
+.message-card.is-audio-only .message-body,
+.message-card.is-audio-only .message-content,
+.call-msg-bubble.is-audio-only,
+div.message-body.is-audio-only,
+div.message-card.mine div.message-body.is-audio-only,
+div.message-card.is-own div.message-body.is-audio-only {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.chat-workspace .message-card.is-own .message-body .message-text-segment,
+.chat-workspace .message-card.mine .message-body .message-text-segment {
   color: #ffffff !important;
 }
 
@@ -10882,6 +11911,21 @@ background-color: #111c2d !important;
   color: #38bdf8;
 }
 
+.fullscreen-media-viewer-dialog {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.fullscreen-media-viewer-dialog .el-dialog__header {
+  display: none !important;
+}
+.fullscreen-media-viewer-dialog .el-dialog__body {
+  padding: 0 !important;
+  height: 100vh !important;
+  width: 100vw !important;
+  overflow: hidden !important;
+  background: #121212 !important;
+}
+
 .context-pinned-list {
   display: flex;
   flex-direction: column;
@@ -10941,12 +11985,12 @@ background-color: #111c2d !important;
 .context-desc-text {
   margin: 0;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--chat-ink, #334155);
   line-height: 1.5;
-  background: rgba(15, 23, 42, 0.4);
+  background: var(--chat-surface-2, rgba(241, 245, 249, 0.8));
   padding: 10px;
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.04);
+  border: 1px solid var(--chat-line, rgba(226, 232, 240, 0.8));
 }
 
 .context-edit-desc-btn {
@@ -10955,19 +11999,20 @@ background-color: #111c2d !important;
   gap: 6px;
   padding: 8px 12px;
   border-radius: 6px;
-  border: 1px solid rgba(255,255,255,0.1);
-  background: rgba(255,255,255,0.03);
-  color: #cbd5e1;
+  border: 1px solid var(--chat-line, rgba(203, 213, 225, 0.6));
+  background: var(--chat-surface, #ffffff);
+  color: var(--chat-ink, #1e293b);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
 .context-edit-desc-btn:hover {
-  background: rgba(255,255,255,0.08);
-  color: #fff;
+  background: var(--chat-accent, #0ea5e9);
+  color: #ffffff;
+  border-color: var(--chat-accent, #0ea5e9);
 }
 
 .context-collapsible-group {
@@ -10985,7 +12030,7 @@ background-color: #111c2d !important;
   justify-content: space-between;
   font-size: 13px;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--chat-ink, #1e293b);
   cursor: pointer;
   padding: 8px 0;
   list-style: none;
@@ -11007,7 +12052,7 @@ background-color: #111c2d !important;
 
 .context-empty-small {
   font-size: 11px;
-  color: #64748b;
+  color: var(--chat-muted, #64748b);
   padding: 8px 0;
 }
 
@@ -11070,14 +12115,15 @@ background-color: #111c2d !important;
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 6px;
-  background: rgba(15, 23, 42, 0.4);
-  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 8px;
+  background: var(--chat-surface-2);
+  border: 1px solid var(--chat-line);
   text-decoration: none;
+  color: var(--chat-ink);
 }
 
 .context-file-item:hover, .context-link-item:hover {
-  background: rgba(30, 41, 59, 0.6);
+  background: var(--chat-surface-hover, rgba(59, 130, 246, 0.08));
 }
 
 .file-item-info, .link-item-info {
@@ -11090,7 +12136,7 @@ background-color: #111c2d !important;
 .file-name {
   font-size: 12px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--chat-ink);
 }
 
 .file-size, .link-meta {
@@ -11432,6 +12478,21 @@ background-color: #111c2d !important;
   background: #ef4444;
   color: #ffffff;
   border-color: #ef4444;
+}
+
+.sidebar-see-more-btn {
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: var(--chat-surface-2) !important;
+  color: var(--chat-accent) !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+}
+
+.sidebar-see-more-btn:hover {
+  background: var(--chat-accent-soft) !important;
 }
 
 @media (prefers-reduced-motion: reduce) { .project-chevron { transition: none; } }
