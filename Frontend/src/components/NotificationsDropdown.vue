@@ -66,7 +66,7 @@
                     <el-button size="small" :loading="invitationActionId === notification.id" @click="declineInvitation(notification)">Từ chối</el-button>
                   </div>
                   <div v-else-if="isResolvedInvitation(notification)" class="invitation-resolved">
-                    {{ notification.actionState === 'Accepted' ? 'Bạn đã tham gia dự án này.' : 'Bạn đã từ chối lời mời tham gia dự án này.' }}
+                    {{ resolvedInvitationText(notification) }}
                   </div>
                 </div>
                 <div v-if="!notification.isRead" class="unread-dot-box" @click.stop="markAsRead(notification)">
@@ -259,14 +259,36 @@ const handleDropdownOpen = (visible) => {
   }
 }
 
+const isSiteAccountLinkNotification = (notification) =>
+  ['SITE_ACCOUNT_LINK_REQUEST', 'SITE_ACCOUNT_LINK_RESOLVED'].includes(notification?.notificationType?.toUpperCase())
+
+const resolvedInvitationText = (notification) => {
+  if (isSiteAccountLinkNotification(notification)) {
+    return notification.actionState === 'Accepted'
+      ? 'Yêu cầu liên kết tài khoản site chủ đã được chấp thuận.'
+      : 'Yêu cầu liên kết tài khoản site chủ đã bị từ chối.'
+  }
+  return notification.actionState === 'Accepted'
+    ? 'Bạn đã tham gia dự án này.'
+    : 'Bạn đã từ chối lời mời tham gia dự án này.'
+}
+
 const acceptInvitation = async (notification) => {
   if (!isPendingInvitation(notification) || invitationActionId.value) return
   invitationActionId.value = notification.id
   try {
-    await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/accept`)
+    if (isSiteAccountLinkNotification(notification)) {
+      await axiosClient.post(`/site-account-links/${notification.relatedSiteAccountLinkRequestId}/accept`)
+    } else {
+      await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/accept`)
+    }
     notification.actionState = 'Accepted'
     notification.isRead = true
     await fetchUnreadCount()
+    if (isSiteAccountLinkNotification(notification)) {
+      await router.push('/home/for-you')
+      return
+    }
     await navigateNotification(router, notification, {
       fetchProject: async projectId => {
         const projectResponse = await axiosClient.get(`/projects/${projectId}`)
@@ -286,7 +308,11 @@ const declineInvitation = async (notification) => {
   if (!isPendingInvitation(notification) || invitationActionId.value) return
   invitationActionId.value = notification.id
   try {
-    await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/decline`)
+    if (isSiteAccountLinkNotification(notification)) {
+      await axiosClient.post(`/site-account-links/${notification.relatedSiteAccountLinkRequestId}/decline`)
+    } else {
+      await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/decline`)
+    }
     notification.actionState = 'Declined'
     notification.isRead = true
     await fetchUnreadCount()

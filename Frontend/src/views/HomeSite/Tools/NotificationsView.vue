@@ -63,7 +63,7 @@
                 <button type="button" @click="declineInvitation(notification)">Từ chối</button>
               </div>
               <div v-else-if="isResolvedInvitation(notification)" class="invitation-resolved">
-                {{ notification.actionState === 'Accepted' ? 'Bạn đã tham gia dự án này.' : 'Bạn đã từ chối lời mời tham gia dự án này.' }}
+                {{ resolvedInvitationText(notification) }}
               </div>
             </div>
             <div v-if="!notification.isRead" class="notif-status unread"></div>
@@ -155,11 +155,29 @@ const openNotification = async (notification) => {
   }
 }
 
+const isSiteAccountLinkNotification = (notification) =>
+  ['SITE_ACCOUNT_LINK_REQUEST', 'SITE_ACCOUNT_LINK_RESOLVED'].includes(notification?.notificationType?.toUpperCase())
+
+const resolvedInvitationText = (notification) => {
+  if (isSiteAccountLinkNotification(notification)) {
+    return notification.actionState === 'Accepted'
+      ? 'Yêu cầu liên kết tài khoản site chủ đã được chấp thuận.'
+      : 'Yêu cầu liên kết tài khoản site chủ đã bị từ chối.'
+  }
+  return notification.actionState === 'Accepted'
+    ? 'Bạn đã tham gia dự án này.'
+    : 'Bạn đã từ chối lời mời tham gia dự án này.'
+}
+
 const acceptInvitation = async (notification) => {
   if (!isPendingInvitation(notification) || invitationActionId.value) return
   invitationActionId.value = notification.id
   try {
-    await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/accept`)
+    if (isSiteAccountLinkNotification(notification)) {
+      await axiosClient.post(`/site-account-links/${notification.relatedSiteAccountLinkRequestId}/accept`)
+    } else {
+      await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/accept`)
+    }
     notification.actionState = 'Accepted'
     notification.isRead = true
   } catch (error) {
@@ -173,7 +191,11 @@ const declineInvitation = async (notification) => {
   if (!isPendingInvitation(notification) || invitationActionId.value) return
   invitationActionId.value = notification.id
   try {
-    await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/decline`)
+    if (isSiteAccountLinkNotification(notification)) {
+      await axiosClient.post(`/site-account-links/${notification.relatedSiteAccountLinkRequestId}/decline`)
+    } else {
+      await axiosClient.post(`/project-invitations/${notification.relatedInvitationId}/decline`)
+    }
     notification.actionState = 'Declined'
     notification.isRead = true
   } catch (error) {
@@ -212,33 +234,33 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.notifications-page { color: var(--color-text-primary); background: var(--color-bg); min-height: 100vh; }
+.notifications-page { color: #172B4D; background: #fff; min-height: 100vh; }
 .page-header { padding: 32px 40px 16px; }
 .page-header h1 { font-size: 24px; font-weight: 500; margin: 0; }
 .notifications-layout { display: flex; gap: 32px; padding: 0 40px 40px; }
 .filters-sidebar { width: 220px; display: flex; flex-direction: column; gap: 4px; }
-.filter-btn { display: flex; align-items: center; gap: 12px; border: 0; background: transparent; padding: 8px 12px; border-radius: 3px; color: var(--color-text-secondary); cursor: pointer; text-align: left; }
-.filter-btn.active { background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface)); color: color-mix(in srgb, var(--color-accent) 58%, var(--color-text-primary)); font-weight: 600; }
+.filter-btn { display: flex; align-items: center; gap: 12px; border: 0; background: transparent; padding: 8px 12px; border-radius: 3px; color: #42526E; cursor: pointer; text-align: left; }
+.filter-btn.active { background: #E6FCFF; color: #0052CC; font-weight: 600; }
 .notifications-main { flex: 1; min-width: 0; max-width: 900px; }
-.main-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid var(--color-border); margin-bottom: 16px; }
+.main-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid #DFE1E6; margin-bottom: 16px; }
 .main-header h2 { font-size: 16px; margin: 0; }
 .header-actions { display: flex; gap: 24px; align-items: center; }
-.text-action-btn { background: transparent; border: 0; color: color-mix(in srgb, var(--color-accent) 58%, var(--color-text-primary)); cursor: pointer; }
-.toggle-wrapper { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--color-text-secondary); }
-.time-group-title { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 8px; }
-.notification-item { width: 100%; min-width: 0; box-sizing: border-box; display: flex; gap: 16px; padding: 16px 0; border: 0; border-bottom: 1px solid var(--color-border); background: transparent; color: var(--color-text-primary); text-align: left; cursor: pointer; }
-.notification-item:hover { background: var(--color-surface-hover); }
-.notification-item:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-.notif-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--sp-blue-700); color: var(--color-text-inverse); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
-.notif-avatar.read { background: var(--color-surface-hover); color: var(--color-text-secondary); }
+.text-action-btn { background: transparent; border: 0; color: #0052CC; cursor: pointer; }
+.toggle-wrapper { display: flex; gap: 8px; align-items: center; font-size: 13px; color: #5E6C84; }
+.time-group-title { font-size: 12px; color: #5E6C84; margin-bottom: 8px; }
+.notification-item { width: 100%; min-width: 0; box-sizing: border-box; display: flex; gap: 16px; padding: 16px 0; border: 0; border-bottom: 1px solid #DFE1E6; background: transparent; text-align: left; cursor: pointer; }
+.notification-item:hover { background: #FAFBFC; }
+.notification-item:focus-visible { outline: 2px solid var(--home-accent, #0052CC); outline-offset: 2px; }
+.notif-avatar { width: 32px; height: 32px; border-radius: 50%; background: #172B4D; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.notif-avatar.read { background: #6B778C; }
 .notif-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .notif-header { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 14px; }
-.notif-time { color: var(--color-text-secondary); margin-left: 8px; }
-.notif-link { color: var(--color-text-primary); font-size: 14px; }
-.notif-meta { color: var(--color-text-secondary); font-size: 12px; }
+.notif-time { color: #5E6C84; margin-left: 8px; }
+.notif-link { color: #172B4D; font-size: 14px; }
+.notif-meta { color: #5E6C84; font-size: 12px; }
 .notif-status { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; margin-top: 6px; }
-.notif-status.unread { background: color-mix(in srgb, var(--color-accent) 58%, var(--color-text-primary)); }
-.empty-state { padding: 48px 0; color: var(--color-text-secondary); text-align: center; }
+.notif-status.unread { background: #0052CC; }
+.empty-state { padding: 48px 0; color: #5E6C84; text-align: center; }
 
 .notif-header strong,
 .notif-link,

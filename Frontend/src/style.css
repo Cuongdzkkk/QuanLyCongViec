@@ -56,8 +56,7 @@
   --color-text-secondary: color-mix(in srgb, var(--color-text-primary) 70%, transparent); /* Labels */
   --color-text-muted: color-mix(in srgb, var(--color-text-primary) 50%, transparent);    /* Placeholders */
   --color-text-disabled: color-mix(in srgb, var(--color-text-primary) 30%, transparent);
-  --color-text-inverse: #ffffff;
-  --color-on-accent: var(--color-text-inverse);
+  --color-text-inverse: #ffffff;  
   
   --color-border: var(--sa-border);       /* Slate-200 */
   --color-border-hover: #cbd5e1;
@@ -159,7 +158,6 @@
   
   --color-text-primary: #e2e8f0;   /* Light Slate */
   --color-text-inverse: #ffffff;
-  --color-on-accent: var(--color-text-inverse);
   
   --color-border: var(--sa-border);       
   --color-border-hover: #3a5272;
@@ -2556,366 +2554,6 @@ textarea {
   display: none !important;
 }
 
-/* Theme consistency for the Home workspace and public Enterprise modal.
- * These views still contain legacy light-only declarations; keep their
- * presentation on the shared semantic token contract without changing
- * component behavior or route/data logic. */
-.notifications-page,
-.team-list-page,
-.team-kudos-container,
-.people-directory-layout,
-.goals-dashboard-layout,
-.start-page-wrapper {
-  color: var(--color-text-primary) !important;
-  background: var(--color-bg) !important;
-}
-
-.notifications-page .page-header h1,
-.notifications-page .main-header h2,
-.team-list-page .section-header h2,
-.team-kudos-container .section-header h2,
-.people-directory-layout .section-header h2,
-.goals-dashboard-layout .section-header h2,
-.people-directory-layout .people-card > div[style*="font-size"],
-.people-directory-layout .people-card > div[style*="color"] {
-  color: var(--color-text-primary) !important;
-}
-
-.notifications-page .filter-btn,
-.notifications-page .toggle-wrapper,
-.notifications-page .time-group-title,
-.notifications-page .notif-time,
-.notifications-page .notif-meta,
-.notifications-page .empty-state,
-.team-list-page .search-icon,
-.team-list-page .team-meta,
-.team-list-page .empty-state-grid,
-.people-directory-layout .search-icon,
-.people-directory-layout .empty-state,
-.goals-dashboard-layout .search-icon,
-.goals-dashboard-layout .progress-text,
-.goals-dashboard-layout .empty-state p {
-  color: var(--color-text-secondary) !important;
-}
-
-.notifications-page .main-header,
-.notifications-page .notification-item,
-.team-list-page .view-toggle,
-.team-list-page .team-card,
-.team-list-page .team-card-cover,
-.people-directory-layout .people-card,
-.people-directory-layout .jira-table,
-.goals-dashboard-layout .empty-state-banner,
-.goals-dashboard-layout .table-container,
-.start-page-wrapper .card-section,
-.start-page-wrapper .explore-section,
-.start-page-wrapper .recent-site-card {
-  border-color: var(--color-border) !important;
-  background: var(--color-surface) !important;
-}
-
-.notifications-page .filter-btn.active,
-.notifications-page .notification-item:hover,
-.team-list-page .toggle-btn,
-.team-list-page .toggle-btn:hover,
-.people-directory-layout .filter-chip,
-.people-directory-layout .filter-chip:hover,
-.people-directory-layout .search-input:hover,
-.goals-dashboard-layout .search-input:hover,
-.goals-dashboard-layout .filter-btn,
-.goals-dashboard-layout .filter-btn:hover,
-.start-page-wrapper .site-list-item,
-.start-page-wrapper .site-list-item:hover {
-  color: var(--color-text-primary) !important;
-  background: var(--color-surface-hover) !important;
-  border-color: var(--color-border) !important;
-}
-
-.notifications-page .filter-btn.active,
-.notifications-page .text-action-btn,
-.notifications-page .notif-status.unread,
-.team-list-page .toggle-btn.active,
-.team-list-page .team-name:hover,
-.team-list-page .team-name-text:hover,
-.people-directory-layout .user-name,
-.people-directory-layout .empty-icon-wrapper,
-.goals-dashboard-layout .goal-icon,
-.goals-dashboard-layout .goal-title:hover,
-.goals-dashboard-layout .empty-illustration,
-.start-page-wrapper .create-site-link,
-.start-page-wrapper .different-site-link,
-.start-page-wrapper .join-link {
-  color: var(--color-accent) !important;
-}
-
-.notifications-page .filter-btn.active,
-.notifications-page .notif-status.unread,
-.team-list-page .toggle-btn.active,
-.people-directory-layout .empty-icon-wrapper,
-.goals-dashboard-layout .empty-illustration {
-  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface)) !important;
-}
-
-.notifications-page .notification-item,
-.people-directory-layout .jira-table th,
-.people-directory-layout .jira-table td,
-.goals-dashboard-layout .jira-table th,
-.goals-dashboard-layout .jira-table td {
-  border-bottom-color: var(--color-border) !important;
-}
-
-.team-list-page .search-input,
-.people-directory-layout .search-input,
-.goals-dashboard-layout .search-input,
-.people-directory-layout .modal-content,
-.goals-dashboard-layout .modal-content,
-.start-page-wrapper .jira-modal,
-.start-page-wrapper .site-list-item {
-  color: var(--color-text-primary) !important;
-  background: var(--color-input-bg, var(--color-surface)) !important;
-  border-color: var(--color-border) !important;
-}
-
-.team-list-page .search-input:focus,
-.people-directory-layout .search-input:focus,
-.goals-dashboard-layout .search-input:focus,
-.start-page-wrapper .jira-input-wrapper:focus-within {
-  background: var(--color-input-bg, var(--color-surface)) !important;
-  border-color: var(--color-accent) !important;
-}
-
-.team-list-page .team-avatar,
-.team-list-page .team-avatar-small,
-.people-directory-layout .user-avatar,
-.goals-dashboard-layout .owner-avatar {
-  border-color: var(--color-surface) !important;
-}
-
-.team-kudos-container .kudo-card {
-  background: var(--color-surface) !important;
-  border-color: var(--color-border) !important;
-}
-
-.team-kudos-container .kudo-sender,
-.team-kudos-container .kudo-message,
-.team-kudos-container .kudo-date {
-  color: var(--color-text-primary) !important;
-}
-
-.team-kudos-container .kudo-date,
-.team-kudos-container .kudo-icon {
-  color: var(--color-text-secondary) !important;
-}
-
-.team-kudos-container .give-kudos-overlay {
-  color: var(--color-text-primary) !important;
-  background: var(--color-bg) !important;
-}
-
-.team-kudos-container .give-kudos-overlay .dropdown-menu,
-.team-kudos-container .give-kudos-overlay input,
-.team-kudos-container .give-kudos-overlay textarea {
-  color: var(--color-text-primary) !important;
-  background: var(--color-input-bg, var(--color-surface)) !important;
-  border-color: var(--color-border) !important;
-}
-
-.team-kudos-container .give-kudos-overlay .dropdown-menu span,
-.team-kudos-container .give-kudos-overlay .dropdown-menu label,
-.team-kudos-container .give-kudos-overlay .dropdown-menu h5,
-.team-kudos-container .give-kudos-overlay .kudos-editor {
-  color: var(--color-text-primary) !important;
-}
-
-.team-kudos-container .give-kudos-overlay [style*="background: white"],
-.team-kudos-container .give-kudos-overlay [style*="background: #E6FCFF"] {
-  background: var(--color-surface) !important;
-}
-
-.goals-dashboard-layout .status-on-track {
-  background: var(--color-success-bg) !important;
-  color: var(--color-success) !important;
-}
-
-.goals-dashboard-layout .status-at-risk {
-  background: var(--color-warning-bg) !important;
-  color: var(--color-warning) !important;
-}
-
-.goals-dashboard-layout .status-off-track {
-  background: var(--color-danger-bg) !important;
-  color: var(--color-danger) !important;
-}
-
-.goals-dashboard-layout .status-done {
-  background: color-mix(in srgb, var(--color-accent) 16%, var(--color-surface)) !important;
-  color: var(--color-accent) !important;
-}
-
-.goals-dashboard-layout .status-pending,
-.goals-dashboard-layout .status-archived {
-  background: var(--color-surface-hover) !important;
-  color: var(--color-text-secondary) !important;
-}
-
-[data-theme='light'] .enterprise-modal {
-  color: var(--color-text-primary) !important;
-  background: var(--color-surface) !important;
-  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border)) !important;
-  box-shadow: 0 30px 90px color-mix(in srgb, var(--color-text-primary) 18%, transparent) !important;
-}
-
-[data-theme='light'] .enterprise-modal .close-button,
-[data-theme='light'] .enterprise-modal .intro,
-[data-theme='light'] .enterprise-modal label,
-[data-theme='light'] .enterprise-modal .privacy-note,
-[data-theme='light'] .enterprise-modal .success-state p:not(.eyebrow) {
-  color: var(--color-text-secondary) !important;
-}
-
-[data-theme='light'] .enterprise-modal label input,
-[data-theme='light'] .enterprise-modal label select,
-[data-theme='light'] .enterprise-modal label textarea {
-  color: var(--color-text-primary) !important;
-  background: var(--color-input-bg) !important;
-  border-color: var(--color-border) !important;
-}
-
-[data-theme='light'] .enterprise-modal label input::placeholder,
-[data-theme='light'] .enterprise-modal label textarea::placeholder {
-  color: var(--color-text-muted) !important;
-}
-
-@media (max-width: 760px) {
-  .notifications-page .page-header,
-  .team-list-page,
-  .team-kudos-container,
-  .people-directory-layout,
-  .goals-dashboard-layout,
-  .start-page-wrapper {
-    min-width: 0 !important;
-  }
-
-  .team-kudos-container .give-kudos-overlay .dropdown-menu {
-    max-width: calc(100vw - 24px) !important;
-  }
-}
-
-/* Scoped specificity guard: component-local legacy rules use scoped
- * attributes and, in a few cases, !important. Keep the token contract
- * authoritative after those rules are compiled. */
-html[data-theme] body .notifications-page,
-html[data-theme] body .team-list-page,
-html[data-theme] body .team-kudos-container,
-html[data-theme] body .people-directory-layout,
-html[data-theme] body .goals-dashboard-layout,
-html[data-theme] body .start-page-wrapper {
-  color: var(--color-text-primary) !important;
-  background: var(--color-bg) !important;
-}
-
-html[data-theme] body .notifications-page .page-header h1,
-html[data-theme] body .notifications-page .main-header h2,
-html[data-theme] body .team-list-page .section-header h2,
-html[data-theme] body .team-kudos-container .section-header h2,
-html[data-theme] body .people-directory-layout .section-header h2,
-html[data-theme] body .goals-dashboard-layout .section-header h2,
-html[data-theme] body .teams-wrapper .tab-link,
-html[data-theme] body .goals-dashboard-layout .tab-btn,
-html[data-theme] body .people-directory-layout .tab-link,
-html[data-theme] body .team-list-page .team-name-card,
-html[data-theme] body .team-list-page .team-name-text,
-html[data-theme] body .team-kudos-container .kudo-sender,
-html[data-theme] body .team-kudos-container .kudo-message,
-html[data-theme] body .people-directory-layout .user-name,
-html[data-theme] body .people-directory-layout .jira-table td,
-html[data-theme] body .goals-dashboard-layout .jira-table td {
-  color: var(--color-text-primary) !important;
-}
-
-html[data-theme] body .notifications-page .main-header,
-html[data-theme] body .notifications-page .notification-item,
-html[data-theme] body .team-list-page .team-card,
-html[data-theme] body .team-list-page .team-card-cover,
-html[data-theme] body .people-directory-layout .people-card,
-html[data-theme] body .goals-dashboard-layout .empty-state-banner,
-html[data-theme] body .goals-dashboard-layout .table-container,
-html[data-theme] body .start-page-wrapper .card-section,
-html[data-theme] body .start-page-wrapper .explore-section,
-html[data-theme] body .start-page-wrapper .recent-site-card,
-html[data-theme] body .team-kudos-container .kudo-card {
-  background: var(--color-surface) !important;
-  border-color: var(--color-border) !important;
-}
-
-html[data-theme] body .team-list-page .search-input,
-html[data-theme] body .people-directory-layout .search-input,
-html[data-theme] body .goals-dashboard-layout .search-input,
-html[data-theme] body .team-kudos-container .give-kudos-overlay input,
-html[data-theme] body .team-kudos-container .give-kudos-overlay textarea,
-html[data-theme] body .start-page-wrapper .jira-input,
-html[data-theme] body .start-page-wrapper .site-list-item {
-  color: var(--color-text-primary) !important;
-  background: var(--color-input-bg, var(--color-surface)) !important;
-  border-color: var(--color-border) !important;
-}
-
-html[data-theme] body .team-kudos-container .give-kudos-overlay,
-html[data-theme] body .team-kudos-container .give-kudos-overlay .dropdown-menu {
-  color: var(--color-text-primary) !important;
-  background: var(--color-bg) !important;
-  border-color: var(--color-border) !important;
-}
-
-html[data-theme] body .team-kudos-container .give-kudos-overlay .dropdown-menu {
-  background: var(--color-surface) !important;
-}
-
-html[data-theme] body .team-kudos-container .give-kudos-overlay .dropdown-menu span,
-html[data-theme] body .team-kudos-container .give-kudos-overlay .dropdown-menu label,
-html[data-theme] body .team-kudos-container .give-kudos-overlay .dropdown-menu h5,
-html[data-theme] body .team-kudos-container .give-kudos-overlay .kudos-editor,
-html[data-theme] body .team-kudos-container .give-kudos-overlay .icon-btn {
-  color: var(--color-text-primary) !important;
-}
-
-html[data-theme] body .teams-wrapper .tab-link:hover,
-html[data-theme] body .goals-dashboard-layout .tab-btn:hover,
-html[data-theme] body .people-directory-layout .tab-link:hover {
-  color: var(--color-text-primary) !important;
-  background: color-mix(in srgb, var(--color-accent) 8%, transparent) !important;
-}
-
-html[data-theme] body .teams-wrapper .tab-link.active,
-html[data-theme] body .goals-dashboard-layout .tab-btn.active,
-html[data-theme] body .people-directory-layout .tab-link.active {
-  color: var(--color-accent) !important;
-  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface)) !important;
-  border-bottom-color: var(--color-accent) !important;
-}
-
-html[data-theme='light'] body .enterprise-modal {
-  color: var(--color-text-primary) !important;
-  background: var(--color-surface) !important;
-  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border)) !important;
-}
-
-html[data-theme='light'] body .enterprise-modal .close-button,
-html[data-theme='light'] body .enterprise-modal .intro,
-html[data-theme='light'] body .enterprise-modal label,
-html[data-theme='light'] body .enterprise-modal .privacy-note,
-html[data-theme='light'] body .enterprise-modal .success-state p:not(.eyebrow) {
-  color: var(--color-text-secondary) !important;
-}
-
-html[data-theme='light'] body .enterprise-modal label input,
-html[data-theme='light'] body .enterprise-modal label select,
-html[data-theme='light'] body .enterprise-modal label textarea {
-  color: var(--color-text-primary) !important;
-  background: var(--color-input-bg) !important;
-  border-color: var(--color-border) !important;
-}
-
 /* SprintA responsive consistency layer: keep dense workspace screens inside the shared theme. */
 .rewards-page,
 .teams-wrapper,
@@ -4111,4 +3749,174 @@ body .el-dropdown-menu.theme-dropdown .el-dropdown-menu__item.priority-none > i 
 .app-shell-title-wrap > p,
 .app-shell-header-subtitle {
   display: none !important;
+}
+
+/* STANDARD EMPTY STATE (PLACEHOLDER) */
+.empty-spaces-flat {
+  min-height: 204px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-align: center;
+}
+
+/* GLOBAL EMPTY STATE MATCHING WORK ITEMS */
+.empty-state-global {
+  min-height: 204px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 20px !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  text-align: center;
+  margin: 16px auto !important;
+}
+
+.empty-state-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.empty-state-action-btn:hover {
+  background: #eaf8ff;
+  border-color: #8bd5f7;
+  color: #0795d3;
+}
+.empty-state-action-btn:active,
+.empty-state-action-btn.active {
+  background: #eaf8ff !important;
+  border-color: #8bd5f7 !important;
+  color: #0795d3 !important;
+}
+.empty-state-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.empty-spaces-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  color: var(--color-accent);
+  font-size: 23px;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.12);
+}
+
+.empty-spaces-copy {
+  max-width: 380px;
+}
+
+.empty-spaces-copy h3 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.empty-spaces-copy p {
+  margin: 6px 0 0 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.empty-spaces-actions {
+  margin-top: 16px;
+}
+
+/* Shared full-information list view, matching the Work items spreadsheet. */
+.work-items-table-shell {
+  width: calc(100% + 36px);
+  margin-left: -18px;
+  margin-right: -18px;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  scrollbar-color: color-mix(in srgb, var(--sa-primary, var(--color-accent)) 32%, var(--color-border)) transparent;
+}
+
+@media (max-width: 768px) {
+  .work-items-table-shell {
+    width: calc(100% + 28px);
+    margin-left: -14px;
+    margin-right: -14px;
+  }
+}
+
+.work-items-style-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+  font-size: 13px;
+  background: var(--color-surface);
+}
+
+.work-items-style-table th {
+  padding: 14px 16px !important;
+  color: color-mix(in srgb, var(--color-text-primary) 78%, var(--color-text-muted));
+  font-size: 11px !important;
+  font-weight: 850 !important;
+  letter-spacing: .015em;
+  white-space: nowrap;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-table-header) 84%, var(--color-surface) 16%), var(--color-table-header));
+  border-bottom: 1px solid var(--color-border) !important;
+  border-right: 1px solid var(--color-border);
+}
+
+.work-items-style-table th i {
+  color: var(--sa-primary, var(--color-accent));
+  margin-right: 6px;
+  opacity: .88;
+}
+
+.work-items-style-table td {
+  height: 50px;
+  padding: 10px 14px !important;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--color-border) !important;
+  border-right: 1px solid var(--color-border);
+}
+
+.work-items-style-table tbody tr {
+  box-shadow: inset 3px 0 0 transparent;
+  transition: background .18s ease, box-shadow .18s ease;
+}
+
+.work-items-style-table tbody tr:hover {
+  box-shadow: inset 3px 0 0 var(--sa-primary, var(--color-accent));
+}
+
+.work-items-style-table tbody tr:hover > td {
+  background: color-mix(in srgb, var(--color-table-row-hover) 82%, var(--sa-primary, var(--color-accent)) 6%) !important;
 }

@@ -8,6 +8,7 @@ using TaskManagement.API.Realtime;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.API.Filters;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace TaskManagement.API.Controllers
@@ -34,6 +35,50 @@ namespace TaskManagement.API.Controllers
             _authorizationService = authorizationService;
         }
 
+        [HttpPut("{id}/{tab}/{itemId}")]
+        public async Task<IActionResult> UpdateTabItem(Guid workspaceId, Guid id, string tab, Guid itemId, [FromBody] GoalTabItemRequest request)
+        {
+            var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
+            var goal = await _context.Goals.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id && item.WorkspaceId == workspaceId);
+            if (goal == null) return NotFound();
+            var normalized = tab.ToLowerInvariant();
+            if (normalized == "lessons")
+            {
+                var item = await _context.GoalLessons.FirstOrDefaultAsync(x => x.Id == itemId && x.GoalId == id);
+                if (item == null) return NotFound(); if (item.CreatorId != userId) return Forbid(); item.Text = request.Text ?? request.Title ?? item.Text;
+            }
+            else if (normalized == "risks")
+            {
+                var item = await _context.GoalRisks.FirstOrDefaultAsync(x => x.Id == itemId && x.GoalId == id);
+                if (item == null) return NotFound(); if (item.CreatorId != userId) return Forbid(); item.Text = request.Text ?? request.Title ?? item.Text; item.Severity = request.Severity ?? item.Severity;
+            }
+            else if (normalized == "decisions")
+            {
+                var item = await _context.GoalDecisions.FirstOrDefaultAsync(x => x.Id == itemId && x.GoalId == id);
+                if (item == null) return NotFound(); if (item.CreatorId != userId) return Forbid(); item.Text = request.Text ?? request.Title ?? item.Text;
+            }
+            else return BadRequest("Unsupported goal tab.");
+            await _context.SaveChangesAsync();
+            return Ok(new { statusCode = 200 });
+        }
+
+        [HttpDelete("{id}/{tab}/{itemId}")]
+        public async Task<IActionResult> DeleteTabItem(Guid workspaceId, Guid id, string tab, Guid itemId)
+        {
+            var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? Guid.Empty.ToString());
+            object? item = tab.ToLowerInvariant() switch
+            {
+                "lessons" => await _context.GoalLessons.FirstOrDefaultAsync(x => x.Id == itemId && x.GoalId == id),
+                "risks" => await _context.GoalRisks.FirstOrDefaultAsync(x => x.Id == itemId && x.GoalId == id),
+                "decisions" => await _context.GoalDecisions.FirstOrDefaultAsync(x => x.Id == itemId && x.GoalId == id),
+                _ => null
+            };
+            if (item == null) return NotFound();
+            var creatorId = item switch { GoalLesson x => x.CreatorId, GoalRisk x => x.CreatorId, GoalDecision x => x.CreatorId, _ => Guid.Empty };
+            if (creatorId != userId) return Forbid();
+            _context.Remove(item); await _context.SaveChangesAsync(); return NoContent();
+        }
+
         [HttpGet]
         public async Task<IActionResult> GetAll(Guid workspaceId)
         {
@@ -53,7 +98,6 @@ namespace TaskManagement.API.Controllers
         }
 
         [HttpPost]
-        [RequirePermission("goals.dashboard.create")]
         public async Task<IActionResult> Create(Guid workspaceId, [FromBody] object dto)
         {
             var userIdValue = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -288,5 +332,12 @@ namespace TaskManagement.API.Controllers
 
             return fallback ?? Guid.Empty;
         }
+    }
+
+    public class GoalTabItemRequest
+    {
+        public string? Title { get; set; }
+        public string? Text { get; set; }
+        public string? Severity { get; set; }
     }
 }

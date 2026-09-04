@@ -1,0 +1,13 @@
+
+> duan@0.0.0 dev
+> vite --host 0.0.0.0 --host 0.0.0.0
+
+
+  [32m[1mVITE[22m v8.1.5[39m  [2mready in [0m[1m1517[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.1.12:[1m5173[22m/[39m
+[2m18:42:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [optimizer] bundling dependencies...
+[2m18:42:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [optimizer] bundling dependencies...
+[2m18:42:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mdependencies optimized: [33melement-plus/es/components/alert/style/css, element-plus/es/components/badge/style/css, element-plus/es/components/date-picker/style/css, element-plus/es/components/dialog/style/css, element-plus/es/components/drawer/style/css, element-plus/es/components/dropdown-item/style/css, element-plus/es/components/dropdown-menu/style/css, element-plus/es/components/dropdown/style/css, element-plus/es/components/loading/style/css, element-plus/es/components/option/style/css, element-plus/es/components/popover/style/css, element-plus/es/components/progress/style/css, element-plus/es/components/select/style/css, element-plus/es/components/switch/style/css, element-plus/es/components/tab-pane/style/css, element-plus/es/components/tabs/style/css, element-plus/es/components/tag/style/css, element-plus/es/components/tooltip/style/css[32m[39m
+[2m18:42:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32moptimized dependencies changed. reloading[39m

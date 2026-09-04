@@ -15,234 +15,176 @@
       </template>
     </ProjectPageHeader>
 
-    <el-tabs v-model="activeTab" class="nexus-tabs">
-      <!-- TAB 1: MEMBERS -->
-      <el-tab-pane label="Danh sách thành viên" name="members">
-        <ProjectPageToolbar
-          :showSearch="true"
-          v-model:searchQuery="searchQuery"
-          searchPlaceholder="Tìm kiếm thành viên theo tên/email..."
-        >
-          <template #filters>
-            <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
-              <button
-                class="timeline-filter-trigger icon-only-trigger"
-                type="button"
-                aria-label="Filters"
-                title="Bộ lọc"
-                @click="toggleFilterDropdown"
-                :class="{ active: showFilterDropdown || activeFilters.length }"
-              >
-                <i class="fa-solid fa-filter"></i>
-                <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
-              </button>
-              <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
-                <FilterBar
-                  v-model:filters="activeFilters"
-                  :fields="memberFilterFields"
-                  :operators="memberOperators"
-                  :custom-value-meta="customMemberValueMeta"
-                  :active="showFilterDropdown"
-                />
-              </div>
+    <div class="yw-tabs" style="margin-top: 18px">
+      <button class="tab-btn" :class="{ 'active': activeTab === 'members' }" @click="activeTab = 'members'">Danh sách thành viên</button>
+      <button class="tab-btn" :class="{ 'active': activeTab === 'teams' }" @click="activeTab = 'teams'">Danh sách team</button>
+    </div>
+
+    <ProjectPageToolbar
+      v-if="activeTab === 'members'"
+      :showSearch="true"
+      v-model:searchQuery="searchQuery"
+      searchPlaceholder="Tìm kiếm thành viên theo tên/email..."
+    >
+      <template #filters>
+        <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
+          <button
+            class="timeline-filter-trigger icon-only-trigger"
+            type="button"
+            aria-label="Filters"
+            title="Bộ lọc"
+            @click="toggleFilterDropdown"
+            :class="{ active: showFilterDropdown || activeFilters.length }"
+          >
+            <i class="fa-solid fa-filter"></i>
+            <span v-if="activeFilters.length" class="filter-count">{{ activeFilters.length }}</span>
+          </button>
+          <div class="plane-dropdown-menu filter-dropdown-menu" v-show="showFilterDropdown" @click.stop>
+            <FilterBar
+              v-model:filters="activeFilters"
+              :fields="memberFilterFields"
+              :operators="memberOperators"
+              :custom-value-meta="customMemberValueMeta"
+              :active="showFilterDropdown"
+            />
+          </div>
+        </div>
+      </template>
+      <template #sort>
+        <ToolbarSortMenu v-model="memberSortBy" v-model:direction="memberSortDirection" label="Sort members" :options="memberSortOptions" />
+      </template>
+    </ProjectPageToolbar>
+
+    <ProjectPageToolbar
+      v-if="activeTab === 'teams'"
+      :showSearch="true"
+      v-model:searchQuery="teamSearchQuery"
+      searchPlaceholder="Tìm kiếm team..."
+    >
+      <template #sort>
+        <ToolbarSortMenu v-model="teamSortBy" v-model:direction="teamSortDirection" label="Sort teams" :options="teamSortOptions" />
+      </template>
+    </ProjectPageToolbar>
+
+    <!-- TAB 1: MEMBERS -->
+    <div v-show="activeTab === 'members'" :style="(loadingMembers || filteredMembers.length > 0) ? 'margin-top: 24px' : ''">
+      <div v-if="loadingMembers" class="loading-state">
+        <el-icon class="is-loading"><Loading /></el-icon> Đang tải dữ liệu...
+      </div>
+      <ProjectEmptyState
+        v-else-if="filteredMembers.length === 0"
+        icon="fa-solid fa-users-slash"
+        title="Không tìm thấy thành viên nào phù hợp."
+        description="Thử điều chỉnh bộ lọc hoặc từ khóa tìm kiếm."
+      >
+        <template #action>
+          <button class="empty-spaces-btn" type="button" @click="showAddMemberModal = true">
+            <i class="fa-solid fa-plus"></i> Thêm thành viên
+          </button>
+        </template>
+      </ProjectEmptyState>
+      <WorkItemsListTable :columns="memberTableColumns" :rows="filteredMembers" min-width="1060" @row-click="row => goToMemberProfile(row.userId)">
+        <template #cell-member="{ row }">
+          <div class="member-info flex items-center gap-3">
+            <UserAvatar :user="row" :size="28" :fontSize="12" :clickable="false" />
+            <div class="member-details">
+              <span class="member-name">{{ row.fullName || row.email }}</span>
+              <span class="member-email">{{ row.email }}</span>
             </div>
-          </template>
-          <template #sort>
-            <ToolbarSortMenu v-model="memberSortBy" v-model:direction="memberSortDirection" label="Sort members" :options="memberSortOptions" />
-          </template>
-        </ProjectPageToolbar>
+          </div>
+        </template>
+        <template #cell-teams="{ row }">
+          <div v-if="row.teams && row.teams.length > 0" class="flex flex-wrap gap-1">
+            <el-tag v-for="team in row.teams" :key="team.id" size="small" type="info">{{ team.name }}</el-tag>
+          </div>
+          <span v-else class="text-sm text-gray-400 italic">Chưa có team</span>
+        </template>
+        <template #cell-role="{ row }">
+          <div @click.stop>
+            <el-select v-model="row.projectRole" size="small" popper-class="members-role-popper" @change="newRole => updateMemberRole(row.userId, newRole)" :disabled="isCurrentUser(row.userId)">
+              <el-option v-for="role in roleOptions" :key="role.value" :label="role.label" :value="role.value" />
+            </el-select>
+          </div>
+        </template>
+        <template #cell-joinedAt="{ row }">
+          <span class="muted-text">{{ formatDate(row.joinedAt) }}</span>
+        </template>
+        <template #cell-actions="{ row }">
+          <div @click.stop>
+            <el-dropdown trigger="click" placement="bottom-end">
+              <el-button text size="small" aria-label="Member actions" title="Member actions"><i class="fa-solid fa-ellipsis"></i></el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="removeMember(row.userId)" class="text-red-500"><i class="fa-solid fa-user-xmark mr-2"></i> Xóa khỏi dự án</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+        </template>
+      </WorkItemsListTable>
+    </div>
 
-        <div v-if="loadingMembers" class="loading-state">
-          <el-icon class="is-loading"><Loading /></el-icon> Đang tải dữ liệu...
-        </div>
-        <div v-else-if="filteredMembers.length === 0" class="empty-state">
-          <i class="fa-solid fa-users-slash empty-icon"></i>
-          <p>Không tìm thấy thành viên nào phù hợp.</p>
-        </div>
-        <div v-else class="table-container">
-        <el-table border v-resizable :data="filteredMembers" style="width: 100%" class="nexus-table">
-          <el-table-column min-width="200">
-            <template #header>
-              <i class="fa-solid fa-user-group"></i> Thành viên
-            </template>
-            <template #default="{ row }">
-              <div class="member-info cursor-pointer flex items-center gap-3" @click="goToMemberProfile(row.userId)">
-                <UserAvatar :user="row" :size="28" :fontSize="12" :clickable="false" />
-                <div class="member-details">
-                  <span class="member-name hover:text-blue-600 hover:underline" style="font-weight: 700; font-size: 13px; color: var(--color-text-primary);">{{ row.fullName || row.email }}</span>
-                  <span class="member-email" style="font-size: 12px; color: #5E6C84;">{{ row.email }}</span>
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column min-width="200">
-            <template #header>
-              <i class="fa-solid fa-people-group"></i> Team hiện tại
-            </template>
-            <template #default="{ row }">
-              <div v-if="row.teams && row.teams.length > 0" class="flex flex-wrap gap-1">
-                <el-tag v-for="team in row.teams" :key="team.id" size="small" type="info" class="mb-1">
-                  {{ team.name }}
-                </el-tag>
-              </div>
-              <span v-else class="text-sm text-gray-400 italic">Chưa có team</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column width="180">
-            <template #header>
-              <i class="fa-solid fa-user-lock"></i> Vai trò
-            </template>
-            <template #default="{ row }">
-              <el-select
-                v-model="row.projectRole"
-                size="small"
-                popper-class="members-role-popper"
-                @change="(newRole) => updateMemberRole(row.userId, newRole)"
-                :disabled="isCurrentUser(row.userId)"
-              >
-                <el-option
-                  v-for="role in roleOptions"
-                  :key="role.value"
-                  :label="role.label"
-                  :value="role.value"
-                />
-              </el-select>
-            </template>
-          </el-table-column>
-
-          <el-table-column width="150">
-            <template #header>
-              <i class="fa-regular fa-calendar"></i> Ngày tham gia
-            </template>
-            <template #default="{ row }">
-              <span class="text-sm text-gray-600">{{ formatDate(row.joinedAt) }}</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column width="80" align="right">
-            <template #default="{ row }">
-              <el-dropdown trigger="click" placement="bottom-end">
-                <el-button text size="small" aria-label="Member actions" title="Member actions">
-                  <i class="fa-solid fa-ellipsis"></i>
-                </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item @click="removeMember(row.userId)" class="text-red-500">
-                      <i class="fa-solid fa-user-xmark mr-2"></i> Xóa khỏi dự án
-                    </el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </template>
-          </el-table-column>
-        </el-table>
-        </div>
-      </el-tab-pane>
-
-      <!-- TAB 2: TEAMS -->
-      <el-tab-pane label="Danh sách team" name="teams">
-        <ProjectPageToolbar
-          :showSearch="true"
-          v-model:searchQuery="teamSearchQuery"
-          searchPlaceholder="Tìm kiếm team..."
-        >
-          <template #sort>
-            <ToolbarSortMenu v-model="teamSortBy" v-model:direction="teamSortDirection" label="Sort teams" :options="teamSortOptions" />
-          </template>
-        </ProjectPageToolbar>
-        <div v-if="loadingTeams" class="loading-state">
-          <el-icon class="is-loading"><Loading /></el-icon> Đang phân tích dữ liệu phòng ban...
-        </div>
-        <div v-else-if="linkedTeams.length === 0" class="empty-state">
-          <i class="fa-solid fa-users-rectangle empty-icon"></i>
-          <p>Chưa có team nào được liên kết với dự án này.</p>
-          <el-button type="primary" plain class="mt-4" @click="openLinkTeamModal">Liên kết Team ngay</el-button>
-        </div>
-        <div v-else class="table-container">
-        <el-table :data="linkedTeams" style="width: 100%" class="nexus-table">
-          <el-table-column min-width="220">
-            <template #header>
-              <i class="fa-solid fa-people-group"></i> Tên Đội ngũ / Team
-            </template>
-            <template #default="{ row }">
-              <div class="flex items-center">
-                <el-avatar :size="28" shape="square" :src="row.coverImage" class="bg-blue-100 text-blue-600 font-bold">
-                  {{ row.name ? row.name.substring(0,2).toUpperCase() : 'T' }}
-                </el-avatar>
-                <div class="flex flex-col ml-5">
-                  <span class="font-bold text-gray-900" style="font-size: 13px; color: var(--color-text-primary);">{{ row.name }}</span>
-                  <span class="text-xs text-gray-500">{{ row.description || 'Không có mô tả' }}</span>
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column width="160">
-            <template #header>
-              <i class="fa-solid fa-user-lock"></i> Vai trò / Quyền
-            </template>
-            <template #default="{ row }">
-              <el-tag size="small" :type="row.isDirectlyLinked ? 'primary' : 'info'" effect="plain">
-                {{ row.linkedRole || (row.isDirectlyLinked ? 'Team' : 'Thành viên độc lập') }}
-              </el-tag>
-            </template>
-          </el-table-column>
-
-          <el-table-column width="150">
-            <template #header>
-              <i class="fa-solid fa-user-group"></i> Thành viên
-            </template>
-            <template #default="{ row }">
-              <div class="flex items-center gap-2">
-                <el-tag size="small" type="info"><i class="fa-solid fa-user mr-1"></i> {{ row.projectMemberCount }}/{{ row.totalMemberCount }}</el-tag>
-                <div class="flex -space-x-2 overflow-hidden ml-1" v-if="row.projectMembers && row.projectMembers.length > 0">
-                  <UserAvatar v-for="user in row.projectMembers.slice(0, 3)" :key="user.id" :user="user" :size="24" :fontSize="10" class="border border-white" />
-                  <div v-if="row.projectMembers.length > 3" class="z-10 flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 border border-white text-[10px] font-medium text-gray-500">
-                    +{{ row.projectMembers.length - 3 }}
-                  </div>
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column width="200">
-            <template #header>
-              <i class="fa-solid fa-user-tie"></i> Quản lý
-            </template>
-            <template #default="{ row }">
-              <div class="flex items-center gap-2 cursor-pointer" v-if="row.manager" @click="goToMemberProfile(row.manager.id || row.manager.userId)">
-                <UserAvatar :user="row.manager" :size="24" :fontSize="10" :clickable="false" />
-                <span class="text-sm text-gray-700 hover:text-blue-600 hover:underline">{{ row.manager.name }}</span>
-              </div>
-              <span v-else class="text-sm text-gray-400 italic">Chưa có</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column width="80" align="right">
-            <template #default="{ row }">
-              <el-dropdown trigger="click" placement="bottom-end">
-                <el-button text size="small">
-                  <i class="fa-solid fa-ellipsis"></i>
-                </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item v-if="row.isDirectlyLinked" @click="unlinkTeam(row.id)" class="text-red-500">
-                      <i class="fa-solid fa-link-slash mr-2"></i> Hủy liên kết
-                    </el-dropdown-item>
-                    <el-dropdown-item v-else disabled>
-                      <i class="fa-solid fa-info-circle mr-2"></i> Team hiển thị do có thành viên
-                    </el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </template>
-          </el-table-column>
-        </el-table>
-        </div>
-      </el-tab-pane>
-    </el-tabs>
+    <!-- TAB 2: TEAMS -->
+    <div v-show="activeTab === 'teams'" :style="(loadingTeams || linkedTeams.length > 0) ? 'margin-top: 24px' : ''">
+      <div v-if="loadingTeams" class="loading-state">
+        <el-icon class="is-loading"><Loading /></el-icon> Đang phân tích dữ liệu phòng ban...
+      </div>
+      <ProjectEmptyState
+        v-else-if="linkedTeams.length === 0"
+        icon="fa-solid fa-users-rectangle"
+        title="Chưa có team nào được liên kết"
+        description="Liên kết team với dự án này để mọi người làm việc cùng nhau."
+      >
+        <template #action>
+          <button class="empty-spaces-btn" type="button" @click="openLinkTeamModal">
+            <i class="fa-solid fa-link"></i> Liên kết Team ngay
+          </button>
+        </template>
+      </ProjectEmptyState>
+      <WorkItemsListTable :columns="linkedTeamTableColumns" :rows="linkedTeams" min-width="1050" @row-click="row => row.manager && goToMemberProfile(row.manager.id || row.manager.userId)">
+        <template #cell-team="{ row }">
+          <div class="flex items-center gap-3">
+            <el-avatar :size="28" shape="square" :src="row.coverImage" class="bg-blue-100 text-blue-600 font-bold">{{ row.name ? row.name.substring(0, 2).toUpperCase() : 'T' }}</el-avatar>
+            <div class="flex flex-col">
+              <span class="font-bold text-gray-900" style="font-size: 13px; color: var(--color-text-primary);">{{ row.name }}</span>
+              <span class="text-xs text-gray-500">{{ row.description || 'Không có mô tả' }}</span>
+            </div>
+          </div>
+        </template>
+        <template #cell-role="{ row }">
+          <el-tag size="small" :type="row.isDirectlyLinked ? 'primary' : 'info'" effect="plain">{{ row.linkedRole || (row.isDirectlyLinked ? 'Team' : 'Thành viên độc lập') }}</el-tag>
+        </template>
+        <template #cell-members="{ row }">
+          <div class="flex items-center gap-2">
+            <el-tag size="small" type="info"><i class="fa-solid fa-user mr-1"></i> {{ row.projectMemberCount }}/{{ row.totalMemberCount }}</el-tag>
+            <div class="flex -space-x-2 overflow-hidden" v-if="row.projectMembers && row.projectMembers.length > 0">
+              <UserAvatar v-for="user in row.projectMembers.slice(0, 3)" :key="user.id" :user="user" :size="24" :fontSize="10" class="border border-white" />
+              <div v-if="row.projectMembers.length > 3" class="z-10 flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 border border-white text-[10px] font-medium text-gray-500">+{{ row.projectMembers.length - 3 }}</div>
+            </div>
+          </div>
+        </template>
+        <template #cell-manager="{ row }">
+          <div v-if="row.manager" class="flex items-center gap-2" @click.stop="goToMemberProfile(row.manager.id || row.manager.userId)">
+            <UserAvatar :user="row.manager" :size="24" :fontSize="10" :clickable="false" />
+            <span class="text-sm text-gray-700">{{ row.manager.name }}</span>
+          </div>
+          <span v-else class="text-sm text-gray-400 italic">Chưa có</span>
+        </template>
+        <template #cell-actions="{ row }">
+          <div @click.stop>
+            <el-dropdown trigger="click" placement="bottom-end">
+              <el-button text size="small"><i class="fa-solid fa-ellipsis"></i></el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-if="row.isDirectlyLinked" @click="unlinkTeam(row.id)" class="text-red-500"><i class="fa-solid fa-link-slash mr-2"></i> Hủy liên kết</el-dropdown-item>
+                  <el-dropdown-item v-else disabled><i class="fa-solid fa-info-circle mr-2"></i> Team hiển thị do có thành viên</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+        </template>
+      </WorkItemsListTable>
+    </div>
 
     <!-- Modal Mời Thành Viên -->
     <el-dialog v-model="showAddMemberModal" width="560px" destroy-on-close append-to-body class="sa-data-dialog sa-modal--form" :show-close="false">
@@ -383,6 +325,8 @@ import { useProjectStore } from '@/store/useProjectStore'
 import ProjectPageContainer from '@/components/common/ProjectPageContainer.vue'
 import ProjectPageHeader from '@/components/common/ProjectPageHeader.vue'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
+import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 import ToolbarValueFilter from '@/components/common/ToolbarValueFilter.vue'
 import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import { useI18n } from '@/composables/useI18n'
@@ -405,6 +349,20 @@ const currentUser = getStoredUser()
 const { isVietnamese } = useI18n()
 
 const activeTab = ref('members')
+const memberTableColumns = [
+  { key: 'member', label: 'Thành viên', icon: 'fa-solid fa-user-group', width: '30%', minWidth: '300px', sticky: true },
+  { key: 'teams', label: 'Team hiện tại', icon: 'fa-solid fa-people-group', width: '26%', minWidth: '240px' },
+  { key: 'role', label: 'Vai trò', icon: 'fa-solid fa-user-lock', width: '18%', minWidth: '180px' },
+  { key: 'joinedAt', label: 'Ngày tham gia', icon: 'fa-regular fa-calendar', width: '16%', minWidth: '150px' },
+  { key: 'actions', label: 'Hành động', icon: 'fa-solid fa-ellipsis', width: '90px', minWidth: '90px' }
+]
+const linkedTeamTableColumns = [
+  { key: 'team', label: 'Đội ngũ / Team', icon: 'fa-solid fa-people-group', width: '32%', minWidth: '300px', sticky: true },
+  { key: 'role', label: 'Vai trò / Quyền', icon: 'fa-solid fa-user-lock', width: '18%', minWidth: '170px' },
+  { key: 'members', label: 'Thành viên', icon: 'fa-solid fa-user-group', width: '20%', minWidth: '190px' },
+  { key: 'manager', label: 'Quản lý', icon: 'fa-solid fa-user-tie', width: '22%', minWidth: '200px' },
+  { key: 'actions', label: 'Hành động', icon: 'fa-solid fa-ellipsis', width: '90px', minWidth: '90px' }
+]
 const members = ref([])
 const loadingMembers = ref(false)
 const searchQuery = ref('')
@@ -860,6 +818,43 @@ onUnmounted(() => {
   width: 168px;
 }
 
+.yw-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  border-radius: 14px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 88%, transparent), color-mix(in srgb, var(--color-surface-hover) 46%, transparent));
+  width: max-content;
+  max-width: 100%;
+  margin-top: 18px;
+}
+
+.tab-btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: var(--color-text-primary);
+}
+
+.tab-btn.active {
+  background: color-mix(in srgb, var(--color-accent) 15%, var(--color-surface));
+  color: var(--color-accent);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
 .member-info {
   display: flex;
   align-items: center;
@@ -884,70 +879,7 @@ onUnmounted(() => {
   color: var(--color-text-muted, #6b778c);
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 0;
-  color: var(--color-text-muted, #6b778c);
-}
 
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  color: var(--color-border, #dfe1e6);
-}
-
-.loading-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 40px;
-  color: var(--color-text-muted, #6b778c);
-}
-
-.team-selection-list {
-  max-height: 350px;
-  overflow-y: auto;
-  border: 1px solid var(--color-border, #dfe1e6);
-  border-radius: 6px;
-  padding: 8px;
-}
-
-.team-option {
-  display: flex;
-  align-items: center;
-  padding: 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: 1px solid transparent;
-}
-
-.team-option:hover {
-  background-color: var(--color-background-hover, #f4f5f7);
-}
-
-.team-option.is-selected {
-  background-color: color-mix(in srgb, var(--sp-blue-700) 10%, var(--color-surface));
-  border-color: var(--sp-blue-700);
-}
-
-/* Tweak Element Plus tabs to match SprintA design */
-:deep(.el-tabs__nav-wrap::after) {
-  height: 1px;
-  background-color: var(--color-border, #dfe1e6);
-}
-:deep(.el-tabs__item) {
-  font-size: 13px;
-  font-weight: 750;
-  color: var(--color-text-secondary, #42526e);
-}
-:deep(.el-tabs__item.is-active) {
-  color: var(--color-accent, #0c66e4);
-}
 :deep(.el-tabs__active-bar) {
   background-color: var(--color-accent, #0c66e4);
 }
@@ -1086,4 +1018,5 @@ onUnmounted(() => {
   padding: 0 !important;
   overflow: visible;
 }
+.empty-spaces-flat { margin: 18px; }
 </style>
