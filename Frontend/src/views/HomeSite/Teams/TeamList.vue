@@ -61,43 +61,30 @@
       </div>
     </div>
 
-    <div v-else-if="viewMode === 'table' && filteredTeams.length > 0" class="table-container">
-    <table v-resizable class="jira-table teams-table">
-      <thead>
-        <tr>
-          <th style="width: 25%"><i class="fa-solid fa-people-group"></i> Đội ngũ</th>
-          <th style="width: 20%"><i class="fa-solid fa-shapes"></i> Loại đội ngũ</th>
-          <th style="width: 20%"><i class="fa-solid fa-user-tie"></i> Người quản lý</th>
-          <th style="width: 10%"><i class="fa-solid fa-user-group"></i> Thành viên</th>
-          <th style="width: 10%"><i class="fa-solid fa-sitemap"></i> Đội ngũ gốc</th>
-          <th style="width: 15%"><i class="fa-solid fa-network-wired"></i> Đội ngũ con</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="team in filteredTeams" :key="team.id" @click="goToTeam(team.id)">
-          <td>
-            <div class="team-name-cell">
-              <div class="team-avatar-small" :style="{ backgroundColor: '#0052cc' }">{{ team.avatarText }}</div>
-              <span class="team-name-text">{{ team.name }}</span>
-            </div>
-          </td>
-          <td style="white-space: nowrap;">{{ team.type }}</td>
-          <td>
-            <div v-if="team.managerName !== 'Chưa có'" class="manager-cell" style="display: flex; align-items: center; gap: 8px;">
-              <AppUserChip :name="team.managerName" :email="team.managerEmail" compact />
-            </div>
-            <div v-else style="color: #5E6C84; display: flex; align-items: center; gap: 6px;">
-              <div style="width: 24px; height: 24px; border-radius: 50%; background: #DFE1E6; display: flex; align-items: center; justify-content: center; color: #172B4D; font-size: 10px; font-weight: bold;">?</div>
-              <span>Chưa có</span>
-            </div>
-          </td>
-          <td>{{ team.memberCount }}</td>
-          <td>{{ team.parentCount }}</td>
-          <td>{{ team.childrenCount }}</td>
-        </tr>
-      </tbody>
-    </table>
-    </div>
+    <WorkItemsListTable
+      v-else-if="viewMode === 'table' && filteredTeams.length > 0"
+      :columns="teamTableColumns"
+      :rows="filteredTeams"
+      min-width="1080"
+      @row-click="team => goToTeam(team.id)"
+    >
+      <template #cell-team="{ row }">
+        <div class="team-name-cell">
+          <div class="team-avatar-small" :style="{ backgroundColor: '#0052cc' }">{{ row.avatarText }}</div>
+          <span class="team-name-text">{{ row.name }}</span>
+        </div>
+      </template>
+      <template #cell-type="{ row }"><span>{{ row.type }}</span></template>
+      <template #cell-manager="{ row }">
+        <div v-if="row.managerName !== 'Chưa có'" class="manager-cell">
+          <AppUserChip :name="row.managerName" :email="row.managerEmail" compact />
+        </div>
+        <span v-else class="muted-text">Chưa có</span>
+      </template>
+      <template #cell-members="{ row }"><span class="count-cell">{{ row.memberCount }}</span></template>
+      <template #cell-parent="{ row }"><span class="count-cell">{{ row.parentCount }}</span></template>
+      <template #cell-children="{ row }"><span class="count-cell">{{ row.childrenCount }}</span></template>
+    </WorkItemsListTable>
 
     <!-- Empty State -->
     <div v-else-if="filteredTeams.length === 0" class="goals-empty-state">
@@ -119,6 +106,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTeamStore } from '@/store/useTeamStore'
 import { AppEmptyState, AppUserChip } from '@/components/common/Foundation'
 import ProjectPageToolbar from '@/components/common/ProjectPageToolbar.vue'
+import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 import ToolbarSortMenu from '@/components/common/ToolbarSortMenu.vue'
 import FilterBar from '@/components/FilterBar.vue'
 
@@ -162,13 +150,22 @@ const teamsBasePath = computed(() => route.path.startsWith('/teams') ? '/teams' 
 const teamStore = useTeamStore()
 
 const searchQuery = ref('')
-const viewMode = ref('grid')
+const viewMode = ref('table')
 const teamSortDirection = ref('asc')
 const teamSortBy = ref('name')
 const teamSortOptions = [
   { value: 'name', label: 'Tên đội ngũ', icon: 'fa-solid fa-font' },
   { value: 'members', label: 'Số thành viên', icon: 'fa-solid fa-users' },
   { value: 'children', label: 'Đội ngũ con', icon: 'fa-solid fa-sitemap' }
+]
+
+const teamTableColumns = [
+  { key: 'team', label: 'Đội ngũ', icon: 'fa-solid fa-people-group', width: '26%', minWidth: '280px', sticky: true },
+  { key: 'type', label: 'Loại đội ngũ', icon: 'fa-solid fa-shapes', width: '20%', minWidth: '190px' },
+  { key: 'manager', label: 'Người quản lý', icon: 'fa-solid fa-user-tie', width: '22%', minWidth: '220px' },
+  { key: 'members', label: 'Thành viên', icon: 'fa-solid fa-user-group', width: '12%', minWidth: '120px' },
+  { key: 'parent', label: 'Đội ngũ gốc', icon: 'fa-solid fa-sitemap', width: '10%', minWidth: '120px' },
+  { key: 'children', label: 'Đội ngũ con', icon: 'fa-solid fa-network-wired', width: '10%', minWidth: '120px' }
 ]
 
 const showFilterDropdown = ref(false)

@@ -63,11 +63,6 @@ export const navigateNotification = async (router, notification, {
     return { handled: true, reason: 'invalid-target' }
   }
 
-  if (typeof router?.resolve === 'function' && !router.resolve(target)?.matched?.length) {
-    onInvalid?.()
-    return { handled: true, reason: 'invalid-target', target }
-  }
-
   await router.push(target)
   return { handled: true, reason: 'navigated', target }
 }

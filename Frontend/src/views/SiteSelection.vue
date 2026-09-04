@@ -3,7 +3,7 @@
     <header class="start-header">
       <div class="header-left">
         <div class="atlassian-brand-block">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2L2 22H9L12 16L15 22H22L12 2Z"/>
           </svg>
         </div>
@@ -23,7 +23,7 @@
         <h1 class="welcome-title">
           {{ t('siteSelection.welcomeBack') }}<template v-if="userName"> <span class="highlight-wrapper">&nbsp;{{ userName }}.
             <svg class="squiggly-line" width="100%" height="12" viewBox="0 0 100 12" preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M0 6 Q 12 0, 25 6 T 50 6 T 75 6 T 100 6" stroke="var(--color-warning)" stroke-width="3" stroke-linecap="round" fill="none"/>
+              <path d="M0 6 Q 12 0, 25 6 T 50 6 T 75 6 T 100 6" stroke="#FFAB00" stroke-width="3" stroke-linecap="round" fill="none"/>
             </svg>
           </span></template>
         </h1>
@@ -61,14 +61,14 @@
         <!-- Recent site card -->
         <div class="recent-site-card" v-else>
           <div class="site-card-left">
-            <div class="site-avatar-square" :style="{ backgroundColor: recentSite.color || 'var(--color-accent)' }">
+            <div class="site-avatar-square" :style="{ backgroundColor: recentSite.color || '#0052cc' }">
               {{ siteAvatarText }}
             </div>
             <div class="site-info-stack">
               <span class="site-name-bold">{{ recentSite.name }}</span>
               <div class="member-avatars">
                 <!-- Chỉ hiển thị người dùng hiện tại. Chưa có API danh sách member → không thêm avatar/"+N" giả. -->
-                <div v-if="userInitials" class="member-circle member-circle-current">{{ userInitials }}</div>
+                <div v-if="userInitials" class="member-circle" style="background-color: #00875A">{{ userInitials }}</div>
               </div>
             </div>
           </div>
@@ -88,8 +88,8 @@
 
           <div class="decorative-stars">
             <svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M40 10 L43 20 L53 23 L43 26 L40 36 L37 26 L27 23 L37 20 Z" stroke="var(--color-warning)" stroke-width="2" stroke-linejoin="round"/>
-              <path d="M15 35 L17 40 L22 42 L17 44 L15 49 L13 44 L8 42 L13 40 Z" stroke="var(--color-warning)" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M40 10 L43 20 L53 23 L43 26 L40 36 L37 26 L27 23 L37 20 Z" stroke="#FFAB00" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M15 35 L17 40 L22 42 L17 44 L15 49 L13 44 L8 42 L13 40 Z" stroke="#FFAB00" stroke-width="2" stroke-linejoin="round"/>
             </svg>
           </div>
         </div>
@@ -331,7 +331,7 @@ const goToSpaceProject = async (siteId) => {
 <style scoped>
 .start-page-wrapper {
   min-height: 100vh;
-  background-color: var(--color-bg);
+  background-color: #f4f5f7;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   display: flex;
   flex-direction: column;
@@ -342,8 +342,8 @@ const goToSpaceProject = async (siteId) => {
   justify-content: space-between;
   align-items: center;
   height: 64px;
-  background-color: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  background-color: #ffffff;
+  border-bottom: 1px solid #dfe1e6;
   padding-right: 24px;
 }
 
@@ -356,8 +356,7 @@ const goToSpaceProject = async (siteId) => {
 .atlassian-brand-block {
   width: 64px;
   height: 100%;
-  background-color: var(--sp-blue-700);
-  color: var(--color-text-inverse);
+  background-color: #2684ff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -387,24 +386,24 @@ const goToSpaceProject = async (siteId) => {
 }
 
 .pill-btn.blue {
-  background-color: var(--color-accent);
-  color: var(--color-text-inverse);
+  background-color: #0052cc;
+  color: white;
   padding: 8px 16px;
 }
-.pill-btn.blue:hover:not(:disabled) { background-color: var(--color-accent-hover); }
+.pill-btn.blue:hover:not(:disabled) { background-color: #0047b3; }
 
 .pill-btn.orange {
-  background-color: var(--color-accent);
-  color: var(--color-text-inverse);
+  background-color: #ff991f;
+  color: #172b4d;
   padding: 8px 24px;
 }
-.pill-btn.orange:hover:not(:disabled) { background-color: var(--color-accent-hover); }
+.pill-btn.orange:hover:not(:disabled) { background-color: #e2851e; }
 
 .user-profile {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-left: 1px solid var(--color-border);
+  border-left: 1px solid #dfe1e6;
   padding-left: 24px;
 }
 
@@ -412,8 +411,8 @@ const goToSpaceProject = async (siteId) => {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background-color: var(--sp-blue-700);
-  color: var(--color-text-inverse);
+  background-color: #00875a;
+  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -424,7 +423,7 @@ const goToSpaceProject = async (siteId) => {
 .user-name-text {
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: #172b4d;
 }
 
 .start-content {
@@ -442,7 +441,7 @@ const goToSpaceProject = async (siteId) => {
 .welcome-title {
   font-size: 40px;
   font-weight: 800;
-  color: var(--color-text-primary);
+  color: #091e42;
   margin: 0;
   letter-spacing: -1px;
 }
@@ -474,7 +473,7 @@ const goToSpaceProject = async (siteId) => {
 
 .pickup-text {
   font-size: 14px;
-  color: var(--color-text-primary);
+  color: #172b4d;
   display: flex;
   align-items: center;
 }
@@ -482,7 +481,7 @@ const goToSpaceProject = async (siteId) => {
 .create-site-link {
   font-size: 14px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--color-accent) 58%, var(--color-text-primary));
+  color: #0052cc;
   text-decoration: none;
 }
 .create-site-link:hover { text-decoration: underline; }
@@ -495,34 +494,34 @@ const goToSpaceProject = async (siteId) => {
   padding: 20px 24px;
   border-radius: 4px;
   font-size: 14px;
-  color: var(--color-text-secondary);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  color: #5e6c84;
+  background: white;
+  border: 1px solid #dfe1e6;
 }
-.loading-box { color: color-mix(in srgb, var(--color-accent) 58%, var(--color-text-primary)); }
-.error-box { color: var(--color-danger); border-color: var(--color-danger); }
-.empty-box { color: var(--color-text-secondary); }
+.loading-box { color: #0052cc; }
+.error-box { color: #de350b; border-color: #ff8f73; }
+.empty-box { color: #5e6c84; }
 .retry-btn {
   margin-left: auto;
   background: none;
-  border: 1px solid var(--color-danger);
+  border: 1px solid #de350b;
   border-radius: 4px;
-  color: var(--color-danger);
+  color: #de350b;
   font-size: 13px;
   padding: 4px 12px;
   cursor: pointer;
 }
-.retry-btn:hover { background: var(--color-danger-bg); }
+.retry-btn:hover { background: #fff4f4; }
 
 .recent-site-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: white;
+  border: 1px solid #091e4224;
   border-radius: 4px;
   padding: 16px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 1px 1px color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  box-shadow: 0 1px 1px #091e420f;
 }
 
 .site-card-left {
@@ -535,8 +534,8 @@ const goToSpaceProject = async (siteId) => {
   width: 56px;
   height: 56px;
   border-radius: 4px;
-  background-color: var(--color-accent);
-  color: var(--color-text-inverse);
+  background-color: #0052cc;
+  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -553,7 +552,7 @@ const goToSpaceProject = async (siteId) => {
 .site-name-bold {
   font-size: 18px;
   font-weight: 700;
-  color: var(--color-text-primary);
+  color: #172b4d;
 }
 
 .member-avatars {
@@ -565,8 +564,8 @@ const goToSpaceProject = async (siteId) => {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  border: 2px solid var(--color-surface);
-  color: var(--color-text-inverse);
+  border: 2px solid white;
+  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -575,7 +574,6 @@ const goToSpaceProject = async (siteId) => {
   margin-left: -6px;
 }
 .member-circle:first-child { margin-left: 0; }
-.member-circle-current { background-color: var(--sp-blue-700); }
 
 .card-footer-row {
   margin-top: 16px;
@@ -584,7 +582,7 @@ const goToSpaceProject = async (siteId) => {
 
 .different-site-link {
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-accent) 58%, var(--color-text-primary));
+  color: #6554c0;
   text-decoration: none;
 }
 .different-site-link:hover { text-decoration: underline; }
@@ -604,29 +602,29 @@ const goToSpaceProject = async (siteId) => {
 
 .explore-section p {
   font-size: 16px;
-  color: var(--color-text-primary);
+  color: #172b4d;
   margin-bottom: 16px;
 }
 
 .explore-btn {
   background: transparent;
-  border: 1px solid var(--color-text-primary);
+  border: 1px solid #172b4d;
   border-radius: 24px;
   padding: 8px 24px;
   font-weight: 600;
   font-size: 14px;
-  color: var(--color-text-primary);
+  color: #172b4d;
   cursor: pointer;
   transition: background-color 0.2s;
 }
-.explore-btn:hover:not(:disabled) { background-color: var(--color-surface-hover); }
+.explore-btn:hover:not(:disabled) { background-color: #091e420a; }
 .explore-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Modal Styles */
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background-color: color-mix(in srgb, var(--color-text-primary) 54%, transparent);
+  background-color: rgba(9, 30, 66, 0.54);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -634,10 +632,10 @@ const goToSpaceProject = async (siteId) => {
 }
 
 .jira-modal {
-  background-color: var(--color-surface-elevated);
+  background-color: #ffffff;
   border-radius: 8px;
   width: 540px;
-  box-shadow: 0 8px 16px -4px color-mix(in srgb, var(--color-text-primary) 25%, transparent);
+  box-shadow: 0 8px 16px -4px rgba(9, 30, 66, 0.25);
   padding: 64px 48px;
 }
 
@@ -652,7 +650,7 @@ const goToSpaceProject = async (siteId) => {
 .jira-modal-title {
   font-size: 28px;
   font-weight: bold;
-  color: var(--color-text-primary);
+  color: #172b4d;
   margin: 0 0 8px 0;
   letter-spacing: -0.5px;
   line-height: 1.2;
@@ -660,7 +658,7 @@ const goToSpaceProject = async (siteId) => {
 
 .jira-subtitle {
   font-size: 14px;
-  color: var(--color-text-secondary);
+  color: #5e6c84;
   margin: 0 0 48px 0;
 }
 
@@ -672,7 +670,7 @@ const goToSpaceProject = async (siteId) => {
 .jira-label {
   display: block;
   font-size: 12px;
-  color: var(--color-text-secondary);
+  color: #5e6c84;
   margin-bottom: 8px;
   font-weight: 500;
 }
@@ -681,26 +679,26 @@ const goToSpaceProject = async (siteId) => {
   display: flex;
   align-items: center;
   width: 100%;
-  border: 2px solid var(--color-input-border);
+  border: 2px solid #dfe1e6;
   border-radius: 24px;
   padding: 0 16px;
   height: 48px;
   box-sizing: border-box;
   transition: border-color 0.2s;
-  background: var(--color-input-bg);
+  background: white;
 }
 
-.jira-input-wrapper:focus-within { border-color: var(--color-accent-hover); }
-.jira-input-wrapper.checking { border-color: var(--color-accent); }
-.jira-input-wrapper.success { border-color: var(--color-success); }
-.jira-input-wrapper.error { border-color: var(--color-danger); }
+.jira-input-wrapper:focus-within { border-color: #4c9aff; }
+.jira-input-wrapper.checking { border-color: #0052cc; }
+.jira-input-wrapper.success { border-color: #00875a; }
+.jira-input-wrapper.error { border-color: #de350b; }
 
 .jira-input {
   flex: 1;
   border: none !important;
   outline: none !important;
   font-size: 16px !important;
-  color: var(--color-text-primary) !important;
+  color: #172b4d !important;
   background: transparent !important;
   background-color: transparent !important;
   box-shadow: none !important;
@@ -715,16 +713,16 @@ const goToSpaceProject = async (siteId) => {
 }
 
 .domain-text {
-  color: var(--color-text-secondary);
+  color: #6b778c;
   font-size: 16px;
 }
 
-.jira-input-wrapper.checking .fa-spin { color: color-mix(in srgb, var(--color-accent) 58%, var(--color-text-primary)); }
-.jira-input-wrapper.success .fa-circle-check { color: var(--color-success); font-size: 18px; }
-.jira-input-wrapper.error .fa-triangle-exclamation { color: var(--color-danger); font-size: 18px; }
+.jira-input-wrapper.checking .fa-spin { color: #0052cc; }
+.jira-input-wrapper.success .fa-circle-check { color: #00875a; font-size: 18px; }
+.jira-input-wrapper.error .fa-triangle-exclamation { color: #de350b; font-size: 18px; }
 
 .jira-error-text {
-  color: var(--color-danger);
+  color: #de350b;
   font-size: 12px;
   margin-top: 8px;
   font-weight: 500;
@@ -737,8 +735,8 @@ const goToSpaceProject = async (siteId) => {
   margin-top: 8px;
 }
 .pill-btn:disabled {
-  background-color: var(--color-surface-hover) !important;
-  color: var(--color-text-disabled) !important;
+  background-color: #091e420a !important;
+  color: #a5adba !important;
   cursor: not-allowed;
 }
 
@@ -748,10 +746,10 @@ const goToSpaceProject = async (siteId) => {
   text-align: center;
 }
 
-.or-text { color: var(--color-text-secondary); }
+.or-text { color: #5e6c84; }
 
 .join-link {
-  color: color-mix(in srgb, var(--color-accent) 58%, var(--color-text-primary));
+  color: #0052cc;
   text-decoration: none;
   font-weight: 500;
 }
@@ -764,7 +762,7 @@ const goToSpaceProject = async (siteId) => {
 
 .logged-in-text {
   font-size: 12px;
-  color: var(--color-text-secondary);
+  color: #5e6c84;
   margin-top: -32px;
   margin-bottom: 24px;
   text-align: center;
@@ -774,13 +772,13 @@ const goToSpaceProject = async (siteId) => {
   gap: 4px;
   flex-wrap: wrap;
 }
-.logged-in-text strong { color: var(--color-text-primary); }
+.logged-in-text strong { color: #172b4d; }
 
 /* switchAccount – chưa có flow → disabled dạng nút nhỏ */
 .switch-account-btn {
   background: none;
   border: none;
-  color: var(--color-text-disabled);
+  color: #a5adba;
   font-size: 12px;
   cursor: not-allowed;
   text-decoration: underline;
@@ -797,12 +795,12 @@ const goToSpaceProject = async (siteId) => {
   overflow-y: auto;
   margin-bottom: 8px;
   scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
+  scrollbar-color: #dfe1e6 transparent;
 }
 .site-list-container::-webkit-scrollbar { width: 6px; }
 .site-list-container::-webkit-scrollbar-track { background: transparent; }
 .site-list-container::-webkit-scrollbar-thumb {
-  background-color: var(--color-border);
+  background-color: #dfe1e6;
   border-radius: 10px;
 }
 
@@ -810,13 +808,13 @@ const goToSpaceProject = async (siteId) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border: 1px solid var(--color-border);
+  border: 1px solid #dfe1e6;
   border-radius: 4px;
   padding: 12px 16px;
-  background-color: var(--color-surface);
+  background-color: white;
   transition: background-color 0.2s, box-shadow 0.2s;
 }
-.site-list-item:hover { background-color: var(--color-surface-hover); }
+.site-list-item:hover { background-color: #f4f5f7; }
 
 .site-list-item-left {
   display: flex;
@@ -827,12 +825,12 @@ const goToSpaceProject = async (siteId) => {
 
 .site-list-item-title {
   font-size: 12px;
-  color: var(--color-text-secondary);
+  color: #5e6c84;
 }
 
 .site-list-item-url {
   font-size: 14px;
-  color: var(--color-text-primary);
+  color: #172b4d;
 }
 
 .pill-btn.small {
@@ -857,7 +855,7 @@ const goToSpaceProject = async (siteId) => {
   border: 1px solid color-mix(in srgb, var(--sp-sky-400) 22%, var(--color-border));
   border-radius: 16px;
   background: color-mix(in srgb, var(--color-surface) 94%, var(--sp-blue-600) 6%);
-  box-shadow: 0 14px 36px color-mix(in srgb, var(--color-text-primary) 12%, transparent);
+  box-shadow: 0 14px 36px rgb(7 26 51 / .12);
 }
 
 .recent-site-card {
@@ -873,7 +871,7 @@ const goToSpaceProject = async (siteId) => {
   padding: 9px 18px;
   border: 1px solid var(--sp-blue-700);
   border-radius: 10px;
-  color: var(--color-text-inverse) !important;
+  color: #fff !important;
   text-shadow: none;
   background: var(--sp-blue-700) !important;
   background-image: none !important;
@@ -897,7 +895,7 @@ const goToSpaceProject = async (siteId) => {
 }
 
 .site-avatar-square {
-  background: var(--sp-blue-700) !important;
+  background: linear-gradient(145deg, var(--sp-blue-600), var(--sp-sky-400)) !important;
   box-shadow: none;
 }
 

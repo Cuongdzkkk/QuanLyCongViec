@@ -649,7 +649,30 @@ Object.assign(dictionary.en, {
   'Task mau se xuat hien sau khi co du lieu that.': 'A sample task will appear when real data is available.',
   'Actual hours luon uu tien lay tu time log. Assignment actual hours va task actual hours duoc roll-up tu time log.': 'Actual hours prioritize time logs. Assignment and task actual hours are rolled up from time logs.',
   'Estimate cua task khong bi nhan doi; effort duoc chia theo assignee estimate truoc, roi moi fallback sang contribution weight.': 'Task points are not duplicated; they are split based on the contribution weight of each assignee (or split equally by default).',
-  'Task qua cycle van giu estimate/actual; bonus va penalty duoc xet tai thoi diem hoan thanh.': 'Tasks carried across cycles retain their story points and priority; rewards and penalties are evaluated on completion.'
+  'Task qua cycle van giu estimate/actual; bonus va penalty duoc xet tai thoi diem hoan thanh.': 'Tasks carried across cycles retain their story points and priority; rewards and penalties are evaluated on completion.',
+  'Gamification.RewardConfiguration': 'Reward Configuration',
+  'Gamification.CyclesSeasons': 'Cycles & Seasons',
+  'Gamification.RewardCatalog': 'Reward Catalog',
+  'Gamification.PointRules': 'Point Rules',
+  'Gamification.Seasons': 'Seasons',
+  'Gamification.ExistingRewards': 'Existing Rewards',
+  'Gamification.QualifyingRecipients': 'Qualifying Recipients',
+  'Gamification.Activate': 'Activate',
+  'Gamification.Close': 'Close',
+  'Gamification.AwardTie': 'Award tie',
+  'Gamification.Decline': 'Decline',
+  'Gamification.MarkFulfilled': 'Mark fulfilled',
+  'Gamification.SettleClosedSeason': 'Settle a closed season to see recipients.',
+  'Gamification.PointRulesGlobal': 'Point calculation rules are currently managed by the global Gamification Engine.',
+  'Gamification.PointRulesOverrideFuture': 'Project-specific overrides will be available in a future update.',
+  'Gamification.PendingManagerReview': 'Pending manager review',
+  'Gamification.OpenRewards': 'Open rewards',
+  'Gamification.AddSeasonBtn': 'Add new season',
+  'Gamification.AddRewardBtn': 'Add new reward',
+  'Gamification.RewardNamePlaceholder': 'Reward name...',
+  'Gamification.RewardDescPlaceholder': 'Description...',
+  'Gamification.NoSeasonError': 'Please create a season before adding a reward.',
+  'Gamification.NoProjectError': 'Gamification requires a selected Project.'
 })
 
 Object.assign(dictionary.vi, {
@@ -661,7 +684,30 @@ Object.assign(dictionary.vi, {
   'Task mau se xuat hien sau khi co du lieu that.': 'Công việc mẫu sẽ xuất hiện khi có dữ liệu thực tế.',
   'Actual hours luon uu tien lay tu time log. Assignment actual hours va task actual hours duoc roll-up tu time log.': 'Giờ thực tế luôn ưu tiên dữ liệu từ nhật ký thời gian. Giờ thực tế của phân công và công việc được tổng hợp từ nhật ký thời gian.',
   'Estimate cua task khong bi nhan doi; effort duoc chia theo assignee estimate truoc, roi moi fallback sang contribution weight.': 'Điểm của công việc không bị nhân đôi; điểm được chia theo trọng số đóng góp của từng người thực hiện (hoặc chia đều theo mặc định).',
-  'Task qua cycle van giu estimate/actual; bonus va penalty duoc xet tai thoi diem hoan thanh.': 'Công việc chuyển chu kỳ vẫn giữ nguyên điểm story và độ ưu tiên; thưởng và phạt được xét tại thời điểm hoàn thành.'
+  'Task qua cycle van giu estimate/actual; bonus va penalty duoc xet tai thoi diem hoan thanh.': 'Công việc chuyển chu kỳ vẫn giữ nguyên điểm story và độ ưu tiên; thưởng và phạt được xét tại thời điểm hoàn thành.',
+  'Gamification.RewardConfiguration': 'Cấu hình phần thưởng',
+  'Gamification.CyclesSeasons': 'Mùa giải',
+  'Gamification.RewardCatalog': 'Danh mục phần thưởng',
+  'Gamification.PointRules': 'Quy tắc tính điểm',
+  'Gamification.Seasons': 'Mùa giải',
+  'Gamification.ExistingRewards': 'Phần thưởng hiện có',
+  'Gamification.QualifyingRecipients': 'Người nhận đủ điều kiện',
+  'Gamification.Activate': 'Kích hoạt',
+  'Gamification.Close': 'Đóng',
+  'Gamification.AwardTie': 'Trao thưởng',
+  'Gamification.Decline': 'Từ chối',
+  'Gamification.MarkFulfilled': 'Đánh dấu đã phát',
+  'Gamification.SettleClosedSeason': 'Chốt mùa giải để xem danh sách nhận thưởng.',
+  'Gamification.PointRulesGlobal': 'Quy tắc tính điểm hiện được quản lý bởi hệ thống toàn cầu.',
+  'Gamification.PointRulesOverrideFuture': 'Tính năng tùy chỉnh theo dự án sẽ có trong bản cập nhật tới.',
+  'Gamification.PendingManagerReview': 'Chờ duyệt (Quản lý)',
+  'Gamification.OpenRewards': 'Phần thưởng mở',
+  'Gamification.AddSeasonBtn': 'Thêm mùa giải mới',
+  'Gamification.AddRewardBtn': 'Thêm phần thưởng mới',
+  'Gamification.RewardNamePlaceholder': 'Nhập tên phần thưởng...',
+  'Gamification.RewardDescPlaceholder': 'Nhập ghi chú...',
+  'Gamification.NoSeasonError': 'Vui lòng tạo mùa giải trước khi thêm phần thưởng.',
+  'Gamification.NoProjectError': 'Gamification yêu cầu phải chọn một Dự án.'
 })
 
 export const useI18nStore = defineStore('i18n', {

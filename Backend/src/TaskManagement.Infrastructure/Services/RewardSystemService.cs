@@ -134,11 +134,18 @@ public sealed class RewardSystemService : IRewardSystemService
         if (await _context.RewardSeasons.AnyAsync(s => workspaceProjectIds.Contains(s.ProjectId) && s.Name == name))
             throw new InvalidOperationException("Một mùa giải với tên này đã tồn tại trong không gian làm việc.");
 
+        var existingActive = await _context.RewardSeasons.Where(s => workspaceProjectIds.Contains(s.ProjectId) && s.Status == "Active").ToListAsync();
+        foreach (var s in existingActive)
+        {
+            s.Status = "Closed";
+            s.ClosedAt = UtcNow;
+        }
+
         var season = new RewardSeason
         {
             Id = Guid.NewGuid(), ProjectId = projectId, Name = name, Type = type,
             SprintId = request.SprintId, StartAt = window.StartAt, EndAt = window.EndAt,
-            TimeZone = window.TimeZone, Status = "Draft",
+            TimeZone = window.TimeZone, Status = "Active",
             AllowSelfApproval = request.AllowSelfApproval, CreatedBy = userId, CreatedAt = UtcNow
         };
         _context.RewardSeasons.Add(season);
@@ -157,8 +164,8 @@ public sealed class RewardSystemService : IRewardSystemService
             ?? throw new KeyNotFoundException("Reward season not found.");
         if (season.EndAt.HasValue && season.EndAt <= season.StartAt) throw new InvalidOperationException("Season dates are invalid.");
         
-        if (await _context.RewardSeasons.AnyAsync(item => workspaceProjectIds.Contains(item.ProjectId) && item.Status == "Active" && item.Id != seasonId))
-            throw new InvalidOperationException("Only one reward season may be active for a workspace.");
+        var existingActive = await _context.RewardSeasons.Where(item => workspaceProjectIds.Contains(item.ProjectId) && item.Status == "Active" && item.Id != seasonId).ToListAsync();
+        foreach (var s in existingActive) { s.Status = "Closed"; s.ClosedAt = UtcNow; }
 
         season.Status = "Active";
         await _context.SaveChangesAsync();
@@ -319,9 +326,18 @@ public sealed class RewardSystemService : IRewardSystemService
     private static RewardPointEvent CreatePointEvent(WorkTask task, Guid seasonId, Guid userId, int points, int exp, DateTimeOffset completedAt, string key) => new()
     {
         Id = Guid.NewGuid(), ProjectId = task.ProjectId, SeasonId = seasonId, WorkTaskId = task.Id, UserId = userId,
-        Points = points, Xp = exp, Status = "Pending", CompletedAt = completedAt, DueDateSnapshot = task.DueDate,
+        Points = points, Xp = exp, Status = "Finalized", CompletedAt = completedAt, DueDateSnapshot = task.DueDate,
         CreatedAt = completedAt, IdempotencyKey = key, DifficultySnapshot = DifficultyLabel(task), ScoreSource = task.StoryPoints > 0 ? "StoryPoints" : "EstimateHours"
     };
+
+    private void UpdateWallet(Guid userId, Guid projectId, int points, int exp, string description)
+    {
+        var wallet = _context.UserWallets.FirstOrDefault(w => w.UserId == userId);
+        if (wallet == null) { wallet = new UserWallet { UserId = userId, TotalPoints = 0, Level = 1 }; _context.UserWallets.Add(wallet); }
+        wallet.TotalPoints += points;
+        
+        _context.PointTransactions.Add(new PointTransaction { Id = Guid.NewGuid(), UserWalletUserId = userId, Amount = points, TransactionType = "Reward", Reason = description, CreatedAt = DateTime.UtcNow });
+    }
 
     public async Task HandleTaskStatusChangeAsync(Guid workTaskId, Guid actorUserId, string? oldStatusName, string? newStatusName)
     {
@@ -337,6 +353,7 @@ public sealed class RewardSystemService : IRewardSystemService
             {
                 pointEvent.Status = "Cancelled";
                 pointEvent.CancellationReason = $"Task moved from Done to {newStatusName}";
+                UpdateWallet(pointEvent.UserId, pointEvent.ProjectId, -pointEvent.Points, -pointEvent.Xp, $"Huy diem do task {task.SequenceId ?? task.Id.ToString()} bi huy hoan thanh");
             }
             await _context.SaveChangesAsync();
             return;
@@ -382,7 +399,7 @@ public sealed class RewardSystemService : IRewardSystemService
                     pointEvent.SeasonId = season.Id;
                     pointEvent.Points = points;
                     pointEvent.Xp = exp;
-                    pointEvent.Status = "Pending";
+                    pointEvent.Status = "Finalized";
                     pointEvent.CompletedAt = completedAt;
                     pointEvent.DueDateSnapshot = task.DueDate;
                     pointEvent.FinalizedAt = null;
@@ -398,6 +415,7 @@ public sealed class RewardSystemService : IRewardSystemService
                 {
                     continue; // Already finalized
                 }
+                UpdateWallet(userId, task.ProjectId, points, exp, $"Hoan thanh task {task.SequenceId ?? task.Id.ToString()}");
             }
             try
             {

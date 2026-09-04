@@ -108,7 +108,7 @@ namespace TaskManagement.API.Controllers
 
             var goals = await _context.Goals
                 .Where(g => (g.DepartmentId == id || linkedGoalIds.Contains(g.Id)) && !g.IsArchived)
-                .Select(g => new { id = g.Id, title = g.Title, status = g.Status, progress = g.Progress, updatedAt = g.UpdatedAt })
+                .Select(g => new { id = g.Id, title = g.Title, status = g.Status, progress = g.Progress, updatedAt = g.UpdatedAt, ownerId = g.OwnerId, ownerName = g.Owner.FullName ?? g.Owner.Email, ownerAvatarUrl = g.Owner.AvatarUrl })
                 .ToListAsync();
 
             var projects = await _context.ProjectDepartmentRoles
@@ -160,7 +160,18 @@ namespace TaskManagement.API.Controllers
                         name = task.Reporter.FullName ?? task.Reporter.Email,
                         email = task.Reporter.Email,
                         avatarUrl = task.Reporter.AvatarUrl
-                    }
+                    },
+                    assignees = task.TaskAssignments
+                        .Where(assignment => assignment.Status)
+                        .Select(assignment => new
+                        {
+                            userId = assignment.UserId,
+                            fullName = assignment.User.FullName ?? assignment.User.Email,
+                            email = assignment.User.Email,
+                            avatarUrl = assignment.User.AvatarUrl,
+                            progressPercent = assignment.ProgressPercent
+                        })
+                        .ToList()
                 })
                 .ToListAsync();
 
@@ -193,6 +204,9 @@ namespace TaskManagement.API.Controllers
                     id = k.Id,
                     message = k.Message,
                     sender = k.Sender.FullName ?? k.Sender.Email,
+                    senderId = k.SenderId,
+                    senderEmail = k.Sender.Email,
+                    senderAvatarUrl = k.Sender.AvatarUrl,
                     icon = k.Icon ?? "🌟",
                     createdAt = k.CreatedAt
                 })
@@ -452,6 +466,7 @@ namespace TaskManagement.API.Controllers
         [HttpPost("{id}/goals/{goalId}")]
         public async Task<IActionResult> LinkGoal(Guid id, Guid goalId)
         {
+            if (!await CanManageTeamLinksAsync(id)) return Forbid();
             var departmentExists = await _context.Departments.AnyAsync(d => d.Id == id);
             if (!departmentExists)
                 return NotFound(ApiResponse<object>.Error("Team không tồn tại.", 404));
@@ -498,6 +513,7 @@ namespace TaskManagement.API.Controllers
         [HttpDelete("{id}/goals/{goalId}")]
         public async Task<IActionResult> UnlinkGoal(Guid id, Guid goalId)
         {
+            if (!await CanManageTeamLinksAsync(id)) return Forbid();
             var goal = await _context.Goals.FirstOrDefaultAsync(g => g.Id == goalId);
             var links = await _context.TeamGoals
                 .Where(tg => tg.DepartmentId == id && tg.GoalId == goalId)
@@ -536,6 +552,7 @@ namespace TaskManagement.API.Controllers
         [HttpPost("{id}/projects/{projectId}")]
         public async Task<IActionResult> LinkProject(Guid id, Guid projectId)
         {
+            if (!await CanManageTeamLinksAsync(id)) return Forbid();
             var departmentExists = await _context.Departments.AnyAsync(d => d.Id == id);
             if (!departmentExists)
                 return NotFound(ApiResponse<object>.Error("Team không tồn tại.", 404));
@@ -568,6 +585,7 @@ namespace TaskManagement.API.Controllers
         [HttpDelete("{id}/projects/{projectId}")]
         public async Task<IActionResult> UnlinkProject(Guid id, Guid projectId)
         {
+            if (!await CanManageTeamLinksAsync(id)) return Forbid();
             var links = await _context.ProjectDepartmentRoles
                 .Where(pdr => pdr.DepartmentId == id && pdr.ProjectId == projectId)
                 .ToListAsync();
@@ -577,10 +595,51 @@ namespace TaskManagement.API.Controllers
                 _context.ProjectDepartmentRoles.RemoveRange(links);
             }
 
+            // A team link grants its members access to the project. Removing the
+            // link must also revoke that access and clear their task assignments.
+            var teamMemberIds = await _context.DepartmentMembers
+                .Where(member => member.DepartmentId == id)
+                .Select(member => member.UserId)
+                .ToListAsync();
+            var projectMembers = await _context.ProjectMembers
+                .Where(member => member.ProjectId == projectId && teamMemberIds.Contains(member.UserId))
+                .ToListAsync();
+            foreach (var member in projectMembers)
+            {
+                member.Status = false;
+                member.LeftAt = DateTime.UtcNow;
+            }
+
+            var assignedTasks = await _context.WorkTasks
+                .Include(task => task.TaskAssignments)
+                .Where(task => task.ProjectId == projectId && !task.IsDeleted)
+                .ToListAsync();
+            foreach (var task in assignedTasks)
+            {
+                foreach (var assignment in task.TaskAssignments.Where(assignment => teamMemberIds.Contains(assignment.UserId)))
+                {
+                    assignment.Status = false;
+                    assignment.RemovedAt = DateTime.UtcNow;
+                }
+                if (task.AssignedUserId.HasValue && teamMemberIds.Contains(task.AssignedUserId.Value))
+                {
+                    task.AssignedUserId = null;
+                    task.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+
             await AddSiteAuditAsync(id, "UnlinkProject", projectId.ToString());
             await PublishDepartmentDetailAsync(id, "projects-changed", new { projectId });
 
             return NoContent();
+        }
+
+        private async Task<bool> CanManageTeamLinksAsync(Guid departmentId)
+        {
+            if (User.IsInRole("Admin") || User.IsInRole("SystemAdmin")) return true;
+            var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            return Guid.TryParse(claim, out var userId) && await _context.Departments
+                .AnyAsync(department => department.Id == departmentId && department.ManagerId == userId && !department.IsDeleted);
         }
     }
 }

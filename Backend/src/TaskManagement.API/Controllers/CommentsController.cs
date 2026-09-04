@@ -582,6 +582,23 @@ namespace TaskManagement.API.Controllers
             return Ok(new { statusCode = 200, message = "Da xoa binh luan." });
         }
 
+        [HttpPut("comments/{commentId}")]
+        public async Task<IActionResult> UpdateCommentGeneric(Guid commentId, [FromBody] UpdateCommentRequest request)
+        {
+            var userId = GetUserId();
+            if (userId == null) return Unauthorized();
+            var comment = await _context.Comments.FirstOrDefaultAsync(item => item.Id == commentId && !item.IsDeleted);
+            if (comment == null) return NotFound(new { message = "Comment khong ton tai." });
+            if (comment.UserId != userId.Value) return Forbid();
+            if (string.IsNullOrWhiteSpace(request.Content)) return BadRequest(new { message = "Noi dung khong duoc de trong." });
+
+            var parsed = ParseCommentContent(comment.Content);
+            comment.Content = ComposeCommentContent(SanitizeRichHtml(request.Content), parsed.Reactions);
+            comment.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return Ok(new { statusCode = 200, message = "Da cap nhat binh luan." });
+        }
+
         [HttpPost("upload")]
         public async Task<IActionResult> Upload([FromForm] IFormFile file, [FromForm] string? folder)
         {

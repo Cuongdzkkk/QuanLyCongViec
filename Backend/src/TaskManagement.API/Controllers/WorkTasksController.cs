@@ -997,6 +997,13 @@ namespace TaskManagement.API.Controllers
                 }
                 var savedTask = await LoadTaskResponseAsync(context, projectId, id, userId);
                 await BroadcastTaskUpdatedAsync(projectId, savedTask);
+
+                var rewardService = HttpContext.RequestServices.GetService<TaskManagement.Application.Interfaces.IRewardSystemService>();
+                if (rewardService != null && updatedTask != null)
+                {
+                    await rewardService.HandleTaskStatusChangeAsync(id, userId, previousTask?.TaskStatus?.Name, updatedTask.TaskStatus?.Name);
+                }
+
                 return Ok(new { statusCode = 200, message = "Cập nhật trạng thái tác vụ thành công.", data = savedTask });
             }
             catch (DbUpdateConcurrencyException)
@@ -1581,7 +1588,7 @@ namespace TaskManagement.API.Controllers
                 {
                     if (userId != Guid.Empty && !string.IsNullOrWhiteSpace(newStatusName))
                     {
-                        await gamificationService.ApplyStatusChangeRewardsAsync(id, userId, oldStatusName, newStatusName);
+                        // await gamificationService.ApplyStatusChangeRewardsAsync(id, userId, oldStatusName, newStatusName);
                     }
 
                     if (updates.TryGetProperty("dueDate", out _))
@@ -1862,7 +1869,7 @@ namespace TaskManagement.API.Controllers
                 await context.SaveChangesAsync();
                 if (!string.IsNullOrWhiteSpace(newStatusName))
                 {
-                    await gamificationService.ApplyStatusChangeRewardsAsync(id, userId, oldStatusName, newStatusName);
+                    // await gamificationService.ApplyStatusChangeRewardsAsync(id, userId, oldStatusName, newStatusName);
                 }
                 foreach (var reward in completedAssigneeRewards)
                 {

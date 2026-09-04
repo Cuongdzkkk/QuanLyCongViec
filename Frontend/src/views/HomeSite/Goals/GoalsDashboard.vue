@@ -83,8 +83,48 @@
         </div>
 
         <div class="goals-list-container">
-          <div v-if="!isLoading && filteredGoals.length > 0" class="table-container">
-            <table v-resizable class="jira-table goals-table">
+          <WorkItemsListTable
+            v-if="!isLoading && filteredGoals.length > 0"
+            :columns="goalTableColumns"
+            :rows="filteredGoals"
+            min-width="1260"
+            @row-click="goal => goToGoal(goal.id)"
+          >
+            <template #cell-goal="{ row }">
+              <div class="goal-title-cell">
+                <span class="goal-icon"><i class="fa-solid fa-bullseye"></i></span>
+                <span class="goal-title">{{ row.title }}</span>
+              </div>
+            </template>
+            <template #cell-status="{ row }">
+              <AppStatusBadge :status="translateStatus(row.status)" :statusText="translateStatus(row.status)" />
+            </template>
+            <template #cell-progress="{ row }">
+              <div class="progress-cell">
+                <div class="progress-bar-bg"><div class="progress-bar-fill" :style="{ width: (row.progress || 0) + '%' }"></div></div>
+                <span class="progress-text">{{ row.progress || 0 }}%</span>
+              </div>
+            </template>
+            <template #cell-createdAt="{ row }"><span class="muted-text">{{ row.createdAt ? new Date(row.createdAt).toLocaleDateString('vi-VN') : '-' }}</span></template>
+            <template #cell-updatedAt="{ row }"><span class="muted-text">{{ row.updatedAt ? new Date(row.updatedAt).toLocaleDateString('vi-VN') : '-' }}</span></template>
+            <template #cell-favorite="{ row }">
+              <button class="goal-star-btn" type="button" :class="{ starred: isGoalStarred(row.id) }" :disabled="starredStore.isPending('Goal', row.id)" :aria-pressed="isGoalStarred(row.id)" :aria-label="isGoalStarred(row.id) ? 'Bỏ gắn sao mục tiêu' : 'Gắn sao mục tiêu'" @click.stop="toggleStar(row)">
+                <i :class="isGoalStarred(row.id) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+              </button>
+            </template>
+            <template #cell-follow="{ row }">
+              <span class="follow-cell" @click.stop="toggleWatch(row)">{{ row.isFollowing ? labels.following : labels.follow }}</span>
+            </template>
+            <template #cell-owner="{ row }">
+              <div class="owner-cell">
+                <AppAvatar :user="{ id: row.ownerId, fullName: row.ownerName, avatarColor: row.ownerColor, avatarUrl: row.ownerAvatarUrl }" :size="24" />
+                <span class="owner-name">{{ row.owner || labels.unassigned }}</span>
+              </div>
+            </template>
+          </WorkItemsListTable>
+
+          <div v-else-if="false && !isLoading && filteredGoals.length > 0" class="table-container work-items-table-shell">
+            <table v-resizable class="jira-table work-items-style-table goals-table">
               <thead>
                 <tr>
                   <th class="col-title"><i class="fa-solid fa-bullseye"></i> {{ labels.goal }}</th>
@@ -248,6 +288,7 @@ import AppStatusBadge from '@/components/common/Foundation/AppStatusBadge.vue'
 import AppAvatar from '@/components/common/Foundation/AppAvatar.vue'
 import AppModal from '@/components/common/Foundation/AppModal.vue'
 import AppFormField from '@/components/common/Foundation/AppFormField.vue'
+import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 
 import FilterBar from '@/components/FilterBar.vue'
 import { getStoredUser } from '@/utils/permissions'
@@ -349,6 +390,17 @@ const labels = computed(() => isVi.value
       cancel: 'Cancel',
       create: 'Create'
     })
+
+const goalTableColumns = computed(() => [
+  { key: 'goal', label: labels.value.goal, icon: 'fa-solid fa-bullseye', width: '30%', minWidth: '300px', sticky: true },
+  { key: 'status', label: labels.value.status, icon: 'fa-regular fa-circle-dot', width: '16%', minWidth: '170px' },
+  { key: 'progress', label: labels.value.progress, icon: 'fa-solid fa-chart-line', width: '16%', minWidth: '170px' },
+  { key: 'createdAt', label: labels.value.createdDate, icon: 'fa-regular fa-calendar', width: '12%', minWidth: '140px' },
+  { key: 'updatedAt', label: labels.value.updatedDate, icon: 'fa-regular fa-clock', width: '12%', minWidth: '140px' },
+  { key: 'favorite', label: labels.value.favorite, icon: 'fa-regular fa-star', width: '100px', minWidth: '100px' },
+  { key: 'follow', label: labels.value.follow, icon: 'fa-regular fa-eye', width: '120px', minWidth: '120px' },
+  { key: 'owner', label: labels.value.owner, icon: 'fa-solid fa-user-tie', width: '18%', minWidth: '190px' }
+])
 const activeFilters = ref([])
 
 const goalFilterFields = computed(() => [

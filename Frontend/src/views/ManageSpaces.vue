@@ -84,13 +84,17 @@
       <div v-if="loading" class="loading-state">
          <i class="fa-solid fa-spinner fa-spin"></i> {{ t('Loading projects...') }}
       </div>
-      <div v-else-if="filteredSpaces.length === 0" class="empty-state">
-         <div class="empty-icon-wrap" style="width: 80px; height: 80px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-           <i class="fa-solid fa-folder-open empty-icon" style="margin-bottom: 0;"></i>
-         </div>
-         <h3 class="empty-title" style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: var(--color-text-primary);">{{ t('No projects found') }}</h3>
-         <p style="margin: 0 0 24px 0; font-size: 14px; color: var(--color-text-muted);">It looks like there are no projects here. Let's create your first one!</p>
-         <button class="plane-btn-primary" @click="isCreateModalVisible = true">{{ t('Create your first project') }}</button>
+      <div v-else-if="filteredSpaces.length === 0" class="empty-spaces-flat">
+        <div class="empty-spaces-icon" aria-hidden="true">
+          <i class="fa-regular fa-folder-open"></i>
+        </div>
+        <div class="empty-spaces-copy">
+          <h3>{{ t('No projects found') }}</h3>
+          <p>It looks like there are no projects here. Let's create your first one!</p>
+        </div>
+        <div class="empty-spaces-actions">
+          <button class="plane-btn-primary" @click="isCreateModalVisible = true">{{ t('Create your first project') }}</button>
+        </div>
       </div>
       <div v-else>
         <div v-if="viewMode === 'grid'" class="spaces-grid">
@@ -991,7 +995,7 @@ const goToSpace = (space) => {
   width: 100% !important;
   max-width: none !important;
   margin: 0 !important;
-  padding: 0 18px !important;
+  padding: 18px !important;
   box-sizing: border-box !important;
 }
 
