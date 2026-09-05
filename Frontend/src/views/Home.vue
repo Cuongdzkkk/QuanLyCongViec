@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   ArrowRight,
   BarChart3,
@@ -23,7 +23,7 @@ import {
   X,
   Zap
 } from 'lucide-vue-next'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 import { billingApi, unwrapBillingData } from '@/api/billingApi'
@@ -35,8 +35,10 @@ import { currentTheme, toggleTheme } from '@/utils/theme'
 import { clearAuthSession, getStoredAccessToken, getStoredUserSession } from '@/utils/authSession'
 import { language, setLanguage, t } from '@/i18n'
 import { createCheckoutOrderGate } from '@/utils/billingCheckoutState'
+import { resolveBillingReturnTo } from '@/utils/billingPlanFlow'
 
 const router = useRouter()
+const route = useRoute()
 defineOptions({ name: 'SprintaHome' })
 const user = ref(getStoredUserSession() || {})
 const authenticated = ref(Boolean(getStoredAccessToken()))
@@ -56,8 +58,20 @@ let revealObserver = null
 let revealFallbackTimer = null
 
 const isVi = computed(() => language.value === 'vi')
+const enterpriseContactReturnTo = computed(() => typeof route.query.returnTo === 'string'
+  ? resolveBillingReturnTo(route.query.returnTo, '')
+  : '')
+const enterpriseContactPrefill = computed(() => ({
+  contactName: user.value?.fullName || user.value?.username || '',
+  workEmail: user.value?.email || '',
+  source: route.query.source === 'ai-credits' ? 'AI Credits' : '',
+  plan: route.query.plan === 'enterprise' ? 'Enterprise' : '',
+  workspaceId: typeof route.query.workspaceId === 'string' ? route.query.workspaceId : '',
+  workspaceName: typeof route.query.workspaceName === 'string' ? route.query.workspaceName : (authenticated.value ? workspaceName.value : ''),
+  projectName: typeof route.query.projectName === 'string' ? route.query.projectName : ''
+}))
 const displayName = computed(() => user.value?.fullName || user.value?.username || user.value?.email || (isVi.value ? 'Người dùng SprintA' : 'SprintA user'))
-const workspaceName = computed(() => user.value?.currentWorkspace?.name || user.value?.workspaceName || 'Workspace')
+const workspaceName = computed(() => user.value?.currentWorkspace?.name || user.value?.workspaceName || '')
 const usagePercent = computed(() => {
   const total = Number(usage.value?.includedCredits || 0) + Number(usage.value?.adjustmentCredits || 0)
   return total > 0 ? Math.min(100, Math.round((Number(usage.value?.usedCredits || 0) / total) * 100)) : 0
@@ -345,6 +359,13 @@ const handlePlan = async (plan) => {
   }
 }
 
+const closeEnterpriseContact = async () => {
+  const returnTo = enterpriseContactReturnTo.value
+  enterpriseLeadOpen.value = false
+  if (route.query.contact !== 'enterprise') return
+  await router.replace(returnTo || '/')
+}
+
 const isCheckoutPlanLoading = (plan) => checkoutPlanCode.value === planCode(plan)
 const purchaseLabel = (plan) => {
   if (isCheckoutPlanLoading(plan)) return isVi.value ? 'Đang chuẩn bị thanh toán...' : 'Preparing payment...'
@@ -402,6 +423,10 @@ onMounted(() => {
     revealObserver?.disconnect()
   }, 900)
 })
+
+watch(() => route.query.contact, value => {
+  enterpriseLeadOpen.value = value === 'enterprise'
+}, { immediate: true })
 
 onBeforeUnmount(() => {
   window.removeEventListener('storage', syncUser)
@@ -816,7 +841,7 @@ onBeforeUnmount(() => {
         <div class="footer-bottom"><span>© 2026 SprintA</span><span>{{ isVi ? 'Quản lý công việc rõ ràng hơn.' : 'Make work visible.' }}</span></div>
       </div>
     </footer>
-    <EnterpriseLeadModal v-if="enterpriseLeadOpen" @close="enterpriseLeadOpen = false" />
+    <EnterpriseLeadModal v-if="enterpriseLeadOpen" :prefill="enterpriseContactPrefill" @close="closeEnterpriseContact" />
   </div>
 </template>
 
