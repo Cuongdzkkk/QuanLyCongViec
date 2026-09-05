@@ -546,11 +546,11 @@
                       <div v-else class="ai-candidate-body">
                         <strong>{{ candidate.title }}</strong>
                         <p v-if="candidate.description">{{ candidate.description }}</p>
-                        <small>{{ candidate.dueDate || t('Chưa có hạn', 'No due date') }} · {{ t('Ưu tiên', 'Priority') }} {{ candidate.priority }}</small>
+                        <small>{{ candidate.dueDate || t('Chưa có hạn', 'No due date') }} · {{ t('Ưu tiên', 'Priority') }} {{ candidate.priority }}<template v-if="candidate.assigneeSuggestion"> · {{ candidate.assigneeSuggestion }}</template></small>
                       </div>
                       <div class="ai-candidate-evidence" v-if="candidate.evidence?.length">
                         <small v-for="evidence in candidate.evidence.slice(0, 3)" :key="`${candidate.id}-${evidence.field}-${evidence.source}`">
-                          {{ evidence.type }} · {{ evidence.source }}
+                          {{ evidence.field }}: {{ evidence.value }} · {{ evidence.type }} · {{ evidence.attachmentFileName || evidence.source }}
                         </small>
                       </div>
                       <div class="ai-candidate-actions">

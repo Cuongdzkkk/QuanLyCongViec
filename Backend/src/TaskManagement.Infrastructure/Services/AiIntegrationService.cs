@@ -254,6 +254,7 @@ namespace TaskManagement.Infrastructure.Services
                     matching.DueDate = extracted.DueDate ?? matching.DueDate;
                     matching.Priority = extracted.Priority;
                     matching.Description ??= extracted.Description;
+                    matching.AssigneeSuggestion ??= extracted.AssigneeSuggestion;
                     matching.Uncertain |= extracted.Uncertain;
                 }
             }

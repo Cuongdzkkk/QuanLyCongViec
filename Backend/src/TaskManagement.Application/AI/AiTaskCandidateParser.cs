@@ -45,6 +45,7 @@ public static partial class AiTaskCandidateParser
         var description = MatchValue(content, "Description|Mô tả");
         var dueDateText = MatchValue(content, "Due date|Hạn");
         var priorityText = MatchValue(content, "Priority|Ưu tiên");
+        var assigneeSuggestion = MatchValue(content, "Assignee suggestion|Gợi ý người được giao|Assignee");
         var dueDate = TryNormalizeDate(dueDateText);
         var priority = ParsePriority(priorityText);
         var source = string.IsNullOrWhiteSpace(attachmentFileName)
@@ -58,6 +59,7 @@ public static partial class AiTaskCandidateParser
             Description = NullIfEmpty(description),
             DueDate = dueDate,
             Priority = priority,
+            AssigneeSuggestion = NullIfEmpty(assigneeSuggestion),
             SourceProvider = provider,
             SourceItemId = sourceItemId.ToString(),
             AttachmentFileName = NullIfEmpty(attachmentFileName),
@@ -69,6 +71,7 @@ public static partial class AiTaskCandidateParser
         if (!string.IsNullOrWhiteSpace(candidate.Description)) AddEvidence(candidate, "description", candidate.Description, source, attachmentFileName);
         if (!string.IsNullOrWhiteSpace(candidate.DueDate)) AddEvidence(candidate, "dueDate", candidate.DueDate, source, attachmentFileName);
         if (!string.IsNullOrWhiteSpace(priorityText)) AddEvidence(candidate, "priority", priorityText.Trim(), source, attachmentFileName);
+        if (!string.IsNullOrWhiteSpace(candidate.AssigneeSuggestion)) AddEvidence(candidate, "assigneeSuggestion", candidate.AssigneeSuggestion, source, attachmentFileName);
         return candidate;
     }
 
@@ -88,7 +91,7 @@ public static partial class AiTaskCandidateParser
     {
         var match = Regex.Match(
             content ?? string.Empty,
-            $@"(?im)^\s*(?:{labels})\s*:\s*(?<value>[^\r\n]+?)\s*$",
+            $@"(?im)^[ \t]*(?:{labels})[ \t]*:[ \t]*(?:(?<value>[^\r\n]+?)[ \t]*|(?:\r?\n[ \t]*)+(?<value>[^\r\n]+?)[ \t]*)(?:\r?$)",
             RegexOptions.CultureInvariant);
         return match.Success ? match.Groups["value"].Value.Trim() : null;
     }

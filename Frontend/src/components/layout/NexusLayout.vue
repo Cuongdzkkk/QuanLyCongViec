@@ -2777,6 +2777,7 @@ const uploadPendingAttachments = async (conversationId) => {
       uploaded.push(attachment)
     } catch (error) {
       attachment.status = 'error'
+      attachment.errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Không thể xử lý attachment.'
       throw error
     }
   }
@@ -2840,10 +2841,17 @@ const sendAiMessage = async () => {
       const responseData = apiPayload(response)
       chatHistory.value.pop()
       loadingAdded = false
+      const normalizedActions = normalizeAiActionList(responseData?.actions || [])
       chatHistory.value.push({
         role: 'bot',
         content: responseData?.answer || aiCopy.value.emptyResponse,
-        citations: responseData?.citations || []
+        citations: responseData?.citations || [],
+        actions: normalizedActions.actions.map(action => decorateAiAction(action, {
+          contextKey: aiContextKey.value,
+          conversationId,
+          workspaceId: currentConversationWorkspaceId.value || currentWorkspaceId.value,
+          projectId: currentProjectId.value || actionPayload(action).projectId
+        }))
       })
       await loadAiUsage()
       return

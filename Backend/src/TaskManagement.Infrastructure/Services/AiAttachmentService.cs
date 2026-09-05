@@ -8,6 +8,7 @@ using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using TaskManagement.Application.Interfaces;
+using TaskManagement.Application.AI;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
 using UglyToad.PdfPig;
@@ -25,6 +26,7 @@ namespace TaskManagement.Infrastructure.Services
         private const long MaxImageBytesPerRequest = 12 * 1024 * 1024;
         private readonly ApplicationDbContext _dbContext;
         private readonly IAiService _aiService;
+        private readonly IAttachmentIngestionService _attachmentIngestionService;
         private readonly string _storageRoot;
 
         private static readonly IReadOnlyDictionary<string, AttachmentRule> Rules =
@@ -60,10 +62,15 @@ namespace TaskManagement.Infrastructure.Services
                 [".ps1"] = AttachmentRule.SourceCode
             };
 
-        public AiAttachmentService(ApplicationDbContext dbContext, IAiService aiService, IHostEnvironment environment)
+        public AiAttachmentService(
+            ApplicationDbContext dbContext,
+            IAiService aiService,
+            IHostEnvironment environment,
+            IAttachmentIngestionService? attachmentIngestionService = null)
         {
             _dbContext = dbContext;
             _aiService = aiService;
+            _attachmentIngestionService = attachmentIngestionService ?? new AttachmentIngestionService();
             _storageRoot = Path.Combine(environment.ContentRootPath, "private-uploads", "ai-attachments");
         }
 
@@ -110,6 +117,18 @@ namespace TaskManagement.Infrastructure.Services
                 throw new InvalidDataException("Nội dung file không hợp lệ hoặc không khớp định dạng.");
             }
             ValidateContainerSafety(extension, bytes);
+
+            NormalizedAttachment? normalized = null;
+            if (AttachmentIngestionService.IsSupported(safeFileName, normalizedMimeType))
+            {
+                normalized = await _attachmentIngestionService.NormalizeAsync(
+                    safeFileName,
+                    normalizedMimeType,
+                    new MemoryStream(bytes, writable: false),
+                    bytes.LongLength,
+                    "direct-ai",
+                    cancellationToken);
+            }
 
             var sha256 = Convert.ToHexString(SHA256.HashData(bytes));
             var existing = await _dbContext.AiAttachments
@@ -160,7 +179,9 @@ namespace TaskManagement.Infrastructure.Services
                 await File.WriteAllBytesAsync(storedPath, bytes, cancellationToken);
                 if (rule.Kind == "document")
                 {
-                    var sections = ExtractSections(extension, bytes);
+                    var sections = normalized?.TextContent is { Length: > 0 } textContent
+                        ? new[] { new ExtractedSection(normalized.ExtractionMethod, textContent) }
+                        : ExtractSections(extension, bytes);
                     var chunks = BuildChunks(attachment.Id, sections, now);
                     if (chunks.Count == 0)
                     {
@@ -309,8 +330,61 @@ namespace TaskManagement.Infrastructure.Services
                 throw new InvalidDataException("Không có nội dung attachment có thể truy xuất.");
             }
 
-            var answer = await _aiService.ChatWithAttachmentsAsync(userId, message.Trim(), sources, images);
-            return new AiAttachmentChatResponseDto { Answer = answer, Citations = citations };
+            var trimmedMessage = message.Trim();
+            var answer = await _aiService.ChatWithAttachmentsAsync(userId, trimmedMessage, sources, images);
+            var actions = IsTaskCreationIntent(trimmedMessage)
+                ? BuildTaskCreationActions(attachments, selectedChunks)
+                : new List<AiSuggestedActionDto>();
+            return new AiAttachmentChatResponseDto { Answer = answer, Citations = citations, Actions = actions };
+        }
+
+        private static bool IsTaskCreationIntent(string message)
+            => message.Contains("tạo task", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("tao task", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("tạo công việc", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("create task", StringComparison.OrdinalIgnoreCase);
+
+        private static List<AiSuggestedActionDto> BuildTaskCreationActions(
+            IReadOnlyList<AiAttachment> attachments,
+            IReadOnlyList<AiAttachmentChunk> chunks)
+        {
+            var actions = new List<AiSuggestedActionDto>();
+            foreach (var attachment in attachments.Where(item => item.Kind == "document"))
+            {
+                var content = string.Join(Environment.NewLine,
+                    chunks.Where(chunk => chunk.AttachmentId == attachment.Id).OrderBy(chunk => chunk.ChunkIndex).Select(chunk => chunk.Content));
+                var candidate = AiTaskCandidateParser.ExtractStructuredCandidate(
+                    $"Attachment: {attachment.FileName}{Environment.NewLine}{content}",
+                    "direct-ai",
+                    attachment.Id);
+                if (candidate == null) continue;
+
+                var payload = new Dictionary<string, object?>
+                {
+                    ["title"] = candidate.Title,
+                    ["description"] = candidate.Description,
+                    ["priority"] = candidate.Priority,
+                    ["dueDate"] = candidate.DueDate,
+                    ["assigneeSuggestion"] = candidate.AssigneeSuggestion,
+                    ["sourceProvider"] = candidate.SourceProvider,
+                    ["sourceItemId"] = candidate.SourceItemId,
+                    ["evidence"] = candidate.Evidence
+                };
+                actions.Add(new AiSuggestedActionDto
+                {
+                    ActionId = candidate.Id,
+                    Type = "task.create",
+                    Title = candidate.Title,
+                    Label = "Tạo task từ attachment",
+                    Description = candidate.Reason ?? "Task được trích xuất từ attachment.",
+                    PayloadPreview = payload,
+                    Payload = payload,
+                    RequiresConfirmation = true,
+                    Confidence = candidate.Uncertain ? 0.75 : 0.95,
+                    ExpiresAt = DateTime.UtcNow.AddMinutes(15)
+                });
+            }
+            return actions;
         }
 
         private IQueryable<AiAttachment> OwnedAttachmentQuery(Guid userId) =>
@@ -377,7 +451,7 @@ namespace TaskManagement.Infrastructure.Services
             var chunks = new List<AiAttachmentChunk>();
             foreach (var section in sections)
             {
-                var normalized = Regex.Replace(section.Content, @"\s+", " ").Trim();
+                var normalized = Regex.Replace(section.Content, @"[ \t]+", " ").Trim();
                 for (var offset = 0; offset < normalized.Length; offset += chunkSize - overlap)
                 {
                     var length = Math.Min(chunkSize, normalized.Length - offset);

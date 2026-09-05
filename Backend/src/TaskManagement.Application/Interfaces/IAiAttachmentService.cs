@@ -1,3 +1,5 @@
+using TaskManagement.Application.AI;
+
 namespace TaskManagement.Application.Interfaces
 {
     public interface IAiAttachmentService
@@ -53,6 +55,7 @@ namespace TaskManagement.Application.Interfaces
     {
         public string Answer { get; set; } = string.Empty;
         public List<AiAttachmentCitationDto> Citations { get; set; } = new();
+        public List<AiSuggestedActionDto> Actions { get; set; } = new();
     }
 
     public sealed class AiAttachmentCitationDto
