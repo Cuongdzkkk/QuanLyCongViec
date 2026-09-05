@@ -38,7 +38,6 @@ public static class HostingConfigurationExtensions
             }).ConfigureWarnings(warnings =>
             {
                 warnings.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning);
-                warnings.Ignore(RelationalEventId.PendingModelChangesWarning);
             }));
     }
 
