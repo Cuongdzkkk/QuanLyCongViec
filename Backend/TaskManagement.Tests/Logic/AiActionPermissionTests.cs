@@ -154,6 +154,10 @@ namespace TaskManagement.Tests.Logic
             {
                 previewDocument.RootElement.GetProperty("payload").GetProperty("title").GetString()
                     .Should().Be("AI SHOULD NOT CREATE");
+                previewDocument.RootElement.GetProperty("payload").TryGetProperty("taskTitle", out _)
+                    .Should().BeFalse();
+                previewDocument.RootElement.GetProperty("payload").TryGetProperty("name", out _)
+                    .Should().BeFalse();
             }
             var result = await controller.ConfirmAction(actionId);
 
@@ -163,6 +167,30 @@ namespace TaskManagement.Tests.Logic
 
             (await controller.ConfirmAction(actionId)).Should().BeOfType<OkObjectResult>();
             (await _context.WorkTasks.CountAsync()).Should().Be(1);
+        }
+
+        [Fact]
+        public async Task CreateTask_MissingTitle_IsRejectedBeforePendingActionIsStored()
+        {
+            var controller = CreateController(_pmUserId);
+            var request = new AiExecuteActionRequestDto
+            {
+                Type = "create_task",
+                IdempotencyKey = "create-task-missing-title",
+                WorkspaceId = _workspaceId,
+                ProjectId = _projectId,
+                Payload = new Dictionary<string, object?>
+                {
+                    ["projectId"] = _projectId.ToString(),
+                    ["description"] = "No title"
+                }
+            };
+
+            var result = await controller.PreviewAction(request);
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+            (await _context.AiActionExecutions.CountAsync()).Should().Be(0);
+            (await _context.WorkTasks.CountAsync()).Should().Be(0);
         }
 
         [Fact]

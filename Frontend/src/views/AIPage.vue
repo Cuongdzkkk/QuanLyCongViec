@@ -400,7 +400,7 @@ import { useAiPetStore } from '@/store/useAiPetStore'
 import { useAiScopeStore } from '@/store/useAiScopeStore'
 import { buildAiContextKey, isAiContextMatch, isComposerSendKey } from '@/utils/aiWorkspace'
 import { useAiComposer } from '@/composables/useAiComposer'
-import { AI_QUICK_ACTIONS, normalizeAiAction } from '@/utils/aiActionUi'
+import { AI_QUICK_ACTIONS, normalizeAiAction, normalizeAiActionList } from '@/utils/aiActionUi'
 
 const router = useRouter()
 const route = useRoute()
@@ -786,7 +786,7 @@ const returnToFloating = async () => {
 const openAiCreditPurchase = () => {
   aiCreditsModalVisible.value = true
 }
-const actionPayload = action => action?.payload || {}
+const actionPayload = action => normalizeAiAction(action).payload
 
 const confirmPageAction = async action => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
@@ -963,13 +963,14 @@ const sendMessage = async (overrideMessage = null) => {
     const message = payload?.answer || payload?.message || response.data?.message || (i18nStore.locale === 'en'
       ? 'Sorry, AI did not return content. Please try another request.'
       : 'R\u1ea5t ti\u1ebfc, AI kh\u00f4ng ph\u1ea3n h\u1ed3i n\u1ed9i dung. B\u1ea1n c\u00f3 th\u1ec3 th\u1eed l\u1ea1i v\u1edbi c\u00e2u h\u1ecfi kh\u00e1c.')
+    const normalizedActions = normalizeAiActionList(payload?.actions || [])
     chatHistory.value.push({
       role: 'bot',
-      content: message,
+      content: [message, normalizedActions.hasMissingTaskTitle ? 'Bạn muốn đặt tên công việc là gì?' : ''].filter(Boolean).join('\n\n'),
       warnings: payload?.warnings || [],
       citations: payload?.citations || [],
-      actions: (payload?.actions || []).map(action => ({
-        ...normalizeAiAction(action),
+      actions: normalizedActions.actions.map(action => ({
+        ...action,
         contextKey: aiContextKey.value,
         uiStatus: 'pending',
         loading: false,

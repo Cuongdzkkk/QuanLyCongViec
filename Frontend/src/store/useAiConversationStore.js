@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import axiosClient from '@/api/axiosClient'
+import { normalizeAiActionList } from '@/utils/aiActionUi'
 
 const defaultMessages = () => [{
   role: 'bot',
@@ -7,6 +8,19 @@ const defaultMessages = () => [{
 }]
 
 const apiPayload = response => response?.data?.data ?? response?.data ?? response
+
+const canonicalizeAiMessage = message => {
+  if (!Array.isArray(message?.actions)) return message
+  const normalized = normalizeAiActionList(message.actions)
+  const clarification = 'Bạn muốn đặt tên công việc là gì?'
+  return {
+    ...message,
+    content: normalized.hasMissingTaskTitle && !`${message.content || ''}`.includes(clarification)
+      ? [message.content || '', clarification].filter(Boolean).join('\n\n')
+      : message.content,
+    actions: normalized.actions
+  }
+}
 
 export const useAiConversationStore = defineStore('aiConversation', {
   state: () => ({
@@ -71,7 +85,7 @@ export const useAiConversationStore = defineStore('aiConversation', {
     async persistConversation() {
       if (!this.currentConversationId) return
       const messages = JSON.parse(JSON.stringify(this.messages.filter(message => !message.loading).map(message => ({
-        ...message,
+        ...canonicalizeAiMessage(message),
         attachments: message.attachments?.map(attachment => Object.fromEntries(
           Object.entries(attachment).filter(([key]) => !['file', 'previewUrl'].includes(key))
         ))
@@ -88,7 +102,7 @@ export const useAiConversationStore = defineStore('aiConversation', {
       this.currentConversationWorkspaceId = conversation.workspaceId
       this.currentConversationTitle = conversation.title
       this.messages = Array.isArray(conversation.messages) && conversation.messages.length
-        ? conversation.messages
+        ? conversation.messages.map(canonicalizeAiMessage)
         : defaultMessages()
       this.historyVisible = false
     }

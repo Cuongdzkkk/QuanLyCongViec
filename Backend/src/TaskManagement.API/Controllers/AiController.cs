@@ -817,6 +817,8 @@ namespace TaskManagement.API.Controllers
             if (definition.DirectExecution)
                 return BadRequest(ApiResponse<object>.Error("Read and analyze actions execute directly without preview state."));
             request.Payload = NormalizeActionPayload(actionType, request.Payload);
+            if (actionType == "create_task" && string.IsNullOrWhiteSpace(GetPayloadString(request.Payload, "title")))
+                return BadRequest(ApiResponse<object>.Error("Task title is required."));
 
             var userId = GetUserId();
             if (!request.WorkspaceId.HasValue || request.WorkspaceId == Guid.Empty)
@@ -2072,7 +2074,7 @@ namespace TaskManagement.API.Controllers
             var projectId = ResolveProjectId(request);
             await EnsureProjectWriteAccessAsync(userId, projectId);
 
-            var title = GetPayloadString(request.Payload, "title", "name");
+            var title = GetPayloadString(request.Payload, "title");
             if (string.IsNullOrWhiteSpace(title))
             {
                 throw new ArgumentException("Task title is required.");
@@ -3412,6 +3414,8 @@ namespace TaskManagement.API.Controllers
                     .Select(key => GetPayloadString(normalized, key))
                     .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
                 if (!string.IsNullOrWhiteSpace(title)) normalized["title"] = title.Trim();
+                normalized.Remove("taskTitle");
+                normalized.Remove("name");
             }
 
             return normalized;
