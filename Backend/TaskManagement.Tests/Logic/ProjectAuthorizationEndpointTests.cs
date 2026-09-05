@@ -85,7 +85,7 @@ public sealed class ProjectAuthorizationEndpointTests
             var workspaceMemberId = Guid.NewGuid();
             var outsiderId = Guid.NewGuid();
             var projectId = Guid.NewGuid();
-            await SeedProjectAsync(factory, workspaceMemberId, outsiderId, projectId, memberActive: false);
+            await SeedProjectAsync(factory, workspaceMemberId, outsiderId, projectId, memberActive: false, networkType: "Public");
             ProjectAccessPolicy.Configure(false);
 
             using var workspaceClient = CreateClient(factory, workspaceMemberId);
@@ -132,7 +132,8 @@ public sealed class ProjectAuthorizationEndpointTests
         Guid projectId,
         bool memberActive,
         string workspaceRole = "MEMBER",
-        string? systemRole = null)
+        string? systemRole = null,
+        string networkType = "Private")
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -170,6 +171,7 @@ public sealed class ProjectAuthorizationEndpointTests
             CreatorId = memberId,
             Name = "Authorized project",
             Identifier = "AUTH",
+            NetworkType = networkType,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         });

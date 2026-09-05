@@ -237,6 +237,7 @@ public sealed class P0ModuleAuthorizationTests
             CreatorId = managerId,
             Name = "P0 Runtime Project",
             Identifier = "P0R",
+            NetworkType = "Private",
             Status = true,
             StartDate = now.Date,
             CreatedAt = now,

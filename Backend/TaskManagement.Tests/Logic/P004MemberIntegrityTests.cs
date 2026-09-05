@@ -182,7 +182,7 @@ public sealed class P004MemberIntegrityTests
             context.WorkspaceMembers.AddRange(
                 new WorkspaceMember { WorkspaceId = workspaceId, UserId = ownerId, WorkspaceRole = "OWNER", IsActive = true },
                 new WorkspaceMember { WorkspaceId = workspaceId, UserId = memberId, WorkspaceRole = "MEMBER", IsActive = true });
-            context.Projects.Add(new Project { Id = projectId, WorkspaceId = workspaceId, CreatorId = ownerId, Name = "Project", Identifier = "MEM", Status = true });
+            context.Projects.Add(new Project { Id = projectId, WorkspaceId = workspaceId, CreatorId = ownerId, Name = "Project", Identifier = "MEM", NetworkType = "Private", Status = true });
             context.ProjectMembers.AddRange(
                 new ProjectMember { ProjectId = projectId, UserId = ownerId, ProjectRole = "PM", Status = true, JoinedAt = DateTime.UtcNow },
                 new ProjectMember { ProjectId = projectId, UserId = memberId, ProjectRole = "Developer", Status = true, JoinedAt = DateTime.UtcNow });

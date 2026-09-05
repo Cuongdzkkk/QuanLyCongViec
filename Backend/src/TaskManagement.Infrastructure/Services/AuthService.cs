@@ -1120,7 +1120,7 @@ namespace TaskManagement.Infrastructure.Services
                 {
                     WorkspaceId = invitation.Project.WorkspaceId,
                     UserId = userId,
-                    WorkspaceRole = "MEMBER",
+                    WorkspaceRole = "GUEST",
                     JoinedAt = DateTime.UtcNow,
                     IsActive = true
                 });

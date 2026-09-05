@@ -3188,10 +3188,11 @@ namespace TaskManagement.API.Controllers
                 return new List<Guid>();
             }
 
-            return await _dbContext.ProjectMembers
+            var accessibleProjectIds = await _authorizationService.GetAccessibleProjectIdsAsync(userId);
+            return await _dbContext.Projects
                 .AsNoTracking()
-                .Where(member => member.UserId == userId && member.Status && member.Project.WorkspaceId == workspaceId)
-                .Select(member => member.ProjectId)
+                .Where(project => project.WorkspaceId == workspaceId && accessibleProjectIds.Contains(project.Id))
+                .Select(project => project.Id)
                 .ToListAsync();
         }
 
