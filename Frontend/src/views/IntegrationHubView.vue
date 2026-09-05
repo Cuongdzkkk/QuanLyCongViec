@@ -1322,12 +1322,14 @@ const runAiAction = async (action) => {
   try {
     const response = await axiosClient.get(`/inbox/${selectedItem.value.id}/ai/${action}`)
     const payload = getPayload(response)
-    aiMessageType.value = payload?.configured === false ? 'error' : 'info'
+    const warnings = asArray(payload?.warnings).filter(Boolean)
+    aiMessageType.value = payload?.configured === false || warnings.length ? 'error' : 'info'
     if (action === 'suggest-task' && payload?.configured !== false) {
       aiCandidates.value = asArray(payload?.candidates).map(normalizeAiCandidate).filter(candidate => candidate.title)
-      aiMessage.value = aiCandidates.value.length
+      const candidateMessage = aiCandidates.value.length
         ? t(`AI đề xuất ${aiCandidates.value.length} task có nguồn bằng chứng.`, `AI suggested ${aiCandidates.value.length} evidence-backed tasks.`)
         : t('AI chưa tìm thấy task đủ rõ để đề xuất.', 'AI did not find a clear task to suggest.')
+      aiMessage.value = warnings.length ? `${warnings.join(' ')} ${candidateMessage}` : candidateMessage
       return
     }
     aiMessage.value = payload?.configured === false

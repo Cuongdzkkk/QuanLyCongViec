@@ -16,6 +16,12 @@ test('integration hub renders evidence-backed task candidate actions', () => {
   assert.match(integrationHub, /candidate\.evidence/)
 })
 
+test('integration hub surfaces attachment analysis failures and body-only basis', () => {
+  assert.match(integrationHub, /payload\?\.warnings/)
+  assert.match(integrationHub, /warnings\.join\(' '\)/)
+  assert.match(integrationHub, /aiMessage\.value = warnings\.length/)
+})
+
 test('floating AI resumes a pending action from a short confirmation', () => {
   assert.match(nexus, /isAiConfirmationMessage\(outgoing\)/)
   assert.match(nexus, /findPendingAiAction\(chatHistory\.value,\s*\{/)
