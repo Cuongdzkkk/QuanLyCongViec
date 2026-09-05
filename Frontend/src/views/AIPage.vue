@@ -401,6 +401,7 @@ import { useAiScopeStore } from '@/store/useAiScopeStore'
 import { buildAiContextKey, isAiContextMatch, isComposerSendKey } from '@/utils/aiWorkspace'
 import { useAiComposer } from '@/composables/useAiComposer'
 import { AI_QUICK_ACTIONS } from '@/utils/aiActionUi'
+import { findPendingAiAction, isAiConfirmationMessage, loadAiCapabilities } from '@/utils/aiCapabilityRegistry'
 
 const router = useRouter()
 const route = useRoute()
@@ -451,7 +452,8 @@ const aiPlanLabel = computed(() => {
   const plan = String(aiUsage.value?.planCode || 'free').trim()
   return plan ? plan.charAt(0).toUpperCase() + plan.slice(1) : 'Free'
 })
-const quickActions = computed(() => AI_QUICK_ACTIONS)
+const canonicalQuickActions = ref([])
+const quickActions = computed(() => canonicalQuickActions.value.length ? canonicalQuickActions.value : AI_QUICK_ACTIONS)
 const quickToolsExpanded = ref(false)
 const connectedIntegrations = ref([])
 const hasConnectedGithubIntegration = computed(() => connectedIntegrations.value.some(item => item?.provider === 'github' && item?.status === 'connected'))
@@ -824,6 +826,14 @@ const confirmPageAction = async action => {
   }
 }
 
+const resumePendingActionIfConfirmed = async message => {
+  if (!isAiConfirmationMessage(message)) return false
+  const action = findPendingAiAction(chatHistory.value)
+  if (!action) return false
+  await confirmPageAction(action)
+  return true
+}
+
 const cancelPageAction = async action => {
   if (!action || action.loading || action.uiStatus === 'success') return
   if (action.serverActionId) await axiosClient.post(`/ai/actions/${action.serverActionId}/cancel`).catch(() => {})
@@ -921,6 +931,11 @@ const sendMessage = async (overrideMessage = null) => {
   const outgoing = `${overrideMessage ?? userMessage.value}`.trim()
   const hasAttachments = pendingAttachments.value.length > 0
   if (aiCreditsExhausted.value || (!outgoing && !hasAttachments) || isLoading.value) return
+
+  if (!hasAttachments && await resumePendingActionIfConfirmed(outgoing)) {
+    userMessage.value = ''
+    return
+  }
 
   if (!overrideMessage) {
     userMessage.value = ''
@@ -1214,6 +1229,7 @@ const loadConnectedIntegrations = async () => {
 }
 
 onMounted(() => {
+  loadAiCapabilities(axiosClient).then(actions => { canonicalQuickActions.value = actions })
   siteStore.fetchSites()
     .then(async () => {
       syncSelectedWorkspace()
