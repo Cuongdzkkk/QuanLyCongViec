@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Text;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -24,6 +25,8 @@ namespace TaskManagement.API.Controllers
         private const string GoogleCalendarProvider = "google-calendar";
         private const string GmailProvider = "gmail";
         private const string SlackProvider = "slack";
+        private const int GmailAttachmentMaxBytes = 2 * 1024 * 1024;
+        private const int GmailAttachmentMaxChars = 100_000;
         private readonly ApplicationDbContext _context;
         private readonly IConfiguration _configuration;
         private readonly IHttpClientFactory _httpClientFactory;
@@ -516,7 +519,7 @@ namespace TaskManagement.API.Controllers
                     if (string.IsNullOrWhiteSpace(messageRef.Id)) continue;
 
                     var detailResponse = await client.GetAsync(
-                        $"https://gmail.googleapis.com/gmail/v1/users/me/messages/{Uri.EscapeDataString(messageRef.Id)}?format=metadata&metadataHeaders=Subject&metadataHeaders=From");
+                        $"https://gmail.googleapis.com/gmail/v1/users/me/messages/{Uri.EscapeDataString(messageRef.Id)}?format=full");
                     var detailJson = await detailResponse.Content.ReadAsStringAsync();
                     if (!detailResponse.IsSuccessStatusCode) continue;
 
@@ -546,7 +549,15 @@ namespace TaskManagement.API.Controllers
                     }
 
                     item.Title = string.IsNullOrWhiteSpace(subject) ? "Gmail message" : subject;
-                    item.Content = string.Join(Environment.NewLine, new[] { from, message.Snippet }.Where(value => !string.IsNullOrWhiteSpace(value)));
+                    var contentParts = new List<string> { from ?? string.Empty, message.Snippet ?? string.Empty };
+                    foreach (var part in EnumerateGmailParts(message.Payload?.Parts))
+                    {
+                        if (!IsSupportedGmailTextAttachment(part)) continue;
+                        var attachmentText = await DownloadGmailTextAttachmentAsync(client, message.Id, part);
+                        if (string.IsNullOrWhiteSpace(attachmentText)) continue;
+                        contentParts.Add($"Attachment: {part.Filename}\n{attachmentText}");
+                    }
+                    item.Content = string.Join(Environment.NewLine, contentParts.Where(value => !string.IsNullOrWhiteSpace(value)));
                     item.StartsAt = ParseUnixMilliseconds(message.InternalDate);
                     item.UpdatedAt = DateTime.UtcNow;
                     imported += 1;
@@ -565,6 +576,61 @@ namespace TaskManagement.API.Controllers
                 return StatusCode(502, new { message = ex is GoogleProviderException { ReconnectRequired: true }
                     ? "Gmail cần kết nối lại"
                     : "Không đồng bộ được Gmail" });
+            }
+        }
+
+        private static IEnumerable<GmailPart> EnumerateGmailParts(IEnumerable<GmailPart>? parts)
+        {
+            foreach (var part in parts ?? Enumerable.Empty<GmailPart>())
+            {
+                yield return part;
+                foreach (var child in EnumerateGmailParts(part.Parts)) yield return child;
+            }
+        }
+
+        private static bool IsSupportedGmailTextAttachment(GmailPart part)
+        {
+            var fileName = part.Filename?.Trim() ?? string.Empty;
+            var extension = Path.GetExtension(fileName);
+            var mimeType = part.MimeType?.Split(';')[0].Trim().ToLowerInvariant();
+            return !string.IsNullOrWhiteSpace(fileName)
+                && (extension.Equals(".txt", StringComparison.OrdinalIgnoreCase)
+                    || extension.Equals(".csv", StringComparison.OrdinalIgnoreCase))
+                && (mimeType is "text/plain" or "text/csv" or "application/csv" or "text/tab-separated-values" or null or "");
+        }
+
+        private async Task<string?> DownloadGmailTextAttachmentAsync(HttpClient client, string messageId, GmailPart part)
+        {
+            var body = part.Body;
+            if (body == null || body.Size > GmailAttachmentMaxBytes) return null;
+
+            var encoded = body.Data;
+            if (string.IsNullOrWhiteSpace(encoded) && !string.IsNullOrWhiteSpace(body.AttachmentId))
+            {
+                var response = await client.GetAsync(
+                    $"https://gmail.googleapis.com/gmail/v1/users/me/messages/{Uri.EscapeDataString(messageId)}/attachments/{Uri.EscapeDataString(body.AttachmentId)}");
+                if (!response.IsSuccessStatusCode) return null;
+                var json = await response.Content.ReadAsStringAsync();
+                var attachment = JsonSerializer.Deserialize<GmailAttachmentResponse>(json);
+                if (attachment == null || attachment.Size > GmailAttachmentMaxBytes) return null;
+                encoded = attachment.Data;
+            }
+
+            if (string.IsNullOrWhiteSpace(encoded)) return null;
+            try
+            {
+                var bytes = WebEncoders.Base64UrlDecode(encoded);
+                if (bytes.Length == 0 || bytes.Length > GmailAttachmentMaxBytes) return null;
+                var text = new UTF8Encoding(false, true).GetString(bytes);
+                return text.Length > GmailAttachmentMaxChars ? text[..GmailAttachmentMaxChars] : text;
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+            catch (DecoderFallbackException)
+            {
+                return null;
             }
         }
 
@@ -1163,6 +1229,45 @@ namespace TaskManagement.API.Controllers
         {
             [JsonPropertyName("headers")]
             public List<GmailHeader> Headers { get; set; } = new();
+
+            [JsonPropertyName("parts")]
+            public List<GmailPart> Parts { get; set; } = new();
+        }
+
+        private sealed class GmailPart
+        {
+            [JsonPropertyName("mimeType")]
+            public string MimeType { get; set; } = string.Empty;
+
+            [JsonPropertyName("filename")]
+            public string Filename { get; set; } = string.Empty;
+
+            [JsonPropertyName("body")]
+            public GmailPartBody? Body { get; set; }
+
+            [JsonPropertyName("parts")]
+            public List<GmailPart> Parts { get; set; } = new();
+        }
+
+        private sealed class GmailPartBody
+        {
+            [JsonPropertyName("attachmentId")]
+            public string? AttachmentId { get; set; }
+
+            [JsonPropertyName("data")]
+            public string? Data { get; set; }
+
+            [JsonPropertyName("size")]
+            public int Size { get; set; }
+        }
+
+        private sealed class GmailAttachmentResponse
+        {
+            [JsonPropertyName("data")]
+            public string? Data { get; set; }
+
+            [JsonPropertyName("size")]
+            public int Size { get; set; }
         }
 
         private sealed class GmailHeader

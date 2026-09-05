@@ -706,6 +706,7 @@ import {
   writeAiPanelSize,
   writeActionsOnly
 } from '@/utils/aiWorkspace'
+import { findPendingAiAction, isAiConfirmationMessage } from '@/utils/aiCapabilityRegistry'
 
 const voiceCallStore = useVoiceCallStore()
 const goToChatCall = () => {
@@ -3006,6 +3007,15 @@ const sendAiMessage = async () => {
     return
   }
   if ((!outgoing && !hasAttachments) || aiSending.value) return
+
+  if (!hasAttachments && isAiConfirmationMessage(outgoing)) {
+    const pendingAction = findPendingAiAction(chatHistory.value)
+    if (pendingAction) {
+      aiInput.value = ''
+      await executeAiAction(pendingAction)
+      return
+    }
+  }
 
   aiSending.value = true
   const requestRevision = aiContextRevision.value
