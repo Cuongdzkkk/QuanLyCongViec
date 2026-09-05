@@ -192,21 +192,7 @@ globalThis.__receivePathRuntime = {
   launchCaptionTransportClientDiagnostic: () => {},
   createBoundedAsyncQueue,
   createBoundedPeriodicSampler,
-  summarizeRtpReport,
-  collectPeerRuntimeStats: async () => ({
-    connectionState: 'unknown',
-    iceConnectionState: 'unknown',
-    signalingState: 'unknown',
-    selectedCandidatePair: null,
-    rtp: { audio: {}, video: {} },
-    tracks: { senders: [], receivers: [] }
-  }),
-  getIceServerDiagnostics: () => ({ httpStatus: null, iceServerCount: 0, stunPresent: false, turnPresent: false, turnServerCount: 0 }),
-  getRecentWebRtcDiagnosticEvents: () => [],
-  isWebRtcDebugEnabled: () => false,
-  recordIceServerDiagnostics: () => {},
-  recordWebRtcDiagnosticEvent: () => {},
-  resetWebRtcRuntimeDiagnostics: () => {}
+  summarizeRtpReport
 }
 
 const servicePrelude = `
@@ -222,14 +208,7 @@ const {
   launchCaptionTransportClientDiagnostic,
   createBoundedAsyncQueue,
   createBoundedPeriodicSampler,
-  summarizeRtpReport,
-  collectPeerRuntimeStats,
-  getIceServerDiagnostics,
-  getRecentWebRtcDiagnosticEvents,
-  isWebRtcDebugEnabled,
-  recordIceServerDiagnostics,
-  recordWebRtcDiagnosticEvent,
-  resetWebRtcRuntimeDiagnostics
+  summarizeRtpReport
 } = globalThis.__receivePathRuntime
 `
 const transformedService = `${servicePrelude}\n${serviceSource
@@ -254,8 +233,6 @@ assert.ok(visibilityStart >= 0 && visibilityEnd > visibilityStart, 'real Collabo
 assert.ok(binderStart >= 0 && binderEnd > binderStart, 'real CollaborationChat media binding seam must remain available')
 const binderPrelude = `
 const traceWebRtcMedia = () => {}
-const isWebRtcDebugEnabled = () => false
-const recordMediaElementDiagnostic = () => {}
 const blockedMediaElements = new Set()
 const localVideoElements = new Map()
 const remoteVideoElements = new Map()
