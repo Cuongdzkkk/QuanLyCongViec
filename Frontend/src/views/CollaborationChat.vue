@@ -8367,7 +8367,7 @@ audio::-webkit-media-controls-overflow-menu-list,
   justify-content: center;
   flex: 0 0 auto;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
   z-index: 10;
 }
 

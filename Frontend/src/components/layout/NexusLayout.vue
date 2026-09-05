@@ -617,7 +617,7 @@
         <!-- Mini Floating Camera Tiles Grid (Google Meet style) -->
         <div v-if="(voiceCallStore.isCameraEnabled && voiceCallStore.hasLocalCameraTrack) || voiceCallStore.hasRemoteVideo" class="call-overlay-video-dock" @click="goToChatCall">
           <div v-if="voiceCallStore.isCameraEnabled && voiceCallStore.hasLocalCameraTrack" class="mini-video-tile self-tile">
-            <video ref="miniLocalVideoRef" autoplay playsinline muted class="mini-video-el"></video>
+            <video :ref="setMiniLocalVideoRef" autoplay playsinline muted class="mini-video-el"></video>
             <span class="mini-video-label">Bạn</span>
           </div>
           <template v-for="[connId, media] in voiceCallStore.remoteVideoStreams" :key="connId">
@@ -726,23 +726,56 @@ const voiceCallStore = useVoiceCallStore()
 const miniLocalVideoRef = ref(null)
 const miniRemoteVideoRefs = new Map()
 
-const setMiniRemoteVideoRef = (el, connId) => {
-  if (el) miniRemoteVideoRefs.set(connId, el)
-  else miniRemoteVideoRefs.delete(connId)
+const bindMiniLocalVideo = (el) => {
+  if (!el) return
+  if (voiceCallStore.isCameraEnabled && voiceCallStore.callSession) {
+    const stream = voiceCallStore.callSession.getLocalCameraStream?.() || voiceCallStore.callSession.getLocalStream?.()
+    if (stream && stream.getVideoTracks?.().some(t => t.readyState === 'live' && t.enabled !== false)) {
+      if (el.srcObject !== stream) {
+        el.srcObject = stream
+        el.play().catch(() => {})
+      }
+      return
+    }
+  }
+  el.srcObject = null
 }
 
-watch([() => voiceCallStore.isCameraEnabled, () => voiceCallStore.callSession], async () => {
+const setMiniLocalVideoRef = (el) => {
+  miniLocalVideoRef.value = el
+  if (el) {
+    bindMiniLocalVideo(el)
+  }
+}
+
+const bindMiniRemoteVideo = (el, connId) => {
+  if (!el) return
+  const media = voiceCallStore.remoteVideoStreams.get(connId)
+  if (media?.cameraStream && media.cameraStream.getVideoTracks().some(t => t.readyState === 'live')) {
+    if (el.srcObject !== media.cameraStream) {
+      el.srcObject = media.cameraStream
+      el.play().catch(() => {})
+    }
+  } else {
+    el.srcObject = null
+  }
+}
+
+const setMiniRemoteVideoRef = (el, connId) => {
+  if (el) {
+    miniRemoteVideoRefs.set(connId, el)
+    bindMiniRemoteVideo(el, connId)
+  } else {
+    const prevEl = miniRemoteVideoRefs.get(connId)
+    if (prevEl) prevEl.srcObject = null
+    miniRemoteVideoRefs.delete(connId)
+  }
+}
+
+watch([() => voiceCallStore.isCameraEnabled, () => voiceCallStore.callSession, () => voiceCallStore.hasLocalCameraTrack], async () => {
   await nextTick()
   if (miniLocalVideoRef.value) {
-    if (voiceCallStore.isCameraEnabled && voiceCallStore.callSession) {
-      const stream = voiceCallStore.callSession.getLocalCameraStream?.() || voiceCallStore.callSession.getLocalStream?.()
-      if (stream && miniLocalVideoRef.value.srcObject !== stream) {
-        miniLocalVideoRef.value.srcObject = stream
-        miniLocalVideoRef.value.play().catch(() => {})
-      }
-    } else {
-      miniLocalVideoRef.value.srcObject = null
-    }
+    bindMiniLocalVideo(miniLocalVideoRef.value)
   }
 }, { immediate: true })
 
@@ -751,11 +784,8 @@ watch(() => voiceCallStore.remoteVideoStreams, async (remoteMap) => {
   if (!remoteMap) return
   for (const [connId, media] of remoteMap.entries()) {
     const videoEl = miniRemoteVideoRefs.get(connId)
-    if (videoEl && media?.cameraStream) {
-      if (videoEl.srcObject !== media.cameraStream) {
-        videoEl.srcObject = media.cameraStream
-        videoEl.play().catch(() => {})
-      }
+    if (videoEl) {
+      bindMiniRemoteVideo(videoEl, connId)
     }
   }
 }, { deep: true, immediate: true })
