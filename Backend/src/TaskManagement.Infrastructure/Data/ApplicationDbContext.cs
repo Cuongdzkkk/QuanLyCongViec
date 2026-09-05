@@ -19,12 +19,6 @@ namespace TaskManagement.Infrastructure.Data
             _auditLogQueue = auditLogQueue;
         }
 
-        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-        {
-            base.OnConfiguring(optionsBuilder);
-            optionsBuilder.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-        }
-
         // Group 1: System & Access
         public DbSet<User> Users { get; set; }
         public DbSet<Role> Roles { get; set; }
