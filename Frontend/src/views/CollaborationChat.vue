@@ -507,11 +507,23 @@
                 <i class="fa-solid fa-closed-captioning" aria-hidden="true"></i><span>Phụ đề</span>
               </button>
 
-              <div class="camera-effects-control">
-                <button type="button" class="call-control-label-btn" aria-haspopup="menu" :aria-expanded="showMoreMenu" aria-label="Mở thêm tùy chọn" @click="showMoreMenu = !showMoreMenu; moreMenuSection = ''">
-                  <i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span>Thêm</span>
-                </button>
-                <div v-if="showMoreMenu" class="call-more-menu" role="menu" aria-label="Tùy chọn cuộc gọi">
+              <el-popover
+                v-model:visible="showMoreMenu"
+                placement="top-end"
+                :width="270"
+                :offset="10"
+                trigger="click"
+                :teleported="true"
+                :show-arrow="false"
+                popper-class="call-more-menu-popper"
+                @show="moreMenuSection = ''"
+              >
+                <template #reference>
+                  <button type="button" class="call-control-label-btn" aria-haspopup="menu" :aria-expanded="showMoreMenu" aria-label="Mở thêm tùy chọn">
+                    <i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span>Thêm</span>
+                  </button>
+                </template>
+                <div class="call-more-menu" role="menu" aria-label="Tùy chọn cuộc gọi">
                   <template v-if="!moreMenuSection">
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'view-mode'"><span>Chế độ xem</span><small>{{ callViewModeLabel }}</small></button>
                     <button type="button" class="call-more-menu-item" role="menuitem" @click="moreMenuSection = 'reactions'"><span>Phản ứng</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
@@ -567,7 +579,7 @@
                     </div>
                   </template>
                 </div>
-              </div>
+              </el-popover>
 
               <button 
                 class="call-control-circle-btn hang-up" 
@@ -1949,7 +1961,6 @@
       </template>
     </el-dialog>
 
-    <WebRtcDiagnosticsPanel :call-session="callSession" />
   </main>
 </template>
 
@@ -1966,7 +1977,6 @@ import DataModalHeader from '@/components/common/Foundation/DataModalHeader.vue'
 import DataModalSection from '@/components/common/Foundation/DataModalSection.vue'
 import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 import LiveCaptionOverlay from '@/components/collaboration/LiveCaptionOverlay.vue'
-import WebRtcDiagnosticsPanel from '@/components/WebRtcDiagnosticsPanel.vue'
 
 import { collaborationApi } from '@/api/collaborationApi'
 import { useProjectStore } from '@/store/useProjectStore'
@@ -1979,7 +1989,6 @@ import {
   getCollaborationHubErrorCode
 } from '@/services/collaborationRealtime'
 import { createCallMediaSession, traceCallHubLifecycle, traceWebRtcMedia } from '@/services/callMediaService'
-import { isWebRtcDebugEnabled, recordMediaElementDiagnostic } from '@/utils/webrtcRuntimeDiagnostics'
 import {
   dedupeParticipantsByUser,
   getBoundedCallStageParticipants,
@@ -2038,7 +2047,7 @@ const meetingLayoutConnectionKeys = new Map()
 let meetingLayoutDiagnosticSignature = ''
 let meetingLayoutDiagnosticQueued = false
 const meetingLayoutTraceEnabled = () => {
-  try { return globalThis.localStorage?.getItem('debug_webrtc_media') === '1' } catch { return false }
+  return Boolean(import.meta.env?.DEV)
 }
 const traceMeetingLayout = (event, detail = {}) => {
   if (!meetingLayoutTraceEnabled()) return
@@ -2785,7 +2794,6 @@ const bindMediaElement = (element, stream, muted = false, { peerId = '', mediaRo
   if (mediaRole === 'audio') element.volume = 1
   element.autoplay = true
   element.playsInline = true
-  if (isWebRtcDebugEnabled()) recordMediaElementDiagnostic(element, { mediaRole })
   if (element.srcObject !== stream) {
     element.srcObject = stream || null
     traceWebRtcMedia('REMOTE_MEDIA_ELEMENT_BOUND', {
@@ -2805,7 +2813,6 @@ const bindMediaElement = (element, stream, muted = false, { peerId = '', mediaRo
       mediaRole,
       streamId: stream?.id || ''
     })
-    if (isWebRtcDebugEnabled()) recordMediaElementDiagnostic(element, { mediaRole })
   }
   if (stream) {
     if (mediaRole === 'audio') traceWebRtcMedia('REMOTE_AUDIO_PLAY_BEGIN', {
@@ -2819,12 +2826,10 @@ const bindMediaElement = (element, stream, muted = false, { peerId = '', mediaRo
     if (playback?.then) {
       void playback.then(() => {
         blockedMediaElements.delete(element)
-        if (isWebRtcDebugEnabled()) recordMediaElementDiagnostic(element, { mediaRole, playResult: 'ok' })
         if (mediaRole === 'audio') traceWebRtcMedia('REMOTE_AUDIO_PLAY_OK', { peerId, mediaRole, result: 'play-resolved' })
         traceWebRtcMedia('VIDEO_PLAY_OK', { peerId, trackKind: track?.kind, trackId: track?.id, trackReadyState: track?.readyState, mediaRole, streamId: stream.id })
       }).catch(error => {
         if (error?.name === 'NotAllowedError') blockedMediaElements.add(element)
-        if (isWebRtcDebugEnabled()) recordMediaElementDiagnostic(element, { mediaRole, playResult: 'error', errorName: error?.name || 'Error' })
         if (mediaRole === 'audio') traceWebRtcMedia('REMOTE_AUDIO_PLAY_FAIL', { peerId, mediaRole, errorName: error?.name || 'Error' })
         traceWebRtcMedia('VIDEO_PLAY_FAILED', { peerId, trackKind: track?.kind, trackId: track?.id, trackReadyState: track?.readyState, mediaRole, streamId: stream.id })
       })
@@ -10624,6 +10629,64 @@ background-color: #111c2d !important;
 </style>
 
 <style>
+/* Teleported call menu: keep it above the meeting shell and bounded by the viewport. */
+.call-more-menu-popper.el-popover.el-popper {
+  z-index: var(--z-popover) !important;
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  overflow: visible !important;
+  padding: 8px !important;
+  color: var(--color-text-primary, #0f172a) !important;
+  background: var(--color-surface, #ffffff) !important;
+  border-color: var(--color-border, #e2e8f0) !important;
+  box-shadow: var(--shadow-popover, 0 16px 32px rgb(2 6 23 / 0.35)) !important;
+}
+
+.call-more-menu-popper .call-more-menu {
+  position: static;
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.call-more-menu-popper .call-more-menu-item,
+.call-more-menu-popper .call-more-menu-back,
+.call-more-menu-popper .call-device-option {
+  color: var(--color-text-primary, #0f172a);
+}
+
+.call-more-menu-popper .call-more-menu-item:hover,
+.call-more-menu-popper .call-more-menu-item:focus-visible,
+.call-more-menu-popper .call-more-menu-back:hover,
+.call-more-menu-popper .call-more-menu-back:focus-visible,
+.call-more-menu-popper .call-device-option:hover,
+.call-more-menu-popper .call-device-option:focus-visible,
+.call-more-menu-popper .call-device-option.selected {
+  background: var(--color-surface-hover, #f1f5f9);
+  color: var(--color-text-primary, #0f172a);
+}
+
+.call-more-menu-popper .call-more-menu-item small,
+.call-more-menu-popper .call-more-section-label,
+.call-more-menu-popper .call-more-empty {
+  color: var(--color-text-muted, #64748b);
+}
+
+.call-more-menu-popper .call-reaction-option {
+  background: var(--color-surface-hover, #f1f5f9);
+  border-color: var(--color-border, #e2e8f0);
+}
+
+.call-more-menu-popper .call-device-select select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 /* Non-scoped style for emoji popover */
 .emoji-popover-popper {
   background-color: var(--color-surface) !important;

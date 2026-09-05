@@ -20,6 +20,7 @@ using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Domain.Rules;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.Infrastructure.Services;
 
 namespace TaskManagement.API.Controllers
 {
@@ -38,15 +39,21 @@ namespace TaskManagement.API.Controllers
         private const int GeminiRetryAttempts = 3;
         private const long AiDocumentMaxBytes = 10 * 1024 * 1024;
         private const long VoiceAudioMaxBytes = 3 * 1024 * 1024;
+        private const string AiPermissionDeniedMessage = "Bạn chưa có quyền thực hiện thao tác này.";
         private static readonly IReadOnlyDictionary<string, string[]> AiDocumentMimeTypes =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
                 [".txt"] = ["text/plain"],
                 [".md"] = ["text/markdown", "text/plain"],
                 [".docx"] = ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
-                [".pdf"] = ["application/pdf"]
+                [".pdf"] = ["application/pdf"],
+                [".csv"] = ["text/csv", "application/csv", "application/vnd.ms-excel"],
+                [".png"] = ["image/png"],
+                [".jpg"] = ["image/jpeg"],
+                [".jpeg"] = ["image/jpeg"]
             };
         private readonly IResourceAuthorizationService _authorizationService;
+        private readonly IAttachmentIngestionService _attachmentIngestionService;
 
         public AiController(
             IAiService aiService,
@@ -56,7 +63,8 @@ namespace TaskManagement.API.Controllers
             IProjectService projectService,
             IGoalService goalService,
             ApplicationDbContext dbContext,
-            IResourceAuthorizationService authorizationService)
+            IResourceAuthorizationService authorizationService,
+            IAttachmentIngestionService? attachmentIngestionService = null)
         {
             _aiService = aiService;
             _aiCreditUsageService = aiCreditUsageService;
@@ -66,6 +74,7 @@ namespace TaskManagement.API.Controllers
             _goalService = goalService;
             _dbContext = dbContext;
             _authorizationService = authorizationService;
+            _attachmentIngestionService = attachmentIngestionService ?? new AttachmentIngestionService();
         }
 
         [HttpGet("usage")]
@@ -74,6 +83,33 @@ namespace TaskManagement.API.Controllers
             var userId = GetUserId();
             var usage = await _aiService.GetUsageAsync(userId);
             return Ok(ApiResponse<AiUsageDto>.Success(usage));
+        }
+
+        [HttpGet("capabilities")]
+        public IActionResult Capabilities()
+        {
+            var capabilities = AiActionCatalog.Definitions
+                .Where(pair => pair.Value.Available)
+                .Select(pair => new
+                {
+                    actionKey = pair.Value.ActionKey,
+                    legacyType = pair.Key,
+                    displayName = pair.Value.DisplayName,
+                    aliasesIntents = pair.Value.AliasesIntents,
+                    argumentSchema = pair.Value.ArgumentSchema,
+                    riskLevel = pair.Value.RiskLevel,
+                    requiredPermission = pair.Value.RequiredPermission,
+                    confirmationPolicy = pair.Value.ConfirmationPolicy,
+                    executor = pair.Value.Executor,
+                    availability = pair.Value.Available,
+                    quickTool = pair.Value.QuickTool,
+                    quickPrompt = pair.Value.QuickPrompt,
+                    icon = pair.Value.Icon,
+                    capabilityKind = pair.Value.CapabilityKind.ToString()
+                })
+                .ToList();
+
+            return Ok(ApiResponse<object>.Success(new { capabilities }));
         }
 
         [HttpGet("usage-summary")]
@@ -389,9 +425,9 @@ namespace TaskManagement.API.Controllers
                     cancellationToken);
                 return Ok(ApiResponse<AiAttachmentDto>.Success(attachment, "Attachment đã được xử lý."));
             }
-            catch (UnauthorizedAccessException ex)
+            catch (UnauthorizedAccessException)
             {
-                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Error(ex.Message));
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Error(AiPermissionDeniedMessage));
             }
             catch (InvalidDataException ex)
             {
@@ -448,9 +484,9 @@ namespace TaskManagement.API.Controllers
                     cancellationToken);
                 return Ok(ApiResponse<AiAttachmentChatResponseDto>.Success(response));
             }
-            catch (UnauthorizedAccessException ex)
+            catch (UnauthorizedAccessException)
             {
-                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Error(ex.Message));
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Error(AiPermissionDeniedMessage));
             }
             catch (InvalidDataException ex)
             {
@@ -578,10 +614,12 @@ namespace TaskManagement.API.Controllers
                 await file.CopyToAsync(ms);
                 var fileBytes = ms.ToArray();
 
-                if (!HasValidDocumentSignature(ext, fileBytes))
-                {
-                    return BadRequest(ApiResponse<object>.Error("Nội dung file không hợp lệ hoặc không khớp với định dạng đã chọn."));
-                }
+                await _attachmentIngestionService.NormalizeAsync(
+                    file.FileName,
+                    mimeType,
+                    new MemoryStream(fileBytes, writable: false),
+                    fileBytes.LongLength,
+                    "direct-ai/analyze-file");
 
                 var result = await _aiService.AnalyzeFileAsync(
                     userId,
@@ -680,19 +718,6 @@ namespace TaskManagement.API.Controllers
             }
         }
 
-        private static bool HasValidDocumentSignature(string extension, byte[] bytes)
-        {
-            if (bytes.Length == 0) return false;
-            return extension switch
-            {
-                ".pdf" => bytes.Length >= 5 && bytes.AsSpan(0, 5).SequenceEqual("%PDF-"u8),
-                ".docx" => bytes.Length >= 4 && bytes[0] == 0x50 && bytes[1] == 0x4B &&
-                           bytes[2] is 0x03 or 0x05 or 0x07 && bytes[3] is 0x04 or 0x06 or 0x08,
-                ".txt" or ".md" => Array.IndexOf(bytes, (byte)0) < 0,
-                _ => false
-            };
-        }
-
         [HttpPost("context-chat")]
         [EnableRateLimiting("AiGeneration")]
         public async Task<IActionResult> ContextChat([FromBody] AiContextChatRequestDto request)
@@ -771,6 +796,7 @@ namespace TaskManagement.API.Controllers
             var actionType = NormalizeActionType(request.Type);
             if (!AiActionRegistry.TryGetValue(actionType, out var definition))
                 return BadRequest(ApiResponse<object>.Error("Action is not allowed."));
+            request.Payload = NormalizeActionPayload(actionType, request.Payload);
             if (!definition.DirectExecution)
             {
                 return BadRequest(new
@@ -814,6 +840,9 @@ namespace TaskManagement.API.Controllers
                 return BadRequest(ApiResponse<object>.Error("Action is not allowed."));
             if (definition.DirectExecution)
                 return BadRequest(ApiResponse<object>.Error("Read and analyze actions execute directly without preview state."));
+            request.Payload = NormalizeActionPayload(actionType, request.Payload);
+            if (actionType == "create_task" && string.IsNullOrWhiteSpace(GetPayloadString(request.Payload, "title")))
+                return BadRequest(ApiResponse<object>.Error("Task title is required."));
 
             var userId = GetUserId();
             if (!request.WorkspaceId.HasValue || request.WorkspaceId == Guid.Empty)
@@ -860,7 +889,7 @@ namespace TaskManagement.API.Controllers
             }
             catch (UnauthorizedAccessException)
             {
-                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "You do not have permission for this AI action.", data = new { code = "AI_ACTION_PERMISSION_DENIED" } });
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = AiPermissionDeniedMessage, data = new { code = "AI_ACTION_PERMISSION_DENIED" } });
             }
             catch (ArgumentException ex)
             {
@@ -909,6 +938,7 @@ namespace TaskManagement.API.Controllers
             }
 
             var payload = JsonSerializer.Deserialize<Dictionary<string, object?>>(action.PayloadJson, AiActionJsonOptions) ?? new();
+            payload = NormalizeActionPayload(action.ActionType, payload);
             var request = new AiExecuteActionRequestDto { Type = action.ActionType, IdempotencyKey = action.IdempotencyKey, WorkspaceId = action.WorkspaceId, ProjectId = action.ProjectId, Payload = payload };
             try
             {
@@ -920,7 +950,7 @@ namespace TaskManagement.API.Controllers
                 action.ErrorCode = "AI_ACTION_PERMISSION_DENIED";
                 action.UpdatedAt = DateTime.UtcNow;
                 await _dbContext.SaveChangesAsync();
-                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "You do not have permission for this AI action.", data = new { code = action.ErrorCode } });
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = AiPermissionDeniedMessage, data = new { code = action.ErrorCode } });
             }
             catch (ArgumentException ex)
             {
@@ -972,6 +1002,7 @@ namespace TaskManagement.API.Controllers
             {
                 return BadRequest(ApiResponse<object>.Error("Action is not allowed."));
             }
+            request.Payload = NormalizeActionPayload(actionType, request.Payload);
 
             var userId = GetUserId();
             var idempotencyKey = BuildIdempotencyKey(userId, actionType, request.IdempotencyKey, request.Payload);
@@ -1000,7 +1031,7 @@ namespace TaskManagement.API.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 await WriteAiActionAuditAsync(userId, idempotencyKey, actionType, "Denied", null, ex.Message);
-                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Error(ex.Message));
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Error(AiPermissionDeniedMessage));
             }
             catch (DuplicateTaskException ex)
             {
@@ -2067,7 +2098,7 @@ namespace TaskManagement.API.Controllers
             var projectId = ResolveProjectId(request);
             await EnsureProjectWriteAccessAsync(userId, projectId);
 
-            var title = GetPayloadString(request.Payload, "title", "name");
+            var title = GetPayloadString(request.Payload, "title");
             if (string.IsNullOrWhiteSpace(title))
             {
                 throw new ArgumentException("Task title is required.");
@@ -3181,10 +3212,11 @@ namespace TaskManagement.API.Controllers
                 return new List<Guid>();
             }
 
-            return await _dbContext.ProjectMembers
+            var accessibleProjectIds = await _authorizationService.GetAccessibleProjectIdsAsync(userId);
+            return await _dbContext.Projects
                 .AsNoTracking()
-                .Where(member => member.UserId == userId && member.Status && member.Project.WorkspaceId == workspaceId)
-                .Select(member => member.ProjectId)
+                .Where(project => project.WorkspaceId == workspaceId && accessibleProjectIds.Contains(project.Id))
+                .Select(project => project.Id)
                 .ToListAsync();
         }
 
@@ -3378,6 +3410,10 @@ namespace TaskManagement.API.Controllers
             var normalized = actionType.Trim().Replace("-", "_").ToLowerInvariant();
             return normalized switch
             {
+                "task.create" => "create_task",
+                "task.changestatus" or "task.change_status" => "update_task_status",
+                "task.assign" => "assign_task",
+                "task.comment" => "add_comment",
                 "create_work_item" or "create_issue" => "create_task",
                 "update_work_item_status" or "move_work_item" or "move_task" => "update_task_status",
                 "assign_work_item" => "assign_task",
@@ -3394,6 +3430,24 @@ namespace TaskManagement.API.Controllers
                 "summarize_report" or "generate_report" or "report_summary" => "explain_report",
                 _ => normalized
             };
+        }
+
+        private static Dictionary<string, object?> NormalizeActionPayload(
+            string actionType,
+            Dictionary<string, object?> payload)
+        {
+            var normalized = new Dictionary<string, object?>(payload, StringComparer.OrdinalIgnoreCase);
+            if (string.Equals(actionType, "create_task", StringComparison.OrdinalIgnoreCase))
+            {
+                var title = new[] { "title", "taskTitle", "name" }
+                    .Select(key => GetPayloadString(normalized, key))
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+                if (!string.IsNullOrWhiteSpace(title)) normalized["title"] = title.Trim();
+                normalized.Remove("taskTitle");
+                normalized.Remove("name");
+            }
+
+            return normalized;
         }
 
         private static bool IsWaveAudio(byte[] bytes) =>

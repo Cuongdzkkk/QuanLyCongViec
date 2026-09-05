@@ -197,21 +197,7 @@ globalThis.__callMediaRuntime = {
   launchCaptionTransportClientDiagnostic: () => {},
   createBoundedAsyncQueue,
   createBoundedPeriodicSampler,
-  summarizeRtpReport,
-  collectPeerRuntimeStats: async () => ({
-    connectionState: 'unknown',
-    iceConnectionState: 'unknown',
-    signalingState: 'unknown',
-    selectedCandidatePair: null,
-    rtp: { audio: {}, video: {} },
-    tracks: { senders: [], receivers: [] }
-  }),
-  getIceServerDiagnostics: () => ({ httpStatus: null, iceServerCount: 0, stunPresent: false, turnPresent: false, turnServerCount: 0 }),
-  getRecentWebRtcDiagnosticEvents: () => [],
-  isWebRtcDebugEnabled: () => false,
-  recordIceServerDiagnostics: () => {},
-  recordWebRtcDiagnosticEvent: () => {},
-  resetWebRtcRuntimeDiagnostics: () => {}
+  summarizeRtpReport
 }
 
 const runtimePrelude = `
@@ -227,14 +213,7 @@ const {
   launchCaptionTransportClientDiagnostic,
   createBoundedAsyncQueue,
   createBoundedPeriodicSampler,
-  summarizeRtpReport,
-  collectPeerRuntimeStats,
-  getIceServerDiagnostics,
-  getRecentWebRtcDiagnosticEvents,
-  isWebRtcDebugEnabled,
-  recordIceServerDiagnostics,
-  recordWebRtcDiagnosticEvent,
-  resetWebRtcRuntimeDiagnostics
+  summarizeRtpReport
 } = globalThis.__callMediaRuntime
 `
 const runtimeSource = `${runtimePrelude}\n${callMediaSource
@@ -261,7 +240,8 @@ const periodicSnapshots = logs => logs.filter(args => {
 const createRuntime = async ({ debugEnabled = false, initialConnectionState = 'new' } = {}) => {
   FakeRTCPeerConnection.instances = []
   FakeRTCPeerConnection.initialConnectionState = initialConnectionState
-  globalThis.localStorage = new MemoryStorage(debugEnabled ? { debug_webrtc_media: '1' } : {})
+  globalThis.__callMediaEnv = { DEV: debugEnabled, VITE_API_BASE_URL: 'https://api.test/api' }
+  globalThis.localStorage = new MemoryStorage({ debug_webrtc_media: '1' })
   currentHub = new FakeHubConnection({
     roomId: 'room-1',
     aiState: { callSessionId: 'call-1' },
@@ -316,7 +296,7 @@ test('PR #211 sampler runtime scenarios', async t => {
     assert.equal(count, 1)
   })
 
-  await t.test('existing debug opt-in path records exact peer and ICE states', async () => {
+  await t.test('DEV-only path records exact peer and ICE states', async () => {
     await withRuntime({ debugEnabled: true }, async (runtime, logs) => {
       runtime.pc.transitionConnection('connecting')
       runtime.pc.transitionIce('checking')
@@ -332,6 +312,14 @@ test('PR #211 sampler runtime scenarios', async t => {
         webRtcEvents(logs, 'ICE_CONNECTION_STATE_CHANGED').map(event => event.iceConnectionState),
         ['checking', 'connected', 'completed'])
       assert.equal(periodicPayloads(logs).length, 1)
+    })
+  })
+
+  await t.test('localStorage flag does not activate production WebRTC logs', async () => {
+    await withRuntime({ debugEnabled: false }, async (runtime, logs) => {
+      runtime.pc.transitionConnection('connected')
+      await flushAsync()
+      assert.equal(webRtcEvents(logs, 'PEER_CONNECTION_STATE_CHANGED').length, 0)
     })
   })
 

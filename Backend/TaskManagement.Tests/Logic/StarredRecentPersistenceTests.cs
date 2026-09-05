@@ -85,6 +85,9 @@ public sealed class StarredRecentPersistenceTests
         await using var fixture = await StarRecentFixture.CreateAsync();
         await using var context = fixture.CreateContext();
         var service = fixture.StarredService(context);
+        var privateProject = await context.Projects.SingleAsync(project => project.Id == fixture.ProjectAId);
+        privateProject.NetworkType = "Private";
+        await context.SaveChangesAsync();
 
         var outsider = () => service.StarAsync(
             fixture.OutsiderId, fixture.WorkspaceId, "Project", fixture.ProjectAId);
@@ -257,6 +260,9 @@ public sealed class StarredRecentPersistenceTests
             .Items.Should().ContainSingle();
         (await service.GetAllAsync(fixture.UserBId, 1, 20))
             .Items.Should().ContainSingle();
+        var privateProject = await context.Projects.SingleAsync(project => project.Id == fixture.ProjectAId);
+        privateProject.NetworkType = "Private";
+        await context.SaveChangesAsync();
         var outsider = () => service.RecordAsync(
             fixture.OutsiderId, "Project", fixture.ProjectAId);
         await outsider.Should().ThrowAsync<UnauthorizedAccessException>();

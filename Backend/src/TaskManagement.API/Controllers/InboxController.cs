@@ -128,27 +128,25 @@ namespace TaskManagement.API.Controllers
             var userId = GetUserId();
             if (userId == null) return Unauthorized();
 
-            var projects = await _context.ProjectMembers
+            var accessibleProjectIds = await _resourceAuthorizationService.GetAccessibleProjectIdsAsync(userId.Value);
+            var projects = await _context.Projects
                 .AsNoTracking()
-                .Where(member => member.UserId == userId.Value
-                    && member.Status
-                    && member.LeftAt == null
-                    && member.User.IsActive
-                    && !member.User.IsDeleted
-                    && member.Project.Status
-                    && !member.Project.IsDeleted
-                    && !member.Project.IsArchived
-                    && !member.Project.Workspace.IsDeleted
-                    && member.Project.Workspace.Members.Any(workspaceMember =>
-                        workspaceMember.UserId == userId.Value && workspaceMember.IsActive))
-                .OrderBy(member => member.Project.Name)
-                .Select(member => new
+                .Where(project => accessibleProjectIds.Contains(project.Id)
+                    && project.Status
+                    && !project.IsDeleted
+                    && !project.IsArchived
+                    && !project.Workspace.IsDeleted)
+                .OrderBy(project => project.Name)
+                .Select(project => new
                 {
-                    id = member.ProjectId,
-                    name = member.Project.Name,
-                    key = member.Project.Identifier,
-                    workspaceId = member.Project.WorkspaceId,
-                    role = member.ProjectRole
+                    id = project.Id,
+                    name = project.Name,
+                    key = project.Identifier,
+                    workspaceId = project.WorkspaceId,
+                    role = project.ProjectMembers
+                        .Where(member => member.UserId == userId.Value && member.Status)
+                        .Select(member => member.ProjectRole)
+                        .FirstOrDefault() ?? "Developer"
                 })
                 .ToListAsync();
 

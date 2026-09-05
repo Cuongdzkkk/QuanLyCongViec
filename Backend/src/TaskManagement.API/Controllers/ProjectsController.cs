@@ -27,17 +27,20 @@ namespace TaskManagement.API.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IDataProtector _integrationSecretProtector;
         private readonly IHubContext<KanbanHub>? _hub;
+        private readonly IResourceAuthorizationService? _authorizationService;
 
         public ProjectsController(
             IProjectService projectService,
             ApplicationDbContext context,
             IDataProtectionProvider dataProtectionProvider,
-            IHubContext<KanbanHub>? hub = null)
+            IHubContext<KanbanHub>? hub = null,
+            IResourceAuthorizationService? authorizationService = null)
         {
             _projectService = projectService;
             _context = context;
             _integrationSecretProtector = dataProtectionProvider.CreateProtector("SprintA.ProjectIntegrationSecrets.v1");
             _hub = hub;
+            _authorizationService = authorizationService;
         }
 
         private async Task PublishProjectAsync(ProjectResponseDto project, string action = "upsert")
@@ -1150,11 +1153,13 @@ namespace TaskManagement.API.Controllers
             if (!Guid.TryParse(userIdString, out var userId))
                 return Unauthorized(ApiResponse<object>.Error("Unauthorized.", 401));
 
-            var userProjectIds = await _context.ProjectMembers
-                .AsNoTracking()
-                .Where(pm => pm.UserId == userId && pm.Status)
-                .Select(pm => pm.ProjectId)
-                .ToListAsync();
+            var userProjectIds = _authorizationService == null
+                ? await _context.ProjectMembers
+                    .AsNoTracking()
+                    .Where(pm => pm.UserId == userId && pm.Status)
+                    .Select(pm => pm.ProjectId)
+                    .ToListAsync()
+                : await _authorizationService.GetAccessibleProjectIdsAsync(userId);
 
             var query = _context.WorkTasks
                 .AsNoTracking()

@@ -43,6 +43,7 @@ namespace TaskManagement.API.Extensions
             services.AddScoped<IBillingService, BillingService>();
             services.AddScoped<IPaymentProvider, SePayPaymentProvider>();
             services.AddScoped<IAiIntegrationService, AiIntegrationService>();
+            services.AddScoped<IAttachmentIngestionService, AttachmentIngestionService>();
             services.AddScoped<IAiChannelAnalysisService, AiChannelAnalysisService>();
             services.AddHttpClient<IAiService, GeminiAiService>(client =>
             {

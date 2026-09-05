@@ -3637,7 +3637,11 @@ namespace TaskManagement.Infrastructure.Migrations
 
                     b.HasIndex("ProjectInvitationId");
 
+                    b.HasIndex("Token");
+
                     b.HasIndex("UserId");
+
+                    b.HasIndex("Token", "IsRevoked", "ExpiryTime");
 
                     b.ToTable("RefreshTokens");
                 });
@@ -3724,6 +3728,7 @@ namespace TaskManagement.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<decimal>("Threshold")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTimeOffset>("UpdatedAt")

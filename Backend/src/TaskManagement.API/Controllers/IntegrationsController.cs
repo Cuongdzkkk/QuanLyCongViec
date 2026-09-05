@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Text;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -8,6 +9,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using TaskManagement.Application.AI;
 using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Infrastructure.Data;
@@ -24,6 +26,8 @@ namespace TaskManagement.API.Controllers
         private const string GoogleCalendarProvider = "google-calendar";
         private const string GmailProvider = "gmail";
         private const string SlackProvider = "slack";
+        private const int GmailAttachmentMaxBytes = 2 * 1024 * 1024;
+        private const int GmailAttachmentMaxChars = 100_000;
         private readonly ApplicationDbContext _context;
         private readonly IConfiguration _configuration;
         private readonly IHttpClientFactory _httpClientFactory;
@@ -31,6 +35,7 @@ namespace TaskManagement.API.Controllers
         private readonly IDataProtector _oauthStateProtector;
         private readonly IGoogleCalendarIntegrationService _googleCalendar;
         private readonly IOAuthStateStore _oauthStateStore;
+        private readonly IAttachmentIngestionService _attachmentIngestionService;
 
         public IntegrationsController(
             ApplicationDbContext context,
@@ -38,7 +43,8 @@ namespace TaskManagement.API.Controllers
             IHttpClientFactory httpClientFactory,
             IDataProtectionProvider dataProtectionProvider,
             IGoogleCalendarIntegrationService googleCalendar,
-            IOAuthStateStore oauthStateStore)
+            IOAuthStateStore oauthStateStore,
+            IAttachmentIngestionService? attachmentIngestionService = null)
         {
             _context = context;
             _configuration = configuration;
@@ -47,6 +53,7 @@ namespace TaskManagement.API.Controllers
             _oauthStateProtector = dataProtectionProvider.CreateProtector("SprintA.IntegrationOAuthState.v1");
             _googleCalendar = googleCalendar;
             _oauthStateStore = oauthStateStore;
+            _attachmentIngestionService = attachmentIngestionService ?? new AttachmentIngestionService();
         }
 
         [HttpGet]
@@ -516,7 +523,7 @@ namespace TaskManagement.API.Controllers
                     if (string.IsNullOrWhiteSpace(messageRef.Id)) continue;
 
                     var detailResponse = await client.GetAsync(
-                        $"https://gmail.googleapis.com/gmail/v1/users/me/messages/{Uri.EscapeDataString(messageRef.Id)}?format=metadata&metadataHeaders=Subject&metadataHeaders=From");
+                        $"https://gmail.googleapis.com/gmail/v1/users/me/messages/{Uri.EscapeDataString(messageRef.Id)}?format=full");
                     var detailJson = await detailResponse.Content.ReadAsStringAsync();
                     if (!detailResponse.IsSuccessStatusCode) continue;
 
@@ -546,7 +553,31 @@ namespace TaskManagement.API.Controllers
                     }
 
                     item.Title = string.IsNullOrWhiteSpace(subject) ? "Gmail message" : subject;
-                    item.Content = string.Join(Environment.NewLine, new[] { from, message.Snippet }.Where(value => !string.IsNullOrWhiteSpace(value)));
+                    var emailBody = ExtractGmailPlainTextBody(message.Payload) ?? message.Snippet ?? string.Empty;
+                    var normalizedAttachments = new List<NormalizedAttachment>();
+                    var failedAttachments = new List<string>();
+                    foreach (var part in EnumerateGmailParts(message.Payload?.Parts))
+                    {
+                        if (!IsSupportedGmailTextAttachment(part)) continue;
+                        var result = await DownloadGmailTextAttachmentAsync(client, message.Id, part);
+                        if (result.Attachment?.TextContent is { Length: > 0 })
+                        {
+                            normalizedAttachments.Add(result.Attachment);
+                        }
+                        else
+                        {
+                            failedAttachments.Add(part.Filename);
+                        }
+                    }
+                    item.Content = IntegrationAiInputBuilder.BuildGmailInput(
+                        GmailProvider,
+                        "email",
+                        message.Id,
+                        item.Title,
+                        emailBody,
+                        from,
+                        normalizedAttachments,
+                        failedAttachments);
                     item.StartsAt = ParseUnixMilliseconds(message.InternalDate);
                     item.UpdatedAt = DateTime.UtcNow;
                     imported += 1;
@@ -565,6 +596,118 @@ namespace TaskManagement.API.Controllers
                 return StatusCode(502, new { message = ex is GoogleProviderException { ReconnectRequired: true }
                     ? "Gmail cần kết nối lại"
                     : "Không đồng bộ được Gmail" });
+            }
+        }
+
+        private static IEnumerable<GmailPart> EnumerateGmailParts(IEnumerable<GmailPart>? parts)
+        {
+            foreach (var part in parts ?? Enumerable.Empty<GmailPart>())
+            {
+                yield return part;
+                foreach (var child in EnumerateGmailParts(part.Parts)) yield return child;
+            }
+        }
+
+        private static string? ExtractGmailPlainTextBody(GmailPayload? payload)
+        {
+            var candidates = new List<(string? MimeType, string? Data)>
+            {
+                ((string?)payload?.MimeType, payload?.Body?.Data)
+            };
+            candidates.AddRange(EnumerateGmailParts(payload?.Parts).Select(part => ((string?)part.MimeType, part.Body?.Data)));
+
+            foreach (var (mimeType, encoded) in candidates)
+            {
+                if (!string.Equals(mimeType?.Split(';', 2)[0].Trim(), "text/plain", StringComparison.OrdinalIgnoreCase)
+                    || string.IsNullOrWhiteSpace(encoded)) continue;
+
+                try
+                {
+                    var bytes = WebEncoders.Base64UrlDecode(encoded);
+                    if (bytes.Length == 0 || bytes.Length > GmailAttachmentMaxBytes) continue;
+                    return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(bytes).Trim();
+                }
+                catch (FormatException)
+                {
+                    // Use Gmail's snippet fallback when the provider returns malformed body data.
+                }
+                catch (DecoderFallbackException)
+                {
+                    // Use Gmail's snippet fallback when the provider returns invalid UTF-8.
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsSupportedGmailTextAttachment(GmailPart part)
+        {
+            var fileName = part.Filename?.Trim() ?? string.Empty;
+            var extension = Path.GetExtension(fileName);
+            var mimeType = part.MimeType?.Split(';')[0].Trim().ToLowerInvariant();
+            return !string.IsNullOrWhiteSpace(fileName)
+                && (extension.Equals(".txt", StringComparison.OrdinalIgnoreCase)
+                    || extension.Equals(".csv", StringComparison.OrdinalIgnoreCase))
+                && AttachmentIngestionService.IsSupported(fileName, mimeType);
+        }
+
+        private async Task<GmailAttachmentIngestionResult> DownloadGmailTextAttachmentAsync(HttpClient client, string messageId, GmailPart part)
+        {
+            var body = part.Body;
+            if (body == null || body.Size > GmailAttachmentMaxBytes) return GmailAttachmentIngestionResult.Failed();
+
+            var encoded = body.Data;
+            if (string.IsNullOrWhiteSpace(encoded) && !string.IsNullOrWhiteSpace(body.AttachmentId))
+            {
+                var response = await client.GetAsync(
+                    $"https://gmail.googleapis.com/gmail/v1/users/me/messages/{Uri.EscapeDataString(messageId)}/attachments/{Uri.EscapeDataString(body.AttachmentId)}");
+                if (!response.IsSuccessStatusCode) return GmailAttachmentIngestionResult.Failed();
+                var json = await response.Content.ReadAsStringAsync();
+                var attachment = JsonSerializer.Deserialize<GmailAttachmentResponse>(json);
+                if (attachment == null || attachment.Size > GmailAttachmentMaxBytes) return GmailAttachmentIngestionResult.Failed();
+                encoded = attachment.Data;
+            }
+
+            if (string.IsNullOrWhiteSpace(encoded) || encoded.Length > GmailAttachmentMaxBytes * 2) return GmailAttachmentIngestionResult.Failed();
+            try
+            {
+                var bytes = WebEncoders.Base64UrlDecode(encoded);
+                if (bytes.Length == 0 || bytes.Length > GmailAttachmentMaxBytes) return GmailAttachmentIngestionResult.Failed();
+                var normalized = await _attachmentIngestionService.NormalizeAsync(
+                    part.Filename!,
+                    part.MimeType ?? (Path.GetExtension(part.Filename).Equals(".csv", StringComparison.OrdinalIgnoreCase)
+                        ? "text/csv"
+                        : "text/plain"),
+                    new MemoryStream(bytes, writable: false),
+                    bytes.LongLength,
+                    $"gmail/attachment/{Path.GetFileName(part.Filename)}");
+                var text = normalized.TextContent ?? string.Empty;
+                if (text.Length > GmailAttachmentMaxChars)
+                {
+                    normalized = new NormalizedAttachment
+                    {
+                        FileName = normalized.FileName,
+                        MimeType = normalized.MimeType,
+                        Source = normalized.Source,
+                        ExtractionMethod = normalized.ExtractionMethod,
+                        TextContent = text[..GmailAttachmentMaxChars],
+                        StructuredContent = normalized.StructuredContent
+                    };
+                }
+
+                return GmailAttachmentIngestionResult.Succeeded(normalized);
+            }
+            catch (FormatException)
+            {
+                return GmailAttachmentIngestionResult.Failed();
+            }
+            catch (DecoderFallbackException)
+            {
+                return GmailAttachmentIngestionResult.Failed();
+            }
+            catch (InvalidDataException)
+            {
+                return GmailAttachmentIngestionResult.Failed();
             }
         }
 
@@ -1161,8 +1304,59 @@ namespace TaskManagement.API.Controllers
 
         private sealed class GmailPayload
         {
+            [JsonPropertyName("mimeType")]
+            public string MimeType { get; set; } = string.Empty;
+
+            [JsonPropertyName("body")]
+            public GmailPartBody? Body { get; set; }
+
             [JsonPropertyName("headers")]
             public List<GmailHeader> Headers { get; set; } = new();
+
+            [JsonPropertyName("parts")]
+            public List<GmailPart> Parts { get; set; } = new();
+        }
+
+        private sealed class GmailPart
+        {
+            [JsonPropertyName("mimeType")]
+            public string MimeType { get; set; } = string.Empty;
+
+            [JsonPropertyName("filename")]
+            public string Filename { get; set; } = string.Empty;
+
+            [JsonPropertyName("body")]
+            public GmailPartBody? Body { get; set; }
+
+            [JsonPropertyName("parts")]
+            public List<GmailPart> Parts { get; set; } = new();
+        }
+
+        private sealed class GmailPartBody
+        {
+            [JsonPropertyName("attachmentId")]
+            public string? AttachmentId { get; set; }
+
+            [JsonPropertyName("data")]
+            public string? Data { get; set; }
+
+            [JsonPropertyName("size")]
+            public int Size { get; set; }
+        }
+
+        private sealed record GmailAttachmentIngestionResult(NormalizedAttachment? Attachment)
+        {
+            public static GmailAttachmentIngestionResult Succeeded(NormalizedAttachment attachment) => new(attachment);
+            public static GmailAttachmentIngestionResult Failed() => new GmailAttachmentIngestionResult((NormalizedAttachment?)null);
+        }
+
+        private sealed class GmailAttachmentResponse
+        {
+            [JsonPropertyName("data")]
+            public string? Data { get; set; }
+
+            [JsonPropertyName("size")]
+            public int Size { get; set; }
         }
 
         private sealed class GmailHeader

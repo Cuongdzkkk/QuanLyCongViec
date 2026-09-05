@@ -510,6 +510,60 @@
                     <i :class="aiMessageType === 'error' ? 'fa-solid fa-triangle-exclamation' : 'fa-regular fa-lightbulb'"></i>
                     <span>{{ aiMessage }}</span>
                   </p>
+                  <div v-if="aiCandidates.length" class="ai-candidates" aria-label="Task candidates">
+                    <div class="ai-candidates-head">
+                      <strong>{{ t('Task đề xuất', 'Suggested tasks') }}</strong>
+                      <button
+                        class="primary small"
+                        type="button"
+                        :disabled="aiCandidateCreating || !selectedProjectId || selectedAiCandidateIds.length === 0"
+                        @click="createSelectedAiCandidates"
+                      >
+                        {{ t(`Tạo ${selectedAiCandidateIds.length} công việc`, `Create ${selectedAiCandidateIds.length} tasks`) }}
+                      </button>
+                    </div>
+                    <article v-for="candidate in aiCandidates" :key="candidate.id" class="ai-candidate-card" :class="`is-${candidate.status || 'pending'}`">
+                      <label class="ai-candidate-select">
+                        <input
+                          type="checkbox"
+                          :checked="selectedAiCandidateIds.includes(candidate.id)"
+                          :disabled="candidate.status === 'created' || candidate.status === 'creating'"
+                          @change="toggleAiCandidate(candidate, $event.target.checked)"
+                        />
+                        <span>{{ candidate.status === 'created' ? t('Đã tạo', 'Created') : candidate.status === 'failed' ? t('Lỗi', 'Failed') : t('Chờ xác nhận', 'Pending') }}</span>
+                      </label>
+                      <div v-if="editingAiCandidateId === candidate.id" class="ai-candidate-edit">
+                        <input v-model="candidate.title" maxlength="300" aria-label="Task title" />
+                        <textarea v-model="candidate.description" rows="3" aria-label="Task description"></textarea>
+                        <input v-model="candidate.dueDate" type="datetime-local" aria-label="Task due date" />
+                        <select v-model.number="candidate.priority" aria-label="Task priority">
+                          <option :value="1">{{ t('Khẩn cấp', 'Urgent') }}</option>
+                          <option :value="2">{{ t('Cao', 'High') }}</option>
+                          <option :value="3">{{ t('Trung bình', 'Medium') }}</option>
+                          <option :value="4">{{ t('Thấp', 'Low') }}</option>
+                        </select>
+                      </div>
+                      <div v-else class="ai-candidate-body">
+                        <strong>{{ candidate.title }}</strong>
+                        <p v-if="candidate.description">{{ candidate.description }}</p>
+                        <small>{{ candidate.dueDate || t('Chưa có hạn', 'No due date') }} · {{ t('Ưu tiên', 'Priority') }} {{ candidate.priority }}<template v-if="candidate.assigneeSuggestion"> · {{ candidate.assigneeSuggestion }}</template></small>
+                      </div>
+                      <div class="ai-candidate-evidence" v-if="candidate.evidence?.length">
+                        <small v-for="evidence in candidate.evidence.slice(0, 3)" :key="`${candidate.id}-${evidence.field}-${evidence.source}`">
+                          {{ evidence.field }}: {{ evidence.value }} · {{ evidence.type }} · {{ evidence.attachmentFileName || evidence.source }}
+                        </small>
+                      </div>
+                      <div class="ai-candidate-actions">
+                        <button class="ghost small" type="button" :disabled="candidate.status === 'creating' || candidate.status === 'created'" @click="editingAiCandidateId = editingAiCandidateId === candidate.id ? '' : candidate.id">
+                          {{ editingAiCandidateId === candidate.id ? t('Xong', 'Done') : t('Chỉnh sửa', 'Edit') }}
+                        </button>
+                        <button class="primary small" type="button" :disabled="candidate.status === 'creating' || candidate.status === 'created' || !selectedProjectId" @click="createAiCandidate(candidate)">
+                          {{ candidate.status === 'created' ? t('Đã tạo', 'Created') : candidate.status === 'creating' ? t('Đang tạo', 'Creating') : t('Tạo task', 'Create task') }}
+                        </button>
+                        <button class="text-action" type="button" :disabled="candidate.status === 'creating' || candidate.status === 'created'" @click="skipAiCandidate(candidate)">{{ t('Bỏ qua', 'Skip') }}</button>
+                      </div>
+                    </article>
+                  </div>
                 </section>
               </div>
 
@@ -530,7 +584,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { signalRService } from '@/api/signalrService'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import axiosClient from '@/api/axiosClient'
 import { useI18nStore } from '@/store/useI18nStore'
 import { getScopedCurrentProjectId } from '@/utils/projectContext'
@@ -569,6 +623,10 @@ const projectOptionsError = ref('')
 const aiLoadingAction = ref('')
 const aiMessage = ref('')
 const aiMessageType = ref('info')
+const aiCandidates = ref([])
+const selectedAiCandidateIds = ref([])
+const editingAiCandidateId = ref('')
+const aiCandidateCreating = ref(false)
 const integrationsError = ref('')
 const inboxError = ref('')
 const notice = ref(null)
@@ -599,6 +657,10 @@ const clearIntegrationState = () => {
   creatingTask.value = false
   bulkCreating.value = false
   syncingProviders.value = {}
+  aiCandidates.value = []
+  selectedAiCandidateIds.value = []
+  editingAiCandidateId.value = ''
+  aiCandidateCreating.value = false
 }
 
 const t = (vi, en) => i18nStore.locale === 'en' ? en : vi
@@ -1009,6 +1071,9 @@ const selectItem = async (item) => {
   selectedItemId.value = item.id
   aiMessage.value = ''
   aiMessageType.value = 'info'
+  aiCandidates.value = []
+  selectedAiCandidateIds.value = []
+  editingAiCandidateId.value = ''
   window.dispatchEvent(new CustomEvent('integration-detail-opened'))
   if (!item.isRead) {
     item.isRead = true
@@ -1024,6 +1089,9 @@ const closeDetail = () => {
   selectedItemId.value = ''
   aiMessage.value = ''
   aiMessageType.value = 'info'
+  aiCandidates.value = []
+  selectedAiCandidateIds.value = []
+  editingAiCandidateId.value = ''
 }
 
 const handleDetailKeydown = (event) => {
@@ -1101,6 +1169,122 @@ const createSelectedTasks = async () => {
   }
 }
 
+const normalizeAiCandidate = (candidate, index) => ({
+  id: candidate?.id || `candidate-${index + 1}`,
+  title: `${candidate?.title || ''}`.trim(),
+  description: candidate?.description || '',
+  dueDate: candidate?.dueDate || '',
+  priority: Math.min(4, Math.max(1, Number(candidate?.priority) || 3)),
+  assigneeSuggestion: candidate?.assigneeSuggestion || '',
+  reason: candidate?.reason || '',
+  sourceProvider: candidate?.sourceProvider || selectedItem.value?.provider || '',
+  sourceItemId: candidate?.sourceItemId || selectedItem.value?.id || '',
+  attachmentFileName: candidate?.attachmentFileName || '',
+  uncertain: Boolean(candidate?.uncertain),
+  evidence: Array.isArray(candidate?.evidence) ? candidate.evidence : [],
+  status: 'pending',
+  serverActionId: '',
+  idempotencyKey: ''
+})
+
+const toggleAiCandidate = (candidate, checked) => {
+  if (candidate.status === 'created' || candidate.status === 'creating') return
+  selectedAiCandidateIds.value = checked
+    ? Array.from(new Set([...selectedAiCandidateIds.value, candidate.id]))
+    : selectedAiCandidateIds.value.filter(id => id !== candidate.id)
+}
+
+const skipAiCandidate = (candidate) => {
+  candidate.status = 'skipped'
+  selectedAiCandidateIds.value = selectedAiCandidateIds.value.filter(id => id !== candidate.id)
+}
+
+const createAiCandidate = async (candidate, { askConfirmation = true, manageBusy = true } = {}) => {
+  if (!candidate || candidate.status === 'created' || candidate.status === 'creating') return false
+  if (!selectedProjectId.value) {
+    ElMessage.warning(t('Hãy chọn project trước khi tạo task đề xuất.', 'Choose a project before creating the suggested task.'))
+    return false
+  }
+  if (!candidate.title.trim()) {
+    candidate.status = 'failed'
+    candidate.error = t('Task cần có tiêu đề.', 'A task needs a title.')
+    return false
+  }
+
+  if (askConfirmation) {
+    try {
+      await ElMessageBox.confirm(
+        t(`Xác nhận tạo task “${candidate.title}” trong project đã chọn?`, `Create “${candidate.title}” in the selected project?`),
+        t('Xác nhận tạo task', 'Confirm task creation'),
+        { confirmButtonText: t('Tạo task', 'Create task'), cancelButtonText: t('Hủy', 'Cancel'), type: 'warning' }
+      )
+    } catch (error) {
+      if (error !== 'cancel' && error !== 'close') candidate.error = error?.message || String(error)
+      return false
+    }
+  }
+
+  if (manageBusy) aiCandidateCreating.value = true
+  candidate.status = 'creating'
+  candidate.error = ''
+  const project = projectOptions.value.find(item => `${item.id}` === `${selectedProjectId.value}`)
+  candidate.idempotencyKey ||= `integration:${selectedItem.value.id}:${candidate.id}:${selectedProjectId.value}`
+  try {
+    const previewResponse = await axiosClient.post('/ai/actions/preview', {
+      type: 'task.create',
+      idempotencyKey: candidate.idempotencyKey,
+      workspaceId: project?.workspaceId || null,
+      projectId: selectedProjectId.value,
+      payload: {
+        title: candidate.title.trim(),
+        description: candidate.description || null,
+        dueDate: candidate.dueDate || null,
+        priority: candidate.priority,
+        projectId: selectedProjectId.value
+      }
+    })
+    const preview = getPayload(previewResponse)
+    candidate.serverActionId = preview?.actionId || preview?.id || ''
+    if (!candidate.serverActionId) throw new Error(t('Backend không tạo được action preview.', 'Backend could not create an action preview.'))
+    const confirmResponse = await axiosClient.post(`/ai/actions/${candidate.serverActionId}/confirm`)
+    if (confirmResponse.data?.success === false || confirmResponse.data?.succeeded === false) {
+      throw new Error(confirmResponse.data?.message || t('Backend không xác nhận được task.', 'Backend could not confirm the task.'))
+    }
+    candidate.status = 'created'
+    selectedAiCandidateIds.value = selectedAiCandidateIds.value.filter(id => id !== candidate.id)
+    ElMessage.success(t(`Đã tạo task “${candidate.title}”.`, `Created “${candidate.title}”.`))
+    return true
+  } catch (error) {
+    candidate.status = 'failed'
+    candidate.error = error.response?.data?.message || error.message || t('Không tạo được task.', 'Could not create task.')
+    return false
+  } finally {
+    if (manageBusy) aiCandidateCreating.value = false
+  }
+}
+
+const createSelectedAiCandidates = async () => {
+  const selected = aiCandidates.value.filter(candidate => selectedAiCandidateIds.value.includes(candidate.id) && candidate.status === 'pending')
+  if (!selected.length) return
+  try {
+    await ElMessageBox.confirm(
+      t(`Tạo ${selected.length} task đã chọn trong project hiện tại?`, `Create ${selected.length} selected tasks in the current project?`),
+      t('Xác nhận tạo nhiều task', 'Confirm multiple task creation'),
+      { confirmButtonText: t('Tạo tất cả', 'Create all'), cancelButtonText: t('Hủy', 'Cancel'), type: 'warning' }
+    )
+  } catch {
+    return
+  }
+
+  aiCandidateCreating.value = true
+  const results = await Promise.all(selected.map(candidate => createAiCandidate(candidate, { askConfirmation: false, manageBusy: false })))
+  aiCandidateCreating.value = false
+  const created = results.filter(Boolean).length
+  const failed = results.length - created
+  aiMessageType.value = failed ? 'error' : 'info'
+  aiMessage.value = t(`Đã tạo ${created}/${results.length} task; ${failed} task lỗi.`, `Created ${created}/${results.length} tasks; ${failed} failed.`)
+}
+
 const formatAiMessage = (payload) => {
   if (!payload) return t('AI không trả dữ liệu.', 'AI returned no data.')
   if (payload.message) return payload.message
@@ -1130,10 +1314,24 @@ const runAiAction = async (action) => {
   aiLoadingAction.value = action
   aiMessage.value = ''
   aiMessageType.value = 'info'
+  if (action === 'suggest-task') {
+    aiCandidates.value = []
+    selectedAiCandidateIds.value = []
+    editingAiCandidateId.value = ''
+  }
   try {
     const response = await axiosClient.get(`/inbox/${selectedItem.value.id}/ai/${action}`)
     const payload = getPayload(response)
-    aiMessageType.value = payload?.configured === false ? 'error' : 'info'
+    const warnings = asArray(payload?.warnings).filter(Boolean)
+    aiMessageType.value = payload?.configured === false || warnings.length ? 'error' : 'info'
+    if (action === 'suggest-task' && payload?.configured !== false) {
+      aiCandidates.value = asArray(payload?.candidates).map(normalizeAiCandidate).filter(candidate => candidate.title)
+      const candidateMessage = aiCandidates.value.length
+        ? t(`AI đề xuất ${aiCandidates.value.length} task có nguồn bằng chứng.`, `AI suggested ${aiCandidates.value.length} evidence-backed tasks.`)
+        : t('AI chưa tìm thấy task đủ rõ để đề xuất.', 'AI did not find a clear task to suggest.')
+      aiMessage.value = warnings.length ? `${warnings.join(' ')} ${candidateMessage}` : candidateMessage
+      return
+    }
     aiMessage.value = payload?.configured === false
       ? t('AI chưa được cấu hình. Hãy kiểm tra Gemini:ApiKey trong appsettings.', 'AI is not configured. Check Gemini:ApiKey in appsettings.')
       : formatAiMessage(payload)
@@ -2192,6 +2390,92 @@ button:disabled {
   font-size: 12px;
   line-height: 1.45;
   white-space: pre-line;
+}
+
+.ai-candidates {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ai-candidates-head,
+.ai-candidate-actions,
+.ai-candidate-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-candidates-head {
+  justify-content: space-between;
+  color: var(--color-text-primary);
+  font-size: 12px;
+}
+
+.ai-candidate-card {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+.ai-candidate-select {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.ai-candidate-body {
+  min-width: 0;
+}
+
+.ai-candidate-body strong,
+.ai-candidate-body p {
+  display: block;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ai-candidate-body p {
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ai-candidate-body small,
+.ai-candidate-evidence small {
+  color: var(--color-text-tertiary);
+  font-size: 10px;
+}
+
+.ai-candidate-evidence {
+  display: grid;
+  gap: 2px;
+}
+
+.ai-candidate-edit {
+  display: grid;
+  gap: 6px;
+}
+
+.ai-candidate-edit input,
+.ai-candidate-edit textarea,
+.ai-candidate-edit select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.ai-candidate-actions {
+  flex-wrap: wrap;
 }
 
 .integration-detail-layer {

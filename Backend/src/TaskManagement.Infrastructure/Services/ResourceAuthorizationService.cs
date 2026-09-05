@@ -69,6 +69,28 @@ namespace TaskManagement.Infrastructure.Services
 
             if (string.IsNullOrWhiteSpace(workspaceRole))
             {
+            var hasDirectProjectAccess = await _dbContext.ProjectMembers
+                    .AsNoTracking()
+                    .AnyAsync(member =>
+                        member.UserId == userId &&
+                        member.Status &&
+                        member.Project.WorkspaceId == workspaceId &&
+                        !member.Project.IsDeleted &&
+                        member.Project.Status &&
+                        !member.Project.Workspace.IsDeleted &&
+                        member.User.IsActive &&
+                        !member.User.IsDeleted);
+                var hasInactiveWorkspaceMembership = await _dbContext.WorkspaceMembers
+                    .AsNoTracking()
+                    .AnyAsync(member => member.UserId == userId && member.WorkspaceId == workspaceId && !member.IsActive);
+                if (hasDirectProjectAccess && !hasInactiveWorkspaceMembership)
+                {
+                    workspaceRole = "GUEST";
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(workspaceRole))
+            {
                 return new(false, FailureReason: "Direct or team workspace access is required.");
             }
 
@@ -139,7 +161,7 @@ namespace TaskManagement.Infrastructure.Services
                     item.Status &&
                     !item.IsDeleted &&
                     !item.Workspace.IsDeleted)
-                .Select(item => new { item.WorkspaceId })
+                .Select(item => new { item.WorkspaceId, item.NetworkType })
                 .FirstOrDefaultAsync();
             if (project == null)
             {
@@ -191,24 +213,6 @@ namespace TaskManagement.Infrastructure.Services
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(workspaceMembership))
-            {
-                return new(false, FailureReason: "Direct or team workspace access is required.");
-            }
-
-            if (ProjectAccessPolicy.IsUnrestricted && !requireDirectProjectMembership)
-            {
-                var fallbackProjectRole = ResourcePermissionPolicy.NormalizeWorkspaceRole(workspaceMembership) is "owner" or "admin"
-                    ? "admin"
-                    : "developer";
-                if (!ResourcePermissionPolicy.ProjectRoleHasPermission(fallbackProjectRole, permissionCode))
-                {
-                    return new(false, workspaceMembership, fallbackProjectRole, "Workspace permission is required.");
-                }
-
-                return new(true, workspaceMembership, fallbackProjectRole);
-            }
-
             var membership = await _dbContext.ProjectMembers
                 .AsNoTracking()
                 .Where(member =>
@@ -220,6 +224,37 @@ namespace TaskManagement.Infrastructure.Services
                     !member.User.IsDeleted)
                 .Select(member => member.ProjectRole)
                 .FirstOrDefaultAsync();
+
+            var hasInactiveWorkspaceMembership = string.IsNullOrWhiteSpace(workspaceMembership) && await _dbContext.WorkspaceMembers
+                .AsNoTracking()
+                .AnyAsync(member => member.UserId == userId && member.WorkspaceId == project.WorkspaceId && !member.IsActive);
+
+            if (string.IsNullOrWhiteSpace(workspaceMembership) && !hasInactiveWorkspaceMembership && !string.IsNullOrWhiteSpace(membership))
+            {
+                workspaceMembership = "GUEST";
+            }
+
+            if (string.IsNullOrWhiteSpace(workspaceMembership))
+            {
+                return new(false, FailureReason: "Direct or team workspace access is required.");
+            }
+
+            var isDirectMembershipRequired = requireDirectProjectMembership ||
+                string.Equals(project.NetworkType, "Private", StringComparison.OrdinalIgnoreCase) ||
+                ResourcePermissionPolicy.NormalizeWorkspaceRole(workspaceMembership) == "guest";
+
+            if (!isDirectMembershipRequired && string.IsNullOrWhiteSpace(membership))
+            {
+                var fallbackProjectRole = ResourcePermissionPolicy.NormalizeWorkspaceRole(workspaceMembership) is "owner" or "admin"
+                    ? "admin"
+                    : "developer";
+                if (!ResourcePermissionPolicy.ProjectRoleHasPermission(fallbackProjectRole, permissionCode))
+                {
+                    return new(false, workspaceMembership, fallbackProjectRole, "Workspace permission is required.");
+                }
+
+                return new(true, workspaceMembership, fallbackProjectRole);
+            }
 
             if (string.IsNullOrWhiteSpace(membership))
             {
@@ -471,10 +506,18 @@ namespace TaskManagement.Infrastructure.Services
             var query = _dbContext.Projects
                 .AsNoTracking()
                 .Where(project =>
-                    (project.Workspace.OwnerId == userId ||
+                    (project.ProjectMembers.Any(member =>
+                         member.UserId == userId &&
+                         member.Status &&
+                         member.User.IsActive &&
+                         !member.User.IsDeleted) &&
+                     !project.Workspace.Members.Any(member =>
+                         member.UserId == userId && !member.IsActive) ||
+                     project.Workspace.OwnerId == userId ||
                      project.Workspace.Members.Any(member =>
                          member.UserId == userId &&
-                         member.IsActive) ||
+                         member.IsActive &&
+                         member.WorkspaceRole != "GUEST") ||
                      project.Workspace.TeamAccesses.Any(access =>
                          access.Department.IsActive &&
                          !access.Department.IsDeleted &&
@@ -484,15 +527,16 @@ namespace TaskManagement.Infrastructure.Services
                              member.User.IsActive &&
                              !member.User.IsDeleted))) &&
                     (includeDeleted || !project.IsDeleted) &&
-                    (includeArchived || !project.IsArchived));
-
-            if (ProjectAccessPolicy.RestrictionsEnabled)
-            {
-                query = query.Where(project =>
-                    project.ProjectMembers.Any(member =>
+                    (includeArchived || !project.IsArchived) &&
+                    project.Status &&
+                    !project.Workspace.IsDeleted &&
+                    (project.NetworkType != "Private" || project.ProjectMembers.Any(member =>
                         member.UserId == userId &&
-                        member.Status));
-            }
+                        member.Status &&
+                        member.User.IsActive &&
+                        !member.User.IsDeleted) &&
+                        !project.Workspace.Members.Any(member =>
+                            member.UserId == userId && !member.IsActive)));
 
             return await query.Select(project => project.Id).ToListAsync();
         }

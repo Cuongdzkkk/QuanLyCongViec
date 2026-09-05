@@ -971,9 +971,9 @@ const getInitials = (name) => {
             
             <!-- Section 1: Profile Header -->
             <div class="ps-header">
-              <h2 class="user-name">{{ userProfile.fullName || 'Not specified' }}</h2>
+              <h2 class="user-name">{{ userProfile.fullName || t('Not specified') }}</h2>
               <p class="user-display-name" v-if="userProfile.displayName">{{ userProfile.displayName }}</p>
-              <p class="user-handle">{{ userProfile.email || 'Not specified' }}</p>
+              <p class="user-handle">{{ userProfile.email || t('Not specified') }}</p>
               <div class="role-badges" v-if="userProfile.roles && userProfile.roles.length">
                 <span class="role-badge" v-for="role in userProfile.roles" :key="role">{{ role }}</span>
               </div>
@@ -984,28 +984,28 @@ const getInitials = (name) => {
             <!-- Section 2: Work Information -->
             <div class="ps-section">
               <div class="info-row">
-                <span class="info-lbl">Department</span>
-                <span class="info-val">{{ userProfile.department || 'Not specified' }}</span>
+                <span class="info-lbl">{{ t('Department') }}</span>
+                <span class="info-val">{{ userProfile.department || t('Not specified') }}</span>
               </div>
               <div class="info-row">
-                <span class="info-lbl">Organization</span>
-                <span class="info-val">{{ userProfile.organization || 'Not specified' }}</span>
+                <span class="info-lbl">{{ t('Organization') }}</span>
+                <span class="info-val">{{ userProfile.organization || t('Not specified') }}</span>
               </div>
               <div class="info-row">
-                <span class="info-lbl">Job Title</span>
-                <span class="info-val">{{ userProfile.jobTitle || 'Not specified' }}</span>
+                <span class="info-lbl">{{ t('Job Title') }}</span>
+                <span class="info-val">{{ userProfile.jobTitle || t('Not specified') }}</span>
               </div>
               <div class="info-row">
-                <span class="info-lbl">Location</span>
-                <span class="info-val">{{ userProfile.location || 'Not specified' }}</span>
+                <span class="info-lbl">{{ t('Location') }}</span>
+                <span class="info-val">{{ userProfile.location || t('Not specified') }}</span>
               </div>
               <div class="info-row">
-                <span class="info-lbl">Timezone</span>
+                <span class="info-lbl">{{ t('Timezone') }}</span>
                 <span class="info-val text-right">
                   <template v-if="userProfile.timezone">
                     {{ userProfile.timezone }}<br><span class="time-now">{{ currentTime }}</span>
                   </template>
-                  <template v-else>Not specified</template>
+                  <template v-else>{{ t('Not specified') }}</template>
                 </span>
               </div>
             </div>
@@ -1015,15 +1015,15 @@ const getInitials = (name) => {
             <!-- Section 3: Member Information -->
             <div class="ps-section">
               <div class="info-row">
-                <span class="info-lbl">Joined</span>
-                <span class="info-val">{{ userProfile.joinedOn || 'Not specified' }}</span>
+                <span class="info-lbl">{{ t('Joined') }}</span>
+                <span class="info-val">{{ userProfile.joinedOn || t('Not specified') }}</span>
               </div>
               <div class="info-row" v-if="userProfile.createdAtRaw">
-                <span class="info-lbl">Member for</span>
+                <span class="info-lbl">{{ t('Member for') }}</span>
                 <span class="info-val">{{ calculateMemberFor(userProfile.createdAtRaw) }}</span>
               </div>
               <div class="info-row" v-if="userProfile.lastActive">
-                <span class="info-lbl">Last Active</span>
+                <span class="info-lbl">{{ t('Last Active') }}</span>
                 <span class="info-val">{{ userProfile.lastActive }}</span>
               </div>
             </div>
@@ -1033,7 +1033,7 @@ const getInitials = (name) => {
             <!-- Section 4: Performance -->
             <div class="ps-section">
               <div class="info-row">
-                <span class="info-lbl">Completion Rate</span>
+                <span class="info-lbl">{{ t('Completion Rate') }}</span>
                 <span class="info-val" style="color: var(--color-success); font-weight: 700;">{{ completionRate }}%</span>
               </div>
               <div class="progress-bar-container">
@@ -1050,7 +1050,7 @@ const getInitials = (name) => {
                   <i class="fa-solid fa-briefcase"></i>
                 </div>
                 <div class="ws-card-info">
-                  <div class="ws-name">{{ projectList[0]?.name || 'Not specified' }}</div>
+                  <div class="ws-name">{{ projectList[0]?.name || t('Not specified') }}</div>
                   <div class="ws-meta" v-if="projectList[0]">
                     <span v-if="projectList[0].memberCount !== undefined">{{ projectList[0].memberCount }} Members &bull; </span>
                     <span v-if="projectList.length">{{ projectList.length }} Projects</span>
@@ -1065,9 +1065,9 @@ const getInitials = (name) => {
             <!-- Section 7: Quick Actions -->
             <div class="ps-section">
               <div class="quick-actions">
-                <router-link to="/profile" class="qa-btn"><i class="fa-regular fa-user"></i> Edit Profile</router-link>
-                <router-link to="/profile" class="qa-btn"><i class="fa-solid fa-gear"></i> Account Settings</router-link>
-                <router-link to="/profile" class="qa-btn"><i class="fa-solid fa-shield-halved"></i> Security</router-link>
+                <router-link to="/profile" class="qa-btn"><i class="fa-regular fa-user"></i> {{ t('Edit Profile') }}</router-link>
+                <router-link to="/profile" class="qa-btn"><i class="fa-solid fa-gear"></i> {{ t('Account Settings') }}</router-link>
+                <router-link to="/profile" class="qa-btn"><i class="fa-solid fa-shield-halved"></i> {{ t('Security') }}</router-link>
               </div>
             </div>
 

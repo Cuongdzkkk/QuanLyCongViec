@@ -59,33 +59,45 @@
               <small>Workspace/project được chọn cho các thao tác AI.</small>
             </div>
             <div class="context-controls">
-              <span class="workspace-context-pill" :title="currentWorkspaceId ? `Workspace ${currentWorkspaceId}` : 'Chưa chọn workspace'">
-                <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
-                <span>Phạm vi hiện tại</span>
-              </span>
-              <label v-if="workspaceOptions.length" class="workspace-selector">
-                <i class="fa-solid fa-building" aria-hidden="true"></i>
-                <span class="sr-only">Workspace</span>
-                <select v-model="selectedWorkspaceId" aria-label="Chọn workspace" @change="handleWorkspaceChange">
-                  <option v-for="workspace in workspaceOptions" :key="workspace.id || workspace.Id" :value="workspace.id || workspace.Id">
-                    {{ workspace.name || workspace.Name }}
-                  </option>
-                </select>
-              </label>
-              <label class="workspace-selector project-selector">
-                <i class="fa-solid fa-folder-tree" aria-hidden="true"></i>
-                <span class="sr-only">Project</span>
-                <select v-model="selectedProjectId" aria-label="Chọn project" @change="handleProjectChange">
-                  <option value="">Chọn project</option>
-                  <option v-for="project in availableProjects" :key="project.id" :value="project.id">
-                    {{ project.name }}
-                  </option>
-                </select>
-              </label>
-              <span v-if="aiUsage" class="credit-pill">
-                {{ aiRemainingCredits }} credits còn lại
-              </span>
-              <button v-if="aiUsage" class="credit-buy-inline" type="button" @click="openAiCreditPurchase">Mua thêm</button>
+              <div class="scope-selectors">
+                <span class="workspace-context-pill" :title="currentWorkspaceId ? `Workspace ${currentWorkspaceId}` : 'Chưa chọn workspace'">
+                  <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+                  <span>Phạm vi hiện tại</span>
+                </span>
+                <label v-if="workspaceOptions.length" class="workspace-selector">
+                  <i class="fa-solid fa-building" aria-hidden="true"></i>
+                  <span class="sr-only">Workspace</span>
+                  <select v-model="selectedWorkspaceId" aria-label="Chọn workspace" @change="handleWorkspaceChange">
+                    <option v-for="workspace in workspaceOptions" :key="workspace.id || workspace.Id" :value="workspace.id || workspace.Id">
+                      {{ workspace.name || workspace.Name }}
+                    </option>
+                  </select>
+                </label>
+                <label class="workspace-selector project-selector">
+                  <i class="fa-solid fa-folder-tree" aria-hidden="true"></i>
+                  <span class="sr-only">Project</span>
+                  <select v-model="selectedProjectId" aria-label="Chọn project" @change="handleProjectChange">
+                    <option value="">Chọn project</option>
+                    <option v-for="project in availableProjects" :key="project.id" :value="project.id">
+                      {{ project.name }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+              <div v-if="aiUsage" class="ai-credit-wallet" role="status" aria-label="AI Credit Wallet">
+                <div class="ai-credit-wallet-copy">
+                  <span class="ai-credit-wallet-label">AI Credit Wallet</span>
+                  <strong>{{ aiRemainingCredits }}</strong>
+                  <span>AI Credits · {{ aiPlanLabel }}</span>
+                </div>
+                <div class="ai-credit-wallet-usage">
+                  <div><span>{{ 100 - aiCreditPercent }}% đã dùng</span><span>{{ aiCreditPercent }}% còn lại</span></div>
+                  <div class="ai-credit-wallet-meter" role="progressbar" :aria-valuenow="aiCreditPercent" aria-valuemin="0" aria-valuemax="100" aria-label="Tỷ lệ AI credits còn lại">
+                    <span :style="{ width: `${aiCreditPercent}%` }"></span>
+                  </div>
+                </div>
+                <button class="ai-credit-wallet-cta" type="button" @click="openAiCreditPurchase">Mua thêm <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button>
+              </div>
             </div>
             <div class="current-page-summary">
               <span>TRANG HIỆN TẠI</span>
@@ -370,7 +382,7 @@
     </div>
 
     <CustomizeSidebarModal :visible="showCustomizeModal" @update:visible="showCustomizeModal = $event" @saved="handleSidebarSaved" />
-    <AiCreditsPurchaseModal v-model="aiCreditsModalVisible" />
+    <AiCreditsPurchaseModal v-model="aiCreditsModalVisible" :contact-context="aiContactContext" />
   </div>
 </template>
 
@@ -400,7 +412,9 @@ import { useAiPetStore } from '@/store/useAiPetStore'
 import { useAiScopeStore } from '@/store/useAiScopeStore'
 import { buildAiContextKey, isAiContextMatch, isComposerSendKey } from '@/utils/aiWorkspace'
 import { useAiComposer } from '@/composables/useAiComposer'
-import { AI_QUICK_ACTIONS } from '@/utils/aiActionUi'
+import { AI_QUICK_ACTIONS, aiActionPayload, normalizeAiActionList } from '@/utils/aiActionUi'
+import { decorateAiAction, findPendingAiAction, isAiConfirmationMessage, previewAndConfirmAiAction } from '@/utils/aiActionEngine'
+import { loadAiCapabilities } from '@/utils/aiCapabilityRegistry'
 
 const router = useRouter()
 const route = useRoute()
@@ -451,7 +465,8 @@ const aiPlanLabel = computed(() => {
   const plan = String(aiUsage.value?.planCode || 'free').trim()
   return plan ? plan.charAt(0).toUpperCase() + plan.slice(1) : 'Free'
 })
-const quickActions = computed(() => AI_QUICK_ACTIONS)
+const canonicalQuickActions = ref([])
+const quickActions = computed(() => canonicalQuickActions.value.length ? canonicalQuickActions.value : AI_QUICK_ACTIONS)
 const quickToolsExpanded = ref(false)
 const connectedIntegrations = ref([])
 const hasConnectedGithubIntegration = computed(() => connectedIntegrations.value.some(item => item?.provider === 'github' && item?.status === 'connected'))
@@ -580,6 +595,13 @@ const activeWorkspaceName = computed(() => {
   const workspace = workspaceOptions.value.find(item => `${item.id || item.Id}` === `${currentWorkspaceId.value || ''}`)
   return workspace?.name || workspace?.Name || (currentWorkspaceId.value ? 'Workspace hiện tại' : 'Chưa chọn workspace')
 })
+const aiContactContext = computed(() => ({
+  contactName: currentUser.value?.fullName || currentUser.value?.username || '',
+  workEmail: currentUser.value?.email || '',
+  workspaceId: currentWorkspaceId.value || '',
+  workspaceName: activeWorkspaceName.value,
+  projectName: activeProjectName.value
+}))
 const currentPageLabel = computed(() => {
   const name = route.meta?.title || route.name || route.path
   return typeof name === 'string' ? name : route.path
@@ -786,7 +808,7 @@ const returnToFloating = async () => {
 const openAiCreditPurchase = () => {
   aiCreditsModalVisible.value = true
 }
-const actionPayload = action => action?.payload || {}
+const actionPayload = aiActionPayload
 
 const confirmPageAction = async action => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
@@ -799,24 +821,20 @@ const confirmPageAction = async action => {
   action.loading = true
   action.uiStatus = 'loading'
   try {
-    action.idempotencyKey ||= `${action.type}-${crypto.randomUUID()}`
-    if (!action.serverActionId) {
-      const preview = await axiosClient.post('/ai/actions/preview', {
-        type: action.type, idempotencyKey: action.idempotencyKey,
-        workspaceId: currentWorkspaceId.value || null, projectId: currentProjectId.value || actionPayload(action).projectId || null,
-        payload: actionPayload(action)
-      })
-      action.serverActionId = preview.data?.data?.actionId
-    }
-    if (!action.serverActionId) throw new Error('Không thể tạo action preview.')
-    const response = await axiosClient.post(`/ai/actions/${action.serverActionId}/confirm`)
+    const response = await previewAndConfirmAiAction(action, {
+      workspaceId: currentWorkspaceId.value,
+      projectId: currentProjectId.value || actionPayload(action).projectId,
+      conversationId: currentConversationId.value
+    })
     const payload = response.data?.data ?? response.data
     action.result = payload?.result ?? payload
     action.uiStatus = 'success'
+    action.status = 'EXECUTED'
     ElMessage.success('AI đã thực hiện thay đổi thành công.')
     await aiConversationStore.persistConversation()
   } catch (error) {
     action.uiStatus = 'error'
+    action.status = 'FAILED'
     action.error = error.response?.data?.message || error.message || 'Không thể thực hiện action.'
     ElMessage.error(action.error)
   } finally {
@@ -824,10 +842,24 @@ const confirmPageAction = async action => {
   }
 }
 
+const resumePendingActionIfConfirmed = async message => {
+  if (!isAiConfirmationMessage(message)) return false
+  const action = findPendingAiAction(chatHistory.value, {
+    contextKey: aiContextKey.value,
+    conversationId: currentConversationId.value,
+    workspaceId: currentWorkspaceId.value,
+    projectId: currentProjectId.value
+  })
+  if (!action) return false
+  await confirmPageAction(action)
+  return true
+}
+
 const cancelPageAction = async action => {
   if (!action || action.loading || action.uiStatus === 'success') return
   if (action.serverActionId) await axiosClient.post(`/ai/actions/${action.serverActionId}/cancel`).catch(() => {})
   action.uiStatus = 'cancelled'
+  action.status = 'CANCELLED'
   await aiConversationStore.persistConversation()
 }
 
@@ -911,6 +943,7 @@ const uploadFullAttachments = async conversationId => {
       uploaded.push(attachment)
     } catch (error) {
       attachment.status = 'error'
+      attachment.errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Không thể xử lý attachment.'
       throw error
     }
   }
@@ -921,6 +954,11 @@ const sendMessage = async (overrideMessage = null) => {
   const outgoing = `${overrideMessage ?? userMessage.value}`.trim()
   const hasAttachments = pendingAttachments.value.length > 0
   if (aiCreditsExhausted.value || (!outgoing && !hasAttachments) || isLoading.value) return
+
+  if (!hasAttachments && await resumePendingActionIfConfirmed(outgoing)) {
+    userMessage.value = ''
+    return
+  }
 
   if (!overrideMessage) {
     userMessage.value = ''
@@ -953,7 +991,7 @@ const sendMessage = async (overrideMessage = null) => {
         projectId: currentProjectId.value || null,
         workspaceId: currentWorkspaceId.value || null,
         message: outgoing,
-        pageContext: { pageType: 'ai-assistant', currentView: 'conversation', visibleTaskIds: [], visibleStatuses: [], filters: {}, extra: { history } }
+        pageContext: { pageType: 'ai-assistant', currentView: 'conversation', visibleTaskIds: [], visibleStatuses: [], filters: {}, extra: { history: JSON.stringify(history) } }
       })
     if (requestRevision !== aiContextRevision.value) return
 
@@ -963,20 +1001,17 @@ const sendMessage = async (overrideMessage = null) => {
     const message = payload?.answer || payload?.message || response.data?.message || (i18nStore.locale === 'en'
       ? 'Sorry, AI did not return content. Please try another request.'
       : 'R\u1ea5t ti\u1ebfc, AI kh\u00f4ng ph\u1ea3n h\u1ed3i n\u1ed9i dung. B\u1ea1n c\u00f3 th\u1ec3 th\u1eed l\u1ea1i v\u1edbi c\u00e2u h\u1ecfi kh\u00e1c.')
+    const normalizedActions = normalizeAiActionList(payload?.actions || [])
     chatHistory.value.push({
       role: 'bot',
-      content: message,
+      content: [message, normalizedActions.hasMissingTaskTitle ? 'Bạn muốn đặt tên công việc là gì?' : ''].filter(Boolean).join('\n\n'),
       warnings: payload?.warnings || [],
       citations: payload?.citations || [],
-      actions: (payload?.actions || []).map(action => ({
-        ...action,
-        type: String(action.type || '').toLowerCase(),
-        payload: action.payload || {},
+      actions: normalizedActions.actions.map(action => decorateAiAction(action, {
         contextKey: aiContextKey.value,
-        uiStatus: 'pending',
-        loading: false,
-        error: '',
-        result: null
+        conversationId,
+        workspaceId: currentWorkspaceId.value,
+        projectId: currentProjectId.value || actionPayload(action).projectId
       }))
     })
     await aiConversationStore.persistConversation()
@@ -995,6 +1030,7 @@ const sendMessage = async (overrideMessage = null) => {
     
     chatHistory.value.push({ role: 'bot', content: friendlyMessage })
   } finally {
+    await loadAiUsage()
     isLoading.value = false
   }
 }
@@ -1213,6 +1249,7 @@ const loadConnectedIntegrations = async () => {
 }
 
 onMounted(() => {
+  loadAiCapabilities(axiosClient).then(actions => { canonicalQuickActions.value = actions })
   siteStore.fetchSites()
     .then(async () => {
       syncSelectedWorkspace()
@@ -2596,5 +2633,134 @@ const handleSidebarSaved = (prefs) => {
   .ai-context-bar { gap: 12px; }
   .context-summary strong { white-space: normal; overflow-wrap: anywhere; }
   .current-page-summary strong { white-space: normal; overflow-wrap: anywhere; }
+}
+
+/* Keep scope controls together while treating credits as account status, not
+   as another context filter. */
+.context-controls {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.scope-selectors {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.ai-credit-wallet {
+  display: grid;
+  min-width: min(360px, 100%);
+  flex: 1 1 330px;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface));
+}
+
+.ai-credit-wallet-copy {
+  display: grid;
+  min-width: 86px;
+  gap: 2px;
+}
+
+.ai-credit-wallet-label {
+  color: var(--color-text-muted);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.ai-credit-wallet-copy strong {
+  color: var(--color-text-primary);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.04em;
+  line-height: 1;
+}
+
+.ai-credit-wallet-copy > span:last-child {
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.ai-credit-wallet-usage {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.ai-credit-wallet-usage > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-credit-wallet-meter {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-border) 78%, var(--color-bg));
+}
+
+.ai-credit-wallet-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+  transition: width 180ms ease;
+}
+
+.ai-credit-wallet-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ai-credit-wallet-cta:hover,
+.ai-credit-wallet-cta:focus-visible {
+  color: var(--color-text-primary);
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 1100px) {
+  .context-controls { justify-content: flex-start; width: 100%; }
+  .scope-selectors { flex: 1 1 100%; }
+  .ai-credit-wallet { flex-basis: 360px; }
+}
+
+@media (max-width: 620px) {
+  .scope-selectors { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; }
+  .scope-selectors .workspace-context-pill,
+  .scope-selectors .workspace-selector { width: 100%; max-width: none; }
+  .scope-selectors .workspace-selector select { max-width: none; flex: 1 1 auto; }
+  .ai-credit-wallet {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .ai-credit-wallet-usage { grid-column: 1 / -1; grid-row: 2; }
 }
 </style>

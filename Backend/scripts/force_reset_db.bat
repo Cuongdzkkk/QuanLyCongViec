@@ -1,5 +1,5 @@
 @echo off
-if not defined DEV_SQL_SERVER set "DEV_SQL_SERVER=Quan"
+if not defined DEV_SQL_SERVER set "DEV_SQL_SERVER=KIETNGO"
 echo =======================================
 echo KHOI TAO LAI TOAN BO DATABASE (FORCE RESET)
 echo =======================================
