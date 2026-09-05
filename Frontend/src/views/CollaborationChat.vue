@@ -2511,6 +2511,17 @@ const workspaceState = computed(() => {
   if (showVoiceCallMain.value && activeVoiceChannel.value) return 'VOICE_IN_CALL'
   return 'TEXT_CHANNEL'
 })
+
+// Restore existing callSession and state from global voiceCallStore if returning to CollaborationChat while call is active
+if (voiceCallStore.hasActiveCall && voiceCallStore.callSession) {
+  callSession.value = voiceCallStore.callSession
+  activeVoiceChannel.value = voiceCallStore.activeVoiceChannel
+  showVoiceCallMain.value = true
+  callChatOpen.value = true
+  callMicrophoneEnabled.value = voiceCallStore.isMicEnabled
+  isCallCameraOn.value = voiceCallStore.isCameraEnabled
+  isSharingScreen.value = voiceCallStore.isScreenSharing
+}
 const callChatConnected = computed(() => Boolean(
   callSession.value &&
   callState.value === 'connected' &&
@@ -3130,7 +3141,10 @@ const loadCallChatFromStorage = () => {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
-        callChatMessages.value = parsed.map(normalizeCallChatMessage)
+        const deletedForMeSet = getDeletedForMeStore()
+        callChatMessages.value = parsed
+          .map(normalizeCallChatMessage)
+          .filter(msg => msg?.messageId && !deletedForMeSet.has(msg.messageId))
       }
     }
   } catch (e) {
@@ -3139,7 +3153,10 @@ const loadCallChatFromStorage = () => {
 }
 
 const handleCallChatHistory = items => {
-  const incoming = (Array.isArray(items) ? items : []).map(normalizeCallChatMessage)
+  const deletedForMeSet = getDeletedForMeStore()
+  const incoming = (Array.isArray(items) ? items : [])
+    .map(normalizeCallChatMessage)
+    .filter(msg => msg?.messageId && !deletedForMeSet.has(msg.messageId))
   if (incoming.length > 0) {
     callChatMessages.value = incoming
   } else if (!callChatMessages.value.length) {
@@ -3153,6 +3170,9 @@ const handleCallChatHistory = items => {
 
 const handleCallChatMessage = value => {
   const message = normalizeCallChatMessage(value)
+  const deletedForMeSet = getDeletedForMeStore()
+  if (message.messageId && deletedForMeSet.has(message.messageId)) return
+
   const clientMessageId = message.clientMessageId
   const existingIndex = callChatMessages.value.findIndex(item =>
     (message.messageId && item.messageId === message.messageId) ||
@@ -3170,8 +3190,20 @@ const handleCallChatMessage = value => {
   })
 }
 
+const markMessageAsDeletedForMeLocal = (messageId) => {
+  if (!messageId) return
+  const deletedSet = getDeletedForMeStore()
+  deletedSet.add(messageId)
+  localStorage.setItem('chat_deleted_for_me_message_ids', JSON.stringify(Array.from(deletedSet)))
+}
+
+
+
 const callChatDisplayMessages = computed(() => {
-  return callChatMessages.value.slice(-60)
+  const deletedForMeSet = getDeletedForMeStore()
+  return (callChatMessages.value || [])
+    .filter(msg => msg?.messageId && !deletedForMeSet.has(msg.messageId))
+    .slice(-60)
 })
 
 const isOwnCallMessage = msg => {
@@ -3235,6 +3267,7 @@ const createCallSessionForVoiceChannel = (voiceChannel, options = {}) => createC
   },
   onRemoteStreams: async (items) => {
     remoteStreams.value = items
+    voiceCallStore.syncRemoteAudioStreams(items)
     await nextTick()
     syncCallVideoElements()
   },
@@ -3608,6 +3641,7 @@ const toggleCallCameraReal = async () => {
   try {
     await callSession.value.setCameraEnabled(nextValue)
     isCallCameraOn.value = nextValue
+    voiceCallStore.updateCallStatus({ isCameraEnabled: nextValue })
     await syncLocalCallPreview()
   } catch (error) {
     handleCallError(error)
@@ -3675,12 +3709,13 @@ const joinVoiceChannel = async (vc, options = {}) => {
       loadCallChatFromStorage()
       voiceCallStore.setActiveCall({
         channel: vc,
+        session,
         participantsCount: participantsInCall.value.length || 1,
         isMicEnabled: callMicrophoneEnabled.value,
         isCameraEnabled: isCallCameraOn.value,
         leaveHandler: () => leaveVoiceChannel(true),
         toggleMicHandler: () => toggleCallMicrophone(),
-        toggleCamHandler: () => toggleCallCamera()
+        toggleCamHandler: () => toggleCallCameraReal()
       })
       await loadCallTranscript(vc)
       await syncLocalCallPreview()
@@ -4625,11 +4660,12 @@ const deleteMessageForMe = (message) => {
   }
   activeMessages.value = activeMessages.value.filter(m => m.messageId !== message.messageId)
   callChatMessages.value = callChatMessages.value.filter(m =>
-    (message.messageId && m.messageId !== message.messageId) ||
-    (message.clientMessageId && m.clientMessageId !== message.clientMessageId) ||
+    !(message.messageId && m.messageId === message.messageId) &&
+    !(message.clientMessageId && m.clientMessageId === message.clientMessageId) &&
     m !== message
   )
-  ElMessage.success('Đã xóa tin nhắn khỏi giao diện của bạn')
+  saveCallChatToStorage()
+  ElMessage.success('Đã xóa tin nhắn ở phía bạn')
 }
 
 const startEditMessage = (msg) => {
@@ -8416,7 +8452,7 @@ audio::-webkit-media-controls-overflow-menu-list,
 
 .call-more-menu {
   position: absolute;
-  z-index: 8;
+  z-index: 9999 !important;
   right: 0;
   bottom: calc(100% + 10px);
   width: min(270px, calc(100vw - 24px));
@@ -11160,7 +11196,7 @@ div.message-card.is-own div.message-body.is-audio-only {
 .chat-workspace .presentation-control:focus-visible { border-color: var(--chat-accent) !important; background: var(--chat-accent-soft) !important; color: var(--chat-accent-hover) !important; }
 .chat-workspace .call-control-circle-btn.share-control { background: var(--chat-surface-2) !important; color: var(--chat-muted) !important; }
 .chat-workspace .call-control-circle-btn.share-control.active-share { color: var(--color-success, #16a34a) !important; }
-.chat-workspace .call-more-menu { border-color: var(--chat-line); background: var(--chat-surface); color: var(--chat-ink); box-shadow: 0 16px 32px color-mix(in srgb, var(--chat-ink) 16%, transparent); }
+.chat-workspace .call-more-menu { z-index: 9999 !important; border-color: var(--chat-line); background: var(--chat-surface); color: var(--chat-ink); box-shadow: 0 16px 32px color-mix(in srgb, var(--chat-ink) 16%, transparent); }
 .chat-workspace .call-more-menu-item,
 .chat-workspace .call-more-menu-back,
 .chat-workspace .call-device-option { color: var(--chat-ink); }
