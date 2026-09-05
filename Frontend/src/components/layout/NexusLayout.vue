@@ -216,6 +216,30 @@
           </div>
 
           <div class="chat-thread">
+            <AiMessage
+              v-for="(message, index) in chatHistory"
+              :key="`shared-${message.role}-${index}`"
+              :message="message"
+              :profile-avatar="profileAvatar"
+              :profile-name="profileName"
+              :profile-initials="profileInitials"
+              :can-update-task="canUpdateTaskInProject"
+              :can-create-task="canCreateTaskInProject"
+              @preview-attachment="openAttachmentPreview"
+              @open-citation="openCitation"
+              @copy="copyAiMessage"
+              @continue="continueFromAiMessage"
+              @execute-action="executeAiAction"
+              @cancel-action="cancelAiAction"
+              @retry-action="retryAiAction"
+              @quick-prompt="useQuickPrompt"
+              @confirm-suggested-action="confirmSuggestedAction"
+              @create-suggested-task="createSuggestedTask"
+              @create-all-suggested-tasks="createAllSuggestedTasks"
+              @open-duplicate-task="openDuplicateTask"
+              @confirm-duplicate-creation="confirmDuplicateCreation"
+            />
+            <template v-if="false">
             <div
               v-for="(message, index) in chatHistory"
               :key="`${message.role}-${index}`"
@@ -423,9 +447,47 @@
                 </div>
               </div>
             </div>
+            </template>
           </div>
         </div>
 
+        <AiComposer
+          ref="aiComposerRef"
+          v-model="aiInput"
+          :placeholder="aiCopy.placeholder"
+          :enter-hint="aiCopy.enterHint"
+          :reset-label="aiCopy.reset"
+          :sending="aiSending"
+          :credits-exhausted="aiCreditsExhausted"
+          :pending-attachments="pendingAttachments"
+          :composer-drag-active="composerDragActive"
+          :capturing-screenshot="capturingScreenshot"
+          :voice-state="voiceState"
+          :voice-language="voiceLanguage"
+          :voice-language-label="voiceLanguageLabel"
+          :voice-status-title="voiceStatusTitle"
+          :voice-elapsed-label="voiceElapsedLabel"
+          :voice-transcript="voiceTranscript"
+          :voice-error="voiceError"
+          :accept="composerAttachmentAccept"
+          @files="handleAttachmentInput"
+          @preview-attachment="openAttachmentPreview"
+          @remove-attachment="removePendingAttachment"
+          @attachment-command="handleAttachmentCommand"
+          @paste="handleComposerPaste"
+          @keydown="handleAiComposerKeydown"
+          @dragenter="composerDragActive = true"
+          @dragleave="handleComposerDragLeave"
+          @drop="handleComposerDrop"
+          @start-voice="startVoiceRecording"
+          @stop-voice="stopVoiceRecording"
+          @cancel-voice="cancelVoiceInput"
+          @record-again="recordVoiceAgain"
+          @use-transcript="useVoiceTranscript"
+          @send="sendAiMessage"
+          @reset="startNewConversation"
+        />
+        <template v-if="false">
         <div
           class="ai-input-area"
           :class="{ 'is-dragging-files': composerDragActive }"
@@ -583,6 +645,7 @@
             <button type="button" @click="startNewConversation">{{ aiCopy.reset }}</button>
           </div>
         </div>
+        </template>
       </aside>
     </transition>
 
@@ -676,6 +739,8 @@ import CreateProjectModal from '../CreateProjectModal.vue'
 import CreateSpaceModal from '../CreateSpaceModal.vue'
 import AppTopBar from './AppTopBar.vue'
 import NexusSidebar from './NexusSidebar.vue'
+import AiComposer from '@/components/ai/AiComposer.vue'
+import AiMessage from '@/components/ai/AiMessage.vue'
 import AiCreditsPurchaseModal from '@/components/ai/AiCreditsPurchaseModal.vue'
 import GlobalStickiesDrawer from '@/components/stickies/GlobalStickiesDrawer.vue'
 import FloatingStickiesLayer from '@/components/stickies/FloatingStickiesLayer.vue'
@@ -695,6 +760,7 @@ import { buildSpacePath } from '@/utils/spaceRoute'
 import { MAX_FLOATING_STICKIES, useStickyStore } from '@/store/useStickyStore'
 import { getRandomPaletteColor } from '@/utils/colors'
 import { getStickyAccountId } from '@/utils/stickyAccountIsolation'
+import { AI_QUICK_ACTIONS, normalizeAiAction } from '@/utils/aiActionUi'
 import {
   AI_PANEL_DEFAULT_WIDTH,
   buildAiContextKey,
@@ -1395,7 +1461,7 @@ const useVoiceTranscript = async () => {
   cancelVoiceInput()
   aiInput.value = transcript
   await nextTick()
-  document.querySelector('.ai-input-wrapper textarea')?.focus()
+  aiComposerRef.value?.focusInput?.()
 }
 
 function loadPetPosition() {
@@ -1575,20 +1641,11 @@ const inferPageType = (path = '') => {
 }
 
 const pageType = computed(() => inferPageType(route.path))
-const localizedPageSuggestions = {
-  'work-items': ['Tóm tắt tình hình dự án này', 'Công việc nào đang trễ hạn?', 'Ai đang bị quá tải?', 'Gợi ý ưu tiên hôm nay', 'Giải thích các cột Kanban hiện tại'],
-  reports: ['Báo cáo này đang nói điều gì?', 'Rủi ro lớn nhất của dự án là gì?', 'Nên xử lý vấn đề nào trước?'],
-  settings: ['Giải thích quyền của tôi trong dự án này', 'Quy trình hiện tại có hợp lý không?', 'Trường tùy chỉnh này dùng để làm gì?'],
-  goals: ['Tóm tắt tiến độ mục tiêu', 'Mục tiêu nào đang có nguy cơ?', 'Đề xuất việc cần làm để tăng tiến độ'],
-  dashboard: ['Tóm tắt dashboard hiện tại', 'Rủi ro nào cần xử lý trước?', 'Gợi ý ưu tiên hôm nay'],
-  unknown: ['Tôi có thể giúp gì cho bạn trong SprintA?', 'Tóm tắt trang hiện tại', 'Giải thích đoạn đã chọn']
-}
-const quickPrompts = computed(() => (localizedPageSuggestions[pageType.value] || localizedPageSuggestions.unknown)
-  .map((text, index) => ({
-    label: text,
-    text,
-    icon: ['fa-regular fa-file-lines', 'fa-solid fa-arrow-up-wide-short', 'fa-solid fa-lightbulb'][index % 3]
-  })))
+const quickPrompts = computed(() => AI_QUICK_ACTIONS.slice(0, 4).map(action => ({
+  label: action.label,
+  text: action.prompt,
+  icon: action.icon
+})))
 
 const chatHistory = computed({
   get: () => aiConversationStore.messages,
@@ -1791,10 +1848,7 @@ const openAiCreditPurchase = () => {
 }
 
 const resizeAiComposer = () => {
-  const textarea = aiComposerRef.value
-  if (!textarea) return
-  textarea.style.height = 'auto'
-  textarea.style.height = `${Math.min(textarea.scrollHeight, 170)}px`
+  aiComposerRef.value?.resetTextarea?.()
 }
 
 const handleAiComposerKeydown = (event) => {
@@ -2141,7 +2195,7 @@ const actionStatusLabel = (action) => ({
   error: 'Thất bại'
 }[action.uiStatus || 'pending'] || 'Chờ xác nhận')
 
-const actionPayload = (action) => action?.payload || {}
+const actionPayload = (action) => normalizeAiAction(action).payload
 const payloadValue = (action, ...keys) => {
   const payload = actionPayload(action)
   const key = keys.find(item => payload[item] !== undefined && payload[item] !== null && `${payload[item]}`.trim() !== '')
@@ -2412,14 +2466,6 @@ const executeAiAction = async (action, { navigate = true } = {}) => {
   }
 }
 
-const normalizeAiText = (value = '') =>
-  `${value}`
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'D')
-    .toLowerCase()
-
 const currentProjectId = computed(() => {
   if (aiScopeStore.projectId) {
     const scopedProject = projectStore.allProjects.find(item => `${item.id || item.Id}` === `${aiScopeStore.projectId}`)
@@ -2481,7 +2527,7 @@ const copyAiMessage = async (content) => {
 
 const continueFromAiMessage = (content) => {
   aiInput.value = `Hãy giải thích thêm và đưa ra bước tiếp theo từ câu trả lời này:\n${content.slice(0, 600)}`
-  nextTick(() => document.querySelector('.ai-input-wrapper textarea')?.focus())
+  nextTick(() => aiComposerRef.value?.focusInput?.())
 }
 
 const captureSelectedText = () => {
@@ -2585,264 +2631,6 @@ const ensureProjectTasks = async () => {
     await workTaskStore.fetchTasks(projectId)
   }
   return currentTasks.value
-}
-
-const todayDateOnly = () => new Date().toISOString().slice(0, 10)
-
-const offsetDateOnly = (days) => {
-  const date = new Date()
-  date.setDate(date.getDate() + days)
-  return date.toISOString().slice(0, 10)
-}
-
-const inferDueDate = (normalized) => {
-  if (normalized.includes('hom nay') || normalized.includes('today')) return todayDateOnly()
-  if (normalized.includes('ngay mai') || normalized.includes('tomorrow')) return offsetDateOnly(1)
-  if (normalized.includes('tuan sau') || normalized.includes('next week')) return offsetDateOnly(7)
-  const match = normalized.match(/(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?/)
-  if (!match) return null
-  const currentYear = new Date().getFullYear()
-  const day = Number(match[1])
-  const month = Number(match[2])
-  const year = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : currentYear
-  if (!day || !month) return null
-  return `${year}-${`${month}`.padStart(2, '0')}-${`${day}`.padStart(2, '0')}`
-}
-
-const inferPriority = (normalized) => {
-  if (/(khan|urgent|rat cao|critical|nghiem trong|blocker)/.test(normalized)) return 1
-  if (/(cao|high|important)/.test(normalized)) return 2
-  if (/(thap|low)/.test(normalized)) return 4
-  return 3
-}
-
-const inferStatusName = (normalized) => {
-  if (/(done|hoan thanh|da xong|xong)/.test(normalized)) return 'DONE'
-  if (/(review|kiem tra|danh gia)/.test(normalized)) return 'IN REVIEW'
-  if (/(progress|dang lam|dang thuc hien|in progress)/.test(normalized)) return 'IN PROGRESS'
-  if (/(todo|to do|can lam)/.test(normalized)) return 'TO DO'
-  if (/(backlog|cho xu ly)/.test(normalized)) return 'BACKLOG'
-  return 'TO DO'
-}
-
-const cleanTaskTitle = (message, normalized) => {
-  const raw = `${message}`.trim()
-  const quoted = raw.match(/["“”']([^"“”']{2,})["“”']/)
-  if (quoted?.[1]) return quoted[1].trim()
-
-  const lastBot = [...chatHistory.value].reverse().find(item => item.role === 'bot' && !item.loading)
-  const suggested = lastBot?.content?.match(/(?:Tên Task|Task|title)[:：\s*"']+([^*\n"]{2,80})/i)
-  if (/(ok tao|tao di|create it|add it|lam di)/.test(normalized) && suggested?.[1]) {
-    return suggested[1].replace(/\*\*/g, '').trim()
-  }
-
-  const markers = ['tạo task', 'tao task', 'tạo công việc', 'tao cong viec', 'create task', 'add task', 'task mới', 'task moi']
-  const lower = raw.toLowerCase()
-  let title = raw
-  for (const marker of markers) {
-    const index = lower.indexOf(marker)
-    if (index >= 0) {
-      title = raw.slice(index + marker.length)
-      break
-    }
-  }
-
-  title = title
-    .replace(/^\s*[:\-–]\s*/, '')
-    .replace(/^(mới|moi|new)\s*[:\-–]\s*/i, '')
-    .replace(/\b(deadline|due|hạn|han|ưu tiên|uu tien|priority)\b.*$/i, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  if (!title || /^(moi|mới|new)$/i.test(title)) {
-    if (suggested?.[1]) return suggested[1].replace(/\*\*/g, '').trim()
-  }
-
-  if (!title && normalized.includes('ok tao')) return 'Task mới từ SprintA AI'
-  return title || 'Task mới từ SprintA AI'
-}
-
-const splitTaskTitles = (message) => {
-  const lines = `${message}`
-    .split(/\n|;|\d+\.\s+/)
-    .map(item => item.replace(/^[-*]\s*/, '').trim())
-    .filter(Boolean)
-  const taskLines = lines.filter(item => /^(tao|tạo|create|add|task)/i.test(item) || lines.length > 1)
-  return taskLines.length > 1 ? taskLines.map(item => cleanTaskTitle(item, normalizeAiText(item))).filter(Boolean) : []
-}
-
-const formatTaskLine = (task) => {
-  const status = task.statusName || 'BACKLOG'
-  const due = task.dueDate || task.plannedEndDate
-  return `- ${task.sequenceId || task.id?.slice?.(0, 8) || 'Task'}: ${task.title} (${status}${due ? `, hạn ${due}` : ''})`
-}
-
-const buildProjectStats = async () => {
-  const tasks = await ensureProjectTasks()
-  const isDone = (task) => normalizeAiText(task.statusName).includes('done') || normalizeAiText(task.statusName).includes('hoan thanh')
-  const isProgress = (task) => normalizeAiText(task.statusName).includes('progress') || normalizeAiText(task.statusName).includes('dang')
-  const isTodo = (task) => normalizeAiText(task.statusName).includes('todo') || normalizeAiText(task.statusName).includes('to do') || normalizeAiText(task.statusName).includes('can lam')
-  const today = todayDateOnly()
-  const overdue = tasks.filter(task => !isDone(task) && (task.dueDate || task.plannedEndDate) && (task.dueDate || task.plannedEndDate) < today)
-  return {
-    total: tasks.length,
-    done: tasks.filter(isDone).length,
-    inProgress: tasks.filter(isProgress).length,
-    todo: tasks.filter(isTodo).length,
-    backlog: tasks.filter(task => normalizeAiText(task.statusName).includes('backlog') || !task.statusName).length,
-    overdue: overdue.length,
-    highPriority: tasks.filter(task => Number(task.priority) > 0 && Number(task.priority) <= 2).length
-  }
-}
-
-const summarizeCurrentProject = async () => {
-  const tasks = await ensureProjectTasks()
-  const stats = await buildProjectStats()
-  const topTasks = tasks
-    .filter(task => !/(done|hoan thanh)/.test(normalizeAiText(task.statusName)))
-    .sort((a, b) => Number(a.priority || 9) - Number(b.priority || 9))
-    .slice(0, 5)
-
-  return [
-    `Tóm tắt project hiện tại: có ${stats.total} task, ${stats.done} đã xong, ${stats.inProgress} đang làm, ${stats.todo} cần làm, ${stats.overdue} quá hạn.`,
-    stats.highPriority ? `Có ${stats.highPriority} task ưu tiên cao cần theo dõi.` : 'Hiện chưa có task ưu tiên cao.',
-    topTasks.length ? `Việc nên chú ý:\n${topTasks.map(formatTaskLine).join('\n')}` : 'Chưa có task mở nào cần xử lý.'
-  ].join('\n\n')
-}
-
-const suggestNextActions = async () => {
-  const tasks = await ensureProjectTasks()
-  const openTasks = tasks
-    .filter(task => !/(done|hoan thanh)/.test(normalizeAiText(task.statusName)))
-    .sort((a, b) => {
-      const priorityDiff = Number(a.priority || 9) - Number(b.priority || 9)
-      if (priorityDiff !== 0) return priorityDiff
-      return `${a.dueDate || a.plannedEndDate || '9999-12-31'}`.localeCompare(`${b.dueDate || b.plannedEndDate || '9999-12-31'}`)
-    })
-    .slice(0, 5)
-
-  if (!openTasks.length) return 'Project hiện tại chưa có task mở. Bạn có thể yêu cầu: "tạo task chuẩn bị demo ngày mai".'
-  return `Gợi ý ưu tiên tiếp theo:\n${openTasks.map((task, index) => `${index + 1}. ${formatTaskLine(task).slice(2)}`).join('\n')}`
-}
-
-const createRealTasks = async (message) => {
-  const projectId = currentProjectId.value
-  if (!projectId) throw new Error(aiCopy.value.needProject)
-  const normalized = normalizeAiText(message)
-  const titles = splitTaskTitles(message)
-  const finalTitles = titles.length ? titles : [cleanTaskTitle(message, normalized)]
-  const dueDate = inferDueDate(normalized)
-  const statusName = inferStatusName(normalized)
-  const priority = inferPriority(normalized)
-  const created = []
-
-  for (const title of finalTitles.slice(0, 8)) {
-    const payload = {
-      title,
-      description: `Được tạo bởi SprintA AI từ yêu cầu:\n${message}`,
-      statusName,
-      typeName: 'Task',
-      priority,
-      storyPoints: 0
-    }
-    if (dueDate) payload.dueDate = dueDate
-    created.push({ ...payload, projectId, pendingConfirmation: true })
-  }
-
-  window.dispatchEvent(new CustomEvent('sprinta-ai-task-created', { detail: { projectId, tasks: created } }))
-  return created.length === 1
-    ? `Đã tạo task thật: "${created[0]?.title || finalTitles[0]}" (${statusName}${dueDate ? `, hạn ${dueDate}` : ''}).`
-    : `Đã tạo ${created.length} task thật:\n${created.map(task => `- ${task?.title}`).join('\n')}`
-}
-
-const moveTaskByPrompt = async (message) => {
-  const projectId = currentProjectId.value
-  if (!projectId) throw new Error(aiCopy.value.needProject)
-  const tasks = await ensureProjectTasks()
-  const normalized = normalizeAiText(message)
-  const statusName = inferStatusName(normalized)
-  const sequenceMatch = message.match(/\b[A-Z0-9]+-\d+\b/i)
-  const quoted = message.match(/["“”']([^"“”']{2,})["“”']/)
-  const keyword = normalizeAiText(quoted?.[1] || sequenceMatch?.[0] || message.replace(/(chuyen|chuyển|move|dua|đưa|sang|vao|vào|to do|todo|done|in progress|dang lam|hoan thanh|xong)/gi, ''))
-  const task = tasks.find(item =>
-    (sequenceMatch && normalizeAiText(item.sequenceId) === normalizeAiText(sequenceMatch[0])) ||
-    (keyword && normalizeAiText(item.title).includes(keyword.trim()))
-  )
-
-  if (!task) {
-    return 'Mình chưa tìm thấy task cần chuyển. Hãy ghi rõ mã task hoặc đặt tên task trong dấu ngoặc kép, ví dụ: chuyển "Bug Bash" sang Done.'
-  }
-
-  return `Đã tạo đề xuất chuyển task "${task.title}" sang trạng thái ${statusName}. Vui lòng xác nhận qua action preview.`
-}
-
-const tryHandleLocalAiCommand = async (message) => {
-  const normalized = normalizeAiText(message)
-  const wantsCreate = /(tao|create|add).*(task|cong viec)|ok tao|tao di|create it/.test(normalized)
-  const wantsMove = /(chuyen|move|dua).*(task|cong viec|sang|vao|done|todo|progress|review)|sang (to do|todo|done|in progress)/.test(normalized)
-  const wantsStats = /(thong ke|bao cao|report|stats|dashboard|tong quan)/.test(normalized)
-  const wantsSummary = /(tom tat|summary|summarize|tong ket)/.test(normalized)
-  const wantsPriority = /(uu tien|priority|nen lam|next action|goi y)/.test(normalized)
-  const wantsChecklist = /(checklist|danh sach viec|cac buoc)/.test(normalized)
-
-  if (wantsCreate) {
-    const finalTitles = splitTaskTitles(message).length ? splitTaskTitles(message) : [cleanTaskTitle(message, normalized)]
-    const dueDate = inferDueDate(normalized)
-    const priority = inferPriority(normalized)
-    const suggested = finalTitles.map(t => ({
-      title: t,
-      description: `Đề xuất tạo từ yêu cầu: "${message}"`,
-      priority,
-      dueDate
-    }))
-    return {
-      answer: "SprintA AI đã đề xuất tạo các công việc sau đây. Vui lòng kiểm tra và xác nhận:",
-      suggestedTasks: suggested
-    }
-  }
-
-  if (wantsMove) {
-    const tasks = await ensureProjectTasks()
-    const statusName = inferStatusName(normalized)
-    const sequenceMatch = message.match(/\b[A-Z0-9]+-\d+\b/i)
-    const quoted = message.match(/["“”']([^"“”']{2,})["“”']/)
-    const keyword = normalizeAiText(quoted?.[1] || sequenceMatch?.[0] || message.replace(/(chuyen|chuyển|move|dua|đưa|sang|vao|vào|to do|todo|done|in progress|dang lam|hoan thanh|xong)/gi, ''))
-    const task = tasks.find(item =>
-      (sequenceMatch && normalizeAiText(item.sequenceId) === normalizeAiText(sequenceMatch[0])) ||
-      (keyword && normalizeAiText(item.title).includes(keyword.trim()))
-    )
-
-    if (!task) {
-      return {
-        answer: "Mình chưa tìm thấy công việc cần chuyển. Hãy ghi rõ mã task hoặc đặt tên task trong dấu ngoặc kép."
-      }
-    }
-
-    return {
-      answer: `Bạn có muốn chuyển trạng thái công việc **${task.title}** sang **${statusName}** không?`,
-      suggestedActions: [
-        {
-          type: 'move-task',
-          taskId: task.id,
-          taskTitle: task.title,
-          statusName: statusName
-        }
-      ]
-    }
-  }
-
-  if (wantsStats) {
-    const stats = await buildProjectStats()
-    return `Thống kê project:\n- Tổng task: ${stats.total}\n- Đã xong: ${stats.done}\n- Đang làm: ${stats.inProgress}\n- Cần làm: ${stats.todo}\n- Backlog: ${stats.backlog}\n- Quá hạn: ${stats.overdue}\n- Ưu tiên cao: ${stats.highPriority}`
-  }
-  if (wantsSummary) return await summarizeCurrentProject()
-  if (wantsPriority) return await suggestNextActions()
-  if (wantsChecklist) {
-    const suggestion = await suggestNextActions()
-    return `Checklist đề xuất:\n1. Kiểm tra các task đang quá hạn hoặc ưu tiên cao.\n2. Chốt task cần làm tiếp theo trong cột To Do.\n3. Chuyển task đang xử lý sang In Progress.\n4. Cập nhật deadline/mô tả nếu còn thiếu.\n5. Báo cáo tiến độ ngắn cho team.\n\n${suggestion}`
-  }
-
-  return null
 }
 
 const createSuggestedTask = async (task) => {
@@ -3078,9 +2866,7 @@ const sendAiMessage = async () => {
       suggestedPrompts: responseData?.suggestions || [],
       warnings: responseData?.warnings || [],
       actions: (responseData?.actions || []).map(action => ({
-        ...action,
-        type: String(action.type || '').toLowerCase(),
-        payload: action.payload || {},
+        ...normalizeAiAction(action),
         duplicateCandidate: null,
         contextKey: aiContextKey.value,
         uiStatus: 'pending',
@@ -3624,7 +3410,7 @@ const handleProjectCreated = (newProject) => {
   padding: 10px;
   border: 1px solid #d97706;
   border-radius: 8px;
-  background: #fffbeb;
+  background: var(--color-warning-bg);
   color: #7c2d12;
 }
 .ai-duplicate-warning p { margin: 4px 0 8px; overflow-wrap: anywhere; }
@@ -3634,7 +3420,7 @@ const handleProjectCreated = (newProject) => {
   padding: 6px 9px;
   border: 1px solid #d97706;
   border-radius: 6px;
-  background: #fff;
+  background: var(--color-surface);
   color: #7c2d12;
   cursor: pointer;
 }

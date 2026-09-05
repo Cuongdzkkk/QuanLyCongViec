@@ -400,7 +400,7 @@ import { useAiPetStore } from '@/store/useAiPetStore'
 import { useAiScopeStore } from '@/store/useAiScopeStore'
 import { buildAiContextKey, isAiContextMatch, isComposerSendKey } from '@/utils/aiWorkspace'
 import { useAiComposer } from '@/composables/useAiComposer'
-import { AI_QUICK_ACTIONS } from '@/utils/aiActionUi'
+import { AI_QUICK_ACTIONS, normalizeAiAction } from '@/utils/aiActionUi'
 
 const router = useRouter()
 const route = useRoute()
@@ -969,9 +969,7 @@ const sendMessage = async (overrideMessage = null) => {
       warnings: payload?.warnings || [],
       citations: payload?.citations || [],
       actions: (payload?.actions || []).map(action => ({
-        ...action,
-        type: String(action.type || '').toLowerCase(),
-        payload: action.payload || {},
+        ...normalizeAiAction(action),
         contextKey: aiContextKey.value,
         uiStatus: 'pending',
         loading: false,

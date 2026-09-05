@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
-import { AI_QUICK_ACTIONS } from '../src/utils/aiActionUi.js'
+import { AI_QUICK_ACTIONS, normalizeAiAction, normalizeAiActionPayload } from '../src/utils/aiActionUi.js'
 import { buildAiContextKey, isAiContextMatch } from '../src/utils/aiWorkspace.js'
 import { buildBillingCheckoutLocation, resolveBillingPlanFlow } from '../src/utils/billingPlanFlow.js'
 import { AI_COMPOSER_MAX_HEIGHT, AI_COMPOSER_MIN_HEIGHT, measureAiComposerHeight } from '../src/utils/aiComposer.js'
@@ -21,6 +21,14 @@ test('quick tools retain the complete read/write catalog and run through the sub
   assert.match(nexusLayout, /@click="runQuickPrompt\(prompt\.text\)"/)
   assert.match(aiPage, /const runQuickPrompt = \(prompt\) => \{[\s\S]*void sendMessage\(\)/)
   assert.match(nexusLayout, /const runQuickPrompt = \(prompt\) => \{[\s\S]*void sendAiMessage\(\)/)
+})
+
+test('task action aliases normalize to the canonical title before preview and confirmation', () => {
+  const payload = normalizeAiActionPayload('create_task', { taskTitle: 'AI SHOULD NOT CREATE', projectId: 'project-1' })
+  assert.equal(payload.title, 'AI SHOULD NOT CREATE')
+  assert.equal(normalizeAiAction({ type: 'CREATE_TASK', payload }).payload.title, 'AI SHOULD NOT CREATE')
+  assert.match(aiPage, /normalizeAiAction\(action\)/)
+  assert.match(nexusLayout, /normalizeAiAction\(action\)\.payload/)
 })
 
 test('write actions are confirmation-gated and bound to the active context', () => {
@@ -122,4 +130,10 @@ test('responsive AI surfaces contain their expanding columns and panel scroll re
   assert.match(nexusLayout, /\.ai-content \{[\s\S]*?overflow-x: hidden;/)
   assert.match(nexusLayout, /@media \(min-width: 761px\) and \(max-width: 1024px\)/)
   assert.match(nexusLayout, /@media \(max-width: 760px\)[\s\S]*?\.ai-sidebar \{[\s\S]*?left: 0;/)
+})
+
+test('timeline task layout does not dereference an empty time range', () => {
+  const timeline = fs.readFileSync(new URL('views/SpaceTimeline.vue', sourceRoot), 'utf8')
+  assert.match(timeline, /const firstBucket = timeBuckets\.value\[0\]/)
+  assert.match(timeline, /if \(!firstBucket \|\| !lastBucket\) return null/)
 })

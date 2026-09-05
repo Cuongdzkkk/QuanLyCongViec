@@ -563,8 +563,12 @@ const getTaskBar = (task) => {
   const startTime = startOfDay(start).getTime()
   const endTime = endOfDay(actualEnd).getTime()
   
-  const tlStart = timeBuckets.value[0].start.getTime()
-  const tlEnd = timeBuckets.value[timeBuckets.value.length - 1].end.getTime()
+  const firstBucket = timeBuckets.value[0]
+  const lastBucket = timeBuckets.value[timeBuckets.value.length - 1]
+  if (!firstBucket || !lastBucket) return null
+
+  const tlStart = firstBucket.start.getTime()
+  const tlEnd = lastBucket.end.getTime()
   
   if (endTime < tlStart || startTime > tlEnd) return null // Out of bounds
   

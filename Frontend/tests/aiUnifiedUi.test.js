@@ -47,6 +47,10 @@ test('both surfaces use the sanitized markdown renderer and explicit action even
   assert.match(nexusLayout, /@execute-action="executeAiAction"/)
 })
 
+test('floating AI has no local fake task-creation path', () => {
+  assert.doesNotMatch(nexusLayout, /createRealTasks|tryHandleLocalAiCommand|sprinta-ai-task-created|Đã tạo task thật/)
+})
+
 test('shared AI UI styles use semantic theme tokens for state colors', () => {
   assert.match(composer, /var\(--color-on-accent/)
   assert.match(message, /var\(--color-on-accent/)
@@ -66,7 +70,7 @@ test('credit management uses authenticated billing data and the existing checkou
   assert.match(creditsModal, /billingApi\.getMyHistory\(/)
   assert.match(creditsModal, /axiosClient\.get\(['"]\/public\/pricing['"]\)/)
   assert.doesNotMatch(creditsModal, /billingApi\.createOrder\(plan\.code\)/)
-  assert.match(creditsModal, /router\.push\(buildBillingCheckoutLocation\(plan\.code, '', route\.fullPath\)\)/)
+  assert.match(creditsModal, /router\.push\(buildBillingCheckoutLocation\(getPlanCode\(plan\), '', route\.fullPath\)\)/)
   assert.match(creditsModal, /Mở trang gói &(?:amp;|&) thanh toán/)
   assert.match(creditsModal, /Mở trang thanh toán &(?:amp;|&) lịch sử/)
   assert.doesNotMatch(creditsModal, /Mở billing/)

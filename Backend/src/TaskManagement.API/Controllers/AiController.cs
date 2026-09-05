@@ -38,6 +38,7 @@ namespace TaskManagement.API.Controllers
         private const int GeminiRetryAttempts = 3;
         private const long AiDocumentMaxBytes = 10 * 1024 * 1024;
         private const long VoiceAudioMaxBytes = 3 * 1024 * 1024;
+        private const string AiPermissionDeniedMessage = "Bạn chưa có quyền thực hiện thao tác này.";
         private static readonly IReadOnlyDictionary<string, string[]> AiDocumentMimeTypes =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
@@ -389,9 +390,9 @@ namespace TaskManagement.API.Controllers
                     cancellationToken);
                 return Ok(ApiResponse<AiAttachmentDto>.Success(attachment, "Attachment đã được xử lý."));
             }
-            catch (UnauthorizedAccessException ex)
+            catch (UnauthorizedAccessException)
             {
-                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Error(ex.Message));
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Error(AiPermissionDeniedMessage));
             }
             catch (InvalidDataException ex)
             {
@@ -448,9 +449,9 @@ namespace TaskManagement.API.Controllers
                     cancellationToken);
                 return Ok(ApiResponse<AiAttachmentChatResponseDto>.Success(response));
             }
-            catch (UnauthorizedAccessException ex)
+            catch (UnauthorizedAccessException)
             {
-                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Error(ex.Message));
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Error(AiPermissionDeniedMessage));
             }
             catch (InvalidDataException ex)
             {
@@ -771,6 +772,7 @@ namespace TaskManagement.API.Controllers
             var actionType = NormalizeActionType(request.Type);
             if (!AiActionRegistry.TryGetValue(actionType, out var definition))
                 return BadRequest(ApiResponse<object>.Error("Action is not allowed."));
+            request.Payload = NormalizeActionPayload(actionType, request.Payload);
             if (!definition.DirectExecution)
             {
                 return BadRequest(new
@@ -814,6 +816,7 @@ namespace TaskManagement.API.Controllers
                 return BadRequest(ApiResponse<object>.Error("Action is not allowed."));
             if (definition.DirectExecution)
                 return BadRequest(ApiResponse<object>.Error("Read and analyze actions execute directly without preview state."));
+            request.Payload = NormalizeActionPayload(actionType, request.Payload);
 
             var userId = GetUserId();
             if (!request.WorkspaceId.HasValue || request.WorkspaceId == Guid.Empty)
@@ -860,7 +863,7 @@ namespace TaskManagement.API.Controllers
             }
             catch (UnauthorizedAccessException)
             {
-                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "You do not have permission for this AI action.", data = new { code = "AI_ACTION_PERMISSION_DENIED" } });
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = AiPermissionDeniedMessage, data = new { code = "AI_ACTION_PERMISSION_DENIED" } });
             }
             catch (ArgumentException ex)
             {
@@ -909,6 +912,7 @@ namespace TaskManagement.API.Controllers
             }
 
             var payload = JsonSerializer.Deserialize<Dictionary<string, object?>>(action.PayloadJson, AiActionJsonOptions) ?? new();
+            payload = NormalizeActionPayload(action.ActionType, payload);
             var request = new AiExecuteActionRequestDto { Type = action.ActionType, IdempotencyKey = action.IdempotencyKey, WorkspaceId = action.WorkspaceId, ProjectId = action.ProjectId, Payload = payload };
             try
             {
@@ -920,7 +924,7 @@ namespace TaskManagement.API.Controllers
                 action.ErrorCode = "AI_ACTION_PERMISSION_DENIED";
                 action.UpdatedAt = DateTime.UtcNow;
                 await _dbContext.SaveChangesAsync();
-                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "You do not have permission for this AI action.", data = new { code = action.ErrorCode } });
+                return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = AiPermissionDeniedMessage, data = new { code = action.ErrorCode } });
             }
             catch (ArgumentException ex)
             {
@@ -972,6 +976,7 @@ namespace TaskManagement.API.Controllers
             {
                 return BadRequest(ApiResponse<object>.Error("Action is not allowed."));
             }
+            request.Payload = NormalizeActionPayload(actionType, request.Payload);
 
             var userId = GetUserId();
             var idempotencyKey = BuildIdempotencyKey(userId, actionType, request.IdempotencyKey, request.Payload);
@@ -1000,7 +1005,7 @@ namespace TaskManagement.API.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 await WriteAiActionAuditAsync(userId, idempotencyKey, actionType, "Denied", null, ex.Message);
-                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Error(ex.Message));
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.Error(AiPermissionDeniedMessage));
             }
             catch (DuplicateTaskException ex)
             {
@@ -3394,6 +3399,22 @@ namespace TaskManagement.API.Controllers
                 "summarize_report" or "generate_report" or "report_summary" => "explain_report",
                 _ => normalized
             };
+        }
+
+        private static Dictionary<string, object?> NormalizeActionPayload(
+            string actionType,
+            Dictionary<string, object?> payload)
+        {
+            var normalized = new Dictionary<string, object?>(payload, StringComparer.OrdinalIgnoreCase);
+            if (string.Equals(actionType, "create_task", StringComparison.OrdinalIgnoreCase))
+            {
+                var title = new[] { "title", "taskTitle", "name" }
+                    .Select(key => GetPayloadString(normalized, key))
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+                if (!string.IsNullOrWhiteSpace(title)) normalized["title"] = title.Trim();
+            }
+
+            return normalized;
         }
 
         private static bool IsWaveAudio(byte[] bytes) =>
