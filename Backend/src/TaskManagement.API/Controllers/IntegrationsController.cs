@@ -616,7 +616,7 @@ namespace TaskManagement.API.Controllers
                 encoded = attachment.Data;
             }
 
-            if (string.IsNullOrWhiteSpace(encoded)) return null;
+            if (string.IsNullOrWhiteSpace(encoded) || encoded.Length > GmailAttachmentMaxBytes * 2) return null;
             try
             {
                 var bytes = WebEncoders.Base64UrlDecode(encoded);
