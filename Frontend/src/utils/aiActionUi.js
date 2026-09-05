@@ -85,11 +85,16 @@ const rawAiActionPayload = action => {
 
 export const aiActionPayload = action => normalizeAiActionPayload(action?.type, rawAiActionPayload(action))
 
-export const normalizeAiAction = action => ({
-  ...action,
-  type: String(action?.type || '').toLowerCase(),
-  payload: aiActionPayload(action)
-})
+export const normalizeAiAction = action => {
+  const normalizedAction = { ...(action || {}) }
+  delete normalizedAction.taskTitle
+  delete normalizedAction.name
+  return {
+    ...normalizedAction,
+    type: String(action?.type || '').toLowerCase(),
+    payload: aiActionPayload(action)
+  }
+}
 
 export const aiActionTitle = action => {
   const title = aiActionPayload(action).title
