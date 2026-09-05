@@ -659,7 +659,7 @@
 
     <CreateSpaceModal v-model:visible="createSpaceVisible" @created="handleSiteCreated" />
     <CreateProjectModal v-model:visible="createVisible" @created="handleProjectCreated" />
-    <AiCreditsPurchaseModal v-model="aiCreditsModalVisible" />
+    <AiCreditsPurchaseModal v-model="aiCreditsModalVisible" :contact-context="aiContactContext" />
 
     <transition name="fade">
       <div v-if="isOffline" class="offline-warning-banner" role="alert">
@@ -2498,6 +2498,14 @@ const currentWorkspaceLabel = computed(() => {
   const workspace = siteStore.sites.find(item => `${item.id || item.Id}` === `${workspaceId || ''}`)
   return workspace?.name || workspace?.Name || (workspaceId ? 'Workspace hiện tại' : 'Chưa chọn workspace')
 })
+
+const aiContactContext = computed(() => ({
+  contactName: storedProfile.value.fullName || storedProfile.value.FullName || storedProfile.value.username || storedProfile.value.email || '',
+  workEmail: storedProfile.value.email || '',
+  workspaceId: currentWorkspaceId.value || '',
+  workspaceName: currentWorkspaceLabel.value,
+  projectName: currentProjectLabel.value
+}))
 
 const stickyContext = computed(() => ({
   workspaceId: currentWorkspaceId.value || null,

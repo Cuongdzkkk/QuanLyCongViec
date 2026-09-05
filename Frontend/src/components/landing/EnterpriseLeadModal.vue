@@ -36,7 +36,11 @@
 import { reactive, ref, computed } from 'vue'
 import axiosClient from '@/api/axiosClient'
 import { language } from '@/i18n'
+import { getStoredUserSession } from '@/utils/authSession'
 
+const props = defineProps({
+  prefill: { type: Object, default: () => ({}) }
+})
 defineEmits(['close'])
 const isVi = computed(() => language.value === 'vi')
 const submitting = ref(false)
@@ -44,7 +48,24 @@ const submitted = ref(false)
 const errorMessage = ref('')
 const teamSizes = ['1–10', '11–50', '51–200', '201–500', '500+']
 const needs = ['Quản lý dự án', 'Sprint / Agile', 'Báo cáo', 'AI workflow', 'Multi-team / Organization', 'Bảo mật / Enterprise deployment', 'Khác']
-const form = reactive({ contactName: '', workEmail: '', company: '', teamSize: '', phoneOrZalo: '', need: '', notes: '', preferredContactTime: '' })
+const storedUser = getStoredUserSession() || {}
+const contextNote = [
+  props.prefill.source && `Nguồn yêu cầu: ${props.prefill.source}`,
+  props.prefill.plan && `Gói quan tâm: ${props.prefill.plan}`,
+  props.prefill.workspaceName && `Workspace: ${props.prefill.workspaceName}`,
+  props.prefill.workspaceId && `Workspace ID: ${props.prefill.workspaceId}`,
+  props.prefill.projectName && `Project: ${props.prefill.projectName}`
+].filter(Boolean).join('\n')
+const form = reactive({
+  contactName: props.prefill.contactName || storedUser.fullName || storedUser.username || '',
+  workEmail: props.prefill.workEmail || storedUser.email || '',
+  company: props.prefill.company || '',
+  teamSize: props.prefill.teamSize || '',
+  phoneOrZalo: props.prefill.phoneOrZalo || '',
+  need: props.prefill.need || (props.prefill.source === 'AI Credits' ? 'AI workflow' : ''),
+  notes: props.prefill.notes || contextNote,
+  preferredContactTime: props.prefill.preferredContactTime || ''
+})
 
 const submit = async () => {
   errorMessage.value = ''

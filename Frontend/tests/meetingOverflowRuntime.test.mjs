@@ -20,11 +20,25 @@ assert.match(view, /\.call-header \+ \.call-workspace-body\.is-presentation-mode
 assert.match(captions, /\.call-live-caption-dock \{[^}]*pointer-events: none;/)
 assert.match(view, /\.call-presentation-stage,[\s\S]*?\.call-camera-stage[^}]*min-height: 0 !important;/)
 
+const moreMenuPopover = view.match(/<el-popover[\s\S]*?call-more-menu-popper[\s\S]*?<\/el-popover>/)?.[0] || ''
+assert.match(moreMenuPopover, /v-model:visible="showMoreMenu"/)
+assert.match(moreMenuPopover, /placement="top-end"/)
+assert.match(moreMenuPopover, /:teleported="true"/)
+assert.match(moreMenuPopover, /popper-class="call-more-menu-popper"/)
+assert.match(view, /\.call-controls-row \{[^}]*overflow:\s*hidden[^}]*\}/)
+assert.match(view, /\.call-more-menu \{[^}]*position:\s*absolute[^}]*z-index:\s*8[^}]*\}/)
+assert.match(view, /\.call-more-menu-popper[\s\S]*?z-index:\s*var\(--z-popover\)/)
+assert.match(view, /\.call-more-menu-popper \.call-more-menu[\s\S]*?position:\s*static/)
+assert.doesNotMatch(view, /<div v-if="showMoreMenu" class="call-more-menu"/)
+
 const requiredDesktopViewports = [
   [1366, 768],
   [1536, 864],
   [1920, 1080],
-  [1280, 720]
+  [1280, 720],
+  [1440, 900],
+  [1024, 768],
+  [768, 1024]
 ]
 
 const workspaceHeight = viewportHeight => Math.min(820, Math.max(0, viewportHeight - 112))
@@ -40,6 +54,6 @@ assert.ok(observedBefore.scrollHeight > observedBefore.clientHeight)
 assert.equal(expectedAfter.scrollHeight > expectedAfter.clientHeight, true)
 assert.equal(expectedAfter.overflowY, 'auto')
 
-console.log('MEETING_OVERFLOW_RUNTIME: 11 focused layout invariants covered')
-console.log('VIEWPORTS: 1366x768, 1536x864, 1920x1080, 1280x720 at 100% budget checks')
+console.log('MEETING_OVERFLOW_RUNTIME: 19 focused layout invariants covered')
+console.log('VIEWPORTS: 1920, 1440, 1024, 768 widths covered at 100% budget checks')
 console.log('TRANSCRIPT_SCROLL: observed overflow is routed to the bounded transcript panel')
