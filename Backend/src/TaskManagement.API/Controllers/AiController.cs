@@ -77,6 +77,33 @@ namespace TaskManagement.API.Controllers
             return Ok(ApiResponse<AiUsageDto>.Success(usage));
         }
 
+        [HttpGet("capabilities")]
+        public IActionResult Capabilities()
+        {
+            var capabilities = AiActionCatalog.Definitions
+                .Where(pair => pair.Value.Available)
+                .Select(pair => new
+                {
+                    actionKey = pair.Value.ActionKey,
+                    legacyType = pair.Key,
+                    displayName = pair.Value.DisplayName,
+                    aliasesIntents = pair.Value.AliasesIntents,
+                    argumentSchema = pair.Value.ArgumentSchema,
+                    riskLevel = pair.Value.RiskLevel,
+                    requiredPermission = pair.Value.RequiredPermission,
+                    confirmationPolicy = pair.Value.ConfirmationPolicy,
+                    executor = pair.Value.Executor,
+                    availability = pair.Value.Available,
+                    quickTool = pair.Value.QuickTool,
+                    quickPrompt = pair.Value.QuickPrompt,
+                    icon = pair.Value.Icon,
+                    capabilityKind = pair.Value.CapabilityKind.ToString()
+                })
+                .ToList();
+
+            return Ok(ApiResponse<object>.Success(new { capabilities }));
+        }
+
         [HttpGet("usage-summary")]
         public async Task<IActionResult> UsageSummary([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
         {
@@ -3386,6 +3413,10 @@ namespace TaskManagement.API.Controllers
             var normalized = actionType.Trim().Replace("-", "_").ToLowerInvariant();
             return normalized switch
             {
+                "task.create" => "create_task",
+                "task.changestatus" or "task.change_status" => "update_task_status",
+                "task.assign" => "assign_task",
+                "task.comment" => "add_comment",
                 "create_work_item" or "create_issue" => "create_task",
                 "update_work_item_status" or "move_work_item" or "move_task" => "update_task_status",
                 "assign_work_item" => "assign_task",
