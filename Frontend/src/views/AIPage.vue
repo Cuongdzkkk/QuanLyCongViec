@@ -924,6 +924,7 @@ const uploadFullAttachments = async conversationId => {
       uploaded.push(attachment)
     } catch (error) {
       attachment.status = 'error'
+      attachment.errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || 'Không thể xử lý attachment.'
       throw error
     }
   }

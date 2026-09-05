@@ -34,6 +34,7 @@ namespace TaskManagement.API.Controllers
         private readonly IDataProtector _oauthStateProtector;
         private readonly IGoogleCalendarIntegrationService _googleCalendar;
         private readonly IOAuthStateStore _oauthStateStore;
+        private readonly IAttachmentIngestionService _attachmentIngestionService;
 
         public IntegrationsController(
             ApplicationDbContext context,
@@ -41,7 +42,8 @@ namespace TaskManagement.API.Controllers
             IHttpClientFactory httpClientFactory,
             IDataProtectionProvider dataProtectionProvider,
             IGoogleCalendarIntegrationService googleCalendar,
-            IOAuthStateStore oauthStateStore)
+            IOAuthStateStore oauthStateStore,
+            IAttachmentIngestionService? attachmentIngestionService = null)
         {
             _context = context;
             _configuration = configuration;
@@ -50,6 +52,7 @@ namespace TaskManagement.API.Controllers
             _oauthStateProtector = dataProtectionProvider.CreateProtector("SprintA.IntegrationOAuthState.v1");
             _googleCalendar = googleCalendar;
             _oauthStateStore = oauthStateStore;
+            _attachmentIngestionService = attachmentIngestionService ?? new AttachmentIngestionService();
         }
 
         [HttpGet]
@@ -596,7 +599,7 @@ namespace TaskManagement.API.Controllers
             return !string.IsNullOrWhiteSpace(fileName)
                 && (extension.Equals(".txt", StringComparison.OrdinalIgnoreCase)
                     || extension.Equals(".csv", StringComparison.OrdinalIgnoreCase))
-                && (mimeType is "text/plain" or "text/csv" or "application/csv" or "text/tab-separated-values" or null or "");
+                && AttachmentIngestionService.IsSupported(fileName, mimeType);
         }
 
         private async Task<string?> DownloadGmailTextAttachmentAsync(HttpClient client, string messageId, GmailPart part)
@@ -621,7 +624,15 @@ namespace TaskManagement.API.Controllers
             {
                 var bytes = WebEncoders.Base64UrlDecode(encoded);
                 if (bytes.Length == 0 || bytes.Length > GmailAttachmentMaxBytes) return null;
-                var text = new UTF8Encoding(false, true).GetString(bytes);
+                var normalized = await _attachmentIngestionService.NormalizeAsync(
+                    part.Filename!,
+                    part.MimeType ?? (Path.GetExtension(part.Filename).Equals(".csv", StringComparison.OrdinalIgnoreCase)
+                        ? "text/csv"
+                        : "text/plain"),
+                    new MemoryStream(bytes, writable: false),
+                    bytes.LongLength,
+                    $"gmail/attachment/{Path.GetFileName(part.Filename)}");
+                var text = normalized.TextContent ?? string.Empty;
                 return text.Length > GmailAttachmentMaxChars ? text[..GmailAttachmentMaxChars] : text;
             }
             catch (FormatException)

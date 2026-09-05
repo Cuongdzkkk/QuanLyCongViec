@@ -20,6 +20,7 @@ using TaskManagement.Application.Interfaces;
 using TaskManagement.Domain.Entities;
 using TaskManagement.Domain.Rules;
 using TaskManagement.Infrastructure.Data;
+using TaskManagement.Infrastructure.Services;
 
 namespace TaskManagement.API.Controllers
 {
@@ -45,9 +46,14 @@ namespace TaskManagement.API.Controllers
                 [".txt"] = ["text/plain"],
                 [".md"] = ["text/markdown", "text/plain"],
                 [".docx"] = ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
-                [".pdf"] = ["application/pdf"]
+                [".pdf"] = ["application/pdf"],
+                [".csv"] = ["text/csv", "application/csv", "application/vnd.ms-excel"],
+                [".png"] = ["image/png"],
+                [".jpg"] = ["image/jpeg"],
+                [".jpeg"] = ["image/jpeg"]
             };
         private readonly IResourceAuthorizationService _authorizationService;
+        private readonly IAttachmentIngestionService _attachmentIngestionService;
 
         public AiController(
             IAiService aiService,
@@ -57,7 +63,8 @@ namespace TaskManagement.API.Controllers
             IProjectService projectService,
             IGoalService goalService,
             ApplicationDbContext dbContext,
-            IResourceAuthorizationService authorizationService)
+            IResourceAuthorizationService authorizationService,
+            IAttachmentIngestionService? attachmentIngestionService = null)
         {
             _aiService = aiService;
             _aiCreditUsageService = aiCreditUsageService;
@@ -67,6 +74,7 @@ namespace TaskManagement.API.Controllers
             _goalService = goalService;
             _dbContext = dbContext;
             _authorizationService = authorizationService;
+            _attachmentIngestionService = attachmentIngestionService ?? new AttachmentIngestionService();
         }
 
         [HttpGet("usage")]
@@ -606,10 +614,12 @@ namespace TaskManagement.API.Controllers
                 await file.CopyToAsync(ms);
                 var fileBytes = ms.ToArray();
 
-                if (!HasValidDocumentSignature(ext, fileBytes))
-                {
-                    return BadRequest(ApiResponse<object>.Error("Nội dung file không hợp lệ hoặc không khớp với định dạng đã chọn."));
-                }
+                await _attachmentIngestionService.NormalizeAsync(
+                    file.FileName,
+                    mimeType,
+                    new MemoryStream(fileBytes, writable: false),
+                    fileBytes.LongLength,
+                    "direct-ai/analyze-file");
 
                 var result = await _aiService.AnalyzeFileAsync(
                     userId,
@@ -706,19 +716,6 @@ namespace TaskManagement.API.Controllers
             {
                 return BadRequest(ApiResponse<object>.Error(ex.Message));
             }
-        }
-
-        private static bool HasValidDocumentSignature(string extension, byte[] bytes)
-        {
-            if (bytes.Length == 0) return false;
-            return extension switch
-            {
-                ".pdf" => bytes.Length >= 5 && bytes.AsSpan(0, 5).SequenceEqual("%PDF-"u8),
-                ".docx" => bytes.Length >= 4 && bytes[0] == 0x50 && bytes[1] == 0x4B &&
-                           bytes[2] is 0x03 or 0x05 or 0x07 && bytes[3] is 0x04 or 0x06 or 0x08,
-                ".txt" or ".md" => Array.IndexOf(bytes, (byte)0) < 0,
-                _ => false
-            };
         }
 
         [HttpPost("context-chat")]

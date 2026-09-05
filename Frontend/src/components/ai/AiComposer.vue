@@ -18,7 +18,7 @@
         <div class="ai-attachment-meta">
           <strong>{{ attachment.kind === 'image' ? attachment.displayName : attachment.name }}</strong>
           <span>{{ attachment.typeLabel }}<template v-if="attachment.kind === 'image'"> · {{ formatBytes(attachment.size) }}<template v-if="attachment.width && attachment.height"> · {{ attachment.width }}×{{ attachment.height }}</template></template></span>
-          <small :class="`is-${attachment.status || 'pending'}`"><i :class="statusIcon(attachment.status)"></i> {{ statusLabel(attachment.status) }}</small>
+          <small :class="`is-${attachment.status || 'pending'}`"><i :class="statusIcon(attachment.status)"></i> {{ statusLabel(attachment) }}</small>
         </div>
         <div class="ai-attachment-actions">
           <button type="button" :title="`Mở ${attachment.name}`" @click="$emit('preview-attachment', attachment)"><i class="fa-solid fa-up-right-from-square"></i></button>
@@ -133,7 +133,7 @@ const formatBytes = bytes => {
   const value = bytes / (1024 ** unit)
   return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
 }
-const statusLabel = status => ({ uploading: 'Đang tải lên', processing: 'Đang xử lý', error: 'Tải lên thất bại', ready: 'Đã xử lý' }[String(status || 'pending').toLowerCase()] || 'Chờ tải lên')
+const statusLabel = attachment => attachment?.errorMessage || ({ uploading: 'Đang tải lên', processing: 'Đang xử lý', error: 'Không thể xử lý attachment', ready: 'Đã xử lý' }[String(attachment?.status || 'pending').toLowerCase()] || 'Chờ tải lên')
 const statusIcon = status => ({ uploading: 'fa-solid fa-arrow-up-from-bracket fa-bounce', processing: 'fa-solid fa-spinner fa-spin', error: 'fa-solid fa-circle-exclamation', ready: 'fa-solid fa-circle-check' }[String(status || 'pending').toLowerCase()] || 'fa-regular fa-clock')
 
 defineExpose({

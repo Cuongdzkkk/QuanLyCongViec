@@ -106,6 +106,73 @@ namespace TaskManagement.Tests.Logic
                 .Should().ThrowAsync<InvalidDataException>();
         }
 
+        [Fact]
+        public async Task TaskIntentFromAttachmentReturnsCanonicalCreateActionWithEvidence()
+        {
+            const string text = """
+                Task title:
+                Fix AI task creation confirmation flow
+
+                Assignee suggestion:
+                Tuấn Khôi
+
+                Priority:
+                High
+
+                Due date:
+                2026-09-07 17:00
+                """;
+            var bytes = Encoding.UTF8.GetBytes(text);
+            _aiService
+                .Setup(item => item.ChatWithAttachmentsAsync(
+                    _userId,
+                    It.IsAny<string>(),
+                    It.IsAny<IReadOnlyList<AiAttachmentRagSourceDto>>(),
+                    It.IsAny<IReadOnlyList<AiAttachmentImageInputDto>>()))
+                .ReturnsAsync("Đã đọc tài liệu.");
+
+            await using var stream = new MemoryStream(bytes);
+            var attachment = await _service.UploadAsync(
+                _userId, _workspaceId, _conversationId, "sprinta_test_requirements.txt", "text/plain", stream, bytes.LongLength);
+            var response = await _service.ChatAsync(
+                _userId, _workspaceId, _conversationId, [attachment.Id], "Tạo task từ tài liệu này");
+
+            response.Actions.Should().ContainSingle();
+            response.Actions[0].Type.Should().Be("task.create");
+            response.Actions[0].RequiresConfirmation.Should().BeTrue();
+            response.Actions[0].Payload["title"].Should().Be("Fix AI task creation confirmation flow");
+            response.Actions[0].Payload["priority"].Should().Be(2);
+            response.Actions[0].Payload["dueDate"].Should().Be("2026-09-07T17:00:00");
+            response.Actions[0].Payload["assigneeSuggestion"].Should().Be("Tuấn Khôi");
+        }
+
+        [Fact]
+        public async Task PngAttachmentPassesRealBytesToVisionService()
+        {
+            var png = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10, 0 };
+            IReadOnlyList<AiAttachmentImageInputDto>? capturedImages = null;
+            _aiService
+                .Setup(item => item.ChatWithAttachmentsAsync(
+                    _userId,
+                    It.IsAny<string>(),
+                    It.IsAny<IReadOnlyList<AiAttachmentRagSourceDto>>(),
+                    It.IsAny<IReadOnlyList<AiAttachmentImageInputDto>>()))
+                .Callback<Guid, string, IReadOnlyList<AiAttachmentRagSourceDto>, IReadOnlyList<AiAttachmentImageInputDto>>(
+                    (_, _, _, images) => capturedImages = images)
+                .ReturnsAsync("Ảnh chứa giao diện cần kiểm tra.");
+
+            await using var stream = new MemoryStream(png);
+            var attachment = await _service.UploadAsync(
+                _userId, _workspaceId, _conversationId, "screen.png", "image/png", stream, png.LongLength);
+            var response = await _service.ChatAsync(
+                _userId, _workspaceId, _conversationId, [attachment.Id], "Xem screenshot này và mô tả nội dung");
+
+            response.Answer.Should().Contain("giao diện");
+            capturedImages.Should().ContainSingle();
+            capturedImages![0].MimeType.Should().Be("image/png");
+            capturedImages[0].Bytes.Should().Equal(png);
+        }
+
         public void Dispose()
         {
             _context.Dispose();
