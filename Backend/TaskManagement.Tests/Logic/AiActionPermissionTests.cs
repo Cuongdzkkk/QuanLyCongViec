@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -40,6 +42,10 @@ namespace TaskManagement.Tests.Logic
 
             var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
             objectResult.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            JsonSerializer.Serialize(objectResult.Value, new JsonSerializerOptions
+            {
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            }).Should().Contain("Bạn chưa có quyền thực hiện thao tác này.");
             (await _context.Sprints.CountAsync()).Should().Be(0);
             (await _context.AiActionExecutions.CountAsync()).Should().Be(0);
         }
@@ -85,6 +91,78 @@ namespace TaskManagement.Tests.Logic
 
             var reloadedController = CreateController(_pmUserId);
             (await reloadedController.GetAction(actionId)).Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task CreateTask_TaskTitleAlias_IsCanonicalizedAndConfirmedOnce()
+        {
+            var statusId = Guid.NewGuid();
+            var typeId = Guid.NewGuid();
+            _context.TaskStatuses.Add(new TaskManagement.Domain.Entities.TaskStatus
+            {
+                Id = statusId,
+                ProjectId = _projectId,
+                Name = "To Do"
+            });
+            _context.TaskTypes.Add(new TaskType
+            {
+                Id = typeId,
+                ProjectId = _projectId,
+                Name = "Task"
+            });
+            await _context.SaveChangesAsync();
+
+            var controller = new AiController(
+                Mock.Of<IAiService>(),
+                Mock.Of<IAiCreditUsageService>(),
+                Mock.Of<IAiAttachmentService>(),
+                new WorkTaskService(_context, Mock.Of<IGamificationService>()),
+                Mock.Of<IProjectService>(),
+                Mock.Of<IGoalService>(),
+                _context,
+                new ResourceAuthorizationService(_context));
+            controller.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.NameIdentifier, _pmUserId.ToString())
+                    }, "TestAuth"))
+                }
+            };
+
+            var request = new AiExecuteActionRequestDto
+            {
+                Type = "create_task",
+                IdempotencyKey = "create-task-title-alias",
+                WorkspaceId = _workspaceId,
+                ProjectId = _projectId,
+                Payload = new Dictionary<string, object?>
+                {
+                    ["projectId"] = _projectId.ToString(),
+                    ["taskTitle"] = "AI SHOULD NOT CREATE",
+                    ["statusName"] = "To Do",
+                    ["typeName"] = "Task"
+                }
+            };
+
+            (await controller.PreviewAction(request)).Should().BeOfType<OkObjectResult>();
+            var actionId = await _context.AiActionExecutions.Select(action => action.Id).SingleAsync();
+            var previewJson = await _context.AiActionExecutions.Select(action => action.PreviewJson).SingleAsync();
+            using (var previewDocument = JsonDocument.Parse(previewJson))
+            {
+                previewDocument.RootElement.GetProperty("payload").GetProperty("title").GetString()
+                    .Should().Be("AI SHOULD NOT CREATE");
+            }
+            var result = await controller.ConfirmAction(actionId);
+
+            result.Should().BeOfType<OkObjectResult>();
+            (await _context.WorkTasks.CountAsync()).Should().Be(1);
+            (await _context.WorkTasks.SingleAsync()).Title.Should().Be("AI SHOULD NOT CREATE");
+
+            (await controller.ConfirmAction(actionId)).Should().BeOfType<OkObjectResult>();
+            (await _context.WorkTasks.CountAsync()).Should().Be(1);
         }
 
         [Fact]

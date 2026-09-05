@@ -64,6 +64,25 @@ export const aiActionStatusLabel = action => ({
 
 export const aiActionPayload = action => action?.payload || {}
 
+export const normalizeAiActionPayload = (type, payload = {}) => {
+  const normalized = { ...(payload || {}) }
+  if (String(type || '').toLowerCase() === 'create_task') {
+    const title = [normalized.title, normalized.taskTitle, normalized.name]
+      .find(value => value !== undefined && value !== null && `${value}`.trim() !== '')
+    if (title !== undefined) normalized.title = `${title}`.trim()
+  }
+  return normalized
+}
+
+export const normalizeAiAction = action => ({
+  ...action,
+  type: String(action?.type || '').toLowerCase(),
+  payload: normalizeAiActionPayload(
+    action?.type,
+    action?.payload || action?.payloadPreview || action?.Payload || action?.PayloadPreview
+  )
+})
+
 export const aiActionPayloadValue = (action, ...keys) => {
   const payload = aiActionPayload(action)
   const key = keys.find(item => payload[item] !== undefined && payload[item] !== null && `${payload[item]}`.trim() !== '')
