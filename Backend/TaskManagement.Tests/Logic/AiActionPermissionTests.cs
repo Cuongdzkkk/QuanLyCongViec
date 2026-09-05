@@ -141,6 +141,7 @@ namespace TaskManagement.Tests.Logic
                 Payload = new Dictionary<string, object?>
                 {
                     ["projectId"] = _projectId.ToString(),
+                    ["conversationId"] = "11111111-1111-1111-1111-111111111111",
                     ["taskTitle"] = "AI SHOULD NOT CREATE",
                     ["statusName"] = "To Do",
                     ["typeName"] = "Task"
@@ -149,6 +150,8 @@ namespace TaskManagement.Tests.Logic
 
             (await controller.PreviewAction(request)).Should().BeOfType<OkObjectResult>();
             var actionId = await _context.AiActionExecutions.Select(action => action.Id).SingleAsync();
+            (await _context.AiActionExecutions.Select(action => action.ConversationId).SingleAsync())
+                .Should().Be(Guid.Parse("11111111-1111-1111-1111-111111111111"));
             var previewJson = await _context.AiActionExecutions.Select(action => action.PreviewJson).SingleAsync();
             using (var previewDocument = JsonDocument.Parse(previewJson))
             {

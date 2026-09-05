@@ -760,7 +760,8 @@ import { buildSpacePath } from '@/utils/spaceRoute'
 import { MAX_FLOATING_STICKIES, useStickyStore } from '@/store/useStickyStore'
 import { getRandomPaletteColor } from '@/utils/colors'
 import { getStickyAccountId } from '@/utils/stickyAccountIsolation'
-import { AI_QUICK_ACTIONS, normalizeAiAction, normalizeAiActionList } from '@/utils/aiActionUi'
+import { AI_QUICK_ACTIONS, aiActionPayload, normalizeAiActionList } from '@/utils/aiActionUi'
+import { decorateAiAction, findPendingAiAction, isAiConfirmationMessage, previewAndConfirmAiAction } from '@/utils/aiActionEngine'
 import {
   AI_PANEL_DEFAULT_WIDTH,
   buildAiContextKey,
@@ -2195,7 +2196,7 @@ const actionStatusLabel = (action) => ({
   error: 'Thất bại'
 }[action.uiStatus || 'pending'] || 'Chờ xác nhận')
 
-const actionPayload = (action) => normalizeAiAction(action).payload
+const actionPayload = aiActionPayload
 const payloadValue = (action, ...keys) => {
   const payload = actionPayload(action)
   const key = keys.find(item => payload[item] !== undefined && payload[item] !== null && `${payload[item]}`.trim() !== '')
@@ -2265,6 +2266,7 @@ const cancelAiAction = async (action) => {
     await axiosClient.post(`/ai/actions/${action.serverActionId}/cancel`)
   }
   action.uiStatus = 'cancelled'
+  action.status = 'CANCELLED'
   action.error = ''
   await persistConversation()
 }
@@ -2417,23 +2419,16 @@ const executeAiAction = async (action, { navigate = true } = {}) => {
       if (root?.success === false || !result || typeof result !== 'object') throw new Error('Backend không trả về kết quả đọc dữ liệu.')
       action.result = result
       action.uiStatus = 'success'
+      action.status = 'EXECUTED'
       ElMessage.success(result?.message || 'Đã tải dữ liệu thành công.')
       return
     }
-    action.idempotencyKey ||= `${action.type}-${crypto.randomUUID()}`
-    if (!action.serverActionId) {
-      const previewResponse = await axiosClient.post('/ai/actions/preview', {
-        type: action.type,
-        idempotencyKey: action.idempotencyKey,
-        workspaceId: currentWorkspaceId.value || null,
-        projectId: currentProjectId.value || actionPayload(action).projectId || null,
-        payload: actionPayload(action)
-      })
-      action.serverActionId = previewResponse.data?.data?.actionId
-      if (!action.serverActionId) throw new Error('Backend khÃ´ng táº¡o Ä‘Æ°á»£c action preview.')
-      await persistConversation()
-    }
-    const response = await axiosClient.post(`/ai/actions/${action.serverActionId}/confirm`)
+    const response = await previewAndConfirmAiAction(action, {
+      workspaceId: currentWorkspaceId.value,
+      projectId: currentProjectId.value || actionPayload(action).projectId,
+      conversationId: currentConversationId.value
+    })
+    await persistConversation()
     const root = response.data || {}
     const payload = root?.data ?? root
     const actionResult = payload?.result ?? payload
@@ -2444,6 +2439,7 @@ const executeAiAction = async (action, { navigate = true } = {}) => {
     if (failed || !hasResult || (!confirmed && !result?.entityId && !result?.id && !result?.taskId && !result?.message)) throw new Error('Backend không xác nhận action thành công.')
     action.result = result
     action.uiStatus = 'success'
+    action.status = 'EXECUTED'
     const navigation = await refreshAfterAiAction(action, result)
     ElMessage.success(result?.message || 'AI đã thực hiện thay đổi thành công.')
     if (navigate) await navigateToAiEntity(navigation)
@@ -2456,6 +2452,7 @@ const executeAiAction = async (action, { navigate = true } = {}) => {
       return
     }
     action.uiStatus = 'error'
+    action.status = 'FAILED'
         const status = error.response?.status
     const mapped = { 400: 'Dữ liệu action không hợp lệ.', 401: 'Phiên đăng nhập đã hết hạn.', 403: 'Bạn không có quyền thực hiện action này.', 404: 'Không tìm thấy entity cần thao tác.', 409: 'Action bị trùng hoặc xung đột dữ liệu.', 422: 'Dữ liệu không vượt qua kiểm tra nghiệp vụ.', 429: 'AI đang quá tải. Hãy thử lại sau.', 503: 'Dịch vụ AI tạm thời không khả dụng.' }
     action.error = mapped[status] || error.response?.data?.message || error.message || 'Không thể thực hiện action.'
@@ -2795,6 +2792,20 @@ const sendAiMessage = async () => {
   }
   if ((!outgoing && !hasAttachments) || aiSending.value) return
 
+  if (!hasAttachments && isAiConfirmationMessage(outgoing)) {
+    const pendingAction = findPendingAiAction(chatHistory.value, {
+      contextKey: aiContextKey.value,
+      conversationId: currentConversationId.value,
+      workspaceId: currentWorkspaceId.value,
+      projectId: currentProjectId.value
+    })
+    if (pendingAction) {
+      aiInput.value = ''
+      await executeAiAction(pendingAction)
+      return
+    }
+  }
+
   aiSending.value = true
   const requestRevision = aiContextRevision.value
   let loadingAdded = false
@@ -2867,13 +2878,13 @@ const sendAiMessage = async () => {
       suggestedPrompts: responseData?.suggestions || [],
       warnings: responseData?.warnings || [],
       actions: normalizedActions.actions.map(action => ({
-        ...action,
-        duplicateCandidate: null,
-        contextKey: aiContextKey.value,
-        uiStatus: 'pending',
-        loading: false,
-        error: '',
-        result: null
+        ...decorateAiAction(action, {
+          contextKey: aiContextKey.value,
+          conversationId,
+          workspaceId: currentWorkspaceId.value,
+          projectId: currentProjectId.value || actionPayload(action).projectId
+        }),
+        duplicateCandidate: null
       })),
       suggestedActions: responseData?.suggestedActions || []
     })

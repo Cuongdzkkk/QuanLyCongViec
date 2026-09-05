@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import test from 'node:test'
 import { AI_QUICK_ACTIONS, aiActionTitle, normalizeAiAction, normalizeAiActionList, normalizeAiActionPayload } from '../src/utils/aiActionUi.js'
 import { buildAiContextKey, isAiContextMatch } from '../src/utils/aiWorkspace.js'
+import { decorateAiAction, findPendingAiAction, isAiConfirmationMessage } from '../src/utils/aiActionEngine.js'
 import { buildBillingCheckoutLocation, resolveBillingPlanFlow } from '../src/utils/billingPlanFlow.js'
 import { AI_COMPOSER_MAX_HEIGHT, AI_COMPOSER_MIN_HEIGHT, measureAiComposerHeight } from '../src/utils/aiComposer.js'
 
@@ -30,8 +31,8 @@ test('task action aliases normalize to the canonical title before preview and co
   assert.equal(Object.hasOwn(payload, 'taskTitle'), false)
   assert.equal(Object.hasOwn(payload, 'name'), false)
   assert.equal(normalizeAiAction({ type: 'CREATE_TASK', payload }).payload.title, 'AI SHOULD NOT CREATE')
-  assert.match(aiPage, /normalizeAiAction\(action\)/)
-  assert.match(nexusLayout, /normalizeAiAction\(action\)\.payload/)
+  assert.match(aiPage, /aiActionPayload/)
+  assert.match(nexusLayout, /aiActionPayload/)
 })
 
 test('both AI surfaces preserve the model title through preview and confirm payloads', () => {
@@ -46,10 +47,10 @@ test('both AI surfaces preserve the model title through preview and confirm payl
   assert.equal(aiActionTitle(normalized), 'AI EXAM TEST 1022')
   assert.equal(normalizeAiActionList([rawAction]).actions[0].payload.title, 'AI EXAM TEST 1022')
   assert.equal(normalizeAiAction({ type: 'create_task', payloadPreview: rawAction.payloadPreview }).payload.title, 'AI EXAM TEST 1022')
-  assert.match(aiPage, /const actionPayload = action => normalizeAiAction\(action\)\.payload/)
-  assert.match(nexusLayout, /const actionPayload = \(action\) => normalizeAiAction\(action\)\.payload/)
-  assert.match(aiPage, /payload: actionPayload\(action\)/)
-  assert.match(nexusLayout, /payload: actionPayload\(action\)/)
+  assert.match(aiPage, /const actionPayload = aiActionPayload/)
+  assert.match(nexusLayout, /const actionPayload = aiActionPayload/)
+  assert.match(aiPage, /previewAndConfirmAiAction\(action,/)
+  assert.match(nexusLayout, /previewAndConfirmAiAction\(action,/)
   assert.match(conversationStore, /normalizeAiActionList\(message\.actions\)/)
   assert.match(conversationStore, /conversation\.messages\.map\(canonicalizeAiMessage\)/)
   assert.match(aiPage, /const normalizedActions = normalizeAiActionList\(payload\?\.actions \|\| \[\]\)/)
@@ -71,9 +72,40 @@ test('write actions are confirmation-gated and bound to the active context', () 
   assert.equal(isAiContextMatch(buildAiContextKey('workspace-a', 'project-a'), 'workspace-b', 'project-a'), false)
   assert.match(aiPage, /isAiContextMatch\(action\.contextKey, currentWorkspaceId\.value, currentProjectId\.value\)/)
   assert.match(nexusLayout, /isAiContextMatch\(action\.contextKey, currentWorkspaceId\.value, currentProjectId\.value\)/)
-  assert.match(nexusLayout, /axiosClient\.post\('\/ai\/actions\/preview'/)
-  assert.match(nexusLayout, /axiosClient\.post\(`\/ai\/actions\/\$\{action\.serverActionId\}\/confirm`\)/)
+  assert.match(aiPage, /previewAndConfirmAiAction\(action/)
+  assert.match(nexusLayout, /previewAndConfirmAiAction\(action/)
   assert.doesNotMatch(nexusLayout, /workTaskStore\.(createTask|updateTaskStatus)\(/)
+})
+
+test('confirmation phrases resume the canonical pending action for both surfaces', () => {
+  assert.equal(isAiConfirmationMessage('ok hãy làm đi'), true)
+  assert.equal(isAiConfirmationMessage('ok'), true)
+  assert.equal(isAiConfirmationMessage('làm đi'), true)
+  const action = decorateAiAction({ type: 'create_task', payload: { taskTitle: 'AI FLOATING LIVE TEST 1117', projectId: 'project-a' } }, {
+    contextKey: buildAiContextKey('workspace-a', 'project-a'),
+    conversationId: 'conversation-a',
+    workspaceId: 'workspace-a',
+    projectId: 'project-a'
+  })
+  assert.equal(action.payload.title, 'AI FLOATING LIVE TEST 1117')
+  assert.equal(Object.hasOwn(action.payload, 'taskTitle'), false)
+  assert.equal(findPendingAiAction([{ role: 'bot', actions: [action] }], {
+    workspaceId: 'workspace-a', projectId: 'project-a'
+  }), action)
+  assert.match(aiPage, /findPendingAiAction\(chatHistory\.value/)
+  assert.match(nexusLayout, /findPendingAiAction\(chatHistory\.value/)
+})
+
+test('pending actions are terminal after execution and cannot be replayed', () => {
+  const action = decorateAiAction({ type: 'create_task', payload: { title: 'Once', projectId: 'project-a' }, status: 'EXECUTED', uiStatus: 'success' }, { workspaceId: 'workspace-a', projectId: 'project-a' })
+  assert.equal(findPendingAiAction([{ actions: [action] }], { workspaceId: 'workspace-a', projectId: 'project-a' }), null)
+  const legacyAction = { type: 'create_task', payload: { title: 'Legacy once' }, uiStatus: 'success' }
+  assert.equal(findPendingAiAction([{ actions: [legacyAction] }], {}), null)
+})
+
+test('pending action context is project-bound', () => {
+  const action = decorateAiAction({ type: 'create_task', payload: { title: 'Original', projectId: 'project-a' } }, { workspaceId: 'workspace-a', projectId: 'project-a' })
+  assert.equal(findPendingAiAction([{ actions: [action] }], { workspaceId: 'workspace-a', projectId: 'project-b' }), null)
 })
 
 test('full AI exposes a real project selector and refreshes scoped projects', () => {

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import axiosClient from '@/api/axiosClient'
 import { normalizeAiActionList } from '@/utils/aiActionUi'
+import { decorateAiAction } from '@/utils/aiActionEngine'
 
 const defaultMessages = () => [{
   role: 'bot',
@@ -18,7 +19,7 @@ const canonicalizeAiMessage = message => {
     content: normalized.hasMissingTaskTitle && !`${message.content || ''}`.includes(clarification)
       ? [message.content || '', clarification].filter(Boolean).join('\n\n')
       : message.content,
-    actions: normalized.actions
+    actions: normalized.actions.map(action => decorateAiAction(action))
   }
 }
 
