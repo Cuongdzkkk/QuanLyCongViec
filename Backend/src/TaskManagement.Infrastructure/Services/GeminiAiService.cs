@@ -26,6 +26,7 @@ namespace TaskManagement.Infrastructure.Services
         private readonly ZenMuxAiClient _zenMuxAiClient;
         private readonly IWorkTaskService _workTaskService;
         private readonly IAiCreditUsageService _aiCreditUsageService;
+        private readonly IResourceAuthorizationService _authorizationService;
         private readonly IConfiguration _configuration;
         private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
@@ -39,13 +40,15 @@ namespace TaskManagement.Infrastructure.Services
             IWorkTaskService workTaskService,
             IAiCreditUsageService aiCreditUsageService,
             IConfiguration configuration,
-            IHttpContextAccessor? httpContextAccessor = null)
+            IHttpContextAccessor? httpContextAccessor = null,
+            IResourceAuthorizationService? authorizationService = null)
         {
             _context = context;
             _httpClient = httpClient;
             _zenMuxAiClient = zenMuxAiClient;
             _workTaskService = workTaskService;
             _aiCreditUsageService = aiCreditUsageService;
+            _authorizationService = authorizationService ?? new ResourceAuthorizationService(context);
             _configuration = configuration;
             _httpContextAccessor = httpContextAccessor;
         }
@@ -123,19 +126,14 @@ namespace TaskManagement.Infrastructure.Services
             }
 
             // Global AI context: only expose projects that the current user can actually access.
+            var effectivelyAccessibleProjectIds = await _authorizationService.GetAccessibleProjectIdsAsync(userId);
             var accessibleProjectsQuery = _context.Projects
                 .AsNoTracking()
                 .Where(p =>
                     p.Status &&
                     !p.IsDeleted &&
                     !p.IsArchived &&
-                    p.ProjectMembers.Any(pm =>
-                        pm.UserId == userId &&
-                        pm.Status) &&
-                    _context.WorkspaceMembers.Any(wm =>
-                        wm.UserId == userId &&
-                        wm.WorkspaceId == p.WorkspaceId &&
-                        wm.IsActive));
+                    effectivelyAccessibleProjectIds.Contains(p.Id));
 
             if (request.WorkspaceId.HasValue && request.WorkspaceId.Value != Guid.Empty)
             {

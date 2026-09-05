@@ -107,7 +107,7 @@ public sealed class ResourceAuthorizationTests
         (await fixture.Service.AuthorizeWorkspaceAsync(
             fixture.UserId,
             fixture.WorkspaceId,
-            ResourcePermissionCodes.WorkspaceRead)).Succeeded.Should().BeFalse();
+            ResourcePermissionCodes.WorkspaceRead)).Succeeded.Should().BeTrue();
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public sealed class ResourceAuthorizationTests
     }
 
     [Fact]
-    public async Task UserOutsideWorkspace_IsDeniedEvenWithProjectMemberRow()
+    public async Task DirectProjectMember_GetsLimitedWorkspaceShellWithoutWorkspaceMembership()
     {
         await using var fixture = await AuthorizationFixture.CreateAsync("PM");
         fixture.Context.WorkspaceMembers.Remove(await fixture.Context.WorkspaceMembers.SingleAsync());
@@ -135,11 +135,11 @@ public sealed class ResourceAuthorizationTests
         (await fixture.Service.AuthorizeWorkspaceAsync(
             fixture.UserId,
             fixture.WorkspaceId,
-            ResourcePermissionCodes.WorkspaceRead)).Succeeded.Should().BeFalse();
+            ResourcePermissionCodes.WorkspaceRead)).Succeeded.Should().BeTrue();
         (await fixture.Service.AuthorizeProjectAsync(
             fixture.UserId,
             fixture.ProjectId,
-            ResourcePermissionCodes.SprintManage)).Succeeded.Should().BeFalse();
+            ResourcePermissionCodes.SprintManage)).Succeeded.Should().BeTrue();
     }
 
     [Fact]
@@ -155,6 +155,81 @@ public sealed class ResourceAuthorizationTests
             fixture.UserId,
             fixture.ProjectId,
             ResourcePermissionCodes.SprintManage)).Succeeded.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GuestWorkspaceMember_SeesOnlyExplicitlyGrantedProject()
+    {
+        await using var fixture = await AuthorizationFixture.CreateAsync("Developer");
+        var member = await fixture.Context.WorkspaceMembers.SingleAsync();
+        member.WorkspaceRole = "GUEST";
+        var hiddenProjectId = Guid.NewGuid();
+        fixture.Context.Projects.Add(new Project
+        {
+            Id = hiddenProjectId,
+            WorkspaceId = fixture.WorkspaceId,
+            CreatorId = fixture.UserId,
+            Name = "Hidden project",
+            Identifier = "HID",
+            NetworkType = "Public"
+        });
+        await fixture.Context.SaveChangesAsync();
+
+        var visibleIds = await fixture.Service.GetAccessibleProjectIdsAsync(fixture.UserId);
+
+        visibleIds.Should().Contain(fixture.ProjectId);
+        visibleIds.Should().NotContain(hiddenProjectId);
+        (await fixture.Service.AuthorizeWorkspaceAsync(fixture.UserId, fixture.WorkspaceId, ResourcePermissionCodes.WorkspaceRead)).Succeeded.Should().BeTrue();
+        (await fixture.Service.AuthorizeProjectAsync(fixture.UserId, hiddenProjectId, ResourcePermissionCodes.ProjectRead)).Succeeded.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task WorkspaceMember_SeesPublicProjectButNotPrivateProjectWithoutMembership()
+    {
+        await using var fixture = await AuthorizationFixture.CreateAsync("Developer");
+        fixture.Context.ProjectMembers.Remove(await fixture.Context.ProjectMembers.SingleAsync());
+        var privateProjectId = Guid.NewGuid();
+        fixture.Context.Projects.Add(new Project
+        {
+            Id = privateProjectId,
+            WorkspaceId = fixture.WorkspaceId,
+            CreatorId = fixture.UserId,
+            Name = "Private project",
+            Identifier = "PRI",
+            NetworkType = "Private"
+        });
+        await fixture.Context.SaveChangesAsync();
+
+        var visibleIds = await fixture.Service.GetAccessibleProjectIdsAsync(fixture.UserId);
+
+        visibleIds.Should().Contain(fixture.ProjectId);
+        visibleIds.Should().NotContain(privateProjectId);
+    }
+
+    [Fact]
+    public async Task ForeignPrivateProject_IsDeniedForReadAndWrite()
+    {
+        await using var fixture = await AuthorizationFixture.CreateAsync("Developer");
+        var foreignProjectId = Guid.NewGuid();
+        fixture.Context.Projects.Add(new Project
+        {
+            Id = foreignProjectId,
+            WorkspaceId = fixture.WorkspaceId,
+            CreatorId = fixture.UserId,
+            Name = "Foreign private project",
+            Identifier = "FOR",
+            NetworkType = "Private"
+        });
+        await fixture.Context.SaveChangesAsync();
+
+        (await fixture.Service.AuthorizeProjectAsync(
+            fixture.UserId,
+            foreignProjectId,
+            ResourcePermissionCodes.ProjectRead)).Succeeded.Should().BeFalse();
+        (await fixture.Service.AuthorizeProjectAsync(
+            fixture.UserId,
+            foreignProjectId,
+            ResourcePermissionCodes.ProjectWrite)).Succeeded.Should().BeFalse();
     }
 
     [Theory]

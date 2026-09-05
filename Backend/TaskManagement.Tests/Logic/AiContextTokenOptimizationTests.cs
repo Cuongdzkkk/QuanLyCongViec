@@ -242,6 +242,13 @@ public sealed class AiContextTokenOptimizationTests
         var taskBId = Guid.NewGuid();
         var secretTaskId = Guid.NewGuid();
         var now = DateTime.UtcNow;
+        context.Workspaces.Add(new Workspace
+        {
+            Id = workspaceId,
+            OwnerId = userId,
+            Name = "Dashboard workspace",
+            Slug = $"dashboard-{workspaceId:N}"
+        });
 
         context.Projects.AddRange(
             new Project
@@ -264,6 +271,7 @@ public sealed class AiContextTokenOptimizationTests
                 CreatorId = Guid.NewGuid(),
                 CreatedAt = now,
                 UpdatedAt = now,
+                NetworkType = "Private",
                 Status = true
             });
         context.ProjectMembers.Add(new ProjectMember
@@ -360,6 +368,13 @@ public sealed class AiContextTokenOptimizationTests
         var projectId = Guid.NewGuid();
         var workspaceId = Guid.NewGuid();
         var statusId = Guid.NewGuid();
+        context.Workspaces.Add(new Workspace
+        {
+            Id = workspaceId,
+            OwnerId = userId,
+            Name = "Project workspace",
+            Slug = $"project-{workspaceId:N}"
+        });
         context.Projects.Add(new Project
         {
             Id = projectId,
@@ -423,6 +438,13 @@ public sealed class AiContextTokenOptimizationTests
         await using var context = CreateContextWithUser(out var userId);
         var projectId = Guid.NewGuid();
         var workspaceId = Guid.NewGuid();
+        context.Workspaces.Add(new Workspace
+        {
+            Id = workspaceId,
+            OwnerId = userId,
+            Name = "Explicit workspace",
+            Slug = $"explicit-{workspaceId:N}"
+        });
         context.Projects.Add(new Project
         {
             Id = projectId,
@@ -485,6 +507,13 @@ public sealed class AiContextTokenOptimizationTests
         await using var context = CreateContextWithUser(out var userId);
         var workspaceId = Guid.NewGuid();
         var now = DateTime.UtcNow;
+        context.Workspaces.Add(new Workspace
+        {
+            Id = workspaceId,
+            OwnerId = userId,
+            Name = "Named project workspace",
+            Slug = $"named-{workspaceId:N}"
+        });
         for (var index = 1; index <= 25; index++)
         {
             var projectId = Guid.NewGuid();

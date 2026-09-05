@@ -41,6 +41,8 @@ namespace TaskManagement.API.Controllers
             if (!Guid.TryParse(userId, out Guid parsedUserId))
                 return Unauthorized(new { statusCode = 401, message = "Vui lòng đăng nhập." });
 
+            var accessibleProjectIds = await _authorizationService.GetAccessibleProjectIdsAsync(parsedUserId);
+
             var workspaces = await _context.Workspaces
                 .AsNoTracking()
                 .Where(workspace =>
@@ -54,7 +56,8 @@ namespace TaskManagement.API.Controllers
                              member.UserId == parsedUserId &&
                              member.LeftAt == null &&
                              member.User.IsActive &&
-                             !member.User.IsDeleted))))
+                             !member.User.IsDeleted)) ||
+                     workspace.Projects.Any(project => accessibleProjectIds.Contains(project.Id))))
                 .Select(workspace => new
                 {
                     workspace.Id,
@@ -67,18 +70,25 @@ namespace TaskManagement.API.Controllers
                         : workspace.Members
                             .Where(member => member.UserId == parsedUserId && member.IsActive)
                             .Select(member => member.WorkspaceRole)
-                            .FirstOrDefault() ?? "MEMBER",
+                            .FirstOrDefault() ?? (workspace.TeamAccesses.Any(access =>
+                                access.Department.DepartmentMembers.Any(member => member.UserId == parsedUserId && member.LeftAt == null))
+                                ? "MEMBER"
+                                : "GUEST"),
                     AccessSource = workspace.OwnerId == parsedUserId
                         ? "OWNER"
                         : workspace.Members.Any(member => member.UserId == parsedUserId && member.IsActive)
                             ? "DIRECT"
-                            : "TEAM",
+                            : workspace.TeamAccesses.Any(access =>
+                                access.Department.DepartmentMembers.Any(member => member.UserId == parsedUserId && member.LeftAt == null))
+                                ? "TEAM"
+                                : "PROJECT",
                     workspace.OwnerId,
                     OwnerName = workspace.Owner.FullName,
                     OwnerEmail = workspace.Owner.Email,
                     OwnerAvatarUrl = workspace.Owner.AvatarUrl,
                     MemberCount = workspace.Members.Count(member => member.IsActive),
-                    ProjectCount = workspace.Projects.Count(project => !project.IsDeleted),
+                    ProjectCount = workspace.Projects.Count(project =>
+                        !project.IsDeleted && accessibleProjectIds.Contains(project.Id)),
                     workspace.CreatedAt,
                     workspace.UpdatedAt
                 })
@@ -142,6 +152,8 @@ namespace TaskManagement.API.Controllers
             if (!Guid.TryParse(userId, out Guid parsedUserId))
                 return Unauthorized(new { statusCode = 401, message = "Vui lòng đăng nhập." });
 
+            var accessibleProjectIds = await _authorizationService.GetAccessibleProjectIdsAsync(parsedUserId);
+
             var workspace = await _context.Workspaces
                 .AsNoTracking()
                 .Where(w => w.Slug == slug)
@@ -154,7 +166,7 @@ namespace TaskManagement.API.Controllers
                     w.Timezone,
                     OwnerName = w.Owner.FullName,
                     MemberCount = w.Members.Count(m => m.IsActive),
-                    ProjectCount = w.Projects.Count(p => !p.IsDeleted),
+                    ProjectCount = w.Projects.Count(p => !p.IsDeleted && accessibleProjectIds.Contains(p.Id)),
                     w.CreatedAt
                 })
                 .FirstOrDefaultAsync();

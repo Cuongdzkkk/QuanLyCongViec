@@ -9,10 +9,14 @@ namespace TaskManagement.Infrastructure.Services
     public sealed class PersonalEntityReferenceResolver : IPersonalEntityReferenceResolver
     {
         private readonly ApplicationDbContext _context;
+        private readonly IResourceAuthorizationService _authorization;
 
-        public PersonalEntityReferenceResolver(ApplicationDbContext context)
+        public PersonalEntityReferenceResolver(
+            ApplicationDbContext context,
+            IResourceAuthorizationService? authorization = null)
         {
             _context = context;
+            _authorization = authorization ?? new ResourceAuthorizationService(context);
         }
 
         public string NormalizeType(string? entityType)
@@ -64,6 +68,29 @@ namespace TaskManagement.Infrastructure.Services
                 .Select(member => member.WorkspaceId)
                 .Distinct()
                 .ToListAsync();
+            var workspaceMembershipIds = await _context.WorkspaceMembers
+                .AsNoTracking()
+                .Where(member =>
+                    member.UserId == userId &&
+                    member.IsActive &&
+                    member.WorkspaceRole != "GUEST" &&
+                    member.User.IsActive &&
+                    !member.User.IsDeleted &&
+                    !member.Workspace.IsDeleted)
+                .Select(member => member.WorkspaceId)
+                .Distinct()
+                .ToListAsync();
+            var accessibleProjectIds = await _authorization.GetAccessibleProjectIdsAsync(userId);
+            var projectWorkspaceIds = await _context.Projects
+                .AsNoTracking()
+                .Where(project => accessibleProjectIds.Contains(project.Id))
+                .Select(project => project.WorkspaceId)
+                .Distinct()
+                .ToListAsync();
+            activeWorkspaceIds = activeWorkspaceIds
+                .Concat(projectWorkspaceIds)
+                .Distinct()
+                .ToList();
 
             if (workspaceId.HasValue && !activeWorkspaceIds.Contains(workspaceId.Value))
             {
@@ -76,13 +103,13 @@ namespace TaskManagement.Infrastructure.Services
                 .ToList();
             var result = new Dictionary<PersonalEntityKey, PersonalEntityReferenceDto>();
 
-            await ResolveProjectsAsync(userId, workspaceId, activeWorkspaceIds, keys, result);
-            await ResolveTasksAsync(userId, workspaceId, activeWorkspaceIds, keys, result);
-            await ResolveGoalsAsync(workspaceId, activeWorkspaceIds, keys, result);
+            await ResolveProjectsAsync(userId, workspaceId, activeWorkspaceIds, accessibleProjectIds, keys, result);
+            await ResolveTasksAsync(userId, workspaceId, activeWorkspaceIds, accessibleProjectIds, keys, result);
+            await ResolveGoalsAsync(workspaceId, workspaceMembershipIds, keys, result);
 
             // Teams and people do not carry a workspace key in the current schema.
             // They are therefore resolved only inside an explicit, authorized workspace route.
-            if (workspaceId.HasValue)
+            if (workspaceId.HasValue && workspaceMembershipIds.Contains(workspaceId.Value))
             {
                 await ResolveTeamsAsync(userId, workspaceId.Value, keys, result);
                 await ResolveUsersAsync(workspaceId.Value, keys, result);
@@ -95,6 +122,7 @@ namespace TaskManagement.Infrastructure.Services
             Guid userId,
             Guid? requestedWorkspaceId,
             IReadOnlyCollection<Guid> activeWorkspaceIds,
+            IReadOnlyCollection<Guid> accessibleProjectIds,
             IReadOnlyCollection<PersonalEntityKey> keys,
             IDictionary<PersonalEntityKey, PersonalEntityReferenceDto> result)
         {
@@ -108,11 +136,7 @@ namespace TaskManagement.Infrastructure.Services
                     !project.IsArchived &&
                     activeWorkspaceIds.Contains(project.WorkspaceId) &&
                     (!requestedWorkspaceId.HasValue || project.WorkspaceId == requestedWorkspaceId.Value) &&
-                    project.ProjectMembers.Any(member =>
-                        member.UserId == userId &&
-                        member.Status &&
-                        member.User.IsActive &&
-                        !member.User.IsDeleted))
+                    accessibleProjectIds.Contains(project.Id))
                 .Select(project => new
                 {
                     project.Id,
@@ -142,6 +166,7 @@ namespace TaskManagement.Infrastructure.Services
             Guid userId,
             Guid? requestedWorkspaceId,
             IReadOnlyCollection<Guid> activeWorkspaceIds,
+            IReadOnlyCollection<Guid> accessibleProjectIds,
             IReadOnlyCollection<PersonalEntityKey> keys,
             IDictionary<PersonalEntityKey, PersonalEntityReferenceDto> result)
         {
@@ -156,11 +181,7 @@ namespace TaskManagement.Infrastructure.Services
                     !task.Project.IsArchived &&
                     activeWorkspaceIds.Contains(task.Project.WorkspaceId) &&
                     (!requestedWorkspaceId.HasValue || task.Project.WorkspaceId == requestedWorkspaceId.Value) &&
-                    task.Project.ProjectMembers.Any(member =>
-                        member.UserId == userId &&
-                        member.Status &&
-                        member.User.IsActive &&
-                        !member.User.IsDeleted))
+                    accessibleProjectIds.Contains(task.ProjectId))
                 .Select(task => new
                 {
                     task.Id,
