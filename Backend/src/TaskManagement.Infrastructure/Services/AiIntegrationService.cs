@@ -98,7 +98,8 @@ namespace TaskManagement.Infrastructure.Services
             var modelCandidates = DeserializeCandidates(text);
             var extracted = AiTaskCandidateParser.ExtractStructuredCandidate(item.Content ?? string.Empty, item.Provider, item.Id);
             var candidates = MergeCandidates(modelCandidates, extracted, item);
-            return new { configured = true, action = "suggest-task", candidates };
+            var warnings = BuildAttachmentWarnings(item.Content);
+            return new { configured = true, action = "suggest-task", candidates, warnings };
         }
 
         public async Task<object> SuggestRelatedTaskAsync(Guid inboxItemId, Guid userId)
@@ -259,6 +260,7 @@ namespace TaskManagement.Infrastructure.Services
                 }
             }
 
+            var attachmentAnalysisFailed = HasAttachmentAnalysisFailure(item.Content);
             foreach (var candidate in modelCandidates)
             {
                 candidate.Id = string.IsNullOrWhiteSpace(candidate.Id) ? $"source-{item.Id:N}-{modelCandidates.IndexOf(candidate) + 1}" : candidate.Id;
@@ -279,6 +281,15 @@ namespace TaskManagement.Infrastructure.Services
                     });
                     candidate.Uncertain = true;
                 }
+
+                if (attachmentAnalysisFailed)
+                {
+                    candidate.AttachmentFileName = null;
+                    candidate.Uncertain = true;
+                    candidate.Evidence = candidate.Evidence
+                        .Where(evidence => string.IsNullOrWhiteSpace(evidence.AttachmentFileName))
+                        .ToList();
+                }
             }
 
             return modelCandidates.Where(IsValidCandidate).Take(20).ToList();
@@ -297,6 +308,26 @@ namespace TaskManagement.Infrastructure.Services
                 !string.IsNullOrWhiteSpace(item.Location) ? $"Location: {item.Location}" : null,
                 $"Content: {(string.IsNullOrWhiteSpace(item.Content) ? "(empty)" : item.Content)}"
             }.Where(line => line != null)), item.Id.ToString("N"), $"{item.Provider}-{item.Source}.txt");
+
+        private static List<string> BuildAttachmentWarnings(string? content)
+        {
+            var warnings = new List<string>();
+            var lines = (content ?? string.Empty).Split('\n');
+            for (var index = 0; index < lines.Length; index++)
+            {
+                if (!string.Equals(lines[index].Trim(), "ATTACHMENT_ANALYSIS_FAILED", StringComparison.Ordinal)) continue;
+
+                var fileName = index + 1 < lines.Length && lines[index + 1].Trim().StartsWith("FILENAME:", StringComparison.OrdinalIgnoreCase)
+                    ? lines[index + 1].Trim()["FILENAME:".Length..].Trim()
+                    : "unknown attachment";
+                warnings.Add($"ATTACHMENT_ANALYSIS_FAILED: {fileName}. Candidate is based only on Gmail body.");
+            }
+
+            return warnings;
+        }
+
+        private static bool HasAttachmentAnalysisFailure(string? content)
+            => BuildAttachmentWarnings(content).Count > 0;
 
         private static object DeserializeJsonObject(string text)
         {
