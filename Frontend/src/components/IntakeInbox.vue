@@ -14,6 +14,10 @@ import DataModalField from '@/components/common/Foundation/DataModalField.vue'
 import WorkItemsListTable from '@/components/common/WorkItemsListTable.vue'
 import ProjectEmptyState from '@/components/common/ProjectEmptyState.vue'
 import { buildSpacePath } from '@/utils/spaceRoute'
+import { useI18nStore } from '@/store/useI18nStore'
+
+const i18nStore = useI18nStore()
+const t = (key) => i18nStore.t(key)
 
 const props = defineProps({
   projectId: { type: String, required: true }
@@ -249,12 +253,12 @@ function navigateToTask(taskId) {
     <!-- Header -->
     <ProjectPageHeader
       icon="fa-solid fa-inbox"
-      title="Hộp thư yêu cầu"
-      description="Duyệt các yêu cầu công việc được gửi từ nhân viên và chuyển thành công việc chính thức"
+      :title="t('intakes.title')"
+      :description="t('intakes.description')"
     >
       <template #actions>
         <button v-if="intakePermissions.canCreate" class="nexus-btn-primary" @click="showCreate = true">
-          <i class="fa-solid fa-plus mr-1"></i> Gửi yêu cầu mới
+          <i class="fa-solid fa-plus mr-1"></i> {{ t('intakes.submitNew') }}
         </button>
       </template>
     </ProjectPageHeader>
@@ -262,7 +266,7 @@ function navigateToTask(taskId) {
     <ProjectPageToolbar
       v-model:searchQuery="intakeSearch"
       show-search
-      search-placeholder="Tìm yêu cầu intake..."
+      :search-placeholder="t('intakes.searchPlaceholder')"
     >
       <template #filters>
         <div class="filter-dropdown-wrapper js-toolbar-popup-scope">
@@ -305,12 +309,12 @@ function navigateToTask(taskId) {
     <ProjectEmptyState
       v-else-if="!loading && intakes.length === 0"
       icon="fa-regular fa-envelope-open"
-      title="Chưa có yêu cầu công việc nào."
-      description="Khởi tạo biểu mẫu để tiếp nhận và xét duyệt các yêu cầu từ thành viên hoặc khách hàng."
+      :title="t('intakes.noRequestsTitle')"
+      :description="t('intakes.noRequestsDesc')"
     >
       <template #action>
         <button v-if="intakePermissions.canCreate" class="empty-spaces-btn" @click="showCreate = true">
-          <i class="fa-solid fa-paper-plane mr-1"></i> Gửi yêu cầu mới
+          <i class="fa-solid fa-paper-plane mr-1"></i> {{ t('intakes.submitNew') }}
         </button>
       </template>
     </ProjectEmptyState>
