@@ -608,6 +608,7 @@ const handleInboxRealtime = event => {
   inboxRealtimeTimer = setTimeout(loadInbox, 50)
 }
 const activeTab = ref('all')
+const HIDDEN_INBOX_FILTER_IDS = new Set(['github', 'zalo'])
 const selectedItemId = ref('')
 const loadingIntegrations = ref(false)
 const loadingInbox = ref(false)
@@ -670,8 +671,6 @@ const tabs = computed(() => [
   { id: 'calendar', label: t('Lịch', 'Calendar'), icon: 'fa-regular fa-calendar' },
   { id: 'email', label: 'Email', icon: 'fa-regular fa-envelope' },
   { id: 'slack', label: 'Slack', icon: 'fa-brands fa-slack' },
-  { id: 'github', label: 'GitHub', icon: 'fa-brands fa-github' },
-  { id: 'zalo', label: 'Zalo', icon: 'fa-solid fa-comment' },
   { id: 'system', label: t('Hệ thống', 'System'), icon: 'fa-regular fa-bell' }
 ])
 
@@ -804,6 +803,18 @@ const emptyBody = computed(() => {
   }
   return t('Tab này chưa có dữ liệu thật. Hãy kết nối provider tương ứng rồi bấm Đồng bộ ngay.', 'This tab has no real data yet. Connect the provider and click Sync now.')
 })
+
+const normalizeHiddenInboxFilterState = () => {
+  if (HIDDEN_INBOX_FILTER_IDS.has(activeTab.value)) activeTab.value = 'all'
+
+  const provider = `${route.query.provider || ''}`.toLowerCase()
+  if (!HIDDEN_INBOX_FILTER_IDS.has(provider)) return
+
+  router.replace({
+    path: '/integrations',
+    query: { ...route.query, provider: 'all' }
+  }).catch(() => {})
+}
 
 const getPayload = (response) => response.data?.data ?? response.data
 const asArray = (value) => {
@@ -1464,6 +1475,7 @@ onMounted(async () => {
   window.addEventListener(AUTH_SESSION_CHANGED, handleAuthSessionChanged)
   await Promise.all([loadIntegrations(), loadInbox(), loadCreateTaskOptions()])
   await completeGoogleOAuth()
+  normalizeHiddenInboxFilterState()
 })
 
 onUnmounted(() => {
