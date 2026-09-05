@@ -760,7 +760,7 @@ import { buildSpacePath } from '@/utils/spaceRoute'
 import { MAX_FLOATING_STICKIES, useStickyStore } from '@/store/useStickyStore'
 import { getRandomPaletteColor } from '@/utils/colors'
 import { getStickyAccountId } from '@/utils/stickyAccountIsolation'
-import { AI_QUICK_ACTIONS, normalizeAiAction } from '@/utils/aiActionUi'
+import { AI_QUICK_ACTIONS, normalizeAiAction, normalizeAiActionList } from '@/utils/aiActionUi'
 import {
   AI_PANEL_DEFAULT_WIDTH,
   buildAiContextKey,
@@ -2860,13 +2860,14 @@ const sendAiMessage = async () => {
     chatHistory.value.pop()
     loadingAdded = false
     
+    const normalizedActions = normalizeAiActionList(responseData?.actions || [])
     chatHistory.value.push({
       role: 'bot',
-      content: responseData?.answer || aiCopy.value.emptyResponse,
+      content: [responseData?.answer || aiCopy.value.emptyResponse, normalizedActions.hasMissingTaskTitle ? 'Bạn muốn đặt tên công việc là gì?' : ''].filter(Boolean).join('\n\n'),
       suggestedPrompts: responseData?.suggestions || [],
       warnings: responseData?.warnings || [],
-      actions: (responseData?.actions || []).map(action => ({
-        ...normalizeAiAction(action),
+      actions: normalizedActions.actions.map(action => ({
+        ...action,
         duplicateCandidate: null,
         contextKey: aiContextKey.value,
         uiStatus: 'pending',

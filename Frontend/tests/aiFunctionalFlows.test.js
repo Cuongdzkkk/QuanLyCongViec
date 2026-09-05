@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
-import { AI_QUICK_ACTIONS, normalizeAiAction, normalizeAiActionPayload } from '../src/utils/aiActionUi.js'
+import { AI_QUICK_ACTIONS, aiActionTitle, normalizeAiAction, normalizeAiActionList, normalizeAiActionPayload } from '../src/utils/aiActionUi.js'
 import { buildAiContextKey, isAiContextMatch } from '../src/utils/aiWorkspace.js'
 import { buildBillingCheckoutLocation, resolveBillingPlanFlow } from '../src/utils/billingPlanFlow.js'
 import { AI_COMPOSER_MAX_HEIGHT, AI_COMPOSER_MIN_HEIGHT, measureAiComposerHeight } from '../src/utils/aiComposer.js'
@@ -9,6 +9,7 @@ import { AI_COMPOSER_MAX_HEIGHT, AI_COMPOSER_MIN_HEIGHT, measureAiComposerHeight
 const sourceRoot = new URL('../src/', import.meta.url)
 const aiPage = fs.readFileSync(new URL('views/AIPage.vue', sourceRoot), 'utf8')
 const nexusLayout = fs.readFileSync(new URL('components/layout/NexusLayout.vue', sourceRoot), 'utf8')
+const conversationStore = fs.readFileSync(new URL('store/useAiConversationStore.js', sourceRoot), 'utf8')
 const message = fs.readFileSync(new URL('components/ai/AiMessage.vue', sourceRoot), 'utf8')
 const composer = fs.readFileSync(new URL('components/ai/AiComposer.vue', sourceRoot), 'utf8')
 const billingModal = fs.readFileSync(new URL('components/ai/AiCreditsPurchaseModal.vue', sourceRoot), 'utf8')
@@ -26,9 +27,43 @@ test('quick tools retain the complete read/write catalog and run through the sub
 test('task action aliases normalize to the canonical title before preview and confirmation', () => {
   const payload = normalizeAiActionPayload('create_task', { taskTitle: 'AI SHOULD NOT CREATE', projectId: 'project-1' })
   assert.equal(payload.title, 'AI SHOULD NOT CREATE')
+  assert.equal(Object.hasOwn(payload, 'taskTitle'), false)
+  assert.equal(Object.hasOwn(payload, 'name'), false)
   assert.equal(normalizeAiAction({ type: 'CREATE_TASK', payload }).payload.title, 'AI SHOULD NOT CREATE')
   assert.match(aiPage, /normalizeAiAction\(action\)/)
   assert.match(nexusLayout, /normalizeAiAction\(action\)\.payload/)
+})
+
+test('both AI surfaces preserve the model title through preview and confirm payloads', () => {
+  const rawAction = {
+    type: 'CREATE_TASK',
+    title: '',
+    payloadPreview: { project_id: 'project-1', title: 'AI EXAM TEST 1022' },
+    payload: { project_id: 'project-1', title: 'AI EXAM TEST 1022' }
+  }
+  const normalized = normalizeAiAction(rawAction)
+  assert.deepEqual(Object.keys(normalized.payload).sort(), ['project_id', 'title'])
+  assert.equal(aiActionTitle(normalized), 'AI EXAM TEST 1022')
+  assert.equal(normalizeAiActionList([rawAction]).actions[0].payload.title, 'AI EXAM TEST 1022')
+  assert.equal(normalizeAiAction({ type: 'create_task', payloadPreview: rawAction.payloadPreview }).payload.title, 'AI EXAM TEST 1022')
+  assert.match(aiPage, /const actionPayload = action => normalizeAiAction\(action\)\.payload/)
+  assert.match(nexusLayout, /const actionPayload = \(action\) => normalizeAiAction\(action\)\.payload/)
+  assert.match(aiPage, /payload: actionPayload\(action\)/)
+  assert.match(nexusLayout, /payload: actionPayload\(action\)/)
+  assert.match(conversationStore, /normalizeAiActionList\(message\.actions\)/)
+  assert.match(conversationStore, /conversation\.messages\.map\(canonicalizeAiMessage\)/)
+  assert.match(aiPage, /const normalizedActions = normalizeAiActionList\(payload\?\.actions \|\| \[\]\)/)
+  assert.match(nexusLayout, /const normalizedActions = normalizeAiActionList\(responseData\?\.actions \|\| \[\]\)/)
+})
+
+test('missing task titles are clarification-only and cannot create a pending action', () => {
+  const result = normalizeAiActionList([{ type: 'create_task', payload: { projectId: 'project-1' } }])
+  assert.deepEqual(result.actions, [])
+  assert.equal(result.hasMissingTaskTitle, true)
+  assert.equal(aiActionTitle({ type: 'create_task', payload: {} }), '')
+  assert.match(aiPage, /Bạn muốn đặt tên công việc là gì\?/)
+  assert.match(nexusLayout, /Bạn muốn đặt tên công việc là gì\?/)
+  assert.doesNotMatch(aiPage, /const actionPayload = action => action\?\.payload \|\| \{\}/)
 })
 
 test('write actions are confirmation-gated and bound to the active context', () => {
