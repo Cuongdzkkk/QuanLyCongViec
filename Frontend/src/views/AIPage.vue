@@ -400,8 +400,9 @@ import { useAiPetStore } from '@/store/useAiPetStore'
 import { useAiScopeStore } from '@/store/useAiScopeStore'
 import { buildAiContextKey, isAiContextMatch, isComposerSendKey } from '@/utils/aiWorkspace'
 import { useAiComposer } from '@/composables/useAiComposer'
-import { AI_QUICK_ACTIONS } from '@/utils/aiActionUi'
-import { findPendingAiAction, isAiConfirmationMessage, loadAiCapabilities } from '@/utils/aiCapabilityRegistry'
+import { AI_QUICK_ACTIONS, aiActionPayload, normalizeAiActionList } from '@/utils/aiActionUi'
+import { decorateAiAction, findPendingAiAction, isAiConfirmationMessage, previewAndConfirmAiAction } from '@/utils/aiActionEngine'
+import { loadAiCapabilities } from '@/utils/aiCapabilityRegistry'
 
 const router = useRouter()
 const route = useRoute()
@@ -788,7 +789,7 @@ const returnToFloating = async () => {
 const openAiCreditPurchase = () => {
   aiCreditsModalVisible.value = true
 }
-const actionPayload = action => action?.payload || {}
+const actionPayload = aiActionPayload
 
 const confirmPageAction = async action => {
   if (!action || action.loading || action.uiStatus === 'success' || action.uiStatus === 'cancelled') return
@@ -801,24 +802,20 @@ const confirmPageAction = async action => {
   action.loading = true
   action.uiStatus = 'loading'
   try {
-    action.idempotencyKey ||= `${action.type}-${crypto.randomUUID()}`
-    if (!action.serverActionId) {
-      const preview = await axiosClient.post('/ai/actions/preview', {
-        type: action.type, idempotencyKey: action.idempotencyKey,
-        workspaceId: currentWorkspaceId.value || null, projectId: currentProjectId.value || actionPayload(action).projectId || null,
-        payload: actionPayload(action)
-      })
-      action.serverActionId = preview.data?.data?.actionId
-    }
-    if (!action.serverActionId) throw new Error('Không thể tạo action preview.')
-    const response = await axiosClient.post(`/ai/actions/${action.serverActionId}/confirm`)
+    const response = await previewAndConfirmAiAction(action, {
+      workspaceId: currentWorkspaceId.value,
+      projectId: currentProjectId.value || actionPayload(action).projectId,
+      conversationId: currentConversationId.value
+    })
     const payload = response.data?.data ?? response.data
     action.result = payload?.result ?? payload
     action.uiStatus = 'success'
+    action.status = 'EXECUTED'
     ElMessage.success('AI đã thực hiện thay đổi thành công.')
     await aiConversationStore.persistConversation()
   } catch (error) {
     action.uiStatus = 'error'
+    action.status = 'FAILED'
     action.error = error.response?.data?.message || error.message || 'Không thể thực hiện action.'
     ElMessage.error(action.error)
   } finally {
@@ -828,7 +825,12 @@ const confirmPageAction = async action => {
 
 const resumePendingActionIfConfirmed = async message => {
   if (!isAiConfirmationMessage(message)) return false
-  const action = findPendingAiAction(chatHistory.value)
+  const action = findPendingAiAction(chatHistory.value, {
+    contextKey: aiContextKey.value,
+    conversationId: currentConversationId.value,
+    workspaceId: currentWorkspaceId.value,
+    projectId: currentProjectId.value
+  })
   if (!action) return false
   await confirmPageAction(action)
   return true
@@ -838,6 +840,7 @@ const cancelPageAction = async action => {
   if (!action || action.loading || action.uiStatus === 'success') return
   if (action.serverActionId) await axiosClient.post(`/ai/actions/${action.serverActionId}/cancel`).catch(() => {})
   action.uiStatus = 'cancelled'
+  action.status = 'CANCELLED'
   await aiConversationStore.persistConversation()
 }
 
@@ -978,20 +981,17 @@ const sendMessage = async (overrideMessage = null) => {
     const message = payload?.answer || payload?.message || response.data?.message || (i18nStore.locale === 'en'
       ? 'Sorry, AI did not return content. Please try another request.'
       : 'R\u1ea5t ti\u1ebfc, AI kh\u00f4ng ph\u1ea3n h\u1ed3i n\u1ed9i dung. B\u1ea1n c\u00f3 th\u1ec3 th\u1eed l\u1ea1i v\u1edbi c\u00e2u h\u1ecfi kh\u00e1c.')
+    const normalizedActions = normalizeAiActionList(payload?.actions || [])
     chatHistory.value.push({
       role: 'bot',
-      content: message,
+      content: [message, normalizedActions.hasMissingTaskTitle ? 'Bạn muốn đặt tên công việc là gì?' : ''].filter(Boolean).join('\n\n'),
       warnings: payload?.warnings || [],
       citations: payload?.citations || [],
-      actions: (payload?.actions || []).map(action => ({
-        ...action,
-        type: String(action.type || '').toLowerCase(),
-        payload: action.payload || {},
+      actions: normalizedActions.actions.map(action => decorateAiAction(action, {
         contextKey: aiContextKey.value,
-        uiStatus: 'pending',
-        loading: false,
-        error: '',
-        result: null
+        conversationId,
+        workspaceId: currentWorkspaceId.value,
+        projectId: currentProjectId.value || actionPayload(action).projectId
       }))
     })
     await aiConversationStore.persistConversation()

@@ -18,6 +18,6 @@ test('integration hub renders evidence-backed task candidate actions', () => {
 
 test('floating AI resumes a pending action from a short confirmation', () => {
   assert.match(nexus, /isAiConfirmationMessage\(outgoing\)/)
-  assert.match(nexus, /findPendingAiAction\(chatHistory\.value\)/)
+  assert.match(nexus, /findPendingAiAction\(chatHistory\.value,\s*\{/)
   assert.match(nexus, /await executeAiAction\(pendingAction\)/)
 })

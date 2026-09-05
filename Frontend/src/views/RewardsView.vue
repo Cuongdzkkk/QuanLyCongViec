@@ -11,9 +11,9 @@
           </div>
           <div class="marquee-container" style="flex: 1; margin: 0; padding: 0; overflow: hidden; display: flex; align-items: center; white-space: nowrap;">
             <div class="marquee-content" style="display: inline-block;">
-              <span style="color: #0369a1; font-size: 13px; font-weight: 700; margin-right: 24px;">Mùa giải đang hoạt động: {{ seasonDashboard.currentSeason.name }}</span>
+              <span style="color: #0369a1; font-size: 13px; font-weight: 700; margin-right: 24px;">{{ t('rewards.activeSeason') }}{{ seasonDashboard.currentSeason.name }}</span>
               <span style="color: #0284c7; font-size: 12px;">
-                <i class="fa-regular fa-clock" style="margin-right: 4px;"></i> {{ formatDate(seasonDashboard.currentSeason.startAt) }} — {{ seasonDashboard.currentSeason.endAt ? formatDate(seasonDashboard.currentSeason.endAt) : 'Không giới hạn' }}
+                <i class="fa-regular fa-clock" style="margin-right: 4px;"></i> {{ formatDate(seasonDashboard.currentSeason.startAt) }} — {{ seasonDashboard.currentSeason.endAt ? formatDate(seasonDashboard.currentSeason.endAt) : t('rewards.unlimited') }}
               </span>
             </div>
           </div>
@@ -104,7 +104,7 @@
                 <span class="rank-text">#2</span>
               </div>
             </div>
-            <strong class="card-name">Trống</strong>
+            <strong class="card-name">{{ t('rewards.emptyRank') }}</strong>
             <span class="card-points">-</span>
           </div>
 
@@ -174,7 +174,7 @@
                 <span class="rank-text">#1</span>
               </div>
             </div>
-            <strong class="card-name">Trống</strong>
+            <strong class="card-name">{{ t('rewards.emptyRank') }}</strong>
             <span class="card-points">-</span>
           </div>
 
@@ -242,7 +242,7 @@
                 <span class="rank-text">#3</span>
               </div>
             </div>
-            <strong class="card-name">Trống</strong>
+            <strong class="card-name">{{ t('rewards.emptyRank') }}</strong>
             <span class="card-points">-</span>
           </div>
         </div>
@@ -256,11 +256,11 @@
                 <i class="fa-solid fa-trophy"></i>
               </div>
               <div class="empty-spaces-copy">
-                <h3>Chưa có mùa giải nào</h3>
-                <p>Bắt đầu một mùa giải để xếp hạng thành viên.</p>
+                <h3>{{ t('rewards.noSeasons') }}</h3>
+                <p>{{ t('rewards.startSeasonPrompt') }}</p>
               </div>
               <button v-if="seasonDashboard.canManage" class="empty-spaces-btn" style="margin-top: 16px;" @click="openSettingsModal = true">
-                Cấu hình ngay
+                {{ t('rewards.configNow') }}
               </button>
             </div>
             <div v-else-if="restLeaders.length === 0" class="empty-spaces-flat" style="flex: 1; background: transparent; box-shadow: none;">
@@ -268,11 +268,11 @@
                 <i class="fa-solid fa-trophy"></i>
               </div>
               <div class="empty-spaces-copy">
-                <h3>Chưa có thành viên xếp hạng</h3>
-                <p>Hãy hoàn thành công việc để tích lũy điểm số.</p>
+                <h3>{{ t('rewards.noRankedMembers') }}</h3>
+                <p>{{ t('rewards.completeTasksPrompt') }}</p>
               </div>
               <router-link :to="`/space/${$route.params.spaceId}/tasks`" class="empty-spaces-btn" style="margin-top: 16px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none;">
-                Đi tới Công việc
+                {{ t('rewards.goToTasks') }}
               </router-link>
             </div>
             <table v-else class="rankings-table">
@@ -314,7 +314,7 @@
             <!-- Premium User Rank Card -->
             <div class="premium-card cyber-rank-card" style="padding: 20px;">
               <div style="margin-bottom: 20px; display: flex; align-items: baseline; gap: 12px;">
-                <div style="font-size: 24px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">{{ myRankIndex >= 0 ? '#' + (myRankIndex + 1) : 'Chưa xếp hạng' }}</div>
+                <div style="font-size: 24px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">{{ myRankIndex >= 0 ? '#' + (myRankIndex + 1) : t('rewards.unranked') }}</div>
                 <div style="font-size: 15px; font-weight: 700; color: #10b981;" :title="'Ví của bạn: ' + (wallet.totalPoints || 0) + ' pts'">
                   {{ seasonDashboard.currentSeason ? seasonDashboard.mySeasonPoints : wallet.totalPoints || 0 }} pts
                 </div>
@@ -323,7 +323,7 @@
               <div style="height: 1px; background: #e2e8f0; margin: 0 -20px 20px; border-bottom: 1px dashed #cbd5e1;"></div>
               
               <div>
-                <h4 style="margin: 0 0 8px; font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px;">Cấp độ hiện tại</h4>
+                <h4 style="margin: 0 0 8px; font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px;">{{ t('rewards.currentLevel') }}</h4>
                 <div style="font-size: 18px; font-weight: 800; color: #0f172a; display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
                   <span><i class="fa-solid fa-meteor" style="color: #f59e0b; margin-right: 6px;"></i>{{ career.title || 'Contributor' }}</span>
                   <span style="font-size: 12px; color: #64748b; background: #f1f5f9; padding: 2px 8px; border-radius: 12px; font-weight: 800;">Lv. {{ career.level || 1 }}</span>
@@ -340,19 +340,19 @@
 
             <!-- Premium Sprint Summary -->
             <div class="premium-card cyber-summary-card" style="padding: 20px;">
-              <h4 style="margin: 0 0 16px; font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px;">Tóm tắt Sprint</h4>
+              <h4 style="margin: 0 0 16px; font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px;">{{ t('rewards.sprintSummary') }}</h4>
               
               <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                 <div style="text-align: center; padding: 12px; background: #f8fafc; border-radius: 10px; border: 1px solid #f1f5f9;">
-                  <div style="font-size: 10px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Hoàn thành</div>
+                  <div style="font-size: 10px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">{{ t('rewards.completed') }}</div>
                   <div style="font-size: 20px; font-weight: 900; color: #10b981;">{{ seasonDashboard.currentSeason ? (leaderboard.find(u => String(u.userId) === String(wallet.userId))?.completedTasks || 0) : (summary.completedTasks || 0) }}</div>
                 </div>
                 <div style="text-align: center; padding: 12px; background: #f8fafc; border-radius: 10px; border: 1px solid #f1f5f9;">
-                  <div style="font-size: 10px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Thưởng mốc</div>
+                  <div style="font-size: 10px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">{{ t('rewards.milestoneReward') }}</div>
                   <div style="font-size: 20px; font-weight: 900; color: #8b5cf6;">{{ seasonDashboard.currentSeason ? 0 : (summary.earlyBonuses || 0) }}</div>
                 </div>
                 <div style="text-align: center; padding: 12px; background: #f8fafc; border-radius: 10px; border: 1px solid #f1f5f9;">
-                  <div style="font-size: 10px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Tổng điểm</div>
+                  <div style="font-size: 10px; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">{{ t('rewards.totalPoints') }}</div>
                   <div style="font-size: 20px; font-weight: 900; color: #f59e0b;">{{ seasonDashboard.currentSeason ? (seasonDashboard.mySeasonPoints || 0) : (summary.basePoints + summary.bonusPoints || 0) }}</div>
                 </div>
               </div>
@@ -362,13 +362,13 @@
           <!-- YOUR ACTIVITIES Card -->
           <div class="panel activities-card">
             <div class="custom-tabs-header">
-              <button class="tab-btn" :class="{ active: activeTab === 'history' }" @click="activeTab = 'history'">Lịch sử điểm</button>
-              <button class="tab-btn" :class="{ active: activeTab === 'inventory' }" @click="activeTab = 'inventory'">Túi đồ</button>
+              <button class="tab-btn" :class="{ active: activeTab === 'history' }" @click="activeTab = 'history'">{{ t('rewards.pointHistory') }}</button>
+              <button class="tab-btn" :class="{ active: activeTab === 'inventory' }" @click="activeTab = 'inventory'">{{ t('rewards.inventory') }}</button>
             </div>
             
             <div class="custom-tabs-content">
               <div v-if="activeTab === 'history'" class="tab-pane">
-                <div v-if="transactions.length === 0" class="empty-list-small">Chưa có giao dịch điểm nào.</div>
+                <div v-if="transactions.length === 0" class="empty-list-small">{{ t('rewards.noTransactions') }}</div>
                 <div class="mini-tx-list" v-else>
                   <div v-for="tx in transactions" :key="tx.id" class="mini-tx-item">
                     <div class="tx-info">

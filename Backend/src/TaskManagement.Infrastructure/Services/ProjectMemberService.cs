@@ -214,7 +214,7 @@ namespace TaskManagement.Infrastructure.Services
                     {
                         WorkspaceId = invitedProject.WorkspaceId,
                         UserId = invitedUser.Id,
-                        WorkspaceRole = "MEMBER",
+                        WorkspaceRole = "GUEST",
                         JoinedAt = now,
                         IsActive = false
                     });

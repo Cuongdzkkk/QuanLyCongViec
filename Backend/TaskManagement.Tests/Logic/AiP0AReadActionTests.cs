@@ -377,7 +377,7 @@ public sealed class AiP0AReadActionTests
             Context.Projects.AddRange(
                 Project(ProjectId, WorkspaceId, AuthorizedUserId, "Project A"),
                 Project(OtherProjectId, OtherWorkspaceId, OutsiderUserId, "Project B"),
-                Project(SameWorkspaceProjectId, WorkspaceId, OutsiderUserId, "Project C"));
+                Project(SameWorkspaceProjectId, WorkspaceId, OutsiderUserId, "Project C", "Private"));
             Context.ProjectMembers.Add(new ProjectMember
             {
                 ProjectId = ProjectId,
@@ -436,13 +436,14 @@ public sealed class AiP0AReadActionTests
             UpdatedAt = DateTime.UtcNow
         };
 
-        private static Project Project(Guid id, Guid workspaceId, Guid creatorId, string name) => new()
+        private static Project Project(Guid id, Guid workspaceId, Guid creatorId, string name, string networkType = "Public") => new()
         {
             Id = id,
             WorkspaceId = workspaceId,
             CreatorId = creatorId,
             Name = name,
             Identifier = name.Replace(" ", string.Empty).ToUpperInvariant(),
+            NetworkType = networkType,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };

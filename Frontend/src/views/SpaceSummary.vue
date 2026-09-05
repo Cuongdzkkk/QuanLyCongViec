@@ -17,13 +17,13 @@
         <template #actions>
           <div v-if="!activeModuleFilterId" class="toolbar-actions-wrapper">
             <el-button type="info" plain size="default" @click="showDataImportModal = true" :disabled="!canCurrentUserCreateTask" :title="!canCurrentUserCreateTask ? 'Bạn không có quyền nạp công việc' : ''">
-              <i class="fa-solid fa-file-import mr-1"></i> Nạp dữ liệu công việc
+              <i class="fa-solid fa-file-import mr-1"></i> {{ t('workItems.importWorkItems') }}
             </el-button>
             <el-button type="info" plain size="default" @click="handleExportTasks">
-              <i class="fa-solid fa-file-export mr-1"></i> Xuất Excel/CSV
+              <i class="fa-solid fa-file-export mr-1"></i> {{ t('workItems.exportExcel') }}
             </el-button>
             <button class="nexus-btn-primary" @click="openCreateTask('TO DO')" :disabled="!canCurrentUserCreateTask" :title="!canCurrentUserCreateTask ? 'Bạn không có quyền tạo công việc' : ''">
-              <i class="fa-solid fa-plus"></i> {{ t('Add work item') }}
+              <i class="fa-solid fa-plus"></i> {{ t('workItems.addWorkItem') }}
             </button>
           </div>
           <TaskDataImportModal
@@ -427,7 +427,7 @@
               @click="showDataImportModal = true"
               :disabled="!canCurrentUserCreateTask"
             >
-              <i class="fa-solid fa-file-import mr-1"></i> Nạp dữ liệu công việc
+              <i class="fa-solid fa-file-import mr-1"></i> {{ t('workItems.importWorkItems') }}
             </button>
           </div>
         </template>
@@ -849,15 +849,15 @@
                   :class="{ 'clickable': col.name !== 'FALLBACK_UNCLASSIFIED' && canCurrentUserCreateTask }"
                   @click="(col.name !== 'FALLBACK_UNCLASSIFIED' && canCurrentUserCreateTask) ? openInlineCreate(col.id) : null"
                 >
-                  <span v-if="col.name === 'FALLBACK_UNCLASSIFIED' || !canCurrentUserCreateTask" style="font-weight: normal; color: var(--color-text-muted);">Chưa có công việc nào</span>
-                  <span v-else class="add-action-text"><i class="fa-solid fa-plus"></i> Thêm công việc</span>
+                  <span v-if="col.name === 'FALLBACK_UNCLASSIFIED' || !canCurrentUserCreateTask" style="font-weight: normal; color: var(--color-text-muted);">{{ t('workItems.noWorkItems') }}</span>
+                  <span v-else class="add-action-text"><i class="fa-solid fa-plus"></i> {{ t('workItems.addWorkItem') }}</span>
                 </div>
                 <div 
                   class="col-empty-state col-bottom-add clickable" 
                   v-else-if="col.items.length > 0 && col.name !== 'FALLBACK_UNCLASSIFIED' && canCurrentUserCreateTask && !store.loading && inlineCreateColId !== col.id"
                   @click="openInlineCreate(col.id)"
                 >
-                  <span class="add-action-text"><i class="fa-solid fa-plus"></i> Thêm công việc</span>
+                  <span class="add-action-text"><i class="fa-solid fa-plus"></i> {{ t('workItems.addWorkItem') }}</span>
                 </div>
               </template>
             </draggable>
@@ -1143,6 +1143,7 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { useStarredStore } from '@/store/useStarredStore';
 import { STARRED_ENTITY_TYPES } from '@/api/starredRecentApi'
 import { useI18nStore } from '@/store/useI18nStore';
+import { useI18n } from '@/composables/useI18n';
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { getProjectBackgroundStyle } from '@/config/projectAppearance'
 import { projectAccessRestrictionsEnabled } from '@/config/projectAccess'
@@ -1220,60 +1221,8 @@ const store = useWorkTaskStore();
 const projectStore = useProjectStore()
 const starredStore = useStarredStore()
 const i18nStore = useI18nStore()
+const { t } = useI18n()
 const tr = (en, vi) => i18nStore.locale === 'vi' ? vi : en
-const t = (key) => {
-  const map = {
-    'Project': 'Dự án',
-    'Work Items': 'Công việc',
-    'Display': 'Hiển thị',
-    'Display Properties': 'Thuộc tính hiển thị',
-    'Order by': 'Sắp xếp theo',
-    'Manual': 'Thủ công',
-    'Last created': 'Tạo gần nhất',
-    'Last updated': 'Cập nhật gần nhất',
-    'Priority': 'Độ ưu tiên',
-    'Show sub-work items': 'Hiển thị công việc con',
-    'Analytics': 'Thống kê',
-    'Add work item': 'Thêm công việc',
-    'Access Denied': 'Truy cập bị từ chối',
-    'You do not have permission to access this project.': 'Bạn không đủ quyền để truy cập dự án này.',
-    'Back to Home': 'Quay lại trang Home',
-    'List view': 'Xem danh sách',
-    'Kanban view': 'Xem Kanban',
-    'Calendar view': 'Xem lịch',
-    'Spreadsheet view': 'Xem bảng tính',
-    'Gantt chart view': 'Xem biểu đồ Gantt',
-    'Urgent': 'Khẩn cấp',
-    'High': 'Cao',
-    'Normal': 'Bình thường',
-    'Medium': 'Trung bình',
-    'Low': 'Thấp',
-    'None': 'Không',
-    'Search members': 'Tìm thành viên',
-    'New work item': 'Công việc mới',
-    'Statistics of': 'Thống kê',
-    'Total tasks': 'Tổng công việc',
-    'In progress': 'Đang thực hiện',
-    'Pending': 'Chờ xử lý',
-    'In review': 'Đang đánh giá',
-    'Completed': 'Hoàn thành',
-    'Created and resolved': 'Đã tạo và đã xử lý',
-    'Custom analysis': 'Phân tích tùy chỉnh',
-    'Priority distribution': 'Phân bổ độ ưu tiên',
-    'Status distribution': 'Phân bổ trạng thái',
-    'Assignee distribution': 'Phân bổ người thực hiện',
-    'Export CSV': 'Xuất CSV',
-    'Count': 'Số lượng',
-    'assignees': 'người thực hiện',
-    'Assignee': 'Người thực hiện',
-    'Working': 'Đang làm',
-    'Cancelled': 'Đã hủy'
-  }
-  if (i18nStore.locale === 'vi') {
-    return map[key] || key
-  }
-  return key
-}
 const project = ref({})
 const rawTasks = ref([])
 const allTasks = ref([])

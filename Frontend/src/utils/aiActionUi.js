@@ -62,7 +62,56 @@ export const aiActionStatusLabel = action => ({
   error: 'Thất bại'
 }[action?.uiStatus || 'pending'] || 'Chờ xác nhận')
 
-export const aiActionPayload = action => action?.payload || {}
+export const normalizeAiActionPayload = (type, payload = {}) => {
+  const normalized = { ...(payload || {}) }
+  if (String(type || '').toLowerCase() === 'create_task') {
+    const title = [normalized.title, normalized.taskTitle, normalized.name]
+      .find(value => value !== undefined && value !== null && `${value}`.trim() !== '')
+    if (title !== undefined) normalized.title = `${title}`.trim()
+    delete normalized.taskTitle
+    delete normalized.name
+  }
+  return normalized
+}
+
+const rawAiActionPayload = action => {
+  const payload = action?.payload
+  const payloadPreview = action?.payloadPreview || action?.Payload || action?.PayloadPreview
+  return {
+    ...(payloadPreview && typeof payloadPreview === 'object' ? payloadPreview : {}),
+    ...(payload && typeof payload === 'object' ? payload : {})
+  }
+}
+
+export const aiActionPayload = action => normalizeAiActionPayload(action?.type, rawAiActionPayload(action))
+
+export const normalizeAiAction = action => {
+  const normalizedAction = { ...(action || {}) }
+  delete normalizedAction.taskTitle
+  delete normalizedAction.name
+  return {
+    ...normalizedAction,
+    type: String(action?.type || '').toLowerCase(),
+    payload: aiActionPayload(action)
+  }
+}
+
+export const aiActionTitle = action => {
+  const title = aiActionPayload(action).title
+  return title === undefined || title === null || `${title}`.trim() === '' ? '' : `${title}`.trim()
+}
+
+export const isExecutableAiAction = action =>
+  String(action?.type || '').toLowerCase() !== 'create_task' || Boolean(aiActionTitle(action))
+
+export const normalizeAiActionList = (actions = []) => {
+  const normalized = actions.map(normalizeAiAction)
+  return {
+    actions: normalized.filter(isExecutableAiAction),
+    hasMissingTaskTitle: normalized.some(action =>
+      String(action?.type || '').toLowerCase() === 'create_task' && !aiActionTitle(action))
+  }
+}
 
 export const aiActionPayloadValue = (action, ...keys) => {
   const payload = aiActionPayload(action)
@@ -73,7 +122,10 @@ export const aiActionPayloadValue = (action, ...keys) => {
 export const aiActionSummary = action => {
   const type = String(action?.type || '').toLowerCase()
   if (type === 'create_project') return `Tạo project “${aiActionPayloadValue(action, 'name', 'projectName') || 'Chưa đặt tên'}”.`
-  if (type === 'create_task') return `Tạo task “${aiActionPayloadValue(action, 'title', 'taskTitle') || 'Chưa đặt tên'}”.`
+  if (type === 'create_task') {
+    const title = aiActionTitle(action)
+    return title ? `Tạo task “${title}”.` : 'Bạn muốn đặt tên công việc là gì?'
+  }
   if (type === 'create_goal') return `Tạo mục tiêu “${aiActionPayloadValue(action, 'title', 'name') || 'Chưa đặt tên'}”.`
   if (type === 'update_task_status') return `Chuyển task sang “${aiActionPayloadValue(action, 'statusName', 'status') || 'trạng thái mới'}”.`
   if (type === 'assign_task') return 'Giao task cho thành viên được chỉ định.'
@@ -91,7 +143,7 @@ export const aiActionDetails = (action, resolveProjectLabel = () => 'Dự án hi
     add('Tên project', aiActionPayloadValue(action, 'name', 'projectName'))
     add('Mô tả', aiActionPayloadValue(action, 'description'))
   } else if (type === 'create_task') {
-    add('Tiêu đề', aiActionPayloadValue(action, 'title', 'taskTitle'))
+    add('Tiêu đề', aiActionTitle(action))
     add('Hạn', aiActionPayloadValue(action, 'dueDate', 'plannedEndDate'))
     add('Ưu tiên', aiActionPayloadValue(action, 'priority'))
   } else if (type === 'create_goal') {

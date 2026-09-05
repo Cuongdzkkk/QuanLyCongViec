@@ -20,6 +20,7 @@ namespace TaskManagement.Infrastructure.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly IGamificationService _gamificationService;
+        private readonly IResourceAuthorizationService? _authorizationService;
         private static readonly string[] VisibilityOverrideRoles = { "PM", "PO", "Project Lead", "PROJECT_MANAGER", "PROJECT_LEAD", "Admin" };
         private const string TaskVisibilitySettingGroup = "TaskVisibility";
         private const string ProjectPermissionsSettingGroup = "ProjectPermissions";
@@ -27,10 +28,14 @@ namespace TaskManagement.Infrastructure.Services
         private const string TaskChangeStatusPermission = "task.changeStatus";
         private const string TaskAssigneeOnlyPermission = "task.assigneeOnly";
 
-        public WorkTaskService(ApplicationDbContext context, IGamificationService gamificationService)
+        public WorkTaskService(
+            ApplicationDbContext context,
+            IGamificationService gamificationService,
+            IResourceAuthorizationService? authorizationService = null)
         {
             _context = context;
             _gamificationService = gamificationService;
+            _authorizationService = authorizationService;
         }
 
         private static string MapProjectRoleToPermissionPreset(string? role)
@@ -1136,13 +1141,22 @@ namespace TaskManagement.Infrastructure.Services
                 throw new UnauthorizedAccessException("The authenticated user is not active.");
             }
 
-            var userProjectIds = ProjectAccessPolicy.IsUnrestricted
-                ? await _context.Projects
+            List<Guid> userProjectIds;
+            if (_authorizationService != null)
+            {
+                userProjectIds = await _authorizationService.GetAccessibleProjectIdsAsync(userId);
+            }
+            else if (ProjectAccessPolicy.IsUnrestricted)
+            {
+                userProjectIds = await _context.Projects
                     .AsNoTracking()
                     .Where(project => project.Status && !project.IsDeleted && !project.IsArchived && !project.Workspace.IsDeleted)
                     .Select(project => project.Id)
-                    .ToListAsync()
-                : await _context.ProjectMembers
+                    .ToListAsync();
+            }
+            else
+            {
+                userProjectIds = await _context.ProjectMembers
                     .AsNoTracking()
                     .Where(pm =>
                         pm.UserId == userId &&
@@ -1155,6 +1169,7 @@ namespace TaskManagement.Infrastructure.Services
                             member.UserId == userId && member.IsActive))
                     .Select(pm => pm.ProjectId)
                     .ToListAsync();
+            }
 
             var normalizedScope = (scope ?? "all").Trim().ToLowerInvariant();
             var dbQuery = _context.WorkTasks
