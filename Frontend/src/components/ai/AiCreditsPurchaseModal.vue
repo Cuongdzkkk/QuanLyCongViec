@@ -3,7 +3,7 @@
     :model-value="modelValue"
     title="AI Credits & gói SprintA"
     subtitle="Theo dõi số dư, quyền lợi và lịch sử thanh toán trong một nơi."
-    icon="fa-solid fa-sparkles"
+    icon="bi bi-stars"
     size="large"
     width="960px"
     body-class-name="ai-credits-modal-body"
@@ -50,7 +50,7 @@
             <button type="button" class="text-action" @click="openBilling">Mở trang gói &amp; thanh toán</button>
           </div>
           <div class="plan-grid">
-            <article v-for="plan in plans" :key="getPlanCode(plan)" class="plan-card" :class="{ 'is-current': isCurrentPlan(plan), 'is-recommended': plan.isRecommended }">
+            <article v-for="plan in plans" :key="getPlanCode(plan)" class="plan-card" :class="{ 'is-current': isCurrentPlan(plan), 'is-recommended': plan.isRecommended, 'is-enterprise': isEnterprisePlan(plan) }">
               <div class="plan-card-head">
                 <div>
                   <span class="plan-code">{{ getPlanCode(plan) }}</span>
@@ -59,8 +59,8 @@
                 <span v-if="isCurrentPlan(plan)" class="current-badge">Đang dùng</span>
                 <span v-else-if="plan.isRecommended" class="recommended-badge">Đề xuất</span>
               </div>
-              <strong class="plan-price">{{ priceLabel(plan.monthlyPriceVnd) }}</strong>
-              <span class="plan-credit">{{ formatCredits(plan.includedAiCredits) }} AI credits / tháng</span>
+              <strong class="plan-price">{{ planPriceLabel(plan) }}</strong>
+              <span class="plan-credit">{{ planCreditLabel(plan) }}</span>
               <ul v-if="plan.features?.length" class="plan-features">
                 <li v-for="feature in plan.features" :key="feature">{{ feature }}</li>
               </ul>
@@ -68,16 +68,16 @@
               <button
                 type="button"
                 class="plan-action"
-                :class="{ primary: !isCurrentPlan(plan) && !isEnterprisePlan(plan) }"
+                :class="{ primary: !isCurrentPlan(plan) && !isEnterprisePlan(plan), 'enterprise-action': isEnterprisePlan(plan) }"
                 :aria-label="`${plan.name}: ${planActionLabel(plan)}`"
                 :data-plan-code="getPlanCode(plan)"
-                :disabled="isCurrentPlan(plan) || isEnterprisePlan(plan) || checkoutLoadingCode === getPlanCode(plan)"
+                :disabled="isCurrentPlan(plan) || checkoutLoadingCode === getPlanCode(plan) || checkoutLoadingCode === 'enterprise'"
                 @click.stop="selectPlan(plan)"
               >
                 <span v-if="checkoutLoadingCode === getPlanCode(plan)">Đang chuẩn bị...</span>
                 <span v-else>{{ planActionLabel(plan) }}</span>
               </button>
-              <small v-if="isEnterprisePlan(plan)" class="plan-note">Gói này chưa có thanh toán online trong contract hiện tại.</small>
+              <small v-if="isEnterprisePlan(plan)" class="plan-note">Trao đổi để xác định quy mô và mức credits phù hợp.</small>
             </article>
           </div>
           <p class="pricing-disclaimer">{{ pricingDisclaimer }}</p>
@@ -118,7 +118,8 @@ import { billingApi, unwrapBillingData } from '@/api/billingApi'
 import { buildBillingCheckoutLocation, resolveBillingPlanFlow } from '@/utils/billingPlanFlow'
 
 const props = defineProps({
-  modelValue: { type: Boolean, required: true }
+  modelValue: { type: Boolean, required: true },
+  contactContext: { type: Object, default: () => ({}) }
 })
 const emit = defineEmits(['update:modelValue'])
 const route = useRoute()
@@ -129,7 +130,8 @@ const billing = ref(null)
 const plans = ref([])
 const history = ref([])
 const historyTotal = ref(0)
-const pricingDisclaimer = ref('Extra credits chưa có mức giá mua lẻ được công bố. Các nâng cấp sử dụng luồng billing thật của SprintA.')
+const defaultPricingDisclaimer = 'Giá gói được cập nhật trực tiếp từ hệ thống. Gói Enterprise được báo giá theo nhu cầu.'
+const pricingDisclaimer = ref(defaultPricingDisclaimer)
 const checkoutLoadingCode = ref('')
 
 const currentPlanCode = computed(() => String(billing.value?.planCode || '').toLowerCase())
@@ -146,7 +148,10 @@ const formatDate = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle
 const getPlanCode = plan => String(plan?.code || plan?.id || '').trim().toLowerCase()
 const isCurrentPlan = plan => getPlanCode(plan) === currentPlanCode.value
 const isEnterprisePlan = plan => getPlanCode(plan) === 'enterprise' || plan?.monthlyPriceVnd == null
-const planActionLabel = plan => ({ current: 'Gói hiện tại', enterprise: 'Liên hệ sales', free: 'Kích hoạt Free', paid: 'Mở thanh toán' }[resolveBillingPlanFlow(plan, currentPlanCode.value)] || 'Mở thanh toán')
+const planPriceLabel = plan => isEnterprisePlan(plan) ? 'Giá theo nhu cầu' : priceLabel(plan.monthlyPriceVnd)
+const planCreditLabel = plan => isEnterprisePlan(plan) ? 'Credits theo thỏa thuận' : `${formatCredits(plan.includedAiCredits)} AI credits / tháng`
+const planActionLabel = plan => ({ current: 'Gói hiện tại', enterprise: 'Liên hệ tư vấn →', free: 'Kích hoạt Free', paid: 'Mở thanh toán' }[resolveBillingPlanFlow(plan, currentPlanCode.value)] || 'Mở thanh toán')
+const isInternalPricingCopy = value => /mvp|database|extra credits?.*(?:price|pricing|giá)|undecided|chưa có mức giá mua lẻ/i.test(String(value || ''))
 
 const loadData = async () => {
   loading.value = true
@@ -164,7 +169,7 @@ const loadData = async () => {
     billing.value = billingData
     history.value = Array.isArray(historyData.items) ? historyData.items : []
     historyTotal.value = Number(historyData.totalCount || history.value.length)
-    pricingDisclaimer.value = pricing.disclaimer || pricingDisclaimer.value
+    pricingDisclaimer.value = isInternalPricingCopy(pricing.disclaimer) ? defaultPricingDisclaimer : (pricing.disclaimer || defaultPricingDisclaimer)
   } catch (loadError) {
     error.value = loadError?.response?.data?.message || 'Vui lòng thử lại sau ít phút.'
   } finally {
@@ -173,6 +178,22 @@ const loadData = async () => {
 }
 
 const close = () => emit('update:modelValue', false)
+const openEnterpriseContact = () => {
+  close()
+  const context = props.contactContext || {}
+  router.push({
+    path: '/',
+    query: {
+      contact: 'enterprise',
+      source: 'ai-credits',
+      plan: 'enterprise',
+      ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
+      ...(context.workspaceName ? { workspaceName: context.workspaceName } : {}),
+      ...(context.projectName ? { projectName: context.projectName } : {}),
+      returnTo: route.fullPath
+    }
+  })
+}
 const openBilling = () => {
   close()
   router.push(buildBillingCheckoutLocation(
@@ -184,7 +205,11 @@ const openBilling = () => {
 
 const selectPlan = async plan => {
   const flow = resolveBillingPlanFlow(plan, currentPlanCode.value)
-  if (flow === 'current' || flow === 'enterprise') return
+  if (flow === 'current') return
+  if (flow === 'enterprise') {
+    openEnterpriseContact()
+    return
+  }
   checkoutLoadingCode.value = getPlanCode(plan)
   try {
     if (flow === 'free') {
@@ -352,5 +377,77 @@ h2, h3, p { margin: 0; }
   :deep(.sprinta-app-modal .el-dialog__header) { padding: 18px 16px 15px; }
   :deep(.sprinta-app-modal .el-dialog__body) { padding: 16px; }
   .wallet-summary { gap: 15px; }
+}
+
+/* Credit surface: keep the wallet and plan decisions distinct from the
+   account history without changing the billing data or checkout contracts. */
+:deep(.sprinta-app-modal) {
+  display: flex;
+  max-height: calc(100dvh - 32px);
+  flex-direction: column;
+}
+
+:deep(.sprinta-app-modal .el-dialog__body) {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.wallet-summary {
+  grid-template-columns: minmax(0, 1.1fr) minmax(150px, .55fr) minmax(220px, 1fr);
+  padding: 20px;
+}
+
+.wallet-balance strong,
+.plan-price {
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-card {
+  min-height: 292px;
+}
+
+.plan-card.is-enterprise {
+  border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 5%, var(--color-surface));
+}
+
+.plan-card.is-enterprise .plan-price {
+  color: var(--color-accent);
+  font-size: 19px;
+}
+
+.plan-features,
+.plan-features-empty {
+  flex: 1 1 auto;
+}
+
+.enterprise-action {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+  color: var(--color-accent);
+}
+
+.enterprise-action:not(:disabled):hover {
+  background: var(--sa-primary-soft);
+  color: var(--color-accent);
+}
+
+.history-section {
+  margin-top: 6px;
+  padding-top: 24px;
+  border-top: 1px solid color-mix(in srgb, var(--color-accent) 20%, var(--color-border));
+}
+
+@media (max-width: 900px) {
+  .wallet-summary { grid-template-columns: minmax(0, 1fr) minmax(150px, .6fr); }
+  .wallet-progress-block { grid-column: 1 / -1; }
+}
+
+@media (max-width: 760px) {
+  :deep(.sprinta-app-modal) { max-height: calc(100dvh - 16px); }
+  .wallet-summary,
+  .plan-grid { grid-template-columns: 1fr; }
+  .wallet-progress-block { grid-column: auto; }
+  .plan-card { min-height: 0; }
 }
 </style>
