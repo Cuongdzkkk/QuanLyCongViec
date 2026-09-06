@@ -1,0 +1,10 @@
+---
+description: SprintA repository-wide product and engineering rules
+alwaysApply: true
+---
+
+Follow `AGENTS.md` and `CONTEXT.md` at the repository root.
+
+If editing `Frontend/**`, also follow `Frontend/AGENTS.md`. If editing `Backend/**`, also follow `Backend/AGENTS.md`.
+
+Keep real data and API behavior intact, do not add a new UI framework, keep Scrum and Kanban semantics distinct, and prefer a small complete vertical slice over a broad refactor.

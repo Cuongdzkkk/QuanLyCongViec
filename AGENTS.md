@@ -3,8 +3,7 @@
 ## Scope
 
 * Khi task là UI, chỉ sửa frontend.
-* Không đổi endpoint API.
-* Không đổi tên field API.
+* Giữ nguyên endpoint và tên field API trừ khi task ghi rõ yêu cầu thay đổi contract.
 * Không thêm mock data.
 * Không hard-code dữ liệu để làm đẹp.
 * Không thay component đang nối API thật bằng ừ component visual/mock.
@@ -58,3 +57,26 @@ Issues and specs for this repository are tracked in GitHub Issues using the `gh`
 ### Domain docs
 
 Use a single-context domain documentation layout. See `docs/agents/domain.md`.
+
+## SprintA Product Priorities
+
+Apply these priorities across SprintA unless the task explicitly narrows scope:
+
+1. Unify the design system and responsive UX from mobile to desktop.
+2. Keep Agile, Scrum and Kanban domain mechanics correct and distinct.
+3. A visible function is not complete until its real end-to-end flow works.
+4. Optimize first-user onboarding: account -> workspace/site -> project -> first work item.
+5. Use real persisted data; production mock data is forbidden.
+6. Security, permissions, accessibility and regression tests are part of the feature.
+
+## Agent Workflow
+
+For substantial work:
+
+- Read `CONTEXT.md` before changing product behavior or domain terminology.
+- Use the `sprinta-product-hardening` project skill when the task spans UX, domain behavior, integration, onboarding or hardening.
+- Prefer the installed Matt Pocock skills for specifications, debugging, TDD, design and review when relevant.
+- For visual frontend work, use `gpt-taste` or `design-taste-frontend` when installed, while treating SprintA rules and the existing component system as authoritative.
+- Prefer the smallest complete vertical slice: reuse existing code before creating abstractions, use native/framework capabilities before adding dependencies, and avoid over-engineering.
+
+Never remove validation, security, accessibility or data-integrity checks to make a change smaller. Do not install large tools or modify application architecture, API contracts, authentication, billing or business behavior unless the task explicitly requests it.
