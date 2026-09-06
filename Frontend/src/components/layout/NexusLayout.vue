@@ -668,14 +668,29 @@
       </div>
     </transition>
 
-    <!-- Persistent Voice Call Dock Overlay (Discord-style) -->
+    <!-- Persistent Voice Call Dock Overlay (Google Meet / Discord Style Floating Dock) -->
     <Transition name="route-soft">
       <div
         v-if="voiceCallStore.hasActiveCall && route.name !== 'CollaborationChat'"
         class="persistent-call-overlay"
+        :class="{ 'has-mini-video': (voiceCallStore.isCameraEnabled && voiceCallStore.hasLocalCameraTrack) || voiceCallStore.hasRemoteVideo }"
         role="region"
         aria-label="Kênh thoại đang kết nối"
       >
+        <!-- Mini Floating Camera Tiles Grid (Google Meet style) -->
+        <div v-if="(voiceCallStore.isCameraEnabled && voiceCallStore.hasLocalCameraTrack) || voiceCallStore.hasRemoteVideo" class="call-overlay-video-dock" @click="goToChatCall">
+          <div v-if="voiceCallStore.isCameraEnabled && voiceCallStore.hasLocalCameraTrack" class="mini-video-tile self-tile">
+            <video :ref="setMiniLocalVideoRef" autoplay playsinline muted class="mini-video-el"></video>
+            <span class="mini-video-label">Bạn</span>
+          </div>
+          <template v-for="[connId, media] in voiceCallStore.remoteVideoStreams" :key="connId">
+            <div v-if="media?.cameraStream && media.cameraStream.getVideoTracks().some(t => t.readyState === 'live')" class="mini-video-tile remote-tile">
+              <video :ref="el => setMiniRemoteVideoRef(el, connId)" autoplay playsinline class="mini-video-el"></video>
+              <span class="mini-video-label">{{ media.participantName || 'Đồng nghiệp' }}</span>
+            </div>
+          </template>
+        </div>
+
         <div class="call-overlay-info" @click="goToChatCall">
           <span class="call-status-pulse"></span>
           <div>
@@ -775,6 +790,73 @@ import {
 } from '@/utils/aiWorkspace'
 
 const voiceCallStore = useVoiceCallStore()
+const miniLocalVideoRef = ref(null)
+const miniRemoteVideoRefs = new Map()
+
+const bindMiniLocalVideo = (el) => {
+  if (!el) return
+  if (voiceCallStore.isCameraEnabled && voiceCallStore.callSession) {
+    const stream = voiceCallStore.callSession.getLocalCameraStream?.() || voiceCallStore.callSession.getLocalStream?.()
+    if (stream && stream.getVideoTracks?.().some(t => t.readyState === 'live' && t.enabled !== false)) {
+      if (el.srcObject !== stream) {
+        el.srcObject = stream
+        el.play().catch(() => {})
+      }
+      return
+    }
+  }
+  el.srcObject = null
+}
+
+const setMiniLocalVideoRef = (el) => {
+  miniLocalVideoRef.value = el
+  if (el) {
+    bindMiniLocalVideo(el)
+  }
+}
+
+const bindMiniRemoteVideo = (el, connId) => {
+  if (!el) return
+  const media = voiceCallStore.remoteVideoStreams.get(connId)
+  if (media?.cameraStream && media.cameraStream.getVideoTracks().some(t => t.readyState === 'live')) {
+    if (el.srcObject !== media.cameraStream) {
+      el.srcObject = media.cameraStream
+      el.play().catch(() => {})
+    }
+  } else {
+    el.srcObject = null
+  }
+}
+
+const setMiniRemoteVideoRef = (el, connId) => {
+  if (el) {
+    miniRemoteVideoRefs.set(connId, el)
+    bindMiniRemoteVideo(el, connId)
+  } else {
+    const prevEl = miniRemoteVideoRefs.get(connId)
+    if (prevEl) prevEl.srcObject = null
+    miniRemoteVideoRefs.delete(connId)
+  }
+}
+
+watch([() => voiceCallStore.isCameraEnabled, () => voiceCallStore.callSession, () => voiceCallStore.hasLocalCameraTrack], async () => {
+  await nextTick()
+  if (miniLocalVideoRef.value) {
+    bindMiniLocalVideo(miniLocalVideoRef.value)
+  }
+}, { immediate: true })
+
+watch(() => voiceCallStore.remoteVideoStreams, async (remoteMap) => {
+  await nextTick()
+  if (!remoteMap) return
+  for (const [connId, media] of remoteMap.entries()) {
+    const videoEl = miniRemoteVideoRefs.get(connId)
+    if (videoEl) {
+      bindMiniRemoteVideo(videoEl, connId)
+    }
+  }
+}, { deep: true, immediate: true })
+
 const goToChatCall = () => {
   router.push('/chat')
 }
@@ -4810,5 +4892,59 @@ const handleProjectCreated = (newProject) => {
 }
 .persistent-call-overlay .call-action-pill.hang-up:hover {
   background: #dc2626;
+}
+
+/* Floating Mini Video Grid Overlay (Google Meet Style) */
+.persistent-call-overlay.has-mini-video {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 12px;
+  max-width: 320px;
+}
+.call-overlay-video-dock {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  max-height: 140px;
+  overflow: hidden;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.mini-video-tile {
+  position: relative;
+  flex: 1 1 120px;
+  height: 90px;
+  min-width: 100px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000000;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.mini-video-el {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.mini-video-tile.self-tile .mini-video-el {
+  transform: scaleX(-1);
+}
+.mini-video-label {
+  position: absolute;
+  bottom: 4px;
+  left: 6px;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
